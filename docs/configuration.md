@@ -67,6 +67,29 @@ class DataConfig(TypedDict):
     in_memory: bool
 ```
 
+### Performance: In-Memory vs Disk-Based
+
+The `in_memory` flag significantly impacts performance.
+
+- **Disk-Based (`in_memory: False`)**:
+  - **Pros**: Instant startup (< 1s). Low RAM usage.
+  - **Cons**: Slower batch generation due to I/O. Throughput ~2,000 examples/sec.
+  - **Use Case**: Huge datasets, quick debugging.
+
+- **In-Memory (`in_memory: True`)**:
+  - **Pros**: Extremely fast batch generation. Throughput ~16,000+ examples/sec.
+  - **Cons**: Slow startup (reading all data). High RAM usage.
+  - **Use Case**: Datasets that fit in RAM. Long training runs.
+
+**Benchmark Results:**
+
+| Mode       | Setup Time | Throughput (ex/s) |
+|------------|------------|-------------------|
+| Disk-Based | ~0.2s      | ~2,000            |
+| In-Memory  | ~100s      | ~16,000           |
+
+*Note: In-Memory loading pays a large upfront cost. For short training runs, Disk-Based may be faster overall.*
+
 ## SamplerConfig
 
 Defines how data samples are selected from the genome.
