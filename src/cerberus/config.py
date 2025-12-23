@@ -345,3 +345,33 @@ def validate_sampler_config(config: dict | SamplerConfig) -> SamplerConfig:
         "padded_size": config["padded_size"],
         "sampler_args": config["sampler_args"],
     }
+
+
+def validate_data_and_sampler_compatibility(
+    data_config: dict | DataConfig, sampler_config: dict | SamplerConfig
+) -> None:
+    """
+    Validates compatibility between data and sampler configurations.
+
+    Checks if the sampler's padded_size is sufficient to cover the input window
+    plus the maximum jitter range.
+
+    Args:
+        data_config: Validated DataConfig.
+        sampler_config: Validated SamplerConfig.
+
+    Raises:
+        ValueError: If padded_size is too small for the requested input_len and max_jitter.
+    """
+    input_len = data_config["input_len"]
+    max_jitter = data_config["max_jitter"]
+    padded_size = sampler_config["padded_size"]
+    
+    required_size = input_len + 2 * max_jitter
+    
+    if padded_size < required_size:
+        raise ValueError(
+            f"Sampler padded_size ({padded_size}) is smaller than required size "
+            f"({required_size} = input_len {input_len} + 2 * max_jitter {max_jitter}). "
+            "Please increase padded_size or decrease input_len/max_jitter."
+        )

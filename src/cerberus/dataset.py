@@ -10,6 +10,7 @@ from .config import (
     validate_data_config,
     validate_genome_config,
     validate_sampler_config,
+    validate_data_and_sampler_compatibility,
 )
 from .exclude import get_exclude_intervals
 from .samplers import Sampler, create_sampler
@@ -76,6 +77,8 @@ class CerberusDataset(Dataset):
         self.genome_config = validate_genome_config(genome_config)
         self.sampler_config = validate_sampler_config(sampler_config)
         self.data_config = validate_data_config(data_config)
+
+        validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
 
         # Initialize Folds
         self.folds = create_genome_folds(
@@ -180,7 +183,7 @@ class CerberusDataset(Dataset):
                 - 'inputs': Tensor of shape (Channels, Length). Concatenation of sequence (4 channels)
                             and optional input signals.
                 - 'targets': Tensor of shape (Target_Channels, Output_Length).
-                - 'interval': String representation of the genomic interval.
+                - 'intervals': String representation of the genomic interval.
         """
         interval = self.sampler[idx]
 
@@ -208,7 +211,7 @@ class CerberusDataset(Dataset):
         return {
             "inputs": inputs,
             "targets": targets,
-            "interval": str(interval),
+            "intervals": str(interval),
         }
 
     def __getitems__(self, indices: list[int]):

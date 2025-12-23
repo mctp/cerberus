@@ -78,7 +78,7 @@ def test_interval_string_jitter(mock_dataset):
     # Bed was 100-200. Padded 100. Center 150. Start 100, End 200.
     
     item = mock_dataset[0]
-    interval_str = item["interval"]
+    interval_str = item["intervals"]
     
     # Expected: chr1:125-175(+)
     assert interval_str == "chr1:125-175(+)"
@@ -92,7 +92,7 @@ def test_interval_string_rc(mock_dataset):
     # Original: chr1:100-200(+)
     
     item = mock_dataset[0]
-    interval_str = item["interval"]
+    interval_str = item["intervals"]
     
     # Expected: chr1:100-200(-)
     assert interval_str == "chr1:100-200(-)"
@@ -105,6 +105,6 @@ def test_interval_string_jitter_and_rc(mock_dataset):
     ]
     
     item = mock_dataset[0]
-    interval_str = item["interval"]
+    interval_str = item["intervals"]
     
     assert interval_str == "chr1:125-175(-)"
