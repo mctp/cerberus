@@ -31,7 +31,7 @@ The primary entry point for PyTorch. Orchestrates data loading, sampling, and sp
     *   Concatenates sequence and inputs along channel dimension -> `inputs`.
     *   Fetches target signal data via `TargetSignalExtractor` -> `targets`.
     *   Applies configured transforms (Jitter, ReverseComplement, Binning, etc.) via `self.transforms`, passing and updating the `interval` metadata.
-    *   Returns a dictionary `{"inputs": inputs, "targets": targets, "interval": str(interval)}`.
+    *   Returns a dictionary `{"inputs": inputs, "targets": targets, "intervals": str(interval)}`.
 
 *   **`resample(self)`**
     *   Triggers resampling of the underlying sampler (e.g. `MultiSampler`). This is a no-op for samplers that do not support dynamic resampling.

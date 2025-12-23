@@ -225,7 +225,7 @@ class CerberusDataset(torch.utils.data.Dataset):
         return {
             "inputs": inputs, 
             "targets": targets, 
-            "interval": str(interval)
+            "intervals": str(interval)
         }
 ```
 

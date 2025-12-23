@@ -256,7 +256,7 @@ item = train_ds[0]
 print("\nDataset Item Keys:", item.keys())
 print("Inputs shape:", item["inputs"].shape)   # (4 + n_input_tracks, Length)
 print("Targets shape:", item["targets"].shape) # (n_target_tracks, Length)
-print("Interval:", item["interval"])
+print("Interval:", item["intervals"])
 
 # %%
 # ## 6. CerberusDataModule
@@ -279,7 +279,7 @@ batch = next(iter(train_loader))
 
 print("Batch Inputs:", batch["inputs"].shape)
 print("Batch Targets:", batch["targets"].shape)
-print("Batch Intervals:", batch["interval"])
+print("Batch Intervals:", batch["intervals"])
 
 # %%
 # ## 7. Experimenting with Parameters
