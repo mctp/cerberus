@@ -125,6 +125,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+## test data
 tmp/
 tests/data/
-notebooks/data/
+
+# VS Code
+*.code-workspace
