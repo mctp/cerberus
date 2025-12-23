@@ -1,0 +1,46 @@
+import pytest
+import os
+import shutil
+import urllib.request
+from pathlib import Path
+from cerberus.download import download_dataset, download_human_reference
+
+def pytest_sessionfinish(session, exitstatus):
+    if os.environ.get("CERBERUS_PRUNE_DOWNLOADS"):
+        base_dir = get_base_dir()
+        print(f"\nPruning downloads from {base_dir}...")
+        
+        for subdir in ["genome", "dataset"]:
+            d = base_dir / subdir
+            if d.exists():
+                print(f"Removing {d}")
+                shutil.rmtree(d)
+
+def get_base_dir():
+    return Path(os.environ.get("CERBERUS_DATA_DIR", "tests/data"))
+
+@pytest.fixture(scope="session")
+def human_genome():
+    """
+    Downloads the hg38 genome if not present.
+    Returns the dictionary of file paths.
+    """
+    if os.environ.get("RUN_SLOW_TESTS") is None:
+        pytest.skip("Skipping slow tests (RUN_SLOW_TESTS not set)")
+
+    base_dir = get_base_dir()
+    genome_dir = base_dir / "genome"
+    return download_human_reference(genome_dir, name="hg38")
+
+@pytest.fixture(scope="session")
+def mdapca2b_ar_dataset():
+    """
+    Downloads the mdapca2b-ar dataset if not present.
+    Returns a dictionary with paths to the files.
+    """
+    if os.environ.get("RUN_SLOW_TESTS") is None:
+        pytest.skip("Skipping slow tests (RUN_SLOW_TESTS not set)")
+
+    base_dir = get_base_dir()
+    data_dir = base_dir / "dataset"
+    return download_dataset(data_dir, name="mdapca2b_ar")

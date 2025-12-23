@@ -1,0 +1,123 @@
+# Configuration
+
+Cerberus relies on three main configuration dictionaries to set up the data pipeline: `GenomeConfig`, `DataConfig`, and `SamplerConfig`.
+
+## GenomeConfig
+
+Defines the reference genome properties and validation strategy.
+
+```python
+class GenomeConfig(TypedDict):
+    # Name of the genome assembly (e.g., "hg38")
+    name: str
+    
+    # Path to the FASTA file
+    fasta_path: str | Path
+    
+    # Dictionary mapping chromosome names to their lengths
+    chrom_sizes: dict[str, int]
+    
+    # Dictionary mapping chromosome names to exclusion intervals (InterLap objects or paths)
+    exclude_intervals: dict[str, InterLap] | dict[str, Path]
+    
+    # Cross-validation strategy
+    fold_type: str  # e.g., "chrom_partition"
+    
+    # Arguments for the fold strategy
+    fold_args: dict[str, Any]
+    
+    # Optional list of allowed chromosomes
+    allowed_chroms: list[str] | None
+```
+
+## DataConfig
+
+Defines the input and output data characteristics.
+
+```python
+class DataConfig(TypedDict):
+    # Paths to input BigWig files (e.g., conservation scores)
+    inputs: dict[str, Path]
+    
+    # Paths to target BigWig files (e.g., CAGE, ChIP-seq)
+    targets: dict[str, Path]
+    
+    # Length of the input sequence
+    input_len: int
+    
+    # Length of the output target signal
+    output_len: int
+    
+    # Binning resolution for targets (default: 1)
+    bin_size: int
+    
+    # DNA encoding ("ACGT" usually)
+    encoding: str
+    
+    # Maximum jitter (shift) to apply during training
+    max_jitter: int
+    
+    # Whether to apply log(1+x) transform to targets
+    log_transform: bool
+    
+    # Whether to apply reverse complement augmentation
+    reverse_complement: bool
+    
+    # Whether to load all data into RAM
+    in_memory: bool
+```
+
+## SamplerConfig
+
+Defines how data samples are selected from the genome.
+
+```python
+class SamplerConfig(TypedDict):
+    # Type of sampler: "interval", "sliding_window", or "multi"
+    sampler_type: str
+    
+    # Length of the window to sample (usually input_len)
+    padded_size: int
+    
+    # Paths to exclusion regions (optional override)
+    exclude_intervals: dict[str, Path] | None
+    
+    # Arguments specific to the chosen sampler type
+    sampler_args: dict[str, Any]
+```
+
+### Sampler Arguments
+
+*   **Interval Sampler**:
+    ```python
+    {
+        "intervals_path": "/path/to/peaks.bed"
+    }
+    ```
+
+*   **Sliding Window Sampler**:
+    ```python
+    {
+        "stride": 50  # Step size for the sliding window
+    }
+    ```
+
+*   **Multi Sampler**:
+    ```python
+    {
+        "samplers": [
+            {
+                "type": "interval",
+                "args": {"intervals_path": "peaks.bed"},
+                "scaling": 0.5  # Subsample to 50%
+            },
+            {
+                "type": "sliding_window",
+                "args": {"stride": 1000},
+                "scaling": 1.0
+            }
+        ]
+    }
+    ```
+
+    *Note: Samplers can be nested recursively! A `MultiSampler` can contain other `MultiSampler` definitions.*
