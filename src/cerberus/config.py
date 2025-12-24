@@ -1,5 +1,7 @@
 from typing import TypedDict, Any
 from pathlib import Path
+import torch.nn as nn
+from torchmetrics import MetricCollection
 
 # --- Configuration Schemas ---
 
@@ -93,7 +95,7 @@ class TrainConfig(TypedDict):
         weight_decay: Weight decay for optimizer.
         patience: Patience for early stopping.
         optimizer: Optimizer name (e.g., 'adamw', 'sgd').
-        loss_weights: Dictionary of loss weights (e.g., {'count': 1.0, 'profile': 0.1}).
+        filter_bias_and_bn: Whether to exclude bias and batch norm parameters from weight decay.
     """
 
     batch_size: int
@@ -102,7 +104,31 @@ class TrainConfig(TypedDict):
     weight_decay: float
     patience: int
     optimizer: str
-    loss_weights: dict[str, float]
+    scheduler_type: str
+    scheduler_args: dict[str, Any]
+    filter_bias_and_bn: bool
+
+
+class ModelConfig(TypedDict):
+    """
+    Configuration for the model architecture.
+
+    Attributes:
+        name: Name of the model.
+        input_channels: List of input channel names.
+        output_channels: List of output channel names.
+        output_type: Type of output ('signal' or 'decoupled').
+    """
+
+    name: str
+    model_cls: type[nn.Module]
+    loss_cls: type[nn.Module]
+    loss_args: dict[str, Any]
+    metrics_cls: type[MetricCollection]
+    metrics_args: dict[str, Any]
+    input_channels: list[str]
+    output_channels: list[str]
+    output_type: str
 
 
 # --- Validation Logic ---
@@ -424,8 +450,9 @@ def validate_train_config(config: dict | TrainConfig) -> TrainConfig:
         "weight_decay",
         "patience",
         "optimizer",
-        "loss_weights",
+        "filter_bias_and_bn",
     }
+    # Optional: scheduler_type, scheduler_args
     if not all(key in config for key in required_keys):
         missing = required_keys - config.keys()
         raise ValueError(f"Train config missing required keys: {missing}")
@@ -447,15 +474,17 @@ def validate_train_config(config: dict | TrainConfig) -> TrainConfig:
 
     if not isinstance(config["optimizer"], str):
         raise TypeError("optimizer must be a string")
-        
-    if not isinstance(config["loss_weights"], dict):
-        raise TypeError("loss_weights must be a dictionary")
-    
-    for k, v in config["loss_weights"].items():
-        if not isinstance(k, str):
-            raise TypeError("loss_weights keys must be strings")
-        if not isinstance(v, (int, float)):
-             raise TypeError("loss_weights values must be numbers")
+
+    if not isinstance(config["filter_bias_and_bn"], bool):
+        raise TypeError("filter_bias_and_bn must be a boolean")
+
+    scheduler_type = config.get("scheduler_type", "default")
+    if not isinstance(scheduler_type, str):
+        raise TypeError("scheduler_type must be a string")
+
+    scheduler_args = config.get("scheduler_args", {})
+    if not isinstance(scheduler_args, dict):
+        raise TypeError("scheduler_args must be a dictionary")
 
     return {
         "batch_size": config["batch_size"],
@@ -464,5 +493,131 @@ def validate_train_config(config: dict | TrainConfig) -> TrainConfig:
         "weight_decay": config["weight_decay"],
         "patience": config["patience"],
         "optimizer": config["optimizer"],
-        "loss_weights": config["loss_weights"],
+        "scheduler_type": scheduler_type,
+        "scheduler_args": scheduler_args,
+        "filter_bias_and_bn": config["filter_bias_and_bn"],
     }
+
+
+def validate_model_config(config: dict | ModelConfig) -> ModelConfig:
+    """
+    Validates the model configuration dictionary.
+
+    Args:
+        config: Dictionary containing model configuration.
+
+    Returns:
+        ModelConfig: Validated and typed configuration object.
+
+    Raises:
+        TypeError: If input is not a dictionary or contains invalid types.
+        ValueError: If required keys are missing or values are invalid.
+    """
+    if not isinstance(config, dict):
+        raise TypeError("Model config must be a dictionary")
+
+    required_keys = {
+        "name",
+        "model_cls",
+        "loss_cls",
+        "loss_args",
+        "metrics_cls",
+        "metrics_args",
+        "input_channels",
+        "output_channels",
+        "output_type",
+    }
+    if not all(key in config for key in required_keys):
+        missing = required_keys - config.keys()
+        raise ValueError(f"Model config missing required keys: {missing}")
+
+    if not isinstance(config["name"], str):
+        raise TypeError("name must be a string")
+
+    # model_cls and loss_cls validation depends on usage context
+    # We at least ensure they are present.
+
+    if not isinstance(config["input_channels"], (list, tuple)):
+        raise TypeError("input_channels must be a list or tuple of strings")
+    if not all(isinstance(c, str) for c in config["input_channels"]):
+        raise TypeError("input_channels must contain only strings")
+    if len(config["input_channels"]) == 0:
+        raise ValueError("input_channels must not be empty")
+
+    if not isinstance(config["output_channels"], (list, tuple)):
+        raise TypeError("output_channels must be a list or tuple of strings")
+    if not all(isinstance(c, str) for c in config["output_channels"]):
+        raise TypeError("output_channels must contain only strings")
+    if len(config["output_channels"]) == 0:
+        raise ValueError("output_channels must not be empty")
+
+    if not isinstance(config["output_type"], str):
+        raise TypeError("output_type must be a string")
+
+    valid_types = {"signal", "decoupled"}
+    if config["output_type"] not in valid_types:
+        raise ValueError(f"output_type must be one of {valid_types}")
+
+    return {
+        "name": config["name"],
+        "model_cls": config["model_cls"],
+        "loss_cls": config["loss_cls"],
+        "loss_args": config["loss_args"],
+        "metrics_cls": config["metrics_cls"],
+        "metrics_args": config["metrics_args"],
+        "input_channels": list(config["input_channels"]),
+        "output_channels": list(config["output_channels"]),
+        "output_type": config["output_type"],
+    }
+
+
+def validate_data_and_model_compatibility(
+    data_config: dict | DataConfig, model_config: dict | ModelConfig
+) -> None:
+    """
+    Validates compatibility between data and model configurations.
+
+    Checks if the model's input/output channels match the data configuration.
+
+    Args:
+        data_config: Validated DataConfig.
+        model_config: Validated ModelConfig.
+
+    Raises:
+        ValueError: If channel names do not match between model and data.
+    """
+    # Check input channels
+    # Note: data_config inputs are dicts {name: path}
+    # For now, we assume the keys in data_config['inputs'] must match model_config['input_channels']
+    # However, inputs might be handled differently (e.g. sequence is implicit).
+    # If the user strictly requested consistency, we check overlap.
+    
+    # Typically, data_config['inputs'] might contain tracks. 
+    # But usually sequence is not in 'inputs' dict if it comes from genome/fasta.
+    # The 'inputs' dict in DataConfig usually refers to additional tracks.
+    # If model_config['input_channels'] lists ['A', 'C', 'G', 'T', 'dnase'], and data_config['inputs'] has 'dnase'.
+    # We might only cross-check the track inputs.
+    # But for strict checking based on user prompt: "consistent with inputs targets from dataconfig"
+    
+    # Check output channels vs targets
+    target_channels = set(data_config["targets"].keys())
+    model_outputs = set(model_config["output_channels"])
+    
+    if target_channels != model_outputs:
+        raise ValueError(
+            f"Model output channels {model_outputs} do not match data targets {target_channels}"
+        )
+
+    # For inputs, we might need to be careful if sequence channels are included in model config but not in data inputs dict.
+    # We'll skip strict input check for now unless we know convention for sequence.
+    # But we can check that every input in data_config is expected by the model?
+    
+    input_tracks = set(data_config["inputs"].keys())
+    # Assuming model_config inputs includes both sequence and tracks?
+    # Or just tracks? User said "('A','C','G,'T',"name of signal trak")". So it includes sequence.
+    
+    # So model inputs should be superset of data inputs keys?
+    model_inputs = set(model_config["input_channels"])
+    if not input_tracks.issubset(model_inputs):
+        missing = input_tracks - model_inputs
+        raise ValueError(f"Data inputs {missing} are not in model input channels")

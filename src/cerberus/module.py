@@ -1,15 +1,16 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import pytorch_lightning as pl
-from torchmetrics import PearsonCorrCoef, MeanSquaredError, MetricCollection
-from typing import Any, Optional, Union, Callable
+from torchmetrics import MetricCollection
+from typing import Optional, Union, Callable
+from timm.optim._optim_factory import create_optimizer_v2
+from timm.scheduler.scheduler_factory import create_scheduler_v2
+
+from cerberus.config import TrainConfig
+
 
 class CerberusModule(pl.LightningModule):
     """
     PyTorch Lightning Module for Sequence-to-Function models.
-    
-    Compatible with ASAP models that output predicted counts/rates directly.
     
     Assumes CerberusDataset structure:
     - inputs: (Batch, Channels, Length). First 4 channels are one-hot sequence.
@@ -19,66 +20,61 @@ class CerberusModule(pl.LightningModule):
     def __init__(
         self,
         model: nn.Module,
-        train_config: dict,
-        bias_model: Optional[nn.Module] = None,
-        criterion: Optional[Union[nn.Module, Callable]] = None,
+        train_config: TrainConfig,
+        criterion: Union[nn.Module, Callable],
+        metrics: MetricCollection,
     ):
         """
         Args:
             model: The main model to train.
             train_config: Configuration dictionary (TrainConfig).
-            bias_model: Optional bias model. Output is subtracted from main model logits.
-            criterion: Loss function. Defaults to PoissonNLLLoss(log_input=False).
+            criterion: Loss function. Required.
+            metrics: MetricCollection for evaluation. Required.
         """
         super().__init__()
-        self.save_hyperparameters(ignore=["model", "bias_model", "criterion"])
+        self.save_hyperparameters(ignore=["model", "criterion", "metrics"])
         self.model = model
-        self.bias_model = bias_model
-        
         self.train_config = train_config
         
-        # Loss function
-        if criterion is not None:
-            self.criterion = criterion
-        else:
-            # Default to PoissonNLLLoss (log_input=False) as used in ASAP
-            self.criterion = nn.PoissonNLLLoss(log_input=False, full=True)
-
-        # Metrics
-        # We assume single channel for now or mean over channels
-        metrics = MetricCollection({
-            "pearson": PearsonCorrCoef(),
-            "mse": MeanSquaredError(),
-        })
+        self.criterion = criterion
         
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")
 
     def configure_optimizers(self):
-        opt_name = self.train_config["optimizer"].lower()
-        lr = self.train_config["learning_rate"]
-        weight_decay = self.train_config["weight_decay"]
+
+        # Create optimizer using timm
+        optimizer = create_optimizer_v2(
+            self.model,
+            opt=self.train_config["optimizer"],
+            lr=self.train_config["learning_rate"],
+            weight_decay=self.train_config["weight_decay"],
+            filter_bias_and_bn=self.train_config["filter_bias_and_bn"]
+        )
         
-        if opt_name == "adamw":
-            optimizer = torch.optim.AdamW(
-                self.model.parameters(), 
-                lr=lr, 
-                weight_decay=weight_decay
-            )
-        elif opt_name == "sgd":
-            optimizer = torch.optim.SGD(
-                self.model.parameters(), 
-                lr=lr, 
-                momentum=0.9, 
-                weight_decay=weight_decay
-            )
-        else:
-            raise ValueError(f"Unsupported optimizer: {opt_name}")
-            
-        return {
+        optim_conf = {
             "optimizer": optimizer,
             "monitor": "val_loss",
         }
+
+        scheduler_type = self.train_config["scheduler_type"]
+        scheduler_args = self.train_config["scheduler_args"]
+
+        if scheduler_type != "default":
+             # Create scheduler using timm
+             scheduler, _ = create_scheduler_v2(
+                 optimizer,
+                 sched=scheduler_type,
+                 **scheduler_args
+             )
+             
+             optim_conf["lr_scheduler"] = {
+                 "scheduler": scheduler,
+                 "interval": "step",
+                 "frequency": 1,
+             }
+        
+        return optim_conf
 
     def _shared_step(self, batch, batch_idx, prefix):
         inputs = batch["inputs"]
@@ -86,11 +82,6 @@ class CerberusModule(pl.LightningModule):
         
         # Forward pass
         outputs = self.model(inputs)
-
-        # Bias correction
-        if self.bias_model:
-            # See docs/internal/bias_factorized_models.md
-            pass
 
         # Calculate loss
         loss = self.criterion(outputs, targets)
@@ -100,12 +91,7 @@ class CerberusModule(pl.LightningModule):
              
         # Metrics
         metric_collection = self.train_metrics if prefix == "train_" else self.val_metrics
-        
-        # Flatten for correlation metrics
-        outputs_flat = outputs.detach().flatten()
-        targets_flat = targets.detach().flatten()
-        
-        metric_collection.update(outputs_flat, targets_flat)
+        metric_collection.update(outputs.detach(), targets.detach())
         
         return loss
 
@@ -114,6 +100,12 @@ class CerberusModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         return self._shared_step(batch, batch_idx, "val_")
+    
+    def on_train_epoch_end(self):
+        # Log aggregated metrics
+        metrics = self.train_metrics.compute()
+        self.log_dict(metrics)
+        self.train_metrics.reset()
         
     def on_validation_epoch_end(self):
         # Log aggregated metrics

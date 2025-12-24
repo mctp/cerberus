@@ -22,6 +22,7 @@ dependencies = [
   "pybigtools",
   "interlap",
   "pytorch-lightning",
+  "timm",
 ]
 
 [project.optional-dependencies]
