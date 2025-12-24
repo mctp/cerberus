@@ -146,6 +146,22 @@ def test_validate_data_config_invalid_types(tmp_path):
     with pytest.raises(ValueError, match="output_len must be a positive integer"):
         validate_data_config(config)
 
+def test_validate_data_config_missing_file(tmp_path):
+    config = {
+        "inputs": {"cons": str(tmp_path / "missing.bw")},
+        "targets": {},
+        "input_len": 2048,
+        "output_len": 1024,
+        "bin_size": 1,
+        "encoding": "ACGT",
+        "max_jitter": 0,
+        "log_transform": False,
+        "reverse_complement": False,
+        "in_memory": False
+    }
+    with pytest.raises(FileNotFoundError, match="inputs file 'cons' not found"):
+        validate_data_config(config)
+
 def test_validate_genome_config_invalid_chrom_sizes(tmp_path):
     genome = tmp_path / "genome.fa"
     genome.touch()

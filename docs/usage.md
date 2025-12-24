@@ -87,17 +87,57 @@ data_module.setup()
 
 ## 3. Train with PyTorch Lightning
 
-Pass the `data_module` directly to the PyTorch Lightning Trainer.
+You can use the `cerberus.entrypoints` module to instantiate the model and start training easily.
 
 ```python
-import pytorch_lightning as pl
-from my_model import MyGenomicModel # Your PyTorch Lightning Module
+import torch.nn as nn
+from cerberus.entrypoints import instantiate, train
+from cerberus.loss import BPNetLoss
+from torchmetrics import MetricCollection, PearsonCorrCoef, MeanSquaredError
 
-model = MyGenomicModel(...)
-trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=100)
+# 4. Train Configuration
+train_config = {
+    "batch_size": 256,
+    "max_epochs": 100,
+    "learning_rate": 1e-3,
+    "weight_decay": 1e-4,
+    "patience": 10,
+    "optimizer": "adamw",
+    "scheduler_type": "cosine",
+    "scheduler_args": {"warmup_epochs": 5},
+    "filter_bias_and_bn": True
+}
 
-# Trainer automatically calls train_dataloader() and val_dataloader()
-trainer.fit(model, datamodule=data_module)
+# 5. Model Configuration
+# Define your PyTorch model class (must accept input_channels, output_channels, input_len)
+class MyModel(nn.Module):
+    def __init__(self, input_channels, output_channels, input_len):
+        super().__init__()
+        self.conv = nn.Conv1d(input_channels, output_channels, 1)
+    def forward(self, x): return self.conv(x)
+
+model_config = {
+    "name": "my_bpnet",
+    "model_cls": MyModel,
+    "loss_cls": BPNetLoss,
+    "loss_args": {"alpha": 1.0},
+    "metrics_cls": MetricCollection,
+    "metrics_args": {
+        "metrics": {
+            "pearson": PearsonCorrCoef(),
+            "mse": MeanSquaredError()
+        }
+    },
+    "input_channels": ["A", "C", "G", "T"],
+    "output_channels": ["AR"],
+    "output_type": "signal"
+}
+
+# Instantiate CerberusModule (LightningModule wrapper)
+module = instantiate(model_config, data_config, train_config)
+
+# Train
+trainer = train(module, data_module, train_config, accelerator="gpu", devices=1)
 ```
 
 ## Manual Usage (PyTorch Dataset)

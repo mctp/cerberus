@@ -15,6 +15,7 @@ The core of Cerberus is built around the separation of **sampling** (where to lo
         *   **SequenceExtractor**: Fetches DNA sequences (one-hot encoded) from FASTA files.
         *   **SignalExtractor**: Fetches continuous signal tracks from BigWig files.
     *   **Transforms**: Apply on-the-fly augmentations like jittering, reverse-complementing, and cropping.
+3.  **CerberusModule**: The PyTorch Lightning Module that wraps the user's neural network. It handles the training loop, optimization (via `timm`), learning rate scheduling, loss calculation, and metric logging.
 
 ### Data Flow
 

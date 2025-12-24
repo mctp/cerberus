@@ -90,6 +90,34 @@ Cerberus provides a composable transformation pipeline via `cerberus.transform.C
     inputs, targets, interval = compose(inputs, targets, interval)
     ```
 
+## Losses
+
+Cerberus provides specialized loss functions for genomic signal prediction.
+
+### BPNetLoss
+Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).
+
+*   **Profile Loss**: Penalizes the shape of the predicted signal distribution.
+*   **Count Loss**: Penalizes the total count prediction (MSE on `log(1+x)`).
+*   **Args**:
+    *   `alpha`: Weight for the count loss component.
+    *   `flatten_channels`: Whether to compute multinomial over all channels flattened (default: True, typical for BPNet).
+    *   `implicit_log_targets`: If targets are already log-transformed, reverses them for profile loss calculation.
+
+### BPNetPoissonLoss
+Variation of BPNet loss using Poisson NLL for the count component.
+
+*   **Count Loss**: Poisson Negative Log-Likelihood.
+*   **Args**: Same as `BPNetLoss`.
+
+## Metrics
+
+### FlattenedPearsonCorrCoef
+Computes Pearson Correlation Coefficient per channel.
+
+*   **Behavior**: Flattens batch and length dimensions to compute correlation between the predicted and target signal vectors for each channel independently, then averages across channels.
+*   **Why**: Standard global Pearson correlation can be misleading if channels have vastly different dynamic ranges.
+
 ### Default Pipeline Order
 When `transforms` are not explicitly provided to `CerberusDataset`, they are automatically constructed from `DataConfig` in the following order:
 1.  **Jitter**: Enforce `input_len` and apply augmentation.

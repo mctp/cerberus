@@ -109,6 +109,74 @@ class SamplerConfig(TypedDict):
     sampler_args: dict[str, Any]
 ```
 
+## TrainConfig
+
+Defines hyperparameters for training.
+
+```python
+class TrainConfig(TypedDict):
+    # Batch size
+    batch_size: int
+    
+    # Maximum number of epochs
+    max_epochs: int
+    
+    # Learning rate
+    learning_rate: float
+    
+    # Weight decay
+    weight_decay: float
+    
+    # Patience for early stopping
+    patience: int
+    
+    # Optimizer name (e.g. "adamw")
+    optimizer: str
+    
+    # Scheduler type (e.g. "default", "cosine")
+    scheduler_type: str
+    
+    # Arguments for scheduler
+    scheduler_args: dict[str, Any]
+    
+    # Whether to exclude bias and batch norm from weight decay
+    filter_bias_and_bn: bool
+```
+
+## ModelConfig
+
+Defines the model architecture and its training components.
+
+```python
+class ModelConfig(TypedDict):
+    # Name of the model
+    name: str
+    
+    # Model class (nn.Module subclass)
+    model_cls: type[nn.Module]
+    
+    # Loss class (nn.Module subclass)
+    loss_cls: type[nn.Module]
+    
+    # Arguments for loss instantiation
+    loss_args: dict[str, Any]
+    
+    # Metrics collection class
+    metrics_cls: type[MetricCollection]
+    
+    # Arguments for metrics instantiation
+    metrics_args: dict[str, Any]
+    
+    # List of input channel names
+    input_channels: list[str]
+    
+    # List of output channel names
+    output_channels: list[str]
+    
+    # Type of output ("signal", "decoupled")
+    output_type: str
+```
+
 ### Sampler Arguments
 
 *   **Interval Sampler**:

@@ -1,7 +1,23 @@
 import torch
 import pytest
 from torchmetrics import PearsonCorrCoef
-from cerberus.loss import BPNetLoss, FlattenedPearsonCorrCoef
+import torch.nn as nn
+from torchmetrics import MeanSquaredError
+from cerberus.loss import BPNetLoss, BPNetPoissonLoss, FlattenedPearsonCorrCoef, get_default_metrics, get_default_loss
+
+def test_get_default_loss():
+    loss = get_default_loss()
+    assert isinstance(loss, nn.PoissonNLLLoss)
+    assert loss.log_input is False
+    assert loss.full is False
+
+def test_get_default_metrics():
+    metrics = get_default_metrics(num_channels=3)
+    assert "pearson" in metrics
+    assert "mse" in metrics
+    assert isinstance(metrics["pearson"], FlattenedPearsonCorrCoef)
+    assert metrics["pearson"].num_channels == 3
+    assert isinstance(metrics["mse"], MeanSquaredError)
 
 def test_bpnet_loss_forward_flatten_true():
     """Test forward pass with flatten_channels=True (default BPNet behavior)"""
@@ -266,3 +282,62 @@ def test_flattened_pearson_vs_global():
     assert abs(val_channel) < 0.5 
     
     assert not torch.isclose(val_channel, val_global, atol=0.1)
+
+def test_bpnet_poisson_loss_forward():
+    """Test forward pass of BPNetPoissonLoss"""
+    batch_size = 2
+    channels = 2
+    length = 10
+    
+    loss_fn = BPNetPoissonLoss(alpha=1.0, flatten_channels=True)
+    
+    profile_logits = torch.randn(batch_size, channels, length, requires_grad=True)
+    # Poisson loss input log_input=True expects log(counts)
+    pred_log_counts = torch.randn(batch_size, 1, requires_grad=True)
+    outputs = (profile_logits, pred_log_counts)
+    
+    targets = torch.randint(0, 5, (batch_size, channels, length)).float()
+    
+    loss = loss_fn(outputs, targets)
+    
+    assert loss.dim() == 0
+    loss.backward()
+    assert profile_logits.grad is not None
+    assert pred_log_counts.grad is not None
+
+def test_bpnet_poisson_loss_count_component():
+    """Test that count loss component uses PoissonNLLLoss"""
+    loss_fn = BPNetPoissonLoss(alpha=10.0, flatten_channels=True)
+    
+    # Total counts = 10
+    targets = torch.zeros(1, 1, 10)
+    targets[0, 0, 0] = 10.0
+    true_total = torch.tensor([10.0])
+    
+    # Perfect prediction: log(10) (since we use log_input=True)
+    pred_log_counts_perfect = torch.log(true_total).reshape(1, 1)
+    pred_log_counts_perfect.requires_grad_(True)
+    
+    # Bad prediction
+    pred_log_counts_bad = torch.log(true_total + 10.0).reshape(1, 1)
+    pred_log_counts_bad.requires_grad_(True)
+    
+    logits = torch.zeros(1, 1, 10, requires_grad=True)
+    
+    loss1 = loss_fn((logits, pred_log_counts_perfect), targets)
+    loss2 = loss_fn((logits, pred_log_counts_bad), targets)
+    
+    assert loss2 > loss1
+
+def test_bpnet_poisson_loss_implicit_log_targets():
+    """Test implicit log targets handling in BPNetPoissonLoss"""
+    loss_fn = BPNetPoissonLoss(alpha=1.0, implicit_log_targets=True)
+    
+    # Targets are log(x+1)
+    targets_raw = torch.tensor([[[10.0]]])
+    targets_logged = torch.log1p(targets_raw)
+    
+    outputs = (torch.zeros(1, 1, 1), torch.zeros(1, 1))
+    
+    loss = loss_fn(outputs, targets_logged)
+    assert not torch.isnan(loss)

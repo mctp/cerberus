@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from cerberus.entrypoints import train
+from cerberus.config import TrainConfig
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 
@@ -9,9 +10,16 @@ def test_train_wrapper_calls_trainer_fit():
     model = MagicMock(spec=pl.LightningModule)
     datamodule = MagicMock()
     
-    train_config = {
+    train_config: TrainConfig = {
+        "batch_size": 32,
         "max_epochs": 10,
-        "patience": 5
+        "learning_rate": 1e-3,
+        "weight_decay": 0.01,
+        "patience": 5,
+        "optimizer": "adamw",
+        "scheduler_type": "default",
+        "scheduler_args": {},
+        "filter_bias_and_bn": True,
     }
     
     # Patch pl.Trainer
@@ -42,7 +50,17 @@ def test_train_wrapper_calls_trainer_fit():
 def test_train_wrapper_custom_callbacks():
     model = MagicMock(spec=pl.LightningModule)
     datamodule = MagicMock()
-    train_config = {"max_epochs": 1, "patience": 1}
+    train_config: TrainConfig = {
+        "batch_size": 32,
+        "max_epochs": 1,
+        "learning_rate": 1e-3,
+        "weight_decay": 0.01,
+        "patience": 1,
+        "optimizer": "adamw",
+        "scheduler_type": "default",
+        "scheduler_args": {},
+        "filter_bias_and_bn": True,
+    }
     
     custom_cb = MagicMock(spec=pl.Callback)
     
