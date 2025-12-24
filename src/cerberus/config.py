@@ -82,6 +82,29 @@ class DataConfig(TypedDict):
     in_memory: bool
 
 
+class TrainConfig(TypedDict):
+    """
+    Configuration for training hyperparameters.
+
+    Attributes:
+        batch_size: Batch size for training/validation.
+        max_epochs: Maximum number of epochs to train.
+        learning_rate: Base learning rate.
+        weight_decay: Weight decay for optimizer.
+        patience: Patience for early stopping.
+        optimizer: Optimizer name (e.g., 'adamw', 'sgd').
+        loss_weights: Dictionary of loss weights (e.g., {'count': 1.0, 'profile': 0.1}).
+    """
+
+    batch_size: int
+    max_epochs: int
+    learning_rate: float
+    weight_decay: float
+    patience: int
+    optimizer: str
+    loss_weights: dict[str, float]
+
+
 # --- Validation Logic ---
 
 
@@ -375,3 +398,71 @@ def validate_data_and_sampler_compatibility(
             f"({required_size} = input_len {input_len} + 2 * max_jitter {max_jitter}). "
             "Please increase padded_size or decrease input_len/max_jitter."
         )
+
+
+def validate_train_config(config: dict | TrainConfig) -> TrainConfig:
+    """
+    Validates the training configuration dictionary.
+
+    Args:
+        config: Dictionary containing training configuration.
+
+    Returns:
+        TrainConfig: Validated and typed configuration object.
+
+    Raises:
+        TypeError: If input is not a dictionary or contains invalid types.
+        ValueError: If required keys are missing or values are invalid.
+    """
+    if not isinstance(config, dict):
+        raise TypeError("Train config must be a dictionary")
+
+    required_keys = {
+        "batch_size",
+        "max_epochs",
+        "learning_rate",
+        "weight_decay",
+        "patience",
+        "optimizer",
+        "loss_weights",
+    }
+    if not all(key in config for key in required_keys):
+        missing = required_keys - config.keys()
+        raise ValueError(f"Train config missing required keys: {missing}")
+
+    if not isinstance(config["batch_size"], int) or config["batch_size"] <= 0:
+        raise ValueError("batch_size must be a positive integer")
+
+    if not isinstance(config["max_epochs"], int) or config["max_epochs"] <= 0:
+        raise ValueError("max_epochs must be a positive integer")
+
+    if not isinstance(config["learning_rate"], float) or config["learning_rate"] <= 0:
+        raise ValueError("learning_rate must be a positive float")
+        
+    if not isinstance(config["weight_decay"], float) or config["weight_decay"] < 0:
+        raise ValueError("weight_decay must be a non-negative float")
+
+    if not isinstance(config["patience"], int) or config["patience"] < 0:
+        raise ValueError("patience must be a non-negative integer")
+
+    if not isinstance(config["optimizer"], str):
+        raise TypeError("optimizer must be a string")
+        
+    if not isinstance(config["loss_weights"], dict):
+        raise TypeError("loss_weights must be a dictionary")
+    
+    for k, v in config["loss_weights"].items():
+        if not isinstance(k, str):
+            raise TypeError("loss_weights keys must be strings")
+        if not isinstance(v, (int, float)):
+             raise TypeError("loss_weights values must be numbers")
+
+    return {
+        "batch_size": config["batch_size"],
+        "max_epochs": config["max_epochs"],
+        "learning_rate": config["learning_rate"],
+        "weight_decay": config["weight_decay"],
+        "patience": config["patience"],
+        "optimizer": config["optimizer"],
+        "loss_weights": config["loss_weights"],
+    }
