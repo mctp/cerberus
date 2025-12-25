@@ -1,11 +1,11 @@
 import torch.nn as nn
 import pytorch_lightning as pl
 from torchmetrics import MetricCollection
-from typing import Optional, Union, Callable
+from typing import Union, Callable
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
-from cerberus.config import TrainConfig
+from cerberus.config import TrainConfig, validate_train_config
 
 
 class CerberusModule(pl.LightningModule):
@@ -34,7 +34,7 @@ class CerberusModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters(ignore=["model", "criterion", "metrics"])
         self.model = model
-        self.train_config = train_config
+        self.train_config = validate_train_config(train_config)
         
         self.criterion = criterion
         
