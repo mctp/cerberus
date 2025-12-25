@@ -11,9 +11,9 @@ def test_validate_data_and_sampler_compatibility_valid():
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False,
         "inputs": {},
-        "targets": {}
+        "targets": {},
+        "use_sequence": True,
     })
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",

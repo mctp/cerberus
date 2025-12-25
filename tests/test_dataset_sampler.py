@@ -39,7 +39,7 @@ def test_dataset_instantiates_interval_sampler(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False
+        "use_sequence": True,
     })
     
     sampler_config = cast(SamplerConfig, {
@@ -98,7 +98,7 @@ def test_dataset_invalid_sampler(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False
+        "use_sequence": True,
     })
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "unknown",

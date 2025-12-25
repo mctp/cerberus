@@ -26,15 +26,12 @@ def test_dataset_auto_transforms(mock_genome):
         "log_transform": True,
         "reverse_complement": True,
         "encoding": "ACGT",
-        "in_memory": False
+        "use_sequence": True,
     })
     
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 120, # 100 + 2*10
-        "num_folds": 5,
-        "exclude_intervals": {},
-        "exclude_mask_res": 64,
         "sampler_args": {"intervals_path": "dummy.bed"} # Mocked in sampler, but here we just need init
     })
     
@@ -87,15 +84,12 @@ def test_dataset_no_jitter_defaults(mock_genome):
         "log_transform": False,
         "reverse_complement": False,
         "encoding": "ACGT",
-        "in_memory": False
+        "use_sequence": True,
     })
     
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 100,
-        "num_folds": 5,
-        "exclude_intervals": {},
-        "exclude_mask_res": 64,
         "sampler_args": {"intervals_path": str(mock_genome.parent / "dummy.bed")}
     })
     # Ensure dummy bed exists from fixture or prev test? No, fixture is fresh.

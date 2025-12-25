@@ -32,7 +32,6 @@ def mock_dataset(tmp_path):
         "exclude_intervals": {},
         "fold_type": "chrom_partition",
         "fold_args": {"k": 2},
-        "in_memory": False
     })
     
     data_config = cast(DataConfig, {
@@ -45,7 +44,7 @@ def mock_dataset(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False
+        "use_sequence": True,
     })
     
     sampler_config = cast(SamplerConfig, {

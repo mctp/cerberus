@@ -66,7 +66,7 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
             "max_jitter": 128,
             "log_transform": True,
             "reverse_complement": True,
-            "in_memory": in_memory 
+            "use_sequence": True,
         })
 
         # 5. Instantiate DataModule ONCE per mode

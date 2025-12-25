@@ -58,7 +58,6 @@ def test_dataset_split_folds(tmp_path):
         'allowed_chroms': ['chr1', 'chr2'],
         'chrom_sizes': chrom_sizes,
         'exclude_intervals': {},
-        'in_memory': False,
         'fold_type': 'chrom_partition',
         'fold_args': {'k': 2}
     })
@@ -78,7 +77,7 @@ def test_dataset_split_folds(tmp_path):
         'max_jitter': 0,
         'log_transform': False,
         'reverse_complement': False,
-        'in_memory': False
+        'use_sequence': True,
     })
     
     sampler_config = cast(SamplerConfig, {

@@ -25,14 +25,13 @@ def test_dataset_in_memory_extractor(tmp_path):
         "encoding": "ACGT",
         "max_jitter": 0,
         "log_transform": False,
-        "reverse_complement": False
+        "reverse_complement": False,
+        "use_sequence": True,
     })
     
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 10,
-        "num_folds": 5,
-        "exclude_intervals": {},
         "sampler_args": {"intervals_path": str(tmp_path / "dummy.bed")}
     })
 

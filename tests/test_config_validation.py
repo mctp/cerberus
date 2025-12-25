@@ -155,6 +155,7 @@ def test_validate_data_and_sampler_compatibility_valid():
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
+        "use_sequence": True,
     })
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
@@ -174,6 +175,7 @@ def test_validate_data_and_sampler_compatibility_invalid():
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
+        "use_sequence": True,
     })
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
@@ -190,6 +192,7 @@ def test_validate_data_and_model_compatibility_valid():
         "input_len": 100, "output_len": 100, "max_jitter": 0, "output_bin_size": 1, 
         "encoding": "ACGT", "log_transform": False, 
         "reverse_complement": False,
+        "use_sequence": True,
     })
     model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
@@ -208,6 +211,7 @@ def test_validate_data_and_model_compatibility_invalid_targets():
         "input_len": 100, "output_len": 100, "max_jitter": 0, "output_bin_size": 1, 
         "encoding": "ACGT", "log_transform": False, 
         "reverse_complement": False,
+        "use_sequence": True,
     })
     model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
@@ -227,6 +231,7 @@ def test_validate_data_and_model_compatibility_invalid_inputs():
         "input_len": 100, "output_len": 100, "max_jitter": 0, "output_bin_size": 1, 
         "encoding": "ACGT", "log_transform": False, 
         "reverse_complement": False,
+        "use_sequence": True,
     })
     model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 

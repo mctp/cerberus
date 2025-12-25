@@ -32,10 +32,10 @@ def test_dataset_extractor_sharing(mock_fasta):
         "max_jitter": 0,
         "reverse_complement": False,
         "log_transform": False,
-        "output_bin_size": 1
+        "output_bin_size": 1,
+        "use_sequence": True,
     })
     sampler_config = cast(SamplerConfig, {
-        "name": "random_sampler",
         "sampler_type": "sliding_window",
         "padded_size": 10,
         "sampler_args": {"stride": 10}

@@ -66,6 +66,7 @@ def test_validate_data_config_valid(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "use_sequence": True,
     })
     validated = validate_data_config(config)
     
@@ -79,7 +80,8 @@ def test_validate_data_config_missing_key():
     config = cast(DataConfig, {
         "inputs": {},
         # Missing targets and others
-        "output_len": 1024
+        "output_len": 1024,
+        "use_sequence": True,
     })
     with pytest.raises(ValueError, match="Data config missing required keys"):
         validate_data_config(config)
@@ -114,11 +116,11 @@ def test_dataset_init(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "use_sequence": True,
     })
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 100,
-        "exclude_intervals": {},
         "sampler_args": {"intervals_path": str(peaks)}
     })
     ds = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
@@ -144,6 +146,7 @@ def test_validate_data_config_invalid_types(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "use_sequence": True,
     })
     with pytest.raises(ValueError, match="output_len must be a positive integer"):
         validate_data_config(config)
@@ -159,6 +162,7 @@ def test_validate_data_config_missing_file(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "use_sequence": True,
     })
     with pytest.raises(FileNotFoundError, match="inputs file 'cons' not found"):
         validate_data_config(config)
