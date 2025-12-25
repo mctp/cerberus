@@ -25,6 +25,7 @@ def base_config():
         "num_workers": 2,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
+        "in_memory": False,
         "scheduler_type": "default",
         "scheduler_args": {},
     })

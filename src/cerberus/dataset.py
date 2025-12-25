@@ -43,6 +43,7 @@ class CerberusDataset(Dataset):
     input_signal_extractor: BaseSignalExtractor | None
     target_signal_extractor: BaseSignalExtractor | None
     transforms: Compose
+    in_memory: bool
 
     def __init__(
         self,
@@ -55,6 +56,7 @@ class CerberusDataset(Dataset):
         sampler: Sampler | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
         transforms: list[DataTransform] | None = None,
+        in_memory: bool = False,
     ):
         """
         Initializes the CerberusDataset.
@@ -69,6 +71,7 @@ class CerberusDataset(Dataset):
             sampler: Optional custom sampler. If None, created based on config.
             exclude_intervals: Optional pre-computed exclude intervals. If None, loaded from config.
             transforms: Optional list of transforms. If None, defaults are created from data_config.
+            in_memory: Whether to load data into memory (default: False).
         
         Raises:
             ValueError: If configurations are invalid.
@@ -77,6 +80,7 @@ class CerberusDataset(Dataset):
         self.genome_config = validate_genome_config(genome_config)
         self.sampler_config = validate_sampler_config(sampler_config)
         self.data_config = validate_data_config(data_config)
+        self.in_memory = in_memory
 
         validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
 
@@ -103,7 +107,7 @@ class CerberusDataset(Dataset):
         if sequence_extractor is not None:
             self.sequence_extractor = sequence_extractor
         else:
-            if self.data_config["in_memory"]:
+            if self.in_memory:
                 self.sequence_extractor = InMemorySequenceExtractor(
                     fasta_path=self.genome_config["fasta_path"],
                     encoding=self.data_config["encoding"],
@@ -118,7 +122,7 @@ class CerberusDataset(Dataset):
         if input_signal_extractor is not None:
             self.input_signal_extractor = input_signal_extractor
         elif self.data_config["inputs"]:
-            if self.data_config["in_memory"]:
+            if self.in_memory:
                 self.input_signal_extractor = InMemorySignalExtractor(
                     bigwig_paths=self.data_config["inputs"]
                 )
@@ -133,7 +137,7 @@ class CerberusDataset(Dataset):
         if target_signal_extractor is not None:
             self.target_signal_extractor = target_signal_extractor
         elif self.data_config["targets"]:
-            if self.data_config["in_memory"]:
+            if self.in_memory:
                 self.target_signal_extractor = InMemorySignalExtractor(
                     bigwig_paths=self.data_config["targets"]
                 )
@@ -234,6 +238,7 @@ class CerberusDataset(Dataset):
             sampler=sampler,
             exclude_intervals=self.exclude_intervals,
             transforms=self.transforms.transforms if self.transforms else None,
+            in_memory=self.in_memory,
         )
 
     def split_folds(

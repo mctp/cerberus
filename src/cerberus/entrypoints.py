@@ -115,7 +115,8 @@ def train(
     # Setup runtime parameters (batch_size, num_workers) from config
     datamodule.setup(
         batch_size=train_config["batch_size"],
-        num_workers=train_config["num_workers"]
+        num_workers=train_config["num_workers"],
+        in_memory=train_config["in_memory"]
     )
     
     trainer.fit(module, datamodule=datamodule)

@@ -26,6 +26,7 @@ def base_config():
         "scheduler_args": {},
         "num_workers": 2,
         "filter_bias_and_bn": True,
+        "in_memory": False,
     }
 
 def test_training_step(base_config):

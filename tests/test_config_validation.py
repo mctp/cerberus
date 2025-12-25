@@ -155,7 +155,6 @@ def test_validate_data_and_sampler_compatibility_valid():
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False
     })
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
@@ -175,7 +174,6 @@ def test_validate_data_and_sampler_compatibility_invalid():
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False
     })
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
@@ -191,7 +189,7 @@ def test_validate_data_and_model_compatibility_valid():
         "targets": {"target1": Path("path2")},
         "input_len": 100, "output_len": 100, "max_jitter": 0, "bin_size": 1, 
         "encoding": "ACGT", "log_transform": False, 
-        "reverse_complement": False, "in_memory": False
+        "reverse_complement": False,
     })
     model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
@@ -209,7 +207,7 @@ def test_validate_data_and_model_compatibility_invalid_targets():
         "targets": {"target1": Path("path2")},
         "input_len": 100, "output_len": 100, "max_jitter": 0, "bin_size": 1, 
         "encoding": "ACGT", "log_transform": False, 
-        "reverse_complement": False, "in_memory": False
+        "reverse_complement": False,
     })
     model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
@@ -228,7 +226,7 @@ def test_validate_data_and_model_compatibility_invalid_inputs():
         "targets": {},
         "input_len": 100, "output_len": 100, "max_jitter": 0, "bin_size": 1, 
         "encoding": "ACGT", "log_transform": False, 
-        "reverse_complement": False, "in_memory": False
+        "reverse_complement": False,
     })
     model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 

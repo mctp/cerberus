@@ -2,7 +2,9 @@
 import pytest
 import os
 from pathlib import Path
+from typing import cast
 from cerberus.dataset import CerberusDataset
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 @pytest.fixture
 def mock_fasta(tmp_path):
@@ -12,7 +14,7 @@ def mock_fasta(tmp_path):
     return fasta_path
 
 def test_dataset_extractor_sharing(mock_fasta):
-    genome_config = {
+    genome_config = cast(GenomeConfig, {
         "name": "mock_genome",
         "fasta_path": str(mock_fasta),
         "chrom_sizes": {"chr1": 1000},
@@ -20,9 +22,8 @@ def test_dataset_extractor_sharing(mock_fasta):
         "fold_type": "chrom_partition",
         "fold_args": {"k": 3},
         "exclude_intervals": {}
-    }
-    data_config = {
-        "in_memory": True,
+    })
+    data_config = cast(DataConfig, {
         "encoding": "ACGT",
         "inputs": {},
         "targets": {},
@@ -32,19 +33,20 @@ def test_dataset_extractor_sharing(mock_fasta):
         "reverse_complement": False,
         "log_transform": False,
         "bin_size": 1
-    }
-    sampler_config = {
+    })
+    sampler_config = cast(SamplerConfig, {
         "name": "random_sampler",
         "sampler_type": "sliding_window",
         "padded_size": 10,
         "sampler_args": {"stride": 10}
-    }
+    })
 
     # Initialize full dataset
     full_dataset = CerberusDataset(
         genome_config=genome_config,
         data_config=data_config,
         sampler_config=sampler_config,
+        in_memory=True,
     )
 
     # Split folds

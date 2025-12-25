@@ -1,6 +1,8 @@
 import pytest
 from pathlib import Path
+from typing import cast
 from cerberus.dataset import CerberusDataset
+from cerberus.config import DataConfig, SamplerConfig
 from cerberus.genome import create_genome_config
 from cerberus.sequence import InMemorySequenceExtractor, SequenceExtractor
 
@@ -14,7 +16,7 @@ def test_dataset_in_memory_extractor(tmp_path):
     # Dummy bed
     (tmp_path / "dummy.bed").write_text("chr1\t10\t20\n")
     
-    base_data_config = {
+    base_data_config = cast(DataConfig, {
         "inputs": {},
         "targets": {},
         "input_len": 10,
@@ -24,15 +26,15 @@ def test_dataset_in_memory_extractor(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False
-    }
+    })
     
-    sampler_config = {
+    sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 10,
         "num_folds": 5,
         "exclude_intervals": {},
         "sampler_args": {"intervals_path": str(tmp_path / "dummy.bed")}
-    }
+    })
 
     # Test 1: in_memory=True
     genome_config = create_genome_config(
@@ -42,20 +44,16 @@ def test_dataset_in_memory_extractor(tmp_path):
         allowed_chroms=["chr1"]
     )
     
-    data_config_mem = base_data_config.copy()
-    data_config_mem["in_memory"] = True
+    data_config = cast(DataConfig, base_data_config.copy())
     
-    ds_mem = CerberusDataset(genome_config, data_config_mem, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
+    ds_mem = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None, in_memory=True)
     assert isinstance(ds_mem.sequence_extractor, InMemorySequenceExtractor)
     
     seq = ds_mem[0]["inputs"]
     assert seq.shape == (4, 10)
 
     # Test 2: in_memory=False
-    data_config_disk = base_data_config.copy()
-    data_config_disk["in_memory"] = False
-    
-    ds_disk = CerberusDataset(genome_config, data_config_disk, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
+    ds_disk = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None, in_memory=False)
     assert isinstance(ds_disk.sequence_extractor, SequenceExtractor)
     
     seq = ds_disk[0]["inputs"]

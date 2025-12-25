@@ -49,7 +49,8 @@ def test_datamodule_setup(
     mock_dataset_cls.assert_called_once_with(
         genome_config=genome_config,
         data_config=data_config,
-        sampler_config=sampler_config
+        sampler_config=sampler_config,
+        in_memory=False
     )
     
     # Verify validation was called

@@ -12,6 +12,7 @@ def test_validate_train_config_valid():
         "num_workers": 4,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
+        "in_memory": False,
         "scheduler_type": "default",
         "scheduler_args": {}
     })
@@ -30,6 +31,7 @@ def test_validate_train_config_valid_asap():
         "num_workers": 4,
         "optimizer": "adamw_asap",
         "filter_bias_and_bn": True,
+        "in_memory": True,
         "scheduler_type": "cosine",
         "scheduler_args": {"warmup_steps": 100}
     })
@@ -48,6 +50,7 @@ def test_validate_train_config_valid_defaults():
         "num_workers": 4,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
+        "in_memory": False,
         # Missing scheduler_type and args should use defaults
     })
     validated = validate_train_config(config)
@@ -73,6 +76,7 @@ def test_validate_train_config_invalid_types():
         "num_workers": 4,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
+        "in_memory": False,
     })
     with pytest.raises(ValueError, match="batch_size must be a positive integer"):
         validate_train_config(config)

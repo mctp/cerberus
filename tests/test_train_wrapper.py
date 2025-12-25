@@ -22,6 +22,7 @@ def test_train_wrapper_calls_trainer_fit():
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
+        "in_memory": False,
     })
     
     # Patch pl.Trainer
@@ -52,7 +53,8 @@ def test_train_wrapper_calls_trainer_fit():
         # Verify datamodule setup called with runtime params
         datamodule.setup.assert_called_once_with(
             batch_size=32,
-            num_workers=2
+            num_workers=2,
+            in_memory=False
         )
 
 def test_train_wrapper_custom_callbacks():
@@ -69,6 +71,7 @@ def test_train_wrapper_custom_callbacks():
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
+        "in_memory": False,
     })
     
     custom_cb = MagicMock(spec=pl.Callback)

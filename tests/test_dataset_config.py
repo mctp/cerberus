@@ -66,7 +66,6 @@ def test_validate_data_config_valid(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False
     })
     validated = validate_data_config(config)
     
@@ -75,8 +74,6 @@ def test_validate_data_config_valid(tmp_path):
     assert validated['inputs']['cons'] == cons
     assert validated['output_len'] == 1024
     assert validated['input_len'] == 2048
-    # Check default in_memory
-    assert validated['in_memory'] is False
 
 def test_validate_data_config_missing_key():
     config = cast(DataConfig, {
@@ -117,7 +114,6 @@ def test_dataset_init(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False
     })
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
@@ -148,7 +144,6 @@ def test_validate_data_config_invalid_types(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False
     })
     with pytest.raises(ValueError, match="output_len must be a positive integer"):
         validate_data_config(config)
@@ -164,7 +159,6 @@ def test_validate_data_config_missing_file(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
-        "in_memory": False
     })
     with pytest.raises(FileNotFoundError, match="inputs file 'cons' not found"):
         validate_data_config(config)

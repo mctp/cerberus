@@ -49,6 +49,7 @@ class CerberusDataModule(pl.LightningDataModule):
         # Runtime settings (configured via setup)
         self.batch_size = 1
         self.num_workers = 0
+        self.in_memory = False
         
         self.test_fold = test_fold
         self.val_fold = val_fold
@@ -78,7 +79,8 @@ class CerberusDataModule(pl.LightningDataModule):
         self, 
         stage: Optional[str] = None, 
         batch_size: Optional[int] = None, 
-        num_workers: Optional[int] = None
+        num_workers: Optional[int] = None,
+        in_memory: Optional[bool] = None,
     ):
         """
         Sets up the datasets for the specified stage.
@@ -90,11 +92,14 @@ class CerberusDataModule(pl.LightningDataModule):
             stage: Stage name (e.g., 'fit', 'test'). Optional.
             batch_size: Batch size override.
             num_workers: Number of workers override.
+            in_memory: Whether to load data into memory.
         """
         if batch_size is not None:
             self.batch_size = batch_size
         if num_workers is not None:
             self.num_workers = num_workers
+        if in_memory is not None:
+            self.in_memory = in_memory
 
         if self._is_initialized:
             return
@@ -104,6 +109,7 @@ class CerberusDataModule(pl.LightningDataModule):
             genome_config=self.genome_config,
             data_config=self.data_config,
             sampler_config=self.sampler_config,
+            in_memory=self.in_memory,
         )
 
         # Split into folds
