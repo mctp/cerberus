@@ -46,9 +46,9 @@ class CerberusDataset(Dataset):
 
     def __init__(
         self,
-        genome_config: dict | GenomeConfig,
-        data_config: dict | DataConfig,
-        sampler_config: dict | SamplerConfig,
+        genome_config: GenomeConfig,
+        data_config: DataConfig,
+        sampler_config: SamplerConfig,
         sequence_extractor: BaseSequenceExtractor | None = None,
         input_signal_extractor: BaseSignalExtractor | None = None,
         target_signal_extractor: BaseSignalExtractor | None = None,
@@ -149,7 +149,7 @@ class CerberusDataset(Dataset):
             self.transforms = Compose(transforms)
         else:
             # Auto-create from DataConfig
-            defaults = create_default_transforms(cast(dict[str, Any], self.data_config))
+            defaults = create_default_transforms(self.data_config)
             self.transforms = Compose(defaults)
 
     def _get_exclude_intervals(self) -> dict[str, InterLap]:
