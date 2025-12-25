@@ -112,6 +112,12 @@ def train(
     )
     
     # Train
+    # Setup runtime parameters (batch_size, num_workers) from config
+    datamodule.setup(
+        batch_size=train_config["batch_size"],
+        num_workers=train_config["num_workers"]
+    )
+    
     trainer.fit(module, datamodule=datamodule)
     
     return trainer

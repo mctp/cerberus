@@ -4,7 +4,16 @@ import numpy as np
 from torch.utils.data import DataLoader
 from typing import Optional
 from .dataset import CerberusDataset
-from .config import GenomeConfig, DataConfig, SamplerConfig
+from .config import (
+    GenomeConfig,
+    DataConfig,
+    SamplerConfig,
+    validate_genome_config,
+    validate_data_config,
+    validate_sampler_config,
+    validate_data_and_sampler_compatibility,
+)
+
 
 class CerberusDataModule(pl.LightningDataModule):
     """
@@ -15,11 +24,9 @@ class CerberusDataModule(pl.LightningDataModule):
     """
     def __init__(
         self,
-        genome_config: dict | GenomeConfig,
-        data_config: dict | DataConfig,
-        sampler_config: dict | SamplerConfig,
-        batch_size: int = 32,
-        num_workers: int = 4,
+        genome_config: GenomeConfig,
+        data_config: DataConfig,
+        sampler_config: SamplerConfig,
         test_fold: int = 0,
         val_fold: int = 1,
         pin_memory: bool = True,
@@ -29,18 +36,20 @@ class CerberusDataModule(pl.LightningDataModule):
             genome_config: Genome configuration dictionary.
             data_config: Data configuration dictionary.
             sampler_config: Sampler configuration dictionary.
-            batch_size: Batch size for DataLoaders.
-            num_workers: Number of worker processes for data loading.
             test_fold: Fold index to use for testing.
             val_fold: Fold index to use for validation.
             pin_memory: Whether to pin memory in DataLoaders (recommended for GPU training).
         """
         super().__init__()
-        self.genome_config = genome_config
-        self.data_config = data_config
-        self.sampler_config = sampler_config
-        self.batch_size = batch_size
-        self.num_workers = num_workers
+        self.genome_config = validate_genome_config(genome_config)
+        self.data_config = validate_data_config(data_config)
+        self.sampler_config = validate_sampler_config(sampler_config)
+        validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
+        
+        # Runtime settings (configured via setup)
+        self.batch_size = 1
+        self.num_workers = 0
+        
         self.test_fold = test_fold
         self.val_fold = val_fold
         self.pin_memory = pin_memory
@@ -65,15 +74,28 @@ class CerberusDataModule(pl.LightningDataModule):
         worker_seed = torch.initial_seed() % 2**32
         np.random.seed(worker_seed)
 
-    def setup(self, stage: Optional[str] = None):
+    def setup(
+        self, 
+        stage: Optional[str] = None, 
+        batch_size: Optional[int] = None, 
+        num_workers: Optional[int] = None
+    ):
         """
         Sets up the datasets for the specified stage.
         
         Initializes the full dataset and splits it into train/val/test sets based on the configured folds.
-        
+        Allows updating runtime parameters (batch_size, num_workers).
+
         Args:
             stage: Stage name (e.g., 'fit', 'test'). Optional.
+            batch_size: Batch size override.
+            num_workers: Number of workers override.
         """
+        if batch_size is not None:
+            self.batch_size = batch_size
+        if num_workers is not None:
+            self.num_workers = num_workers
+
         if self._is_initialized:
             return
 
