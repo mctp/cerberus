@@ -50,6 +50,7 @@ def test_sequence_and_signal_extraction(human_genome, mappability_file, fasta_fi
         "input_len": 1000,
         "output_len": 1000,
         "bin_size": 1,
+        "output_bin_size": 1,
         "max_jitter": 0,
         "encoding": "ACGT",
         "log_transform": False,
