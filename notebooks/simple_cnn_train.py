@@ -87,6 +87,7 @@ data_config: DataConfig = {
     "encoding": "ACGT", # Standard One-Hot
     "log_transform": True, # Log(x+1) transform targets
     "reverse_complement": True, # Augmentation
+    "use_sequence": True,
 }
 
 # Sampler Config

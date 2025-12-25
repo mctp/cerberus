@@ -1,4 +1,4 @@
-# %%
+# %% [markdown]
 # # Cerberus Library Walkthrough
 # 
 # This notebook provides a step-by-step introduction to the `cerberus` library.
@@ -24,7 +24,8 @@ try:
 except ImportError:
     from notebooks.paths import get_project_root
 
-from cerberus.genome import download_human_reference, create_human_genome_config
+from cerberus.genome import create_human_genome_config
+from cerberus.download import download_human_reference
 from cerberus.sequence import SequenceExtractor
 from cerberus.signal import SignalExtractor
 from cerberus.samplers import create_sampler
@@ -32,6 +33,7 @@ from cerberus.dataset import CerberusDataset
 from cerberus.datamodule import CerberusDataModule
 from cerberus.core import Interval
 from cerberus.exclude import get_exclude_intervals
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 # Set up paths
 project_root = get_project_root()
@@ -42,7 +44,7 @@ GENOME_DIR.mkdir(parents=True, exist_ok=True)
 print(f"Data directory: {DATA_DIR}")
 print(f"Genome directory: {GENOME_DIR}")
 
-# %%
+# %% [markdown]
 # ## 1. Genome Configuration
 # 
 # First, we need to set up the reference genome. Cerberus provides utilities to download and configure genomes.
@@ -65,7 +67,7 @@ except Exception as e:
 # Create configuration object
 # Note: download_human_reference(genome_dir) downloads into genome_dir directly
 # but create_human_genome_config expects the directory containing hg38.fa
-genome_config = create_human_genome_config(
+genome_config: GenomeConfig = create_human_genome_config(
     genome_dir=GENOME_DIR / "hg38",
     fold_type="chrom_partition",
     fold_args={"k": 5}  # 5-fold cross validation split
@@ -74,7 +76,7 @@ genome_config = create_human_genome_config(
 print("Genome Config:")
 pprint(genome_config)
 
-# %%
+# %% [markdown]
 # ## 2. Sequence Extraction
 # 
 # With the genome configured, we can extract DNA sequences. The `SequenceExtractor` handles this efficiently.
@@ -101,11 +103,11 @@ print("First 10 bases (one-hot):\n", seq[:, :10])
 genome = pyfaidx.Fasta(str(genome_config["fasta_path"]))
 # pyfaidx uses 0-based indexing like we do, but let's verify exact interval
 # Interval is [start, end)
-seq_str = genome[interval.chrom][interval.start:interval.end].seq
+seq_str = genome[interval.chrom][interval.start:interval.end].seq # type: ignore
 print("\nCharacter Sequence (pyfaidx):")
 print(seq_str[:10])  # First 10 bases
 
-# %%
+# %% [markdown]
 # ## 3. Signal Extraction
 # 
 # We can extract continuous signals (e.g., read counts, fold change) from BigWig files using `SignalExtractor`.
@@ -131,7 +133,7 @@ signal = signal_extractor.extract(interval)
 print("Signal Shape:", signal.shape) # (Channels, Length)
 print("Signal Values (first 10):", signal[0, (100, 500, 750, 1000, 1100)])
 
-# %%
+# %% [markdown]
 # ## 4. Samplers
 # 
 # Samplers define *where* in the genome we extract data from. Cerberus supports:
@@ -158,7 +160,7 @@ with gzip.open(peaks_path, "rt") as f:
 print("-" * 20)
 
 # Basic config for IntervalSampler
-sampler_config_peaks = {
+sampler_config_peaks: SamplerConfig = {
     "sampler_type": "interval",
     "padded_size": 1000, # Resize intervals to this width
     "sampler_args": {
@@ -191,11 +193,11 @@ print("Second sample:", peak_sampler[1])
 print("Third sample:", peak_sampler[2])
 
 
-# %%
+# %% [markdown]
 # ### Sliding Window Sampler
 
 # %%
-sampler_config_sw = {
+sampler_config_sw: SamplerConfig = {
     "sampler_type": "sliding_window",
     "padded_size": 1000,
     "sampler_args": {
@@ -215,7 +217,8 @@ print("First window:", sw_sampler[0])
 print("Second window:", sw_sampler[1])
 print("Third window:", sw_sampler[2])
 
-# %%
+
+# %% [markdown]
 # ## 5. CerberusDataset
 # 
 # The `CerberusDataset` brings it all together:
@@ -226,7 +229,7 @@ print("Third window:", sw_sampler[2])
 # It handles splitting into train/val/test folds automatically.
 
 # %%
-data_config = {
+data_config: DataConfig = {
     "encoding": "ACGT",
     "inputs": {
         "atac": bigwig_path
@@ -239,7 +242,8 @@ data_config = {
     "output_bin_size": 1,
     "max_jitter": 0,
     "log_transform": False,
-    "reverse_complement": False
+    "reverse_complement": False,
+    "use_sequence": True,
 }
 
 dataset = CerberusDataset(
@@ -263,7 +267,7 @@ print("Inputs shape:", item["inputs"].shape)   # (4 + n_input_tracks, Length)
 print("Targets shape:", item["targets"].shape) # (n_target_tracks, Length)
 print("Interval:", item["intervals"])
 
-# %%
+# %% [markdown]
 # ## 6. CerberusDataModule
 # 
 # For PyTorch Lightning integration, `CerberusDataModule` wraps the dataset and handles DataLoaders.
@@ -284,18 +288,18 @@ print("Batch Inputs:", batch["inputs"].shape)
 print("Batch Targets:", batch["targets"].shape)
 print("Batch Intervals:", batch["intervals"])
 
-# %%
+# %% [markdown]
 # ## 7. Experimenting with Parameters
 # 
 # Let's see how changing the `padded_size` affects the output shapes.
 
 # %%
 # Change padded size to 200
-sampler_config_small = sampler_config_peaks.copy()
+sampler_config_small: SamplerConfig = sampler_config_peaks.copy()
 sampler_config_small["padded_size"] = 200
 
 # Also update data config to match the new size
-data_config_small = data_config.copy()
+data_config_small: DataConfig = data_config.copy()
 data_config_small["input_len"] = 200
 data_config_small["output_len"] = 200
 
@@ -310,7 +314,7 @@ item_small = ds_small[0]
 print("New Inputs shape:", item_small["inputs"].shape)
 print("New Targets shape:", item_small["targets"].shape)
 
-# %%
+# %% [markdown]
 # ## 8. Transforms
 # 
 # Cerberus provides data transformations like Jitter, ReverseComplement, and signal binning.

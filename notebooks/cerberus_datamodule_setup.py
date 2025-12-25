@@ -13,6 +13,7 @@ import torch
 
 from cerberus.genome import create_genome_config
 from cerberus import CerberusDataModule
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 try:
     from paths import get_project_root
@@ -79,7 +80,7 @@ print("✓ All required files exist")
 # We also define the fold splitting strategy here.
 
 # %%
-genome_config = create_genome_config(
+genome_config: GenomeConfig = create_genome_config(
     name="hg38",
     fasta_path=fasta_path,
     species="human",
@@ -104,7 +105,7 @@ pp.pprint(genome_config)
 # - `bin_size`: Resolution of the output.
 
 # %%
-data_config = {
+data_config: DataConfig = {
     "inputs": {"mappability": mappability_path},  # Only sequence input
     "targets": {"AR": signal_path},
     "input_len": 2048,
@@ -114,6 +115,7 @@ data_config = {
     "max_jitter": 128,
     "log_transform": True,
     "reverse_complement": True,
+    "use_sequence": True,
 }
 print("Data Config Created:")
 pp.pprint(data_config)
@@ -128,7 +130,7 @@ pp.pprint(data_config)
 # padded_size must be >= input_len + 2 * max_jitter
 # input_len = 2048, max_jitter = 128
 # required = 2048 + 2 * 128 = 2304
-sampler_config = {
+sampler_config: SamplerConfig = {
     "sampler_type": "interval",
     "padded_size": 2304,
     "sampler_args": {
@@ -160,9 +162,12 @@ data_module = CerberusDataModule(
 # We can also control memory usage here (in_memory=True/False)
 data_module.setup(batch_size=8, num_workers=0, in_memory=False)
 
-print("Train dataset length:", len(data_module.train_dataset))
-print("Val dataset length:", len(data_module.val_dataset))
-print("Test dataset length:", len(data_module.test_dataset))
+if data_module.train_dataset:
+    print("Train dataset length:", len(data_module.train_dataset))
+if data_module.val_dataset:
+    print("Val dataset length:", len(data_module.val_dataset))
+if data_module.test_dataset:
+    print("Test dataset length:", len(data_module.test_dataset))
 
 # %% [markdown]
 # ## 7. Inspect a Batch
