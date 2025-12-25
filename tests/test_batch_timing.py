@@ -1,7 +1,9 @@
 import time
 import pytest
+from typing import cast
 from cerberus.genome import create_genome_config
 from cerberus import CerberusDataModule
+from cerberus.config import DataConfig, SamplerConfig
 
 def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
     """
@@ -29,13 +31,13 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
     )
 
     # 4. Sampler Configuration
-    sampler_config = {
+    sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 2304,
         "sampler_args": {
             "intervals_path": peaks_path
         }
-    }
+    })
 
     batch_sizes = [8, 16, 32, 64, 128]
     num_batches_to_measure = 10 
@@ -54,7 +56,7 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
         print("-" * 100)
 
         # 3. Data Configuration
-        data_config = {
+        data_config = cast(DataConfig, {
             "inputs": {"mappability": mappability_path},
             "targets": {"AR": signal_path},
             "input_len": 2048,
@@ -65,21 +67,19 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
             "log_transform": True,
             "reverse_complement": True,
             "in_memory": in_memory 
-        }
+        })
 
         # 5. Instantiate DataModule ONCE per mode
         data_module = CerberusDataModule(
             genome_config=genome_config,
             data_config=data_config,
             sampler_config=sampler_config,
-            batch_size=batch_sizes[0], # Initial batch size
-            num_workers=0,
             pin_memory=False
         )
 
         # 6. Setup Datasets & Measure Preload Time
         setup_start = time.time()
-        data_module.setup()
+        data_module.setup(batch_size=batch_sizes[0], num_workers=0)
         setup_end = time.time()
         preload_time = setup_end - setup_start
         

@@ -1,7 +1,9 @@
 import pytest
 import torch
 import torch.nn as nn
+from typing import cast
 from cerberus.module import CerberusModule
+from cerberus.config import TrainConfig
 from cerberus.loss import get_default_loss, get_default_metrics
 from timm.scheduler.cosine_lr import CosineLRScheduler
 
@@ -14,17 +16,18 @@ class DummyModel(nn.Module):
 
 @pytest.fixture
 def base_config():
-    return {
+    return cast(TrainConfig, {
         "batch_size": 10,
         "max_epochs": 5,
         "learning_rate": 1e-3,
         "weight_decay": 1e-4,
         "patience": 2,
+        "num_workers": 2,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
         "scheduler_type": "default",
         "scheduler_args": {},
-    }
+    })
 
 def test_configure_optimizers_default(base_config):
     model = DummyModel()
@@ -37,7 +40,7 @@ def test_configure_optimizers_default(base_config):
     assert "lr_scheduler" not in optim_conf # Default has no scheduler
 
 def test_configure_optimizers_sgd(base_config):
-    config = base_config.copy()
+    config = cast(TrainConfig, base_config.copy())
     config["optimizer"] = "sgd"
     model = DummyModel()
     module = CerberusModule(model, config, criterion=get_default_loss(), metrics=get_default_metrics())
@@ -46,7 +49,7 @@ def test_configure_optimizers_sgd(base_config):
     assert isinstance(optim_conf["optimizer"], torch.optim.SGD)
 
 def test_configure_optimizers_with_cosine_scheduler(base_config):
-    config = base_config.copy()
+    config = cast(TrainConfig, base_config.copy())
     config["optimizer"] = "adamw"
     config["scheduler_type"] = "cosine"
     # Pass timm-specific arguments
@@ -76,7 +79,7 @@ def test_configure_optimizers_with_cosine_scheduler(base_config):
     assert scheduler.warmup_t == 5
 
 def test_configure_optimizers_invalid_opt(base_config):
-    config = base_config.copy()
+    config = cast(TrainConfig, base_config.copy())
     config["optimizer"] = "invalid_opt_name_xyz" 
     
     model = DummyModel()

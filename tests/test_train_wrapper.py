@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
+from typing import cast
 from cerberus.entrypoints import train
 from cerberus.config import TrainConfig
 import pytorch_lightning as pl
@@ -10,17 +11,18 @@ def test_train_wrapper_calls_trainer_fit():
     model = MagicMock(spec=pl.LightningModule)
     datamodule = MagicMock()
     
-    train_config: TrainConfig = {
+    train_config = cast(TrainConfig, {
         "batch_size": 32,
         "max_epochs": 10,
         "learning_rate": 1e-3,
         "weight_decay": 0.01,
         "patience": 5,
+        "num_workers": 2,
         "optimizer": "adamw",
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
-    }
+    })
     
     # Patch pl.Trainer
     with patch("pytorch_lightning.Trainer") as mock_trainer_cls:
@@ -46,21 +48,28 @@ def test_train_wrapper_calls_trainer_fit():
         
         # Verify fit called
         mock_trainer_instance.fit.assert_called_once_with(model, datamodule=datamodule)
+        
+        # Verify datamodule setup called with runtime params
+        datamodule.setup.assert_called_once_with(
+            batch_size=32,
+            num_workers=2
+        )
 
 def test_train_wrapper_custom_callbacks():
     model = MagicMock(spec=pl.LightningModule)
     datamodule = MagicMock()
-    train_config: TrainConfig = {
+    train_config = cast(TrainConfig, {
         "batch_size": 32,
         "max_epochs": 1,
         "learning_rate": 1e-3,
         "weight_decay": 0.01,
         "patience": 1,
+        "num_workers": 2,
         "optimizer": "adamw",
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
-    }
+    })
     
     custom_cb = MagicMock(spec=pl.Callback)
     

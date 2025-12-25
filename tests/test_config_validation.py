@@ -1,6 +1,7 @@
 import pytest
 import torch.nn as nn
 from pathlib import Path
+from typing import cast
 from torchmetrics import MetricCollection
 from cerberus.config import (
     validate_sampler_config,
@@ -15,30 +16,30 @@ from cerberus.config import (
 # --- Sampler Config Tests ---
 
 def test_validate_sampler_config_interval():
-    config = {
+    config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 1000,
         "sampler_args": {
             "intervals_path": "path/to/intervals.bed"
         }
-    }
+    })
     validated = validate_sampler_config(config)
     assert validated["sampler_type"] == "interval"
     assert validated["padded_size"] == 1000
 
 def test_validate_sampler_config_sliding_window():
-    config = {
+    config = cast(SamplerConfig, {
         "sampler_type": "sliding_window",
         "padded_size": 1000,
         "sampler_args": {
             "stride": 50
         }
-    }
+    })
     validated = validate_sampler_config(config)
     assert validated["sampler_type"] == "sliding_window"
 
 def test_validate_sampler_config_multi():
-    config = {
+    config = cast(SamplerConfig, {
         "sampler_type": "multi",
         "padded_size": 1000,
         "sampler_args": {
@@ -55,39 +56,39 @@ def test_validate_sampler_config_multi():
                 }
             ]
         }
-    }
+    })
     validated = validate_sampler_config(config)
     assert validated["sampler_type"] == "multi"
     assert len(validated["sampler_args"]["samplers"]) == 2
 
 def test_validate_sampler_config_invalid_type():
-    config = {
+    config = cast(SamplerConfig, {
         "sampler_type": "unknown",
         "padded_size": 100,
         "sampler_args": {}
-    }
+    })
     # Current implementation doesn't strictly reject unknown types in the main function,
     # but specific types have checks. If it's unknown, it just passes basic checks.
     validated = validate_sampler_config(config)
     assert validated["sampler_type"] == "unknown"
 
 def test_validate_sampler_config_missing_args():
-    config = {
+    config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 1000,
         "sampler_args": {} # Missing intervals_path
-    }
+    })
     with pytest.raises(ValueError, match="IntervalSampler args missing required keys"):
         validate_sampler_config(config)
 
 def test_validate_sampler_config_invalid_multi_structure():
-    config = {
+    config = cast(SamplerConfig, {
         "sampler_type": "multi",
         "padded_size": 1000,
         "sampler_args": {
             "samplers": "not_a_list"
         }
-    }
+    })
     with pytest.raises(TypeError, match="must be a list"):
         validate_sampler_config(config)
 
@@ -97,7 +98,7 @@ class DummyLoss(nn.Module):
     def forward(self, x, y): return 0
 
 def test_validate_model_config_valid():
-    config = {
+    config = cast(ModelConfig, {
         "name": "test_model",
         "model_cls": nn.Linear,
         "loss_cls": DummyLoss,
@@ -107,13 +108,13 @@ def test_validate_model_config_valid():
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],
         "output_type": "signal"
-    }
+    })
     validated = validate_model_config(config)
     assert validated["name"] == "test_model"
     assert validated["input_channels"] == ["A", "C", "G", "T"]
 
 def test_validate_model_config_invalid_output_type():
-    config = {
+    config = cast(ModelConfig, {
         "name": "test",
         "model_cls": nn.Linear,
         "loss_cls": DummyLoss,
@@ -123,12 +124,12 @@ def test_validate_model_config_invalid_output_type():
         "input_channels": ["A"],
         "output_channels": ["B"],
         "output_type": "invalid_type"
-    }
+    })
     with pytest.raises(ValueError, match="output_type must be one of"):
         validate_model_config(config)
 
 def test_validate_model_config_empty_channels():
-    config = {
+    config = cast(ModelConfig, {
         "name": "test",
         "model_cls": nn.Linear,
         "loss_cls": DummyLoss,
@@ -138,14 +139,14 @@ def test_validate_model_config_empty_channels():
         "input_channels": [],
         "output_channels": ["B"],
         "output_type": "signal"
-    }
+    })
     with pytest.raises(ValueError, match="input_channels must not be empty"):
         validate_model_config(config)
 
 # --- Compatibility Tests ---
 
 def test_validate_data_and_sampler_compatibility_valid():
-    data_config: DataConfig = {
+    data_config = cast(DataConfig, {
         "inputs": {}, "targets": {},
         "input_len": 100,
         "output_len": 100,
@@ -155,17 +156,17 @@ def test_validate_data_and_sampler_compatibility_valid():
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
-    sampler_config: SamplerConfig = {
+    })
+    sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 120, # 100 + 2*10
         "sampler_args": {"intervals_path": "path"}
-    }
+    })
     # Should pass
     validate_data_and_sampler_compatibility(data_config, sampler_config)
 
 def test_validate_data_and_sampler_compatibility_invalid():
-    data_config: DataConfig = {
+    data_config = cast(DataConfig, {
         "inputs": {}, "targets": {},
         "input_len": 100,
         "output_len": 100,
@@ -175,67 +176,67 @@ def test_validate_data_and_sampler_compatibility_invalid():
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
-    sampler_config: SamplerConfig = {
+    })
+    sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 119, # Too small (< 120)
         "sampler_args": {"intervals_path": "path"}
-    }
+    })
     with pytest.raises(ValueError, match="Sampler padded_size"):
         validate_data_and_sampler_compatibility(data_config, sampler_config)
 
 def test_validate_data_and_model_compatibility_valid():
-    data_config: DataConfig = {
+    data_config = cast(DataConfig, {
         "inputs": {"track1": Path("path1")}, 
         "targets": {"target1": Path("path2")},
         "input_len": 100, "output_len": 100, "max_jitter": 0, "bin_size": 1, 
         "encoding": "ACGT", "log_transform": False, 
         "reverse_complement": False, "in_memory": False
-    }
-    model_config: ModelConfig = {
+    })
+    model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
         "loss_args": {}, "metrics_cls": MetricCollection, "metrics_args": {},
         "input_channels": ["track1", "A", "C", "G", "T"], # data inputs + sequence
         "output_channels": ["target1"],
         "output_type": "signal"
-    }
+    })
     
     validate_data_and_model_compatibility(data_config, model_config)
 
 def test_validate_data_and_model_compatibility_invalid_targets():
-    data_config: DataConfig = {
+    data_config = cast(DataConfig, {
         "inputs": {}, 
         "targets": {"target1": Path("path2")},
         "input_len": 100, "output_len": 100, "max_jitter": 0, "bin_size": 1, 
         "encoding": "ACGT", "log_transform": False, 
         "reverse_complement": False, "in_memory": False
-    }
-    model_config: ModelConfig = {
+    })
+    model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
         "loss_args": {}, "metrics_cls": MetricCollection, "metrics_args": {},
         "input_channels": ["A"], 
         "output_channels": ["target2"], # Mismatch
         "output_type": "signal"
-    }
+    })
     
     with pytest.raises(ValueError, match="Model output channels"):
         validate_data_and_model_compatibility(data_config, model_config)
 
 def test_validate_data_and_model_compatibility_invalid_inputs():
-    data_config: DataConfig = {
+    data_config = cast(DataConfig, {
         "inputs": {"track1": Path("path")}, 
         "targets": {},
         "input_len": 100, "output_len": 100, "max_jitter": 0, "bin_size": 1, 
         "encoding": "ACGT", "log_transform": False, 
         "reverse_complement": False, "in_memory": False
-    }
-    model_config: ModelConfig = {
+    })
+    model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
         "loss_args": {}, "metrics_cls": MetricCollection, "metrics_args": {},
         "input_channels": ["A"], # Missing track1
         "output_channels": [],
         "output_type": "signal"
-    }
+    })
     
     with pytest.raises(ValueError, match="Data inputs .* are not in model input channels"):
         validate_data_and_model_compatibility(data_config, model_config)

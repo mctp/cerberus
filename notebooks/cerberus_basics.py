@@ -268,11 +268,9 @@ dm = CerberusDataModule(
     genome_config=genome_config,
     data_config=data_config,
     sampler_config=sampler_config_peaks,
-    batch_size=8,
-    num_workers=0 # Use 0 for interactive notebook
 )
 
-dm.setup()
+dm.setup(batch_size=8, num_workers=0)
 
 train_loader = dm.train_dataloader()
 batch = next(iter(train_loader))

@@ -85,13 +85,14 @@ Base class providing common splitting functionality.
 ### `class CerberusDataModule(pl.LightningDataModule)`
 Standard interface for PyTorch Lightning integration.
 
-*   **`__init__(self, genome_config, data_config, sampler_config, batch_size=32, num_workers=4, test_fold=0, val_fold=1, pin_memory=True)`**
+*   **`__init__(self, genome_config, data_config, sampler_config, test_fold=0, val_fold=1, pin_memory=True)`**
     *   Accepts configuration dictionaries and dataloader parameters.
-    *   **`num_workers`**: Number of subprocesses to use for data loading.
     *   **`pin_memory`**: Whether to copy tensors into CUDA pinned memory.
     *   **`test_fold`, `val_fold`**: Indices of folds to use for testing and validation.
+    *   **Note**: Runtime parameters (`batch_size`, `num_workers`) are NOT passed to `__init__`.
 
-*   **`setup(self, stage: str | None = None)`**
+*   **`setup(self, stage: str | None = None, batch_size: int | None = None, num_workers: int | None = None)`**
+    *   **`batch_size`, `num_workers`**: Optional arguments to configure runtime settings.
     *   Initializes the full `CerberusDataset`.
     *   Splits dataset into `train_dataset`, `val_dataset`, and `test_dataset` using `split_folds`.
 

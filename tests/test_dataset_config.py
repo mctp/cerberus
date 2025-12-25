@@ -1,7 +1,14 @@
 import pytest
 from pathlib import Path
+from typing import cast
 from cerberus.dataset import CerberusDataset
-from cerberus.config import validate_data_config, validate_genome_config, GenomeConfig
+from cerberus.config import (
+    validate_data_config,
+    validate_genome_config,
+    GenomeConfig,
+    DataConfig,
+    SamplerConfig,
+)
 from cerberus.genome import create_genome_config
 
 def test_validate_genome_config_valid(tmp_path):
@@ -22,7 +29,7 @@ def test_validate_genome_config_valid(tmp_path):
 
 def test_validate_genome_config_invalid_input(tmp_path):
     # Missing keys
-    config = {"path": "test"}
+    config = cast(GenomeConfig, {"path": "test"})
     with pytest.raises(ValueError, match="missing required keys"):
         validate_genome_config(config)
 
@@ -49,7 +56,7 @@ def test_validate_data_config_valid(tmp_path):
     counts = tmp_path / "counts.bw"
     counts.touch()
     
-    config = {
+    config = cast(DataConfig, {
         "inputs": {"cons": str(cons)},
         "targets": {"counts": str(counts)},
         "input_len": 2048,
@@ -60,7 +67,7 @@ def test_validate_data_config_valid(tmp_path):
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
+    })
     validated = validate_data_config(config)
     
     # Check that values are converted to Path objects
@@ -72,11 +79,11 @@ def test_validate_data_config_valid(tmp_path):
     assert validated['in_memory'] is False
 
 def test_validate_data_config_missing_key():
-    config = {
+    config = cast(DataConfig, {
         "inputs": {},
         # Missing targets and others
         "output_len": 1024
-    }
+    })
     with pytest.raises(ValueError, match="Data config missing required keys"):
         validate_data_config(config)
 
@@ -100,7 +107,7 @@ def test_dataset_init(tmp_path):
         allowed_chroms=["chr1"]
     )
     
-    data_config = {
+    data_config = cast(DataConfig, {
         "inputs": {},
         "targets": {},
         "input_len": 100,
@@ -111,13 +118,13 @@ def test_dataset_init(tmp_path):
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
-    sampler_config = {
+    })
+    sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 100,
         "exclude_intervals": {},
         "sampler_args": {"intervals_path": str(peaks)}
-    }
+    })
     ds = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
     
     # Check GenomeConfig object
@@ -131,7 +138,7 @@ def test_dataset_init(tmp_path):
     assert "chr1" in ds.genome_config['chrom_sizes']
 
 def test_validate_data_config_invalid_types(tmp_path):
-    config = {
+    config = cast(DataConfig, {
         "inputs": {},
         "targets": {},
         "input_len": 2048,
@@ -142,12 +149,12 @@ def test_validate_data_config_invalid_types(tmp_path):
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
+    })
     with pytest.raises(ValueError, match="output_len must be a positive integer"):
         validate_data_config(config)
 
 def test_validate_data_config_missing_file(tmp_path):
-    config = {
+    config = cast(DataConfig, {
         "inputs": {"cons": str(tmp_path / "missing.bw")},
         "targets": {},
         "input_len": 2048,
@@ -158,7 +165,7 @@ def test_validate_data_config_missing_file(tmp_path):
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
+    })
     with pytest.raises(FileNotFoundError, match="inputs file 'cons' not found"):
         validate_data_config(config)
 
@@ -166,7 +173,7 @@ def test_validate_genome_config_invalid_chrom_sizes(tmp_path):
     genome = tmp_path / "genome.fa"
     genome.touch()
     
-    config = {
+    config = cast(GenomeConfig, {
         "name": "test", 
         "fasta_path": genome, 
         "allowed_chroms": ["chr1"],
@@ -174,7 +181,7 @@ def test_validate_genome_config_invalid_chrom_sizes(tmp_path):
         "fold_type": "chrom_partition",
         "fold_args": {"k": 5},
         "chrom_sizes": {"chr1": "100"}, # Invalid value type
-    }
+    })
     
     with pytest.raises(TypeError, match="chrom_sizes values must be integers"):
         validate_genome_config(config)

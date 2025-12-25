@@ -1,0 +1,190 @@
+# %% [markdown]
+# # Training a Simple CNN with Cerberus
+# 
+# This notebook demonstrates how to train a simple CNN model (VanillaCNN) using the Cerberus framework.
+# We will use the MDA-PCA-2b AR ChIP-seq dataset and the hg38 human reference genome.
+#
+# **Task**: Train a model taking 2048bp DNA input and predicting a BigWig profile (256 bins at 4bp resolution).
+
+# %%
+import torch.nn as nn
+from pathlib import Path
+
+# Cerberus imports
+from cerberus.download import download_dataset, download_human_reference
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
+from cerberus.genome import create_genome_config
+from cerberus.datamodule import CerberusDataModule
+from cerberus.models.cnn import VanillaCNN
+from cerberus.loss import get_default_loss, get_default_metrics
+from cerberus.module import CerberusModule
+from cerberus.entrypoints import train
+
+# %% [markdown]
+# ## 1. Setup Directories and Download Data
+# 
+# We'll define a working directory for our data and download the necessary files.
+
+# %%
+DATA_DIR = Path("test/data")
+DATA_DIR.mkdir(exist_ok=True)
+
+# Download Human Reference (hg38)
+# This includes FASTA, Blacklist, Gaps, Mappability, and ENCODE cCREs
+print("Downloading/Checking Human Reference...")
+genome_files = download_human_reference(DATA_DIR, name="hg38")
+
+# Download Dataset (MDA-PCA-2b AR)
+# This includes BigWig (signal) and narrowPeak (peaks)
+print("Downloading/Checking Dataset...")
+dataset_files = download_dataset(DATA_DIR, name="mdapca2b_ar")
+
+print("Genome Files:", genome_files)
+print("Dataset Files:", dataset_files)
+
+# %% [markdown]
+# ## 2. Configuration
+# 
+# We define the configurations for the Genome, Data, Sampler, and Training.
+# 
+# **Key Requirements:**
+# - Input: 2048bp DNA
+# - Output: 256 bins @ 4bp resolution (covering 1024bp)
+# - Input tracks: None (just DNA)
+# - Target tracks: BigWig signal
+
+# %%
+# Genome Config
+# We use create_genome_config to automatically parse the FASTA index (.fai)
+# and set up the genome configuration.
+genome_config: GenomeConfig = create_genome_config(
+    name="hg38",
+    fasta_path=genome_files["fasta"],
+    species="human",
+    fold_type="chrom_partition",
+    fold_args={"k": 5, "val_fold": 1, "test_fold": 0},
+    exclude_intervals={
+        "blacklist": genome_files["blacklist"],
+        "gaps": genome_files["gaps"],
+    }
+)
+
+# Data Config
+data_config: DataConfig = {
+    "inputs": {}, # No additional input tracks, just DNA
+    "targets": {"signal": dataset_files["bigwig"]},
+    "input_len": 2048,
+    "output_len": 1024, # 1024bp field of view -> 256 bins @ 4bp
+    "max_jitter": 128,  # Augmentation jitter
+    "bin_size": 4,      # Binning resolution
+    "encoding": "ACGT", # Standard One-Hot
+    "log_transform": True, # Log(x+1) transform targets
+    "reverse_complement": True, # Augmentation
+    "in_memory": False  # Use on-the-fly loading
+}
+
+# Sampler Config
+# We need padded_size >= input_len + 2 * max_jitter = 2048 + 256 = 2304.
+sampler_config: SamplerConfig = {
+    "sampler_type": "interval",
+    "padded_size": 2304,
+    "sampler_args": {
+        "intervals_path": dataset_files["narrowPeak"]
+    }
+}
+
+# Train Config
+train_config: TrainConfig = {
+    "batch_size": 16,
+    "max_epochs": 2, # Short training for demonstration
+    "learning_rate": 1e-3,
+    "weight_decay": 0.01,
+    "patience": 5,
+    "optimizer": "adamw",
+    "filter_bias_and_bn": True,
+    "num_workers": 4,
+    "scheduler_type": "cosine",
+    "scheduler_args": {
+        "num_epochs": 2, # Must match max_epochs
+        "warmup_epochs": 0,
+        "min_lr": 1e-5
+    }
+}
+
+# %% [markdown]
+# ## 3. Initialize DataModule
+# 
+# We create the `CerberusDataModule` which handles dataset creation and DataLoaders.
+
+# %%
+datamodule = CerberusDataModule(
+    genome_config=genome_config,
+    data_config=data_config,
+    sampler_config=sampler_config,
+)
+
+# Setup datamodule (create datasets) and set runtime batch size
+datamodule.setup(
+    batch_size=train_config["batch_size"],
+    num_workers=train_config["num_workers"]
+)
+if datamodule.train_dataset:
+    print("Train set size:", len(datamodule.train_dataset))
+if datamodule.val_dataset:
+    print("Val set size:", len(datamodule.val_dataset))
+
+# Verify a batch
+batch = next(iter(datamodule.train_dataloader()))
+print("Batch inputs shape:", batch["inputs"].shape)   # Expected: (B, 4, 2048)
+print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
+
+# %% [markdown]
+# ## 4. Model Setup
+# 
+# We use the `VanillaCNN` architecture.
+# 
+# The `VanillaCNN` has standard Cerberus conventions:
+# - Input: `(Batch, Channels, Length)` e.g., `(B, 4, 2048)`.
+# - Output: `(Batch, Output_Channels, Output_Bins)` e.g., `(B, 1, 256)`.
+# 
+# We configure it with `output_len=1024` to match our target field of view (1024bp -> 256 bins @ 4bp).
+
+# %%
+# Initialize Model
+# output_len=1024 to get 256 bins (1024 // 4)
+# input_len=2048 matches our data config.
+model = VanillaCNN(input_len=2048, output_len=1024, bin_size=4)
+
+# Define Loss and Metrics
+criterion = get_default_loss() # PoissonNLLLoss
+metrics = get_default_metrics(num_channels=1)
+
+# Create Lightning Module
+module = CerberusModule(
+    model=model,
+    train_config=train_config,
+    criterion=criterion,
+    metrics=metrics
+)
+
+# %% [markdown]
+# ## 5. Training
+# 
+# We run the training loop using `entrypoints.train`.
+
+# %%
+# Train
+# We use 'fast_dev_run' or limit epochs to ensure quick execution for this notebook
+trainer = train(
+    module=module,
+    datamodule=datamodule,
+    train_config=train_config,
+    accelerator="auto",
+    devices=1,
+    limit_train_batches=10, # For demo purposes
+    limit_val_batches=5,
+    enable_checkpointing=False,
+    logger=False # Disable logging to disk for demo
+)
+
+print("Training finished.")

@@ -142,8 +142,6 @@ data_module = CerberusDataModule(
     genome_config=genome_config,
     data_config=data_config,
     sampler_config=sampler_config,
-    batch_size=8,        # Small batch size for demonstration
-    num_workers=0,       # Use 0 workers for easier debugging/notebook usage
     pin_memory=False
 )
 
@@ -151,10 +149,11 @@ data_module = CerberusDataModule(
 # ## 6. Setup Datasets
 # 
 # `setup()` prepares the train, validation, and test datasets based on the genome fold configuration.
+# We also set the batch size and number of workers here.
 
 # %%
 # This initializes the underlying datasets and performs the split
-data_module.setup()
+data_module.setup(batch_size=8, num_workers=0)
 
 print("Train dataset length:", len(data_module.train_dataset))
 print("Val dataset length:", len(data_module.val_dataset))

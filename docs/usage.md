@@ -76,13 +76,12 @@ data_module = CerberusDataModule(
     genome_config=genome_config,
     data_config=data_config,
     sampler_config=sampler_config,
-    batch_size=256,
-    num_workers=8,
     pin_memory=True
 )
 
 # Setup datasets (split into train/val/test)
-data_module.setup()
+# You can set the batch size and num_workers here
+data_module.setup(batch_size=256, num_workers=8)
 ```
 
 ## 3. Train with PyTorch Lightning

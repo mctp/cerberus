@@ -1,13 +1,30 @@
 import pytest
 from unittest.mock import MagicMock, patch
+from typing import cast
 from cerberus.datamodule import CerberusDataModule
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 @pytest.fixture
 def mock_dataset_cls():
     with patch("cerberus.datamodule.CerberusDataset") as mock:
         yield mock
 
-def test_datamodule_setup(mock_dataset_cls):
+@patch("cerberus.datamodule.validate_genome_config")
+@patch("cerberus.datamodule.validate_data_config")
+@patch("cerberus.datamodule.validate_sampler_config")
+@patch("cerberus.datamodule.validate_data_and_sampler_compatibility")
+def test_datamodule_setup(
+    mock_validate_compatibility,
+    mock_validate_sampler,
+    mock_validate_data,
+    mock_validate_genome,
+    mock_dataset_cls,
+):
+    # Setup mocks for validation
+    mock_validate_genome.side_effect = lambda x: x
+    mock_validate_data.side_effect = lambda x: x
+    mock_validate_sampler.side_effect = lambda x: x
+
     # Setup mocks
     mock_instance = MagicMock()
     mock_dataset_cls.return_value = mock_instance
@@ -19,14 +36,14 @@ def test_datamodule_setup(mock_dataset_cls):
     mock_instance.split_folds.return_value = (train_ds, val_ds, test_ds)
     
     # Configs
-    genome_config = {"mock": "genome"}
-    data_config = {"mock": "data"}
-    sampler_config = {"mock": "sampler"}
+    genome_config = cast(GenomeConfig, {"mock": "genome"})
+    data_config = cast(DataConfig, {"mock": "data"})
+    sampler_config = cast(SamplerConfig, {"mock": "sampler"})
     
-    dm = CerberusDataModule(genome_config, data_config, sampler_config, batch_size=16)
+    dm = CerberusDataModule(genome_config, data_config, sampler_config)
     
-    # Test setup
-    dm.setup()
+    # Test setup with runtime params
+    dm.setup(batch_size=16, num_workers=2)
     
     # Verify Dataset init
     mock_dataset_cls.assert_called_once_with(
@@ -35,14 +52,37 @@ def test_datamodule_setup(mock_dataset_cls):
         sampler_config=sampler_config
     )
     
+    # Verify validation was called
+    mock_validate_genome.assert_called_once_with(genome_config)
+    mock_validate_data.assert_called_once_with(data_config)
+    mock_validate_sampler.assert_called_once_with(sampler_config)
+    mock_validate_compatibility.assert_called_once()
+    
     # Verify split_folds
     mock_instance.split_folds.assert_called_once_with(test_fold=0, val_fold=1)
     
     assert dm.train_dataset == train_ds
     assert dm.val_dataset == val_ds
     assert dm.test_dataset == test_ds
+    assert dm.batch_size == 16
+    assert dm.num_workers == 2
 
-def test_datamodule_dataloaders(mock_dataset_cls):
+@patch("cerberus.datamodule.validate_genome_config")
+@patch("cerberus.datamodule.validate_data_config")
+@patch("cerberus.datamodule.validate_sampler_config")
+@patch("cerberus.datamodule.validate_data_and_sampler_compatibility")
+def test_datamodule_dataloaders(
+    mock_validate_compatibility,
+    mock_validate_sampler,
+    mock_validate_data,
+    mock_validate_genome,
+    mock_dataset_cls,
+):
+    # Setup mocks for validation
+    mock_validate_genome.side_effect = lambda x: x
+    mock_validate_data.side_effect = lambda x: x
+    mock_validate_sampler.side_effect = lambda x: x
+
     # Setup mocks
     mock_instance = MagicMock()
     mock_dataset_cls.return_value = mock_instance
@@ -54,12 +94,17 @@ def test_datamodule_dataloaders(mock_dataset_cls):
     test_ds.__len__.return_value = 20
     mock_instance.split_folds.return_value = (train_ds, val_ds, test_ds)
     
-    dm = CerberusDataModule({}, {}, {}, batch_size=16)
-    dm.setup()
+    dm = CerberusDataModule(
+        cast(GenomeConfig, {}),
+        cast(DataConfig, {}),
+        cast(SamplerConfig, {}),
+    )
+    dm.setup(batch_size=16, num_workers=2)
     
     # Test dataloaders
     train_dl = dm.train_dataloader()
     assert train_dl.batch_size == 16
+    assert train_dl.num_workers == 2
     assert train_dl.dataset == train_ds
     
     val_dl = dm.val_dataloader()
@@ -70,7 +115,22 @@ def test_datamodule_dataloaders(mock_dataset_cls):
     assert test_dl.batch_size == 16
     assert test_dl.dataset == test_ds
 
-def test_datamodule_resample_via_dataloader(mock_dataset_cls):
+@patch("cerberus.datamodule.validate_genome_config")
+@patch("cerberus.datamodule.validate_data_config")
+@patch("cerberus.datamodule.validate_sampler_config")
+@patch("cerberus.datamodule.validate_data_and_sampler_compatibility")
+def test_datamodule_resample_via_dataloader(
+    mock_validate_compatibility,
+    mock_validate_sampler,
+    mock_validate_data,
+    mock_validate_genome,
+    mock_dataset_cls,
+):
+    # Setup mocks for validation
+    mock_validate_genome.side_effect = lambda x: x
+    mock_validate_data.side_effect = lambda x: x
+    mock_validate_sampler.side_effect = lambda x: x
+
     # Setup mocks
     mock_instance = MagicMock()
     mock_dataset_cls.return_value = mock_instance
@@ -78,8 +138,12 @@ def test_datamodule_resample_via_dataloader(mock_dataset_cls):
     train_ds.__len__.return_value = 10  # Ensure non-zero length
     mock_instance.split_folds.return_value = (train_ds, MagicMock(), MagicMock())
     
-    dm = CerberusDataModule({}, {}, {})
-    dm.setup()
+    dm = CerberusDataModule(
+        cast(GenomeConfig, {}),
+        cast(DataConfig, {}),
+        cast(SamplerConfig, {}),
+    )
+    dm.setup(batch_size=16, num_workers=2)
     
     # Mock trainer attached to datamodule
     dm.trainer = MagicMock()

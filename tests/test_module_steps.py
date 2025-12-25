@@ -24,6 +24,8 @@ def base_config():
         "optimizer": "adamw",
         "scheduler_type": "default",
         "scheduler_args": {},
+        "num_workers": 2,
+        "filter_bias_and_bn": True,
     }
 
 def test_training_step(base_config):
