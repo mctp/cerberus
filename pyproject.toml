@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pybigwig", "pysam", "matplotlib"]
+dev = ["pytest", "pybigwig", "pysam", "matplotlib", "jupyter", "ipywidgets"]
 
 [project.urls]
 "Homepage" = "https://github.com/marcincieslik/cerberus"

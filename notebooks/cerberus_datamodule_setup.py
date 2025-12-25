@@ -14,7 +14,12 @@ import torch
 from cerberus.genome import create_genome_config
 from cerberus import CerberusDataModule
 
-project_root = Path(__file__).resolve().parent.parent if "__file__" in locals() else Path(os.getcwd()).parent
+try:
+    from paths import get_project_root
+except ImportError:
+    from notebooks.paths import get_project_root
+
+project_root = get_project_root()
 print(f"Project root: {project_root}")
 
 # %% [markdown]
@@ -104,12 +109,11 @@ data_config = {
     "targets": {"AR": signal_path},
     "input_len": 2048,
     "output_len": 1024,
-    "bin_size": 4,
+    "output_bin_size": 4,
     "encoding": "ACGT",
     "max_jitter": 128,
     "log_transform": True,
     "reverse_complement": True,
-    "in_memory": False # Use disk-based loading for large datasets
 }
 print("Data Config Created:")
 pp.pprint(data_config)
@@ -153,7 +157,8 @@ data_module = CerberusDataModule(
 
 # %%
 # This initializes the underlying datasets and performs the split
-data_module.setup(batch_size=8, num_workers=0)
+# We can also control memory usage here (in_memory=True/False)
+data_module.setup(batch_size=8, num_workers=0, in_memory=False)
 
 print("Train dataset length:", len(data_module.train_dataset))
 print("Val dataset length:", len(data_module.val_dataset))

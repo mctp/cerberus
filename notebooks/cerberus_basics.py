@@ -19,8 +19,10 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Add the source directory to the path if cerberus is not installed
-sys.path.append("../src")
+try:
+    from paths import get_project_root
+except ImportError:
+    from notebooks.paths import get_project_root
 
 from cerberus.genome import download_human_reference, create_human_genome_config
 from cerberus.sequence import SequenceExtractor
@@ -32,8 +34,9 @@ from cerberus.core import Interval
 from cerberus.exclude import get_exclude_intervals
 
 # Set up paths
-DATA_DIR = Path("../tests/data")
-GENOME_DIR = Path("data/genome")
+project_root = get_project_root()
+DATA_DIR = project_root / "tests/data"
+GENOME_DIR = DATA_DIR / "genome"
 GENOME_DIR.mkdir(parents=True, exist_ok=True)
 
 print(f"Data directory: {DATA_DIR}")
@@ -60,6 +63,8 @@ except Exception as e:
     # If download fails or you have it elsewhere, ensure the config can be created below.
 
 # Create configuration object
+# Note: download_human_reference(genome_dir) downloads into genome_dir directly
+# but create_human_genome_config expects the directory containing hg38.fa
 genome_config = create_human_genome_config(
     genome_dir=GENOME_DIR / "hg38",
     fold_type="chrom_partition",
@@ -107,7 +112,7 @@ print(seq_str[:10])  # First 10 bases
 # We'll use the example BigWig file from the tests.
 
 # %%
-bigwig_path = DATA_DIR / "mdapca2b-ar.bigwig"
+bigwig_path = DATA_DIR / "dataset" / "mdapca2b_ar" / "mdapca2b-ar.bigwig"
 print(f"Using BigWig: {bigwig_path}")
 
 # Initialize SignalExtractor
@@ -137,7 +142,7 @@ print("Signal Values (first 10):", signal[0, (100, 500, 750, 1000, 1100)])
 # ### Interval Sampler (Peaks)
 
 # %%
-peaks_path = DATA_DIR / "mdapca2b-ar.narrowPeak.gz"
+peaks_path = DATA_DIR / "dataset" / "mdapca2b_ar" / "mdapca2b-ar.narrowPeak.gz"
 
 import gzip
 print(f"Reading first 3 lines of {peaks_path}:")
@@ -223,7 +228,6 @@ print("Third window:", sw_sampler[2])
 # %%
 data_config = {
     "encoding": "ACGT",
-    "in_memory": False, # Set True to load everything into RAM (faster for small datasets)
     "inputs": {
         "atac": bigwig_path
     },
@@ -232,7 +236,7 @@ data_config = {
     },
     "input_len": 1000, # Should match padded_size from sampler
     "output_len": 1000,
-    "bin_size": 1,
+    "output_bin_size": 1,
     "max_jitter": 0,
     "log_transform": False,
     "reverse_complement": False
@@ -241,7 +245,8 @@ data_config = {
 dataset = CerberusDataset(
     genome_config=genome_config,
     data_config=data_config,
-    sampler_config=sampler_config_peaks
+    sampler_config=sampler_config_peaks,
+    in_memory=False, # Set True to load everything into RAM (faster for small datasets)
 )
 
 # Split folds
@@ -270,7 +275,7 @@ dm = CerberusDataModule(
     sampler_config=sampler_config_peaks,
 )
 
-dm.setup(batch_size=8, num_workers=0)
+dm.setup(batch_size=8, num_workers=0, in_memory=False)
 
 train_loader = dm.train_dataloader()
 batch = next(iter(train_loader))
@@ -297,7 +302,8 @@ data_config_small["output_len"] = 200
 ds_small = CerberusDataset(
     genome_config=genome_config,
     data_config=data_config_small,
-    sampler_config=sampler_config_small
+    sampler_config=sampler_config_small,
+    in_memory=False
 )
 
 item_small = ds_small[0]

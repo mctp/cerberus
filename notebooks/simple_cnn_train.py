@@ -7,8 +7,12 @@
 # **Task**: Train a model taking 2048bp DNA input and predicting a BigWig profile (256 bins at 4bp resolution).
 
 # %%
-import torch.nn as nn
 from pathlib import Path
+
+try:
+    from paths import get_project_root
+except ImportError:
+    from notebooks.paths import get_project_root
 
 # Cerberus imports
 from cerberus.download import download_dataset, download_human_reference
@@ -23,21 +27,23 @@ from cerberus.entrypoints import train
 # %% [markdown]
 # ## 1. Setup Directories and Download Data
 # 
-# We'll define a working directory for our data and download the necessary files.
+# We'll define a working directory for our data and download the necessary files. We
+# will download the human reference genome (hg38) and the MDA-PCA-2b AR dataset (also 
+# used in Cerberus tests).
 
 # %%
-DATA_DIR = Path("test/data")
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR = get_project_root() / "tests/data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Download Human Reference (hg38)
 # This includes FASTA, Blacklist, Gaps, Mappability, and ENCODE cCREs
 print("Downloading/Checking Human Reference...")
-genome_files = download_human_reference(DATA_DIR, name="hg38")
+genome_files = download_human_reference(DATA_DIR / "genome", name="hg38")
 
 # Download Dataset (MDA-PCA-2b AR)
 # This includes BigWig (signal) and narrowPeak (peaks)
 print("Downloading/Checking Dataset...")
-dataset_files = download_dataset(DATA_DIR, name="mdapca2b_ar")
+dataset_files = download_dataset(DATA_DIR / "dataset", name="mdapca2b_ar")
 
 print("Genome Files:", genome_files)
 print("Dataset Files:", dataset_files)
@@ -70,17 +76,17 @@ genome_config: GenomeConfig = create_genome_config(
 )
 
 # Data Config
+
 data_config: DataConfig = {
     "inputs": {}, # No additional input tracks, just DNA
     "targets": {"signal": dataset_files["bigwig"]},
     "input_len": 2048,
     "output_len": 1024, # 1024bp field of view -> 256 bins @ 4bp
     "max_jitter": 128,  # Augmentation jitter
-    "bin_size": 4,      # Binning resolution
+    "output_bin_size": 4, # Binning resolution
     "encoding": "ACGT", # Standard One-Hot
     "log_transform": True, # Log(x+1) transform targets
     "reverse_complement": True, # Augmentation
-    "in_memory": False  # Use on-the-fly loading
 }
 
 # Sampler Config
@@ -103,6 +109,7 @@ train_config: TrainConfig = {
     "optimizer": "adamw",
     "filter_bias_and_bn": True,
     "num_workers": 4,
+    "in_memory": False, # Use on-the-fly loading
     "scheduler_type": "cosine",
     "scheduler_args": {
         "num_epochs": 2, # Must match max_epochs
@@ -126,7 +133,8 @@ datamodule = CerberusDataModule(
 # Setup datamodule (create datasets) and set runtime batch size
 datamodule.setup(
     batch_size=train_config["batch_size"],
-    num_workers=train_config["num_workers"]
+    num_workers=train_config["num_workers"],
+    in_memory=train_config["in_memory"]
 )
 if datamodule.train_dataset:
     print("Train set size:", len(datamodule.train_dataset))
@@ -153,7 +161,7 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
 # Initialize Model
 # output_len=1024 to get 256 bins (1024 // 4)
 # input_len=2048 matches our data config.
-model = VanillaCNN(input_len=2048, output_len=1024, bin_size=4)
+model = VanillaCNN(input_len=2048, output_len=1024, output_bin_size=4)
 
 # Define Loss and Metrics
 criterion = get_default_loss() # PoissonNLLLoss
