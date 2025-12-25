@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from typing import Protocol, Any
 from .core import Interval
+from .config import DataConfig
 
 
 class DataTransform(Protocol):
@@ -267,7 +268,7 @@ class Bin:
         return inputs, targets, interval
 
 
-def create_default_transforms(data_config: dict[str, Any]) -> list[DataTransform]:
+def create_default_transforms(data_config: DataConfig) -> list[DataTransform]:
     """
     Creates a list of default transforms based on DataConfig options.
     

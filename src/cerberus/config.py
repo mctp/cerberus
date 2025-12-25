@@ -103,6 +103,7 @@ class TrainConfig(TypedDict):
     learning_rate: float
     weight_decay: float
     patience: int
+    num_workers: int
     optimizer: str
     scheduler_type: str
     scheduler_args: dict[str, Any]
@@ -157,7 +158,7 @@ def _validate_file_dict(data: dict, description: str) -> dict[str, Path]:
     return validated
 
 
-def validate_genome_config(config: dict | GenomeConfig) -> GenomeConfig:
+def validate_genome_config(config: GenomeConfig) -> GenomeConfig:
     """
     Validates the genome configuration and returns a GenomeConfig object.
     
@@ -244,7 +245,7 @@ def validate_genome_config(config: dict | GenomeConfig) -> GenomeConfig:
     }
 
 
-def validate_data_config(config: dict | DataConfig) -> DataConfig:
+def validate_data_config(config: DataConfig) -> DataConfig:
     """
     Validates the data configuration dictionary.
     
@@ -323,7 +324,7 @@ def validate_data_config(config: dict | DataConfig) -> DataConfig:
     }
 
 
-def validate_sampler_config(config: dict | SamplerConfig) -> SamplerConfig:
+def validate_sampler_config(config: SamplerConfig) -> SamplerConfig:
     """
     Validates the sampler configuration dictionary.
     
@@ -397,7 +398,7 @@ def validate_sampler_config(config: dict | SamplerConfig) -> SamplerConfig:
 
 
 def validate_data_and_sampler_compatibility(
-    data_config: dict | DataConfig, sampler_config: dict | SamplerConfig
+    data_config: DataConfig, sampler_config: SamplerConfig
 ) -> None:
     """
     Validates compatibility between data and sampler configurations.
@@ -426,7 +427,7 @@ def validate_data_and_sampler_compatibility(
         )
 
 
-def validate_train_config(config: dict | TrainConfig) -> TrainConfig:
+def validate_train_config(config: TrainConfig) -> TrainConfig:
     """
     Validates the training configuration dictionary.
 
@@ -449,6 +450,7 @@ def validate_train_config(config: dict | TrainConfig) -> TrainConfig:
         "learning_rate",
         "weight_decay",
         "patience",
+        "num_workers",
         "optimizer",
         "filter_bias_and_bn",
     }
@@ -472,6 +474,9 @@ def validate_train_config(config: dict | TrainConfig) -> TrainConfig:
     if not isinstance(config["patience"], int) or config["patience"] < 0:
         raise ValueError("patience must be a non-negative integer")
 
+    if not isinstance(config["num_workers"], int) or config["num_workers"] < 0:
+        raise ValueError("num_workers must be a non-negative integer")
+
     if not isinstance(config["optimizer"], str):
         raise TypeError("optimizer must be a string")
 
@@ -492,6 +497,7 @@ def validate_train_config(config: dict | TrainConfig) -> TrainConfig:
         "learning_rate": config["learning_rate"],
         "weight_decay": config["weight_decay"],
         "patience": config["patience"],
+        "num_workers": config["num_workers"],
         "optimizer": config["optimizer"],
         "scheduler_type": scheduler_type,
         "scheduler_args": scheduler_args,
@@ -499,7 +505,7 @@ def validate_train_config(config: dict | TrainConfig) -> TrainConfig:
     }
 
 
-def validate_model_config(config: dict | ModelConfig) -> ModelConfig:
+def validate_model_config(config: ModelConfig) -> ModelConfig:
     """
     Validates the model configuration dictionary.
 
@@ -534,8 +540,7 @@ def validate_model_config(config: dict | ModelConfig) -> ModelConfig:
     if not isinstance(config["name"], str):
         raise TypeError("name must be a string")
 
-    # model_cls and loss_cls validation depends on usage context
-    # We at least ensure they are present.
+    # Validate presence of model/loss classes (context dependent)
 
     if not isinstance(config["input_channels"], (list, tuple)):
         raise TypeError("input_channels must be a list or tuple of strings")
@@ -572,7 +577,7 @@ def validate_model_config(config: dict | ModelConfig) -> ModelConfig:
 
 
 def validate_data_and_model_compatibility(
-    data_config: dict | DataConfig, model_config: dict | ModelConfig
+    data_config: DataConfig, model_config: ModelConfig
 ) -> None:
     """
     Validates compatibility between data and model configurations.
@@ -586,19 +591,6 @@ def validate_data_and_model_compatibility(
     Raises:
         ValueError: If channel names do not match between model and data.
     """
-    # Check input channels
-    # Note: data_config inputs are dicts {name: path}
-    # For now, we assume the keys in data_config['inputs'] must match model_config['input_channels']
-    # However, inputs might be handled differently (e.g. sequence is implicit).
-    # If the user strictly requested consistency, we check overlap.
-    
-    # Typically, data_config['inputs'] might contain tracks. 
-    # But usually sequence is not in 'inputs' dict if it comes from genome/fasta.
-    # The 'inputs' dict in DataConfig usually refers to additional tracks.
-    # If model_config['input_channels'] lists ['A', 'C', 'G', 'T', 'dnase'], and data_config['inputs'] has 'dnase'.
-    # We might only cross-check the track inputs.
-    # But for strict checking based on user prompt: "consistent with inputs targets from dataconfig"
-    
     # Check output channels vs targets
     target_channels = set(data_config["targets"].keys())
     model_outputs = set(model_config["output_channels"])
@@ -608,9 +600,7 @@ def validate_data_and_model_compatibility(
             f"Model output channels {model_outputs} do not match data targets {target_channels}"
         )
 
-    # For inputs, we might need to be careful if sequence channels are included in model config but not in data inputs dict.
-    # We'll skip strict input check for now unless we know convention for sequence.
-    # But we can check that every input in data_config is expected by the model?
+    # Ensure all data input tracks are present in model input channels
     
     input_tracks = set(data_config["inputs"].keys())
     # Assuming model_config inputs includes both sequence and tracks?
