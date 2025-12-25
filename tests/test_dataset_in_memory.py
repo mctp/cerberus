@@ -21,7 +21,7 @@ def test_dataset_in_memory_extractor(tmp_path):
         "targets": {},
         "input_len": 10,
         "output_len": 10,
-        "bin_size": 1,
+        "output_bin_size": 1,
         "encoding": "ACGT",
         "max_jitter": 0,
         "log_transform": False,

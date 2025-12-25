@@ -2,9 +2,11 @@ import pytest
 import torch
 import numpy as np
 from pathlib import Path
+from typing import cast
 from cerberus.dataset import CerberusDataset
 from cerberus.core import Interval
 from cerberus.transform import Jitter, ReverseComplement
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 
 # Mocking helpers
 class MockSequenceExtractor:
@@ -21,7 +23,7 @@ def mock_dataset(tmp_path):
     genome_path = tmp_path / "genome.fa"
     genome_path.touch()
     
-    genome_config = {
+    genome_config = cast(GenomeConfig, {
         "name": "test",
         "fasta_path": genome_path,
         "species": "human",
@@ -31,26 +33,26 @@ def mock_dataset(tmp_path):
         "fold_type": "chrom_partition",
         "fold_args": {"k": 2},
         "in_memory": False
-    }
+    })
     
-    data_config = {
+    data_config = cast(DataConfig, {
         "inputs": {}, 
         "targets": {},
         "input_len": 100, 
         "output_len": 100,
-        "bin_size": 1,
+        "output_bin_size": 1,
         "encoding": "ACGT",
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
+    })
     
-    sampler_config = {
+    sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 100,
         "sampler_args": {"intervals_path": str(tmp_path / "dummy.bed")}
-    }
+    })
     (tmp_path / "dummy.bed").write_text("chr1\t100\t200\n")
     
     ds = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=MockSequenceExtractor())

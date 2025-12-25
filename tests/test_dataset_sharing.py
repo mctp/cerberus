@@ -32,7 +32,7 @@ def test_dataset_extractor_sharing(mock_fasta):
         "max_jitter": 0,
         "reverse_complement": False,
         "log_transform": False,
-        "bin_size": 1
+        "output_bin_size": 1
     })
     sampler_config = cast(SamplerConfig, {
         "name": "random_sampler",

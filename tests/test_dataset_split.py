@@ -1,8 +1,10 @@
 import pytest
 from pathlib import Path
+from typing import cast
 from cerberus.samplers import IntervalSampler
 from cerberus.dataset import CerberusDataset
-from cerberus.genome import create_genome_folds
+from cerberus.genome import create_genome_folds, GenomeConfig
+from cerberus.config import DataConfig, SamplerConfig
 
 def test_sampler_split_folds(tmp_path):
     # Create a mock BED file
@@ -50,7 +52,7 @@ def test_dataset_split_folds(tmp_path):
         f.write("chr2\t100\t200\n")
     
     chrom_sizes = {'chr1': 1000, 'chr2': 1000}
-    genome_config = {
+    genome_config = cast(GenomeConfig, {
         'name': 'hg38',
         'fasta_path': str(tmp_path / "genome.fa"),
         'allowed_chroms': ['chr1', 'chr2'],
@@ -59,31 +61,31 @@ def test_dataset_split_folds(tmp_path):
         'in_memory': False,
         'fold_type': 'chrom_partition',
         'fold_args': {'k': 2}
-    }
+    })
     
     # Create dummy fasta
     with open(tmp_path / "genome.fa", "w") as f:
         f.write(">chr1\n" + "A"*1000 + "\n")
         f.write(">chr2\n" + "T"*1000 + "\n")
         
-    data_config = {
+    data_config = cast(DataConfig, {
         'inputs': {'seq': str(bed_path)},
         'targets': {},
         'input_len': 100,
         'output_len': 1,
-        'bin_size': 1,
+        'output_bin_size': 1,
         'encoding': 'one_hot',
         'max_jitter': 0,
         'log_transform': False,
         'reverse_complement': False,
         'in_memory': False
-    }
+    })
     
-    sampler_config = {
+    sampler_config = cast(SamplerConfig, {
         'sampler_type': 'interval',
         'padded_size': 100,
         'sampler_args': {'intervals_path': str(bed_path)}
-    }
+    })
     
     dataset = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
     

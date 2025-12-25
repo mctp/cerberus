@@ -301,8 +301,8 @@ def create_default_transforms(data_config: DataConfig) -> list[DataTransform]:
         transforms.append(TargetCrop(output_len=data_config["output_len"]))
 
     # 4. Binning (deterministic)
-    if data_config["bin_size"] > 1:
-        transforms.append(Bin(bin_size=data_config["bin_size"], apply_to="targets"))
+    if data_config["output_bin_size"] > 1:
+        transforms.append(Bin(bin_size=data_config["output_bin_size"], apply_to="targets"))
 
     # 5. Log Transform (deterministic)
     if data_config["log_transform"]:

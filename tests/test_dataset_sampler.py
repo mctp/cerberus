@@ -1,8 +1,10 @@
 import pytest
 from pathlib import Path
+from typing import cast
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
 from cerberus.samplers import IntervalSampler
+from cerberus.config import DataConfig, SamplerConfig
 
 def test_dataset_instantiates_interval_sampler(tmp_path):
     # 1. Setup Files
@@ -27,24 +29,24 @@ def test_dataset_instantiates_interval_sampler(tmp_path):
         exclude_intervals={"blacklist": blacklist}
     )
     
-    data_config = {
+    data_config = cast(DataConfig, {
         "inputs": {},
         "targets": {},
         "input_len": 200, 
         "output_len": 200,
-        "bin_size": 1,
+        "output_bin_size": 1,
         "encoding": "ACGT",
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
+    })
     
-    sampler_config = {
+    sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 200,
         "sampler_args": {"intervals_path": str(peaks)}
-    }
+    })
     
     # 3. Instantiate
     ds = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
@@ -86,23 +88,23 @@ def test_dataset_invalid_sampler(tmp_path):
     (tmp_path / "genome.fa.fai").touch()
     
     genome_config = create_genome_config(name="test", fasta_path=genome, species="human")
-    data_config = {
+    data_config = cast(DataConfig, {
         "inputs": {}, 
         "targets": {},
         "input_len": 100, 
         "output_len": 100,
-        "bin_size": 1,
+        "output_bin_size": 1,
         "encoding": "ACGT",
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
-    sampler_config = {
+    })
+    sampler_config = cast(SamplerConfig, {
         "sampler_type": "unknown",
         "padded_size": 100,
         "sampler_args": {}
-    }
+    })
     
     with pytest.raises(ValueError, match="Unsupported sampler type"):
         CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)

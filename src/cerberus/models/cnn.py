@@ -22,11 +22,11 @@ class VanillaCNN(nn.Module):
         num_input_channels (int): Number of input channels (e.g., 4 for one-hot DNA). Defaults to 4.
         num_output_channels (int): Number of output tracks/channels to predict. Defaults to 1.
     """
-    def __init__(self, input_len=2048, output_len=1024, bin_size=4, num_input_channels=4, num_output_channels=1):
+    def __init__(self, input_len=2048, output_len=1024, output_bin_size=4, num_input_channels=4, num_output_channels=1):
         super().__init__()
-        assert output_len % bin_size == 0
+        assert output_len % output_bin_size == 0
         
-        self.nr_bins = output_len // bin_size
+        self.nr_bins = output_len // output_bin_size
         self.num_input_channels = num_input_channels
         self.num_output_channels = num_output_channels
 

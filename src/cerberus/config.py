@@ -65,7 +65,7 @@ class DataConfig(TypedDict):
         input_len: Length of the input sequence window.
         output_len: Length of the output signal window.
         max_jitter: Maximum random shift applied to the interval center during training.
-        bin_size: Size of bins for signal aggregation (1 means raw signal).
+        output_bin_size: Size of bins for signal aggregation (1 means raw signal).
         encoding: DNA encoding strategy (e.g., 'ACGT').
         log_transform: Whether to apply log(x+1) transformation to signal.
         reverse_complement: Whether to apply reverse complement augmentation.
@@ -77,7 +77,7 @@ class DataConfig(TypedDict):
     input_len: int
     output_len: int
     max_jitter: int
-    bin_size: int
+    output_bin_size: int
     encoding: str
     log_transform: bool
     reverse_complement: bool
@@ -271,7 +271,7 @@ def validate_data_config(config: DataConfig) -> DataConfig:
         "targets",
         "input_len",
         "output_len",
-        "bin_size",
+        "output_bin_size",
         "encoding",
         "max_jitter",
         "log_transform",
@@ -295,8 +295,8 @@ def validate_data_config(config: DataConfig) -> DataConfig:
     if not isinstance(config["max_jitter"], int) or config["max_jitter"] < 0:
         raise ValueError("max_jitter must be a non-negative integer")
 
-    if not isinstance(config["bin_size"], int) or config["bin_size"] <= 0:
-        raise ValueError("bin_size must be a positive integer")
+    if not isinstance(config["output_bin_size"], int) or config["output_bin_size"] <= 0:
+        raise ValueError("output_bin_size must be a positive integer")
 
     if not isinstance(config["encoding"], str):
         raise TypeError("encoding must be a string")
@@ -313,7 +313,7 @@ def validate_data_config(config: DataConfig) -> DataConfig:
         "input_len": config["input_len"],
         "output_len": config["output_len"],
         "max_jitter": config["max_jitter"],
-        "bin_size": config["bin_size"],
+        "output_bin_size": config["output_bin_size"],
         "encoding": config["encoding"],
         "log_transform": config["log_transform"],
         "reverse_complement": config["reverse_complement"],

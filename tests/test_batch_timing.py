@@ -61,7 +61,7 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
             "targets": {"AR": signal_path},
             "input_len": 2048,
             "output_len": 1024,
-            "bin_size": 4,
+            "output_bin_size": 4,
             "encoding": "ACGT",
             "max_jitter": 128,
             "log_transform": True,
