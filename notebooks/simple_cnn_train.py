@@ -7,14 +7,13 @@
 # **Task**: Train a model taking 2048bp DNA input and predicting a BigWig profile (256 bins at 4bp resolution).
 
 # %%
-from pathlib import Path
-
 try:
     from paths import get_project_root
 except ImportError:
     from notebooks.paths import get_project_root
 
 # Cerberus imports
+from pprint import pprint
 from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.genome import create_genome_config
@@ -76,7 +75,7 @@ genome_config: GenomeConfig = create_genome_config(
 )
 
 # Data Config
-
+# We specify no input tracks (just DNA) and the BigWig as the target.
 data_config: DataConfig = {
     "inputs": {}, # No additional input tracks, just DNA
     "targets": {"signal": dataset_files["bigwig"]},
@@ -101,6 +100,7 @@ sampler_config: SamplerConfig = {
 }
 
 # Train Config
+# Standard training config with AdamW optimizer and cosine scheduler.
 train_config: TrainConfig = {
     "batch_size": 16,
     "max_epochs": 2, # Short training for demonstration
@@ -109,7 +109,7 @@ train_config: TrainConfig = {
     "patience": 5,
     "optimizer": "adamw",
     "filter_bias_and_bn": True,
-    "num_workers": 4,
+    "num_workers": 0, # Set to 0 for compatibility in notebook, num_workers>0 can be used only on Linux
     "in_memory": False, # Use on-the-fly loading
     "scheduler_type": "cosine",
     "scheduler_args": {
@@ -118,6 +118,15 @@ train_config: TrainConfig = {
         "min_lr": 1e-5
     }
 }
+
+print("Genome Config:")
+pprint(genome_config)
+print("Data Config:")
+pprint(data_config)
+print("Sampler Config:")
+pprint(sampler_config)
+print("Train Config:")
+pprint(train_config)
 
 # %% [markdown]
 # ## 3. Initialize DataModule
@@ -184,16 +193,35 @@ module = CerberusModule(
 # %%
 # Train
 # We use 'fast_dev_run' or limit epochs to ensure quick execution for this notebook
-trainer = train(
-    module=module,
-    datamodule=datamodule,
-    train_config=train_config,
-    accelerator="auto",
-    devices=1,
-    limit_train_batches=10, # For demo purposes
-    limit_val_batches=5,
-    enable_checkpointing=False,
-    logger=False # Disable logging to disk for demo
-)
+# trainer = train(
+#     module=module,
+#     datamodule=datamodule,
+#     train_config=train_config,
+#     accelerator="auto",
+#     devices=1,
+#     limit_train_batches=10, # For demo purposes
+#     limit_val_batches=5,
+#     enable_checkpointing=False,
+#     logger=False # Disable logging to disk for demo
+# )
 
 print("Training finished.")
+
+# %% [markdown]
+# ## Technical Notes: Running as a Script
+#
+# If you run this file as a standalone script (e.g. `python notebooks/simple_cnn_train.py`) on macOS or Windows,
+# you may encounter a `RuntimeError` related to multiprocessing.
+#
+# **Reason:**
+# PyTorch DataLoaders use `multiprocessing` to load data in parallel (`num_workers=4`).
+# On macOS and Windows, the default start method is `spawn`, which requires child processes to import the main module.
+# Without an `if __name__ == "__main__":` guard, this leads to recursive execux/tion of the script logic.
+#
+# **Solution:**
+# To run as a script, you must wrap the execution logic (specifically the `train()` call and `iter(dataloader)`)
+# in an `if __name__ == "__main__":` block.
+# Alternatively, set `num_workers=0` in `train_config` to avoid multiprocessing.
+#
+
+# %%
