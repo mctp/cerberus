@@ -39,7 +39,7 @@ class CerberusDataset(Dataset):
     folds: list[dict[str, InterLap]]
     exclude_intervals: dict[str, InterLap]
     sampler: Sampler
-    sequence_extractor: BaseSequenceExtractor
+    sequence_extractor: BaseSequenceExtractor | None
     input_signal_extractor: BaseSignalExtractor | None
     target_signal_extractor: BaseSignalExtractor | None
     transforms: Compose
@@ -107,16 +107,19 @@ class CerberusDataset(Dataset):
         if sequence_extractor is not None:
             self.sequence_extractor = sequence_extractor
         else:
-            if self.in_memory:
-                self.sequence_extractor = InMemorySequenceExtractor(
-                    fasta_path=self.genome_config["fasta_path"],
-                    encoding=self.data_config["encoding"],
-                )
+            if self.data_config["use_sequence"]:
+                if self.in_memory:
+                    self.sequence_extractor = InMemorySequenceExtractor(
+                        fasta_path=self.genome_config["fasta_path"],
+                        encoding=self.data_config["encoding"],
+                    )
+                else:
+                    self.sequence_extractor = SequenceExtractor(
+                        fasta_path=self.genome_config["fasta_path"],
+                        encoding=self.data_config["encoding"],
+                    )
             else:
-                self.sequence_extractor = SequenceExtractor(
-                    fasta_path=self.genome_config["fasta_path"],
-                    encoding=self.data_config["encoding"],
-                )
+                self.sequence_extractor = None
 
         # Initialize Input Signal Extractor
         if input_signal_extractor is not None:
@@ -147,6 +150,13 @@ class CerberusDataset(Dataset):
                 )
         else:
             self.target_signal_extractor = None
+            
+        # Ensure at least one input source is available
+        if self.sequence_extractor is None and self.input_signal_extractor is None:
+            raise ValueError(
+                "No input sources provided. Either enable sequence input (use_sequence=True) "
+                "or provide input signals."
+            )
 
         # Initialize Transforms
         if transforms:
@@ -191,16 +201,19 @@ class CerberusDataset(Dataset):
         """
         interval = self.sampler[idx]
 
-        # Extract sequence
-        seq_tensor = self.sequence_extractor.extract(interval)  # (4, L)
-
         # Extract inputs
-        if self.input_signal_extractor:
-            input_signals = self.input_signal_extractor.extract(interval)  # (C, L)
-            # Stack along channel dimension
-            inputs = torch.cat([seq_tensor, input_signals], dim=0)
-        else:
-            inputs = seq_tensor
+        input_tensors = []
+        
+        # Extract sequence
+        if self.sequence_extractor is not None:
+            input_tensors.append(self.sequence_extractor.extract(interval))  # (4, L)
+
+        # Extract input signals
+        if self.input_signal_extractor is not None:
+            input_tensors.append(self.input_signal_extractor.extract(interval))  # (C, L)
+            
+        # Stack along channel dimension
+        inputs = torch.cat(input_tensors, dim=0)
 
         # Extract targets
         if self.target_signal_extractor:

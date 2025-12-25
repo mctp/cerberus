@@ -69,6 +69,7 @@ class DataConfig(TypedDict):
         encoding: DNA encoding strategy (e.g., 'ACGT').
         log_transform: Whether to apply log(x+1) transformation to signal.
         reverse_complement: Whether to apply reverse complement augmentation.
+        use_sequence: Whether to use sequence input (default: True).
         in_memory: Whether to load the data (genome/signals) into memory.
     """
 
@@ -81,6 +82,7 @@ class DataConfig(TypedDict):
     encoding: str
     log_transform: bool
     reverse_complement: bool
+    use_sequence: bool
 
 
 class TrainConfig(TypedDict):
@@ -278,6 +280,9 @@ def validate_data_config(config: DataConfig) -> DataConfig:
         "reverse_complement",
     }
     
+    # Optional with default
+    use_sequence = config.get("use_sequence", True)
+    
     if not all(key in config for key in required_keys):
         missing = required_keys - config.keys()
         raise ValueError(f"Data config missing required keys: {missing}")
@@ -307,6 +312,9 @@ def validate_data_config(config: DataConfig) -> DataConfig:
     if not isinstance(config["reverse_complement"], bool):
         raise TypeError("reverse_complement must be a boolean")
 
+    if not isinstance(use_sequence, bool):
+        raise TypeError("use_sequence must be a boolean")
+
     return {
         "inputs": inputs,
         "targets": targets,
@@ -317,6 +325,7 @@ def validate_data_config(config: DataConfig) -> DataConfig:
         "encoding": config["encoding"],
         "log_transform": config["log_transform"],
         "reverse_complement": config["reverse_complement"],
+        "use_sequence": use_sequence,
     }
 
 
