@@ -72,7 +72,8 @@ def train(
             - 'max_epochs': Maximum number of epochs to train.
             - 'patience': Patience for early stopping (based on val_loss).
         callbacks: Optional list of additional PyTorch Lightning callbacks.
-            These will be added to the default set (LearningRateMonitor, ModelCheckpoint, EarlyStopping).
+            These will be added to the default set (LearningRateMonitor, ModelCheckpoint, EarlyStopping)
+            unless a callback of the same type is already provided.
         **trainer_kwargs: Additional arguments passed directly to pl.Trainer.
             Common examples include:
             - accelerator: "auto", "gpu", "cpu"
@@ -85,45 +86,54 @@ def train(
         The fitted PyTorch Lightning Trainer object.
     """
     
-    # Default Callbacks
-    default_callbacks = []
-
-    # Only add LearningRateMonitor if logger is not disabled
-    if trainer_kwargs.get("logger", True):
-        default_callbacks.append(LearningRateMonitor(logging_interval="step"))
-
-    default_callbacks.extend([
-        ModelCheckpoint(
-            monitor="val_loss",
-            mode="min",
-            save_top_k=3,
-            filename="checkpoint-{epoch:02d}-{val_loss:.4f}",
-        ),
-        EarlyStopping(
-            monitor="val_loss",
-            patience=train_config["patience"],
-            mode="min",
-        )
-    ])
+    # Prepare callbacks
+    current_callbacks = list(callbacks) if callbacks else []
+    existing_types = {type(c) for c in current_callbacks}
     
-    if callbacks:
-        default_callbacks.extend(callbacks)
+    # Helper to conditionally add default callbacks
+    def add_if_missing(callback_cls, **kwargs):
+        if callback_cls not in existing_types:
+            current_callbacks.append(callback_cls(**kwargs))
+
+    # 1. LearningRateMonitor
+    add_if_missing(
+        LearningRateMonitor,
+        logging_interval="step"
+    )
+
+    # 2. ModelCheckpoint
+    add_if_missing(
+        ModelCheckpoint,
+        monitor="val_loss",
+        mode="min",
+        save_top_k=3,
+        filename="checkpoint-{epoch:02d}-{val_loss:.4f}",
+    )
     
-    # Trainer
+    # 3. EarlyStopping
+    add_if_missing(
+        EarlyStopping,
+        monitor="val_loss",
+        patience=train_config["patience"],
+        mode="min",
+    )
+    
+    # Initialize Trainer
     trainer = pl.Trainer(
         max_epochs=train_config["max_epochs"],
-        callbacks=default_callbacks,
+        callbacks=current_callbacks,
         **trainer_kwargs
     )
     
-    # Train
-    # Setup runtime parameters (batch_size, num_workers) from config
+    # Setup DataModule
+    # Passing runtime parameters to setup allowing for final adjustments
     datamodule.setup(
         batch_size=train_config["batch_size"],
         num_workers=train_config["num_workers"],
         in_memory=train_config["in_memory"]
     )
     
+    # Start Training
     trainer.fit(module, datamodule=datamodule)
     
     return trainer

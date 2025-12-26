@@ -132,4 +132,4 @@ tests/data/
 
 # VS Code
 *.code-workspace
-notebooks/lightning_logs/
+lightning_logs/

@@ -97,7 +97,8 @@ class CerberusModule(pl.LightningModule):
         loss = self.criterion(outputs, targets)
         
         # Logging
-        self.log(f"{prefix}loss", loss, prog_bar=True)
+        batch_size = inputs.shape[0]
+        self.log(f"{prefix}loss", loss, prog_bar=True, batch_size=batch_size)
              
         # Metrics
         metric_collection = self.train_metrics if prefix == "train_" else self.val_metrics

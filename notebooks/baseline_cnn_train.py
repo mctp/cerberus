@@ -202,7 +202,8 @@ trainer = train(
     limit_train_batches=10, # For demo purposes
     limit_val_batches=5,
     enable_checkpointing=True,
-    logger=True # Enable logging
+    logger=True, # Enable logging
+    log_every_n_steps=5
 )
 
 print("Training finished.")
