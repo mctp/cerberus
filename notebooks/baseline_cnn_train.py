@@ -1,7 +1,7 @@
 # %% [markdown]
 # # Training a Simple CNN with Cerberus
 # 
-# This notebook demonstrates how to train a simple CNN model (VanillaCNN) using the Cerberus framework.
+# This notebook demonstrates how to train a simple CNN model (Baseline) using the Cerberus framework.
 # We will use the MDA-PCA-2b AR ChIP-seq dataset and the hg38 human reference genome.
 #
 # **Task**: Train a model taking 2048bp DNA input and predicting a BigWig profile (256 bins at 4bp resolution).
@@ -193,17 +193,17 @@ module = CerberusModule(
 # %%
 # Train
 # We use 'fast_dev_run' or limit epochs to ensure quick execution for this notebook
-# trainer = train(
-#     module=module,
-#     datamodule=datamodule,
-#     train_config=train_config,
-#     accelerator="auto",
-#     devices=1,
-#     limit_train_batches=10, # For demo purposes
-#     limit_val_batches=5,
-#     enable_checkpointing=False,
-#     logger=False # Disable logging to disk for demo
-# )
+trainer = train(
+    module=module,
+    datamodule=datamodule,
+    train_config=train_config,
+    accelerator="auto",
+    devices=1,
+    limit_train_batches=10, # For demo purposes
+    limit_val_batches=5,
+    enable_checkpointing=True,
+    logger=True # Enable logging
+)
 
 print("Training finished.")
 

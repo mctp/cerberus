@@ -3,6 +3,8 @@ import os
 import pytest
 import torch
 from pathlib import Path
+from typing import cast
+from cerberus.config import DataConfig, SamplerConfig
 from cerberus.signal import SignalExtractor
 from cerberus.sequence import SequenceExtractor
 from cerberus.core import Interval
@@ -44,7 +46,7 @@ def test_sequence_and_signal_extraction(human_genome, mappability_file, fasta_fi
     genome_config = create_human_genome_config(genome_dir)
     
     # dummy configs to pass validation
-    data_config = {
+    data_config = cast(DataConfig, {
         "inputs": {"mappability": mappability_file},
         "targets": {}, # No targets for this test
         "input_len": 1000,
@@ -56,13 +58,13 @@ def test_sequence_and_signal_extraction(human_genome, mappability_file, fasta_fi
         "log_transform": False,
         "reverse_complement": False,
         "in_memory": False
-    }
+    })
     
-    sampler_config = {
+    sampler_config = cast(SamplerConfig, {
         "sampler_type": "sliding_window", # Dummy
         "padded_size": 1000,
         "sampler_args": {"stride": 100}
-    }
+    })
     
     # Create SubsetSampler with our interval
     sampler = SubsetSampler(
