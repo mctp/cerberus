@@ -7,6 +7,7 @@ This document provides a detailed technical comparison of four BPNet implementat
 2. `chrombpnet-pytorch` (PyTorch)
 3. `basepairmodels` (Keras/TF, inferred from `bpnet-lite` and partial dump)
 4. `bpreveal` (Keras/TF)
+5. `gopher` (Keras/TF)
 
 The review focuses on neural architecture, mathematical form, and loss functions. The goal is to provide a specification sufficient for re-implementation.
 
@@ -78,7 +79,24 @@ The "Consensus" BPNet architecture (following `chrombpnet-pytorch` and `bpnet-li
     $$h' = \text{Concat}(h, c_{log})$$
     $$Y_{counts} = \text{Dense}(h')$$
 
-### 2. ChromBPNet (Bias Correction)
+### 2. Gopher Implementation Specifics
+
+The `gopher` repository provides two BPNet variants: `bpnet` and `ori_bpnet`.
+
+*   **`ori_bpnet`**:
+    *   Closest to the standard BPNet architecture (64 filters, 10 layers).
+    *   **Dual Heads**: Predicts both profiles and total counts.
+    *   **Binning Support**: Unique among surveyed implementations, it includes an `AveragePooling1D` layer in the profile head to support output binning (`window_size`), allowing the output resolution to be lower than the input resolution.
+    *   **Head Architecture**: Uses `Conv2DTranspose` (kernel 25x1) followed by `AveragePooling1D` for the profile head, which is an unusual choice compared to the standard `Conv1D`.
+    *   **Padding**: Uses `padding='same'`, matching `bpnet-lite` but differing from `chrombpnet-pytorch`.
+
+*   **`bpnet`**:
+    *   Appears to be a simplified or modified version.
+    *   **Filters**: Defaults to 256 filters (vs 64 in `ori_bpnet`).
+    *   **Single Head**: Only outputs profiles; lacks a dedicated counts head output in the provided code.
+    *   **Activation**: Supports optional `softplus` activation on the profile output.
+
+### 3. ChromBPNet (Bias Correction)
 
 ChromBPNet combines a frozen **Bias Model** (learning enzyme bias) with a trainable **Accessibility Model** (learning sequence motifs).
 
@@ -107,14 +125,14 @@ $$L_{total} = L_{profile} + \lambda L_{counts}$$
 
 ## Implementation Comparisons
 
-| Feature | `bpnet-lite` (BPNet) | `chrombpnet-pytorch` | `basepairmodels` (via `bpnet-lite` `BasePairNet`) | `bpreveal` |
-| :--- | :--- | :--- | :--- | :--- |
-| **Residual Block** | Post-Activation | Post-Activation | **Pre-Activation** | Post-Activation |
-| **Padding** | Same | Valid (Cropping) | Same | Valid (Cropping) |
-| **Conv Act** | ReLU after Conv | ReLU after Conv | ReLU before Conv (in loop) | ReLU after Conv |
-| **Count Head Ctl** | Concatenated | Concatenated | Concatenated | Not explicitly seen in `soloModel` |
-| **Bias Integration** | ChromBPNet Class | ChromBPNet Class | N/A | `combinedModel` Class |
-| **Framework** | PyTorch | PyTorch | Keras/TF | Keras/TF |
+| Feature | `bpnet-lite` (BPNet) | `chrombpnet-pytorch` | `basepairmodels` (via `bpnet-lite` `BasePairNet`) | `bpreveal` | `gopher` (ori_bpnet) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Residual Block** | Post-Activation | Post-Activation | **Pre-Activation** | Post-Activation | Post-Activation |
+| **Padding** | Same | Valid (Cropping) | Same | Valid (Cropping) | Same |
+| **Conv Act** | ReLU after Conv | ReLU after Conv | ReLU before Conv (in loop) | ReLU after Conv | ReLU after Conv |
+| **Count Head Ctl** | Concatenated | Concatenated | Concatenated | Not explicitly seen | Not explicitly seen |
+| **Bias Integration** | ChromBPNet Class | ChromBPNet Class | N/A | `combinedModel` Class | N/A (Separate logic) |
+| **Framework** | PyTorch | PyTorch | Keras/TF | Keras/TF | Keras/TF |
 
 ## Re-implementation Spec Checklist
 
