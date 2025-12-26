@@ -2,6 +2,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+class _Reshape(nn.Module):
+    """
+    Internal helper module to reshape tensors within an nn.Sequential block.
+    
+    This operation is structurally necessary to transition from the global dense representation 
+    back to a spatial representation (Batch, Bottleneck_Channels, Length) required 
+    for the subsequent convolutional layers.
+    """
+    def __init__(self, *shape):
+        super().__init__()
+        self.shape = shape
+
+    def forward(self, x):
+        # We assume the first dimension is batch size and preserved
+        return x.view(x.shape[0], *self.shape)
+
 class GlobalProfileCNN(nn.Module):
     """
     GlobalProfileCNN (Baseline CNN) for genomic profile prediction.
@@ -28,7 +44,7 @@ class GlobalProfileCNN(nn.Module):
         output_bin_size (int): Resolution of the output predictions. Defaults to 1.
                                Note: The number of prediction bins will be `output_len // output_bin_size`.
         num_input_channels (int): Number of input channels (e.g., 4 for one-hot DNA). Defaults to 4.
-        num_output_channels (int): Number of output tracks/channels to predict. Defaults to 1.
+        num_output_channels (int): Number of output channels to predict. Defaults to 1.
         bottleneck_channels (int): Number of channels in the reshaped feature map. Defaults to 8.
     """
     def __init__(
@@ -98,14 +114,19 @@ class GlobalProfileCNN(nn.Module):
         )
         
         # 5. Global Projection (Rescaling)
-        # TF: Dense(Out_Len * Bottleneck) -> BN -> Act -> Reshape -> Drop(0.1)
-        # Target shape for Reshape in PT: (Batch, Bottleneck, Out_Len)
+        # This step projects the compressed global representation (256 dims) back into a 
+        # high-dimensional vector that represents the entire spatial structure of the output.
+        # It effectively "unrolls" the global features into a feature map of size 
+        # (Output_Bins * Bottleneck_Channels).
+        #
+        # TF Architecture: Dense(Out_Len * Bottleneck) -> BN -> Act -> Reshape -> Drop(0.1)
         self.projection_size = self.nr_bins * bottleneck_channels
         self.dense2 = nn.Sequential(
             nn.Linear(256, self.projection_size),
             nn.BatchNorm1d(self.projection_size, momentum=0.1),
             nn.ReLU(),
-            # Reshape happens in forward
+            # Reshape to (Batch, Bottleneck, Out_Len) required for Conv1d input
+            _Reshape(bottleneck_channels, self.nr_bins),
             nn.Dropout(0.1)
         )
         
@@ -121,8 +142,8 @@ class GlobalProfileCNN(nn.Module):
         
         # 7. Output Head
         # TF: Dense(num_tasks, softplus)
-        # In TF this is applied to (Batch, Time, Features). 
-        # In PT (Batch, Features, Time), we use Conv1d(1) to map Features -> Num_Tasks
+        # In TF this is applied to (Batch, Length, Channels). 
+        # In PT (Batch, Channels, Length), we use Conv1d(1) to map Hidden_Channels -> Num_Output_Channels
         # We output Logits (Linear) to use with PoissonNLLLoss(log_input=True).
         self.head = nn.Conv1d(256, num_output_channels, kernel_size=1)
 
@@ -137,14 +158,8 @@ class GlobalProfileCNN(nn.Module):
         # Dense Bottleneck
         x = self.dense1(x)
         
-        # Global Projection
-        x = self.dense2(x) # (Batch, Out_Len * Bottleneck)
-        
-        # Reshape to (Batch, Bottleneck, Out_Len)
-        # Note: In TF code it reshapes to (Out_Len, Bottleneck).
-        # Since Dense layer connects everything to everything, the specific reshaping layout 
-        # is just a convention. We choose (Bottleneck, Out_Len) to match Conv1d expectation.
-        x = x.view(x.shape[0], self.bottleneck_channels, self.nr_bins)
+        # Global Projection (Linear -> Reshape -> Dropout)
+        x = self.dense2(x) 
         
         # Final Conv
         x = self.final_conv(x)
