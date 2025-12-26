@@ -45,7 +45,7 @@ The original model is implemented in Keras (`residualbind.py`).
 
 ## 3. Implementation in Cerberus
 
-The implementation will reside in `src/cerberus/models/residualbind.py`. It should follow the pattern established in `src/cerberus/models/cnn.py` (`VanillaCNN`).
+The implementation will reside in `src/cerberus/models/residualbind.py`. It should follow the pattern established in `src/cerberus/models/baseline_gopher.py` (`GlobalProfileCNN`).
 
 ### 3.1. Input/Output Shapes & Adapters
 
@@ -73,7 +73,7 @@ Keras `padding='same'` keeps the output length equal to the input length. In PyT
 - For Kernel 3, Dilation d: `padding = d`.
 
 #### Dynamic Input Length
-`VanillaCNN` uses a dummy forward pass to determine the flattened size before the dense layer. `ResidualBind` should employ the same strategy to support varying `input_len`.
+`GlobalProfileCNN` uses a dummy forward pass to determine the flattened size before the dense layer. `ResidualBind` should employ the same strategy to support varying `input_len`.
 
 ### 3.3. Proposed Code Structure
 
@@ -200,12 +200,12 @@ class DilatedResidualBlock(nn.Module):
 ### 4.4. Input Dimensions
 - `ResidualBind` was trained on short sequences (41bp).
 - If applied to long sequences (e.g. 2048bp in Cerberus default), the `AveragePooling1D(10)` will result in ~204 length features.
-- The `VanillaCNN` has aggressive pooling (Max 4 -> Max 4 -> Max 4 = 64x reduction).
+- The `GlobalProfileCNN` has aggressive pooling.
 - `ResidualBind` has only 10x reduction.
-- **Memory Implication**: The flattened vector will be much larger for `ResidualBind` on long sequences compared to `VanillaCNN`.
-    - `VanillaCNN` (2048 in): 2048 / 64 = 32. 512 channels * 32 = 16,384 features.
+- **Memory Implication**: The flattened vector will be much larger for `ResidualBind` on long sequences compared to `GlobalProfileCNN`.
+    - `GlobalProfileCNN` (2048 in): 2048 / 64 = 32. 512 channels * 32 = 16,384 features.
     - `ResidualBind` (2048 in): 2048 / 10 = 204. 96 channels * 204 = 19,584 features.
     - They are comparable in magnitude.
 
 ## 5. Conclusion
-Porting ResidualBind to Cerberus is straightforward. The architecture fits well within the `VanillaCNN` paradigm of "Sequence -> Features -> Flatten -> Projection". The main adaptation is ensuring channel-first ordering and correctly reconstructing the dilated convolution chain with residual addition.
+Porting ResidualBind to Cerberus is straightforward. The architecture fits well within the `GlobalProfileCNN` paradigm of "Sequence -> Features -> Flatten -> Projection". The main adaptation is ensuring channel-first ordering and correctly reconstructing the dilated convolution chain with residual addition.

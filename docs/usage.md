@@ -161,3 +161,10 @@ print(item['targets'].shape) # (1, 1000) -> Signal
 # Create DataLoader
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
 ```
+
+## Examples
+
+The `notebooks/` directory contains complete examples:
+
+*   `notebooks/cerberus_basics.py`: A step-by-step walkthrough of the library components (Configuration, Samplers, Datasets, Transforms).
+*   `notebooks/baseline_cnn_train.py`: A complete training example using the `GlobalProfileCNN` model to predict BigWig tracks from DNA sequence.

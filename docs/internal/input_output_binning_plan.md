@@ -83,7 +83,7 @@ Flatten the "Bin" dimension into the "Channel" dimension.
 *   **Cons**: Greatly increases the number of input channels, which increases parameter count in the first layer `(Channels * Bin * Kernel_Size * Out_Channels)`.
 
 ### Recommendation
-For the initial implementation, **Option B (Flattened 1D)** is likely easier to integrate with existing `VanillaCNN` architectures, as it only changes the `input_channels` definition. However, **Option A** aligns better with the "3D tensor" concept and allows for more structured constraints (e.g., sharing weights across positions within a bin if we use `Kernel_Width < Bin`).
+For the initial implementation, **Option B (Flattened 1D)** is likely easier to integrate with existing `GlobalProfileCNN` architectures, as it only changes the `input_channels` definition. However, **Option A** aligns better with the "3D tensor" concept and allows for more structured constraints (e.g., sharing weights across positions within a bin if we use `Kernel_Width < Bin`).
 
 ## 6. Implementation Plan
 
@@ -105,5 +105,5 @@ For the initial implementation, **Option B (Flattened 1D)** is likely easier to 
     *   **Proposed**: A transform that takes the `(4+C, L)` input, reshapes the first 4 channels (Sequence), pools and expands the rest (Signals), and returns the `(4+C, L/B, B)` tensor.
 
 ### Step 4: Model Updates
-*   Update `VanillaCNN` to calculate `input_channels` dynamically or accept a flattened dimension size if using Option B.
+*   Update `GlobalProfileCNN` to calculate `input_channels` dynamically or accept a flattened dimension size if using Option B.
 *   Ensure the regression head aligns with `output_bin_size`.
