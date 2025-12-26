@@ -1,1 +1,1 @@
-from .cnn import VanillaCNN
+from .baseline_gopher import GlobalProfileCNN

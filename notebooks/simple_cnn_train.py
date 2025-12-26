@@ -18,7 +18,7 @@ from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
-from cerberus.models.cnn import VanillaCNN
+from cerberus.models.baseline_gopher import GlobalProfileCNN
 from cerberus.loss import get_default_loss, get_default_metrics
 from cerberus.module import CerberusModule
 from cerberus.entrypoints import train
@@ -159,9 +159,9 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
 # %% [markdown]
 # ## 4. Model Setup
 # 
-# We use the `VanillaCNN` architecture.
+# We use the `GlobalProfileCNN` architecture.
 # 
-# The `VanillaCNN` has standard Cerberus conventions:
+# The `GlobalProfileCNN` has standard Cerberus conventions:
 # - Input: `(Batch, Channels, Length)` e.g., `(B, 4, 2048)`.
 # - Output: `(Batch, Output_Channels, Output_Bins)` e.g., `(B, 1, 256)`.
 # 
@@ -171,7 +171,7 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
 # Initialize Model
 # output_len=1024 to get 256 bins (1024 // 4)
 # input_len=2048 matches our data config.
-model = VanillaCNN(input_len=2048, output_len=1024, output_bin_size=4)
+model = GlobalProfileCNN(input_len=2048, output_len=1024, output_bin_size=4)
 
 # Define Loss and Metrics
 criterion = get_default_loss() # PoissonNLLLoss
