@@ -47,7 +47,7 @@ def get_default_metrics(num_channels: int = 1) -> MetricCollection:
 
 def get_default_loss() -> nn.Module:
     """Returns the default loss function (PoissonNLLLoss)."""
-    return nn.PoissonNLLLoss(log_input=False, full=False)
+    return nn.PoissonNLLLoss(log_input=True, full=False)
 
 
 class BPNetLoss(nn.Module):

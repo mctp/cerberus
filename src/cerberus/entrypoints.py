@@ -86,8 +86,13 @@ def train(
     """
     
     # Default Callbacks
-    default_callbacks = [
-        LearningRateMonitor(logging_interval="step"),
+    default_callbacks = []
+
+    # Only add LearningRateMonitor if logger is not disabled
+    if trainer_kwargs.get("logger", True):
+        default_callbacks.append(LearningRateMonitor(logging_interval="step"))
+
+    default_callbacks.extend([
         ModelCheckpoint(
             monitor="val_loss",
             mode="min",
@@ -99,7 +104,7 @@ def train(
             patience=train_config["patience"],
             mode="min",
         )
-    ]
+    ])
     
     if callbacks:
         default_callbacks.extend(callbacks)

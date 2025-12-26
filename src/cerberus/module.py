@@ -76,6 +76,16 @@ class CerberusModule(pl.LightningModule):
         
         return optim_conf
 
+    def lr_scheduler_step(self, scheduler, optimizer_idx, metric=None):
+        if hasattr(scheduler, "step_update"):
+            scheduler.step(epoch=self.current_epoch, metric=metric)
+            scheduler.step_update(num_updates=self.global_step)
+        else:
+            if metric is None:
+                scheduler.step()
+            else:
+                scheduler.step(metric)
+
     def _shared_step(self, batch, batch_idx, prefix):
         inputs = batch["inputs"]
         targets = batch["targets"]
