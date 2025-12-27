@@ -8,6 +8,51 @@ Cerberus is a PyTorch-based framework for genomic sequence-to-function (S2F) mod
 
 ## Installation
 
+Cerberus requires Python 3.12 or later. It is recommended to install Cerberus in a virtual environment.
+
+**1. Create and activate a virtual environment**
+
 ```bash
-TODO:
+python3.12 -m venv .venv
+source .venv/bin/activate
+```
+
+**2. Install Cerberus**
+
+To install Cerberus and its dependencies, use `pip` from the root directory of the repository.
+
+**Standard Installation**
+```bash
+pip install .
+```
+
+**Editable Installation** (recommended for development)
+```bash
+pip install -e .
+```
+
+## Development
+
+**Install Development Dependencies**
+
+To run tests and contribute, install the development dependencies:
+
+```bash
+pip install -e .[dev]
+```
+
+**Running Tests**
+
+Run the standard test suite with `pytest`:
+
+```bash
+pytest tests/
+```
+
+**Running Slow Tests**
+
+Some tests require downloading large genomic files and are skipped by default. To run these tests, set the `RUN_SLOW_TESTS` environment variable:
+
+```bash
+RUN_SLOW_TESTS=1 pytest tests/
 ```
