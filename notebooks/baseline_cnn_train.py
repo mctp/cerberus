@@ -109,9 +109,6 @@ train_config: TrainConfig = {
     "patience": 5,
     "optimizer": "adamw",
     "filter_bias_and_bn": True,
-    "num_workers": 0, # Set to 0 for compatibility in notebook, num_workers>0 can be used only on Linux
-    "in_memory": False, # Use on-the-fly loading
-    "compile": False,
     "scheduler_type": "cosine",
     "scheduler_args": {
         "num_epochs": 2, # Must match max_epochs
@@ -142,10 +139,11 @@ datamodule = CerberusDataModule(
 )
 
 # Setup datamodule (create datasets) and set runtime batch size
+# Note: num_workers=0 for compatibility in notebook
 datamodule.setup(
     batch_size=train_config["batch_size"],
-    num_workers=train_config["num_workers"],
-    in_memory=train_config["in_memory"]
+    num_workers=0,
+    in_memory=False
 )
 if datamodule.train_dataset:
     print("Train set size:", len(datamodule.train_dataset))
@@ -198,6 +196,8 @@ trainer = train(
     module=module,
     datamodule=datamodule,
     train_config=train_config,
+    num_workers=0, # Set to 0 for compatibility in notebook
+    in_memory=False,
     accelerator="auto",
     devices=1,
     limit_train_batches=10, # For demo purposes

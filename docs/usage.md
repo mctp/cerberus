@@ -104,10 +104,7 @@ train_config = {
     "optimizer": "adamw",
     "scheduler_type": "cosine",
     "scheduler_args": {"warmup_epochs": 5},
-    "filter_bias_and_bn": True,
-    "num_workers": 8,
-    "in_memory": False,
-    "compile": False
+    "filter_bias_and_bn": True
 }
 
 # 5. Model Configuration
@@ -136,10 +133,10 @@ model_config = {
 }
 
 # Instantiate CerberusModule (LightningModule wrapper)
-module = instantiate(model_config, data_config, train_config)
+module = instantiate(model_config, data_config, train_config, compile=False)
 
 # Train
-trainer = train(module, data_module, train_config, accelerator="gpu", devices=1)
+trainer = train(module, data_module, train_config, num_workers=8, in_memory=False, accelerator="gpu", devices=1)
 ```
 
 ## Manual Usage (PyTorch Dataset)

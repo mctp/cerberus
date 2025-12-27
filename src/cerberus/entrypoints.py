@@ -11,6 +11,7 @@ def instantiate(
     model_config: ModelConfig,
     data_config: DataConfig,
     train_config: TrainConfig,
+    compile: bool = False,
 ) -> "CerberusModule":
     """
     Factory function to instantiate a CerberusModule from configurations.
@@ -23,6 +24,7 @@ def instantiate(
         model_config: Model architecture configuration. Must contain 'model_cls', 'loss_cls', 'metrics_cls'.
         data_config: Data inputs/outputs configuration.
         train_config: Training hyperparameters.
+        compile: Whether to compile the model using torch.compile (default: False).
         
     Returns:
         Initialized CerberusModule ready for training.
@@ -40,7 +42,7 @@ def instantiate(
         input_len=input_len
     )
     
-    if train_config["compile"]:
+    if compile:
         model = cast(torch.nn.Module, torch.compile(model))
 
     # Instantiate criterion and metrics
@@ -64,6 +66,8 @@ def train(
     datamodule: CerberusDataModule,
     train_config: TrainConfig,
     callbacks: Optional[list[pl.Callback]] = None,
+    num_workers: int = 0,
+    in_memory: bool = False,
     **trainer_kwargs
 ) -> pl.Trainer:
     """
@@ -78,6 +82,8 @@ def train(
         callbacks: Optional list of additional PyTorch Lightning callbacks.
             These will be added to the default set (LearningRateMonitor, ModelCheckpoint, EarlyStopping)
             unless a callback of the same type is already provided.
+        num_workers: Number of DataLoader workers (default: 0).
+        in_memory: Whether to load data into memory (default: False).
         **trainer_kwargs: Additional arguments passed directly to pl.Trainer.
             Common examples include:
             - accelerator: "auto", "gpu", "cpu"
@@ -133,8 +139,8 @@ def train(
     # Passing runtime parameters to setup allowing for final adjustments
     datamodule.setup(
         batch_size=train_config["batch_size"],
-        num_workers=train_config["num_workers"],
-        in_memory=train_config["in_memory"]
+        num_workers=num_workers,
+        in_memory=in_memory
     )
     
     # Start Training

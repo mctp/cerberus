@@ -130,9 +130,6 @@ class TrainConfig(TypedDict):
     # Patience for early stopping
     patience: int
     
-    # Number of data loader workers
-    num_workers: int
-    
     # Optimizer name (e.g. "adamw")
     optimizer: str
     
@@ -144,13 +141,9 @@ class TrainConfig(TypedDict):
     
     # Whether to exclude bias and batch norm from weight decay
     filter_bias_and_bn: bool
-
-    # Whether to load all data into RAM (for training dataset)
-    in_memory: bool
-
-    # Whether to compile the model using torch.compile
-    compile: bool
 ```
+
+*Note: Runtime parameters like `num_workers`, `in_memory`, and `compile` are passed directly to the `train` or `instantiate` functions, not included in `TrainConfig`.*
 
 ## ModelConfig
 

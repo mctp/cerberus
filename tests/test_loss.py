@@ -8,7 +8,7 @@ from cerberus.loss import BPNetLoss, BPNetPoissonLoss, FlattenedPearsonCorrCoef,
 def test_get_default_loss():
     loss = get_default_loss()
     assert isinstance(loss, nn.PoissonNLLLoss)
-    assert loss.log_input is False
+    assert loss.log_input is True
     assert loss.full is False
 
 def test_get_default_metrics():

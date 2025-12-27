@@ -24,9 +24,7 @@ def base_config():
         "optimizer": "adamw",
         "scheduler_type": "default",
         "scheduler_args": {},
-        "num_workers": 2,
         "filter_bias_and_bn": True,
-        "in_memory": False,
     }
 
 def test_training_step(base_config):
@@ -46,7 +44,7 @@ def test_training_step(base_config):
     assert isinstance(loss, torch.Tensor)
     # Check that log was called
     # Note: PL logs with on_step=True by default in training_step usually, but here we call self.log explicitly
-    module.log.assert_called_with("train_loss", loss, prog_bar=True)
+    module.log.assert_called_with("train_loss", loss, prog_bar=True, batch_size=5)
 
 def test_validation_step(base_config):
     model = DummyModel()
@@ -61,7 +59,7 @@ def test_validation_step(base_config):
     loss = module.validation_step(batch, 0)
     
     assert isinstance(loss, torch.Tensor)
-    module.log.assert_called_with("val_loss", loss, prog_bar=True)
+    module.log.assert_called_with("val_loss", loss, prog_bar=True, batch_size=5)
 
 def test_on_validation_epoch_end(base_config):
     model = DummyModel()

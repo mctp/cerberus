@@ -70,7 +70,6 @@ class DataConfig(TypedDict):
         log_transform: Whether to apply log(x+1) transformation to signal.
         reverse_complement: Whether to apply reverse complement augmentation.
         use_sequence: Whether to use sequence input (default: True).
-        in_memory: Whether to load the data (genome/signals) into memory.
     """
 
     inputs: dict[str, Path]
@@ -97,7 +96,6 @@ class TrainConfig(TypedDict):
         patience: Patience for early stopping.
         optimizer: Optimizer name (e.g., 'adamw', 'sgd').
         filter_bias_and_bn: Whether to exclude bias and batch norm parameters from weight decay.
-        in_memory: Whether to load the data (genome/signals) into memory.
     """
 
     batch_size: int
@@ -105,13 +103,10 @@ class TrainConfig(TypedDict):
     learning_rate: float
     weight_decay: float
     patience: int
-    num_workers: int
     optimizer: str
     scheduler_type: str
     scheduler_args: dict[str, Any]
     filter_bias_and_bn: bool
-    in_memory: bool
-    compile: bool
 
 
 class ModelConfig(TypedDict):
@@ -456,10 +451,8 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
         "learning_rate",
         "weight_decay",
         "patience",
-        "num_workers",
         "optimizer",
         "filter_bias_and_bn",
-        "in_memory",
     }
     # Optional: scheduler_type, scheduler_args
     if not all(key in config for key in required_keys):
@@ -481,17 +474,11 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
     if not isinstance(config["patience"], int) or config["patience"] < 0:
         raise ValueError("patience must be a non-negative integer")
 
-    if not isinstance(config["num_workers"], int) or config["num_workers"] < 0:
-        raise ValueError("num_workers must be a non-negative integer")
-
     if not isinstance(config["optimizer"], str):
         raise TypeError("optimizer must be a string")
 
     if not isinstance(config["filter_bias_and_bn"], bool):
         raise TypeError("filter_bias_and_bn must be a boolean")
-
-    if not isinstance(config["in_memory"], bool):
-        raise TypeError("in_memory must be a boolean")
 
     scheduler_type = config.get("scheduler_type", "default")
     if not isinstance(scheduler_type, str):
@@ -501,23 +488,16 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
     if not isinstance(scheduler_args, dict):
         raise TypeError("scheduler_args must be a dictionary")
 
-    compile_model = config.get("compile", False)
-    if not isinstance(compile_model, bool):
-        raise TypeError("compile must be a boolean")
-
     return {
         "batch_size": config["batch_size"],
         "max_epochs": config["max_epochs"],
         "learning_rate": config["learning_rate"],
         "weight_decay": config["weight_decay"],
         "patience": config["patience"],
-        "num_workers": config["num_workers"],
         "optimizer": config["optimizer"],
         "scheduler_type": scheduler_type,
         "scheduler_args": scheduler_args,
         "filter_bias_and_bn": config["filter_bias_and_bn"],
-        "in_memory": config["in_memory"],
-        "compile": compile_model,
     }
 
 

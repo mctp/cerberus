@@ -17,19 +17,17 @@ def test_train_wrapper_calls_trainer_fit():
         "learning_rate": 1e-3,
         "weight_decay": 0.01,
         "patience": 5,
-        "num_workers": 2,
         "optimizer": "adamw",
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
-        "in_memory": False,
     })
     
     # Patch pl.Trainer
     with patch("pytorch_lightning.Trainer") as mock_trainer_cls:
         mock_trainer_instance = mock_trainer_cls.return_value
         
-        train(model, datamodule, train_config, accelerator="cpu")
+        train(model, datamodule, train_config, num_workers=2, in_memory=False, accelerator="cpu")
         
         # Verify Trainer init
         mock_trainer_cls.assert_called_once()
@@ -66,18 +64,16 @@ def test_train_wrapper_custom_callbacks():
         "learning_rate": 1e-3,
         "weight_decay": 0.01,
         "patience": 1,
-        "num_workers": 2,
         "optimizer": "adamw",
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
-        "in_memory": False,
     })
     
     custom_cb = MagicMock(spec=pl.Callback)
     
     with patch("pytorch_lightning.Trainer") as mock_trainer_cls:
-        train(model, datamodule, train_config, callbacks=[custom_cb])
+        train(model, datamodule, train_config, num_workers=2, in_memory=False, callbacks=[custom_cb])
         
         call_kwargs = mock_trainer_cls.call_args[1]
         callbacks = call_kwargs["callbacks"]
