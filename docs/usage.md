@@ -132,8 +132,7 @@ model_config = {
     },
     "model_args": {
         "input_channels": ["A", "C", "G", "T"],
-        "output_channels": ["AR"],
-        "output_type": "signal"
+        "output_channels": ["AR"]
     }
 }
 

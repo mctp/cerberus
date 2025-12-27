@@ -170,7 +170,7 @@ class ModelConfig(TypedDict):
     metrics_args: dict[str, Any]
     
     # Arguments for model instantiation.
-    # Should include "input_channels", "output_channels", "output_type" if required by the model.
+    # Should include "input_channels", "output_channels" if required by the model.
     # Note: "input_len", "output_len", and "output_bin_size" are automatically passed
     # from DataConfig and do not need to be specified here.
     model_args: dict[str, Any]

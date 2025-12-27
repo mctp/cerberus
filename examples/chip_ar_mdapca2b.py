@@ -155,7 +155,6 @@ def main():
         "model_args": {
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
-            "output_type": "signal",
         }
     }
 
