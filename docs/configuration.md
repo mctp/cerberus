@@ -49,7 +49,7 @@ class DataConfig(TypedDict):
     output_len: int
     
     # Binning resolution for targets (default: 1)
-    bin_size: int
+    output_bin_size: int
     
     # DNA encoding ("ACGT" usually)
     encoding: str
@@ -63,8 +63,8 @@ class DataConfig(TypedDict):
     # Whether to apply reverse complement augmentation
     reverse_complement: bool
     
-    # Whether to load all data into RAM
-    in_memory: bool
+    # Whether to use sequence input (default: True)
+    use_sequence: bool
 ```
 
 ### Performance: In-Memory vs Disk-Based
@@ -130,6 +130,9 @@ class TrainConfig(TypedDict):
     # Patience for early stopping
     patience: int
     
+    # Number of data loader workers
+    num_workers: int
+    
     # Optimizer name (e.g. "adamw")
     optimizer: str
     
@@ -141,6 +144,12 @@ class TrainConfig(TypedDict):
     
     # Whether to exclude bias and batch norm from weight decay
     filter_bias_and_bn: bool
+
+    # Whether to load all data into RAM (for training dataset)
+    in_memory: bool
+
+    # Whether to compile the model using torch.compile
+    compile: bool
 ```
 
 ## ModelConfig

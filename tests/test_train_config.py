@@ -56,6 +56,39 @@ def test_validate_train_config_valid_defaults():
     validated = validate_train_config(config)
     assert validated["scheduler_type"] == "default"
     assert validated["scheduler_args"] == {}
+    assert validated["compile"] is False
+
+def test_validate_train_config_compile():
+    config = cast(TrainConfig, {
+        "batch_size": 32,
+        "max_epochs": 10,
+        "learning_rate": 1e-3,
+        "weight_decay": 1e-4,
+        "patience": 5,
+        "num_workers": 4,
+        "optimizer": "adamw",
+        "filter_bias_and_bn": True,
+        "in_memory": False,
+        "compile": True,
+    })
+    validated = validate_train_config(config)
+    assert validated["compile"] is True
+
+def test_validate_train_config_compile_invalid():
+    config = cast(TrainConfig, {
+        "batch_size": 32,
+        "max_epochs": 10,
+        "learning_rate": 1e-3,
+        "weight_decay": 1e-4,
+        "patience": 5,
+        "num_workers": 4,
+        "optimizer": "adamw",
+        "filter_bias_and_bn": True,
+        "in_memory": False,
+        "compile": "yes",  # Invalid type
+    })
+    with pytest.raises(TypeError, match="compile must be a boolean"):
+        validate_train_config(config)
 
 
 def test_validate_train_config_missing_keys():

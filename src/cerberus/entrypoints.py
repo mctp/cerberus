@@ -1,6 +1,7 @@
+import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from typing import Optional
+from typing import Optional, cast
 
 from .datamodule import CerberusDataModule
 from .config import TrainConfig, ModelConfig, DataConfig
@@ -39,6 +40,9 @@ def instantiate(
         input_len=input_len
     )
     
+    if train_config["compile"]:
+        model = cast(torch.nn.Module, torch.compile(model))
+
     # Instantiate criterion and metrics
     loss_cls = model_config["loss_cls"]
     loss_args = model_config["loss_args"]

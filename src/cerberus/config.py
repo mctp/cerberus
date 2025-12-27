@@ -111,6 +111,7 @@ class TrainConfig(TypedDict):
     scheduler_args: dict[str, Any]
     filter_bias_and_bn: bool
     in_memory: bool
+    compile: bool
 
 
 class ModelConfig(TypedDict):
@@ -500,6 +501,10 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
     if not isinstance(scheduler_args, dict):
         raise TypeError("scheduler_args must be a dictionary")
 
+    compile_model = config.get("compile", False)
+    if not isinstance(compile_model, bool):
+        raise TypeError("compile must be a boolean")
+
     return {
         "batch_size": config["batch_size"],
         "max_epochs": config["max_epochs"],
@@ -512,6 +517,7 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
         "scheduler_args": scheduler_args,
         "filter_bias_and_bn": config["filter_bias_and_bn"],
         "in_memory": config["in_memory"],
+        "compile": compile_model,
     }
 
 

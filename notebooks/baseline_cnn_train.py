@@ -111,6 +111,7 @@ train_config: TrainConfig = {
     "filter_bias_and_bn": True,
     "num_workers": 0, # Set to 0 for compatibility in notebook, num_workers>0 can be used only on Linux
     "in_memory": False, # Use on-the-fly loading
+    "compile": False,
     "scheduler_type": "cosine",
     "scheduler_args": {
         "num_epochs": 2, # Must match max_epochs

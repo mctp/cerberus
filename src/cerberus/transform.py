@@ -202,9 +202,39 @@ class Log1p:
         return inputs, targets, interval
 
 
-class Tanh:
+class Sqrt:
     """
-    Applies tanh transformation.
+    Applies sqrt transformation.
+    """
+
+    def __init__(self, apply_to: str = "targets", safe_check: bool = False):
+        """
+        Args:
+            apply_to: Which tensor to apply transform to: 'inputs', 'targets', or 'both'.
+            safe_check: If True, checks for negative values before sqrt.
+        """
+        self.apply_to = apply_to
+        self.safe_check = safe_check
+
+    def __call__(
+        self, inputs: torch.Tensor, targets: torch.Tensor, interval: Interval
+    ) -> tuple[torch.Tensor, torch.Tensor, Interval]:
+        if self.apply_to in ("inputs", "both"):
+            if self.safe_check and (inputs < 0).any():
+                raise ValueError("Sqrt input contains negative values")
+            inputs = torch.sqrt(inputs)
+
+        if self.apply_to in ("targets", "both"):
+            if self.safe_check and (targets < 0).any():
+                raise ValueError("Sqrt target contains negative values")
+            targets = torch.sqrt(targets)
+
+        return inputs, targets, interval
+
+
+class Arcsinh:
+    """
+    Applies arcsinh transformation (log(x + sqrt(x^2 + 1))).
     """
 
     def __init__(self, apply_to: str = "targets"):
@@ -218,10 +248,10 @@ class Tanh:
         self, inputs: torch.Tensor, targets: torch.Tensor, interval: Interval
     ) -> tuple[torch.Tensor, torch.Tensor, Interval]:
         if self.apply_to in ("inputs", "both"):
-            inputs = torch.tanh(inputs)
+            inputs = torch.arcsinh(inputs)
 
         if self.apply_to in ("targets", "both"):
-            targets = torch.tanh(targets)
+            targets = torch.arcsinh(targets)
 
         return inputs, targets, interval
 

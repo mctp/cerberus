@@ -1,6 +1,6 @@
 import pytest
 import torch
-from cerberus.transform import Jitter, TargetCrop, ReverseComplement, Log1p, Tanh, Bin, Compose
+from cerberus.transform import Jitter, TargetCrop, ReverseComplement, Log1p, Sqrt, Arcsinh, Bin, Compose
 from cerberus.core import Interval
 
 @pytest.fixture
@@ -140,14 +140,32 @@ def test_log1p_negative_crash(dummy_interval):
     with pytest.raises(ValueError, match="Log1p target contains negative values"):
         t(inputs, targets, dummy_interval)
 
-def test_tanh(dummy_interval):
+def test_sqrt(dummy_interval):
+    targets = torch.tensor([0.0, 4.0, 100.0]).unsqueeze(0)
+    inputs = torch.randn(4, 3)
+    
+    t = Sqrt(apply_to='targets')
+    _, out_target, _ = t(inputs, targets, dummy_interval)
+    
+    expected = torch.sqrt(targets)
+    assert torch.allclose(out_target, expected)
+
+def test_sqrt_negative_crash(dummy_interval):
+    targets = torch.tensor([-1.0]).unsqueeze(0)
+    inputs = torch.randn(4, 3)
+    
+    t = Sqrt(apply_to='targets', safe_check=True)
+    with pytest.raises(ValueError, match="Sqrt target contains negative values"):
+        t(inputs, targets, dummy_interval)
+
+def test_arcsinh(dummy_interval):
     targets = torch.tensor([0.0, 1.0, 100.0]).unsqueeze(0)
     inputs = torch.randn(4, 3)
     
-    t = Tanh(apply_to='targets')
+    t = Arcsinh(apply_to='targets')
     _, out_target, _ = t(inputs, targets, dummy_interval)
     
-    expected = torch.tanh(targets)
+    expected = torch.arcsinh(targets)
     assert torch.allclose(out_target, expected)
 
 def test_bin_max(dummy_interval):

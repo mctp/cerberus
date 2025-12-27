@@ -34,12 +34,12 @@ data_config = {
     "targets": {"AR": signal_path},
     "input_len": 2114,
     "output_len": 1000,
-    "bin_size": 1,
+    "output_bin_size": 1,
     "encoding": "ACGT",
     "max_jitter": 128,
     "log_transform": True,
     "reverse_complement": True,
-    "in_memory": False
+    "use_sequence": True
 }
 
 # 3. Sampler Configuration (Peaks + Negatives)
@@ -104,7 +104,10 @@ train_config = {
     "optimizer": "adamw",
     "scheduler_type": "cosine",
     "scheduler_args": {"warmup_epochs": 5},
-    "filter_bias_and_bn": True
+    "filter_bias_and_bn": True,
+    "num_workers": 8,
+    "in_memory": False,
+    "compile": False
 }
 
 # 5. Model Configuration

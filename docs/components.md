@@ -75,7 +75,8 @@ Cerberus provides a composable transformation pipeline via `cerberus.transform.C
 *   **ReverseComplement**: Randomly flips the sequence and signals (50% probability) to enforce strand invariance.
 *   **TargetCrop**: Centers and crops the target signal to `output_len` (often smaller than `input_len` to avoid edge effects).
 *   **Log1p**: Applies `log(x + 1)` scaling to targets.
-*   **Tanh**: Applies hyperbolic tangent transform to targets.
+*   **Sqrt**: Applies `sqrt(x)` scaling to targets.
+*   **Arcsinh**: Applies `arcsinh(x)` scaling to targets.
 *   **Bin**: Downsamples resolution (e.g., max pooling) for lower-resolution predictions.
 
     ```python
@@ -123,8 +124,8 @@ When `transforms` are not explicitly provided to `CerberusDataset`, they are aut
 1.  **Jitter**: Enforce `input_len` and apply augmentation.
 2.  **ReverseComplement**: (If enabled).
 3.  **TargetCrop**: Enforce `output_len`.
-4.  **Bin**: (If `bin_size > 1`).
-5.  **Log1p / Tanh**: (If enabled).
+4.  **Bin**: (If `output_bin_size > 1`).
+5.  **Log1p**: (If enabled).
 
 ## Cross-Validation (Folds)
 
