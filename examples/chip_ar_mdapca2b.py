@@ -32,10 +32,13 @@ def get_args():
     # Script arguments
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data")
     parser.add_argument("--output-dir", type=str, default="training_logs", help="Directory for logs and checkpoints")
-    parser.add_argument("--num-workers", type=int, default=4, help="Number of dataloader workers")
+    parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
     parser.add_argument("--max-epochs", type=int, default=100, help="Maximum number of epochs")
     
+    # Sampler arguments
+    parser.add_argument("--genome", action="store_true", help="Use genome-wide sliding window sampler instead of peak intervals")
+
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
     parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
@@ -99,13 +102,25 @@ def main():
     # Sampler Config
     # padded_size >= input_len + 2 * max_jitter
     padded_size = input_len + 2 * data_config["max_jitter"]
-    sampler_config: SamplerConfig = {
-        "sampler_type": "interval",
-        "padded_size": padded_size,
-        "sampler_args": {
-            "intervals_path": dataset_files["narrowPeak"]
+    
+    if args.genome:
+        print("Using Genome Sampler (Sliding Window)...")
+        sampler_config: SamplerConfig = {
+            "sampler_type": "sliding_window",
+            "padded_size": padded_size,
+            "sampler_args": {
+                "stride": 1024
+            }
         }
-    }
+    else:
+        print("Using Peak Sampler (Intervals)...")
+        sampler_config: SamplerConfig = {
+            "sampler_type": "interval",
+            "padded_size": padded_size,
+            "sampler_args": {
+                "intervals_path": dataset_files["narrowPeak"]
+            }
+        }
 
     # Train Config
     train_config: TrainConfig = {
