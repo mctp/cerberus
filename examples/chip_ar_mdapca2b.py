@@ -2,29 +2,29 @@
 """
 Full-scale training example for a CNN model using Cerberus.
 
-This script demonstrates how to train a model with production-ready parameters,
-including CLI argument parsing, logging, and checkpointing.
+This script demonstrates how to train a model using the high-level configuration-driven API.
+It supports both single-fold training (default) and multi-fold cross-validation.
 
 Usage:
     python examples/chip_ar_mdapca2b.py --help
     python examples/chip_ar_mdapca2b.py --batch-size 64 --max-epochs 50
+    python examples/chip_ar_mdapca2b.py --multi --batch-size 64
 """
 
 import argparse
-import os
 from pathlib import Path
 from pprint import pprint
-import torch
+import torch.nn as nn
+from typing import cast
+from torchmetrics import MetricCollection
 
 # Cerberus imports
 from cerberus.download import download_dataset, download_human_reference
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
-from cerberus.datamodule import CerberusDataModule
 from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.loss import get_default_loss, get_default_metrics
-from cerberus.module import CerberusModule
-from cerberus.entrypoints import train
+from cerberus.loss import get_default_metrics
+from cerberus.entrypoints import train_fold, train_multi
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train a CNN model with Cerberus")
@@ -35,6 +35,9 @@ def get_args():
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
     parser.add_argument("--max-epochs", type=int, default=100, help="Maximum number of epochs")
+    
+    # Mode arguments
+    parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
     
     # Sampler arguments
     parser.add_argument("--genome", action="store_true", help="Use genome-wide sliding window sampler instead of peak intervals")
@@ -139,6 +142,23 @@ def main():
         }
     }
 
+    # Model Config
+    # No wrapper needed! GlobalProfileCNN accepts input_channels/output_channels (list) and extra args.
+    model_config: ModelConfig = {
+        "name": "GlobalProfileCNN",
+        "model_cls": GlobalProfileCNN,
+        "loss_cls": nn.PoissonNLLLoss,
+        "loss_args": {"log_input": True, "full": False},
+        # Cast function to expected type for static analysis
+        "metrics_cls": cast(type[MetricCollection], get_default_metrics),
+        "metrics_args": {"num_channels": 1},
+        "model_args": {
+            "input_channels": ["A", "C", "G", "T"],
+            "output_channels": ["signal"],
+            "output_type": "signal",
+        }
+    }
+
     print("\nConfigurations:")
     print("-" * 20)
     print("Genome Config:")
@@ -151,31 +171,7 @@ def main():
     pprint(train_config)
     print("-" * 20 + "\n")
 
-    # 3. Initialize DataModule
-    datamodule = CerberusDataModule(
-        genome_config=genome_config,
-        data_config=data_config,
-        sampler_config=sampler_config,
-    )
-
-    # 4. Model Setup
-    model = GlobalProfileCNN(
-        input_len=input_len, 
-        output_len=output_len, 
-        output_bin_size=data_config["output_bin_size"]
-    )
-
-    criterion = get_default_loss()
-    metrics = get_default_metrics(num_channels=1)
-
-    module = CerberusModule(
-        model=model,
-        train_config=train_config,
-        criterion=criterion,
-        metrics=metrics
-    )
-
-    # 5. Training
+    # 3. Training
     # Handle devices argument
     devices = args.devices
     if devices != "auto":
@@ -185,21 +181,47 @@ def main():
             # If it's a list like "0,1", keep as string or parse list if needed by PL
             pass
 
-    trainer = train(
-        module=module,
-        datamodule=datamodule,
-        train_config=train_config,
-        num_workers=args.num_workers,
-        in_memory=False, # Full scale usually implies too big for memory
-        # Trainer kwargs
-        accelerator=args.accelerator,
-        devices=devices,
-        default_root_dir=str(output_dir),
-        enable_checkpointing=True,
-        logger=True,
-        log_every_n_steps=10,
-        strategy="ddp" if args.accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto"
-    )
+    # Precision settings for NVIDIA Ampere+ (A100/H100)
+    precision_args = {
+        "precision": "16-mixed",
+        "matmul_precision": "high",
+        "accelerator": args.accelerator,
+        "devices": devices,
+        "strategy": "ddp" if args.accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto"
+    }
+
+    if args.multi:
+        print("Starting Multi-Fold Training (train_multi)...")
+        train_multi(
+            genome_config=genome_config,
+            data_config=data_config,
+            sampler_config=sampler_config,
+            model_config=model_config,
+            train_config=train_config,
+            num_workers=args.num_workers,
+            in_memory=False,
+            root_dir=str(output_dir),
+            enable_checkpointing=True,
+            log_every_n_steps=10,
+            **precision_args
+        )
+    else:
+        print("Starting Single Fold Training (train_fold)...")
+        train_fold(
+            genome_config=genome_config,
+            data_config=data_config,
+            sampler_config=sampler_config,
+            model_config=model_config,
+            train_config=train_config,
+            test_fold=0, # Default fold
+            val_fold=1, # Default fold
+            num_workers=args.num_workers,
+            in_memory=False,
+            root_dir=str(output_dir),
+            enable_checkpointing=True,
+            log_every_n_steps=10,
+            **precision_args
+        )
 
     print(f"Training finished. Logs and checkpoints are in {output_dir}")
 

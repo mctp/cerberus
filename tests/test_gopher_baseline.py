@@ -8,9 +8,9 @@ def test_cnn_default():
     input_len = 2048
     output_len = 2048
     output_bin_size = 4
-    num_output_channels = 1
+    output_channels = ["signal"]
     
-    model = GlobalProfileCNN(input_len=input_len, output_len=output_len, output_bin_size=output_bin_size, num_output_channels=num_output_channels)
+    model = GlobalProfileCNN(input_len=input_len, output_len=output_len, output_bin_size=output_bin_size, output_channels=output_channels)
     
     # Input: (batch, 4, seq_len)
     x = torch.randn(batch_size, 4, input_len)
@@ -18,7 +18,7 @@ def test_cnn_default():
     output = model(x)
     
     expected_output_bins = output_len // output_bin_size
-    expected_shape = (batch_size, num_output_channels, expected_output_bins)
+    expected_shape = (batch_size, len(output_channels), expected_output_bins)
     
     assert output.shape == expected_shape
 
@@ -27,15 +27,15 @@ def test_cnn_flexible_input():
     input_len = 1536  # Must be divisible by 128 (128*12 = 1536)
     output_len = 512
     output_bin_size = 4
-    num_output_channels = 1
+    output_channels = ["signal"]
     
-    model = GlobalProfileCNN(input_len=input_len, output_len=output_len, output_bin_size=output_bin_size, num_output_channels=num_output_channels)
+    model = GlobalProfileCNN(input_len=input_len, output_len=output_len, output_bin_size=output_bin_size, output_channels=output_channels)
     
     x = torch.randn(batch_size, 4, input_len)
     output = model(x)
     
     expected_output_bins = output_len // output_bin_size
-    expected_shape = (batch_size, num_output_channels, expected_output_bins)
+    expected_shape = (batch_size, len(output_channels), expected_output_bins)
     
     assert output.shape == expected_shape
 
@@ -57,23 +57,23 @@ def test_cnn_flexible_channels():
     input_len = 2048
     output_len = 1024
     output_bin_size = 4
-    num_output_channels = 1
-    num_input_channels = 6  # Testing with 6 channels instead of 4
+    output_channels = ["signal"]
+    input_channels = ["c"] * 6  # Testing with 6 channels instead of 4
     
     model = GlobalProfileCNN(
         input_len=input_len, 
         output_len=output_len, 
         output_bin_size=output_bin_size, 
-        num_output_channels=num_output_channels,
-        num_input_channels=num_input_channels
+        output_channels=output_channels,
+        input_channels=input_channels
     )
     
-    # Input: (batch, num_input_channels, seq_len)
-    x = torch.randn(batch_size, num_input_channels, input_len)
+    # Input: (batch, len(input_channels), seq_len)
+    x = torch.randn(batch_size, len(input_channels), input_len)
     output = model(x)
     
     expected_output_bins = output_len // output_bin_size
-    expected_shape = (batch_size, num_output_channels, expected_output_bins)
+    expected_shape = (batch_size, len(output_channels), expected_output_bins)
     
     assert output.shape == expected_shape
 

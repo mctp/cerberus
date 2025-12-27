@@ -143,7 +143,7 @@ class TrainConfig(TypedDict):
     filter_bias_and_bn: bool
 ```
 
-*Note: Runtime parameters like `num_workers`, `in_memory`, and `compile` are passed directly to the `train` or `instantiate` functions, not included in `TrainConfig`.*
+*Note: Runtime parameters like `num_workers`, `in_memory`, `precision`, `matmul_precision`, and `compile` are passed directly to the `train` or `instantiate` functions, not included in `TrainConfig`.*
 
 ## ModelConfig
 
@@ -169,14 +169,11 @@ class ModelConfig(TypedDict):
     # Arguments for metrics instantiation
     metrics_args: dict[str, Any]
     
-    # List of input channel names
-    input_channels: list[str]
-    
-    # List of output channel names
-    output_channels: list[str]
-    
-    # Type of output ("signal", "decoupled")
-    output_type: str
+    # Arguments for model instantiation.
+    # Should include "input_channels", "output_channels", "output_type" if required by the model.
+    # Note: "input_len", "output_len", and "output_bin_size" are automatically passed
+    # from DataConfig and do not need to be specified here.
+    model_args: dict[str, Any]
 ```
 
 ### Sampler Arguments

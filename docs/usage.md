@@ -90,7 +90,7 @@ You can use the `cerberus.entrypoints` module to instantiate the model and start
 
 ```python
 import torch.nn as nn
-from cerberus.entrypoints import instantiate, train
+from cerberus.entrypoints import instantiate, train, train_multi
 from cerberus.loss import BPNetLoss
 from torchmetrics import MetricCollection, PearsonCorrCoef, MeanSquaredError
 
@@ -109,10 +109,13 @@ train_config = {
 
 # 5. Model Configuration
 # Define your PyTorch model class (must accept input_channels, output_channels, input_len)
+# It will also receive output_len and output_bin_size automatically.
 class MyModel(nn.Module):
-    def __init__(self, input_channels, output_channels, input_len):
+    def __init__(self, input_channels, output_channels, input_len, **kwargs):
         super().__init__()
-        self.conv = nn.Conv1d(input_channels, output_channels, 1)
+        num_in = len(input_channels)
+        num_out = len(output_channels)
+        self.conv = nn.Conv1d(num_in, num_out, 1)
     def forward(self, x): return self.conv(x)
 
 model_config = {
@@ -127,16 +130,46 @@ model_config = {
             "mse": MeanSquaredError()
         }
     },
-    "input_channels": ["A", "C", "G", "T"],
-    "output_channels": ["AR"],
-    "output_type": "signal"
+    "model_args": {
+        "input_channels": ["A", "C", "G", "T"],
+        "output_channels": ["AR"],
+        "output_type": "signal"
+    }
 }
 
 # Instantiate CerberusModule (LightningModule wrapper)
 module = instantiate(model_config, data_config, train_config, compile=False)
 
-# Train
-trainer = train(module, data_module, train_config, num_workers=8, in_memory=False, accelerator="gpu", devices=1)
+# Option A: Train a Single Model (Single Split)
+# Uses the splits defined in data_module (default test_fold=0, val_fold=1)
+trainer = train(
+    module, 
+    data_module, 
+    train_config, 
+    num_workers=8, 
+    in_memory=False, 
+    precision="16-mixed",      # Enable Mixed Precision
+    matmul_precision="high",   # TensorFloat-32 on Ampere+
+    root_dir="logs/single_run",
+    accelerator="gpu", 
+    devices=1
+)
+
+# Option B: Cross-Validation Training (Multi-Fold)
+# Trains k models (where k is defined in genome_config), each with a different test fold.
+trainers = train_multi(
+    genome_config=genome_config,
+    data_config=data_config,
+    sampler_config=sampler_config,
+    model_config=model_config,
+    train_config=train_config,
+    num_workers=8,
+    precision="16-mixed",
+    matmul_precision="high",
+    root_dir="logs/cross_val", # Models saved in logs/cross_val/fold_0, fold_1, etc.
+    accelerator="gpu",
+    devices=1
+)
 ```
 
 ## Manual Usage (PyTorch Dataset)

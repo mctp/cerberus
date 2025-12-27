@@ -40,11 +40,14 @@ class GlobalProfileCNN(nn.Module):
     
     Args:
         input_len (int): Length of the input sequence. Defaults to 2048.
+                         (Typically derived from DataConfig)
         output_len (int): Length of the output sequence/profile (in base pairs). Defaults to 1024.
+                          (Typically derived from DataConfig)
         output_bin_size (int): Resolution of the output predictions. Defaults to 1.
                                Note: The number of prediction bins will be `output_len // output_bin_size`.
-        num_input_channels (int): Number of input channels (e.g., 4 for one-hot DNA). Defaults to 4.
-        num_output_channels (int): Number of output channels to predict. Defaults to 1.
+                               (Typically derived from DataConfig)
+        input_channels (list[str]): List of input channel names. Defaults to ["A", "C", "G", "T"].
+        output_channels (list[str]): List of output channel names. Defaults to ["signal"].
         bottleneck_channels (int): Number of channels in the reshaped feature map. Defaults to 8.
     """
     def __init__(
@@ -52,11 +55,14 @@ class GlobalProfileCNN(nn.Module):
         input_len=2048, 
         output_len=1024, 
         output_bin_size=4, 
-        num_input_channels=4, 
-        num_output_channels=1,
+        input_channels=["A", "C", "G", "T"], 
+        output_channels=["signal"],
         bottleneck_channels=8
     ):
         super().__init__()
+
+        num_input_channels = len(input_channels)
+        num_output_channels = len(output_channels)
         
         # Calculate number of bins based on output length (in bp) and bin size
         assert output_len % output_bin_size == 0, "output_len must be divisible by output_bin_size"

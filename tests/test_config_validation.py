@@ -105,13 +105,15 @@ def test_validate_model_config_valid():
         "loss_args": {},
         "metrics_cls": MetricCollection,
         "metrics_args": {},
-        "input_channels": ["A", "C", "G", "T"],
-        "output_channels": ["signal"],
-        "output_type": "signal"
+        "model_args": {
+            "input_channels": ["A", "C", "G", "T"],
+            "output_channels": ["signal"],
+            "output_type": "signal",
+        }
     })
     validated = validate_model_config(config)
     assert validated["name"] == "test_model"
-    assert validated["input_channels"] == ["A", "C", "G", "T"]
+    assert validated["model_args"]["input_channels"] == ["A", "C", "G", "T"]
 
 def test_validate_model_config_invalid_output_type():
     config = cast(ModelConfig, {
@@ -121,11 +123,13 @@ def test_validate_model_config_invalid_output_type():
         "loss_args": {},
         "metrics_cls": MetricCollection,
         "metrics_args": {},
-        "input_channels": ["A"],
-        "output_channels": ["B"],
-        "output_type": "invalid_type"
+        "model_args": {
+            "input_channels": ["A"],
+            "output_channels": ["B"],
+            "output_type": "invalid_type",
+        }
     })
-    with pytest.raises(ValueError, match="output_type must be one of"):
+    with pytest.raises(ValueError, match="model_args\['output_type'\] must be one of"):
         validate_model_config(config)
 
 def test_validate_model_config_empty_channels():
@@ -136,11 +140,13 @@ def test_validate_model_config_empty_channels():
         "loss_args": {},
         "metrics_cls": MetricCollection,
         "metrics_args": {},
-        "input_channels": [],
-        "output_channels": ["B"],
-        "output_type": "signal"
+        "model_args": {
+            "input_channels": [],
+            "output_channels": ["B"],
+            "output_type": "signal",
+        }
     })
-    with pytest.raises(ValueError, match="input_channels must not be empty"):
+    with pytest.raises(ValueError, match="model_args\['input_channels'\] must not be empty"):
         validate_model_config(config)
 
 # --- Compatibility Tests ---
@@ -197,9 +203,11 @@ def test_validate_data_and_model_compatibility_valid():
     model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
         "loss_args": {}, "metrics_cls": MetricCollection, "metrics_args": {},
-        "input_channels": ["track1", "A", "C", "G", "T"], # data inputs + sequence
-        "output_channels": ["target1"],
-        "output_type": "signal"
+        "model_args": {
+            "input_channels": ["track1", "A", "C", "G", "T"], # data inputs + sequence
+            "output_channels": ["target1"],
+            "output_type": "signal",
+        }
     })
     
     validate_data_and_model_compatibility(data_config, model_config)
@@ -216,9 +224,11 @@ def test_validate_data_and_model_compatibility_invalid_targets():
     model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
         "loss_args": {}, "metrics_cls": MetricCollection, "metrics_args": {},
-        "input_channels": ["A"], 
-        "output_channels": ["target2"], # Mismatch
-        "output_type": "signal"
+        "model_args": {
+            "input_channels": ["A"], 
+            "output_channels": ["target2"], # Mismatch
+            "output_type": "signal",
+        }
     })
     
     with pytest.raises(ValueError, match="Model output channels"):
@@ -236,9 +246,11 @@ def test_validate_data_and_model_compatibility_invalid_inputs():
     model_config = cast(ModelConfig, {
         "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
         "loss_args": {}, "metrics_cls": MetricCollection, "metrics_args": {},
-        "input_channels": ["A"], # Missing track1
-        "output_channels": [],
-        "output_type": "signal"
+        "model_args": {
+            "input_channels": ["A"], # Missing track1
+            "output_channels": [],
+            "output_type": "signal",
+        }
     })
     
     with pytest.raises(ValueError, match="Data inputs .* are not in model input channels"):

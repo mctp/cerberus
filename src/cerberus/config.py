@@ -126,9 +126,7 @@ class ModelConfig(TypedDict):
     loss_args: dict[str, Any]
     metrics_cls: type[MetricCollection]
     metrics_args: dict[str, Any]
-    input_channels: list[str]
-    output_channels: list[str]
-    output_type: str
+    model_args: dict[str, Any]
 
 
 # --- Validation Logic ---
@@ -525,9 +523,7 @@ def validate_model_config(config: ModelConfig) -> ModelConfig:
         "loss_args",
         "metrics_cls",
         "metrics_args",
-        "input_channels",
-        "output_channels",
-        "output_type",
+        "model_args",
     }
     if not all(key in config for key in required_keys):
         missing = required_keys - config.keys()
@@ -537,27 +533,41 @@ def validate_model_config(config: ModelConfig) -> ModelConfig:
         raise TypeError("name must be a string")
 
     # Validate presence of model/loss classes (context dependent)
+    
+    # Check for required args in model_args (now optional/convention, but we should validate if present)
+    # The requirement is moving them to model_args, so we should assume they might be there.
+    # We can validate them if they exist, or check if specific keys are required by policy.
+    # Given the previous validation was strict, let's strictly validate them INSIDE model_args.
+    
+    model_args = config["model_args"]
+    if not isinstance(model_args, dict):
+        raise TypeError("model_args must be a dictionary")
 
-    if not isinstance(config["input_channels"], (list, tuple)):
-        raise TypeError("input_channels must be a list or tuple of strings")
-    if not all(isinstance(c, str) for c in config["input_channels"]):
-        raise TypeError("input_channels must contain only strings")
-    if len(config["input_channels"]) == 0:
-        raise ValueError("input_channels must not be empty")
+    # Validate input_channels if present
+    if "input_channels" in model_args:
+        if not isinstance(model_args["input_channels"], (list, tuple)):
+            raise TypeError("model_args['input_channels'] must be a list or tuple of strings")
+        if not all(isinstance(c, str) for c in model_args["input_channels"]):
+            raise TypeError("model_args['input_channels'] must contain only strings")
+        if len(model_args["input_channels"]) == 0:
+            raise ValueError("model_args['input_channels'] must not be empty")
 
-    if not isinstance(config["output_channels"], (list, tuple)):
-        raise TypeError("output_channels must be a list or tuple of strings")
-    if not all(isinstance(c, str) for c in config["output_channels"]):
-        raise TypeError("output_channels must contain only strings")
-    if len(config["output_channels"]) == 0:
-        raise ValueError("output_channels must not be empty")
+    # Validate output_channels if present
+    if "output_channels" in model_args:
+        if not isinstance(model_args["output_channels"], (list, tuple)):
+            raise TypeError("model_args['output_channels'] must be a list or tuple of strings")
+        if not all(isinstance(c, str) for c in model_args["output_channels"]):
+            raise TypeError("model_args['output_channels'] must contain only strings")
+        if len(model_args["output_channels"]) == 0:
+            raise ValueError("model_args['output_channels'] must not be empty")
 
-    if not isinstance(config["output_type"], str):
-        raise TypeError("output_type must be a string")
-
-    valid_types = {"signal", "decoupled"}
-    if config["output_type"] not in valid_types:
-        raise ValueError(f"output_type must be one of {valid_types}")
+    # Validate output_type if present
+    if "output_type" in model_args:
+        if not isinstance(model_args["output_type"], str):
+            raise TypeError("model_args['output_type'] must be a string")
+        valid_types = {"signal", "decoupled"}
+        if model_args["output_type"] not in valid_types:
+            raise ValueError(f"model_args['output_type'] must be one of {valid_types}")
 
     return {
         "name": config["name"],
@@ -566,9 +576,7 @@ def validate_model_config(config: ModelConfig) -> ModelConfig:
         "loss_args": config["loss_args"],
         "metrics_cls": config["metrics_cls"],
         "metrics_args": config["metrics_args"],
-        "input_channels": list(config["input_channels"]),
-        "output_channels": list(config["output_channels"]),
-        "output_type": config["output_type"],
+        "model_args": config["model_args"],
     }
 
 
@@ -589,21 +597,25 @@ def validate_data_and_model_compatibility(
     """
     # Check output channels vs targets
     target_channels = set(data_config["targets"].keys())
-    model_outputs = set(model_config["output_channels"])
     
-    if target_channels != model_outputs:
-        raise ValueError(
-            f"Model output channels {model_outputs} do not match data targets {target_channels}"
-        )
+    # Look in model_args for channels
+    model_args = model_config["model_args"]
+    
+    if "output_channels" in model_args:
+        model_outputs = set(model_args["output_channels"])
+        if target_channels != model_outputs:
+            raise ValueError(
+                f"Model output channels {model_outputs} do not match data targets {target_channels}"
+            )
 
     # Ensure all data input tracks are present in model input channels
-    
-    input_tracks = set(data_config["inputs"].keys())
-    # Assuming model_config inputs includes both sequence and tracks?
-    # Or just tracks? User said "('A','C','G,'T',"name of signal trak")". So it includes sequence.
-    
-    # So model inputs should be superset of data inputs keys?
-    model_inputs = set(model_config["input_channels"])
-    if not input_tracks.issubset(model_inputs):
-        missing = input_tracks - model_inputs
-        raise ValueError(f"Data inputs {missing} are not in model input channels")
+    if "input_channels" in model_args:
+        input_tracks = set(data_config["inputs"].keys())
+        # Assuming model_config inputs includes both sequence and tracks?
+        # Or just tracks? User said "('A','C','G,'T',"name of signal trak")". So it includes sequence.
+        
+        # So model inputs should be superset of data inputs keys?
+        model_inputs = set(model_args["input_channels"])
+        if not input_tracks.issubset(model_inputs):
+            missing = input_tracks - model_inputs
+            raise ValueError(f"Data inputs {missing} are not in model input channels")
