@@ -2,6 +2,20 @@
 
 This guide provides a basic workflow for setting up and training with Cerberus.
 
+## Installation
+
+To install Cerberus and its dependencies, use `pip` from the root directory of the repository.
+
+**Standard Installation**
+```bash
+pip install .
+```
+
+**Editable Installation** (recommended for development)
+```bash
+pip install -e .
+```
+
 ## 1. Setup Configuration
 
 Define your genome, data, and sampling strategy. This example assumes you have run `cerberus.download.download_human_reference("tests/data")` and `cerberus.download.download_dataset("tests/data", "mdapca2b_ar")`.
