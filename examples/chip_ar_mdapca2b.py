@@ -6,8 +6,8 @@ This script demonstrates how to train a model with production-ready parameters,
 including CLI argument parsing, logging, and checkpointing.
 
 Usage:
-    python examples/train_full_scale.py --help
-    python examples/train_full_scale.py --batch-size 64 --max-epochs 50
+    python examples/chip_ar_mdapca2b.py --help
+    python examples/chip_ar_mdapca2b.py --batch-size 64 --max-epochs 50
 """
 
 import argparse
@@ -33,6 +33,8 @@ def get_args():
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data")
     parser.add_argument("--output-dir", type=str, default="training_logs", help="Directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=4, help="Number of dataloader workers")
+    parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
+    parser.add_argument("--max-epochs", type=int, default=100, help="Maximum number of epochs")
     
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
@@ -106,11 +108,9 @@ def main():
     }
 
     # Train Config
-    max_epochs = 100
-    
     train_config: TrainConfig = {
-        "batch_size": 128,
-        "max_epochs": max_epochs,
+        "batch_size": args.batch_size,
+        "max_epochs": args.max_epochs,
         "learning_rate": 1e-3,
         "weight_decay": 0.01,
         "patience": 10,
@@ -118,7 +118,7 @@ def main():
         "filter_bias_and_bn": True,
         "scheduler_type": "cosine",
         "scheduler_args": {
-            "num_epochs": max_epochs,
+            "num_epochs": args.max_epochs,
             "warmup_epochs": 5, # Warmup for 5 epochs
             "min_lr": 1e-5
         }

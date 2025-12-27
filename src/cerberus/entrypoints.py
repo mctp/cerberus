@@ -68,6 +68,7 @@ def train(
     callbacks: Optional[list[pl.Callback]] = None,
     num_workers: int = 0,
     in_memory: bool = False,
+    matmul_precision: str = "high",
     **trainer_kwargs
 ) -> pl.Trainer:
     """
@@ -84,6 +85,9 @@ def train(
             unless a callback of the same type is already provided.
         num_workers: Number of DataLoader workers (default: 0).
         in_memory: Whether to load data into memory (default: False).
+        matmul_precision: Precision for float32 matrix multiplication. 
+            Options: 'highest', 'high', 'medium'. (default: 'highest').
+            Set to 'medium' or 'high' on newer NVIDIA GPUs (Ampere+) to improve performance.
         **trainer_kwargs: Additional arguments passed directly to pl.Trainer.
             Common examples include:
             - accelerator: "auto", "gpu", "cpu"
@@ -95,6 +99,9 @@ def train(
     Returns:
         The fitted PyTorch Lightning Trainer object.
     """
+    
+    # Set float32 matmul precision
+    torch.set_float32_matmul_precision(matmul_precision)
     
     # Prepare callbacks
     current_callbacks = list(callbacks) if callbacks else []
@@ -128,6 +135,15 @@ def train(
         mode="min",
     )
     
+    # Explicitly use CSVLogger if none provided.
+    if trainer_kwargs.get("logger") is True:
+        from pytorch_lightning.loggers import CSVLogger
+        save_dir = trainer_kwargs.get("default_root_dir", ".")
+        # If default_root_dir is explicitly None, use current directory
+        if save_dir is None:
+            save_dir = "."
+        trainer_kwargs["logger"] = CSVLogger(save_dir=str(save_dir))
+
     # Initialize Trainer
     trainer = pl.Trainer(
         max_epochs=train_config["max_epochs"],

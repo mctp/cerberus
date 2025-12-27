@@ -44,7 +44,7 @@ def test_training_step(base_config):
     assert isinstance(loss, torch.Tensor)
     # Check that log was called
     # Note: PL logs with on_step=True by default in training_step usually, but here we call self.log explicitly
-    module.log.assert_called_with("train_loss", loss, prog_bar=True, batch_size=5)
+    module.log.assert_called_with("train_loss", loss, prog_bar=True, batch_size=5, sync_dist=False)
 
 def test_validation_step(base_config):
     model = DummyModel()
@@ -59,7 +59,7 @@ def test_validation_step(base_config):
     loss = module.validation_step(batch, 0)
     
     assert isinstance(loss, torch.Tensor)
-    module.log.assert_called_with("val_loss", loss, prog_bar=True, batch_size=5)
+    module.log.assert_called_with("val_loss", loss, prog_bar=True, batch_size=5, sync_dist=True)
 
 def test_on_validation_epoch_end(base_config):
     model = DummyModel()
@@ -75,7 +75,10 @@ def test_on_validation_epoch_end(base_config):
     module.on_validation_epoch_end()
     
     module.log_dict.assert_called()
-    # Check if metrics are logged (pearson, mse)
-    call_args = module.log_dict.call_args[0][0]
-    assert "val_pearson" in call_args
-    assert "val_mse" in call_args
+    
+    # Check arguments
+    args, kwargs = module.log_dict.call_args
+    metrics_arg = args[0]
+    assert "val_pearson" in metrics_arg
+    assert "val_mse" in metrics_arg
+    assert kwargs.get("sync_dist") is True

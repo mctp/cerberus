@@ -98,7 +98,9 @@ class CerberusModule(pl.LightningModule):
         
         # Logging
         batch_size = inputs.shape[0]
-        self.log(f"{prefix}loss", loss, prog_bar=True, batch_size=batch_size)
+        # Sync dist for validation to avoid warning and ensure correct epoch accumulation
+        sync_dist = (prefix == "val_")
+        self.log(f"{prefix}loss", loss, prog_bar=True, batch_size=batch_size, sync_dist=sync_dist)
              
         # Metrics
         metric_collection = self.train_metrics if prefix == "train_" else self.val_metrics
@@ -115,11 +117,11 @@ class CerberusModule(pl.LightningModule):
     def on_train_epoch_end(self):
         # Log aggregated metrics
         metrics = self.train_metrics.compute()
-        self.log_dict(metrics)
+        self.log_dict(metrics, sync_dist=True)
         self.train_metrics.reset()
         
     def on_validation_epoch_end(self):
         # Log aggregated metrics
         metrics = self.val_metrics.compute()
-        self.log_dict(metrics)
+        self.log_dict(metrics, sync_dist=True)
         self.val_metrics.reset()
