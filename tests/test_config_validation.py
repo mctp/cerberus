@@ -129,7 +129,7 @@ def test_validate_model_config_invalid_output_type():
             "output_type": "invalid_type",
         }
     })
-    with pytest.raises(ValueError, match="model_args\['output_type'\] must be one of"):
+    with pytest.raises(ValueError, match=r"model_args\['output_type'\] must be one of"):
         validate_model_config(config)
 
 def test_validate_model_config_empty_channels():
@@ -146,7 +146,7 @@ def test_validate_model_config_empty_channels():
             "output_type": "signal",
         }
     })
-    with pytest.raises(ValueError, match="model_args\['input_channels'\] must not be empty"):
+    with pytest.raises(ValueError, match=r"model_args\['input_channels'\] must not be empty"):
         validate_model_config(config)
 
 # --- Compatibility Tests ---
