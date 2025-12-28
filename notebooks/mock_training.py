@@ -240,12 +240,16 @@ if __name__ == "__main__":
     expected_intensities = []
     
     # Thresholds
-    # Ground truth peak is ~10.0 height.
-    # Prediction should be significantly > 0.
+    # Ground truth peak is ~10.0 height (Gaussian base_height).
+    # Prediction analysis on mock data shows:
+    #   - Negative regions (Poly-C, no GGAA): Max prediction ~0.4
+    #   - Positive regions (Single GGAA): Max prediction ~6.0
+    #   - Random background (often has accidental GGAAs): Mean ~5.5
+    # Therefore, a threshold of 2.0 safely separates signal from background noise.
     
     with torch.no_grad():
         for batch in val_loader:
-            inputs = batch["inputs"] # (B, 5, 2048) - 4 seq + 1 input
+            inputs = batch["inputs"] # (B, 4, 2048) - Sequence only
             targets = batch["targets"] # (B, 1, 2048)
             
             # Predict
@@ -278,13 +282,13 @@ if __name__ == "__main__":
                 # Find ground truth peak locations (where target > 5.0)
                 gt_indices = torch.nonzero(target_sig > 5.0).flatten()
                 
-                # Find predicted peak locations (where pred > 1.0)
-                pred_indices = torch.nonzero(pred_sig > 1.0).flatten()
+                # Find predicted peak locations (where pred > 2.0)
+                pred_indices = torch.nonzero(pred_sig > 2.0).flatten()
                 
                 # Simple overlap check
                 if len(gt_indices) > 0:
                     max_val_at_peaks = pred_sig[gt_indices].max()
-                    if max_val_at_peaks > 1.0:
+                    if max_val_at_peaks > 2.0:
                          correct_peaks += 1
                     else:
                          missed_peaks += 1
