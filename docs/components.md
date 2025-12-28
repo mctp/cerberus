@@ -98,18 +98,26 @@ Cerberus provides specialized loss functions for genomic signal prediction.
 ### BPNetLoss
 Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).
 
-*   **Profile Loss**: Penalizes the shape of the predicted signal distribution.
+*   **Profile Loss**: Penalizes the shape of the predicted signal distribution (Exact Multinomial NLL).
 *   **Count Loss**: Penalizes the total count prediction (MSE on `log(1+x)`).
 *   **Args**:
     *   `alpha`: Weight for the count loss component.
     *   `flatten_channels`: Whether to compute multinomial over all channels flattened (default: True, typical for BPNet).
     *   `implicit_log_targets`: If targets are already log-transformed, reverses them for profile loss calculation.
 
-### BPNetPoissonLoss
-Variation of BPNet loss using Poisson NLL for the count component.
+### PoissonMultinomialLoss (Unified)
+A flexible loss function combining Poisson NLL for total counts and Multinomial (Cross-Entropy) for profile shape. It unifies the functionality of the deprecated `BPNetPoissonLoss` and supports both standard BPNet (Tuple) and generic (Tensor) model outputs.
 
+*   **Ref**: Boshar et al. 2025 (Concept).
 *   **Count Loss**: Poisson Negative Log-Likelihood.
-*   **Args**: Same as `BPNetLoss`.
+*   **Profile Loss**: Multinomial Negative Log-Likelihood (Cross-Entropy form, ignoring constants).
+*   **Supported Inputs**:
+    *   **Tuple (BPNet)**: `(profile_logits, log_counts)`.
+    *   **Tensor (Generic)**: `predicted_counts`.
+*   **Args**:
+    *   `count_weight`: Weight for the count loss component (aliases `alpha`).
+    *   `flatten_channels`: Whether to flatten channels/length for profile loss (default: False).
+    *   `implicit_log_targets`: Handling of log-transformed targets.
 
 ## Metrics
 

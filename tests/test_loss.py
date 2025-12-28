@@ -3,7 +3,7 @@ import pytest
 from torchmetrics import PearsonCorrCoef
 import torch.nn as nn
 from torchmetrics import MeanSquaredError
-from cerberus.loss import BPNetLoss, BPNetPoissonLoss, FlattenedPearsonCorrCoef, get_default_metrics, get_default_loss
+from cerberus.loss import BPNetLoss, PoissonMultinomialLoss, FlattenedPearsonCorrCoef, get_default_metrics, get_default_loss
 
 def test_get_default_loss():
     loss = get_default_loss()
@@ -25,7 +25,7 @@ def test_bpnet_loss_forward_flatten_true():
     channels = 2
     length = 10
     
-    loss_fn = BPNetLoss(alpha=1.0, flatten_channels=True)
+    loss_fn = BPNetLoss(count_weight=1.0, flatten_channels=True)
     
     # Inputs
     profile_logits = torch.randn(batch_size, channels, length, requires_grad=True)
@@ -54,7 +54,7 @@ def test_bpnet_loss_forward_flatten_false():
     channels = 2
     length = 10
     
-    loss_fn = BPNetLoss(alpha=1.0, flatten_channels=False)
+    loss_fn = BPNetLoss(count_weight=1.0, flatten_channels=False)
     
     profile_logits = torch.randn(batch_size, channels, length, requires_grad=True)
     pred_log_counts = torch.randn(batch_size, 1, requires_grad=True)
@@ -69,7 +69,7 @@ def test_bpnet_loss_forward_flatten_false():
 
 def test_bpnet_loss_count_component():
     """Test that count loss behaves correctly (MSE on log1p)"""
-    loss_fn = BPNetLoss(alpha=10.0, flatten_channels=True)
+    loss_fn = BPNetLoss(count_weight=10.0, flatten_channels=True)
     
     # Example: Total counts = 10. log1p(10) = log(11).
     targets = torch.zeros(1, 1, 10)
@@ -112,7 +112,7 @@ def test_bpnet_loss_count_component():
 
 def test_bpnet_loss_profile_logic():
     """Test basic profile logic: predicting higher logits where counts are high should lower loss."""
-    loss_fn = BPNetLoss(alpha=0.0, flatten_channels=True) # Ignore count loss
+    loss_fn = BPNetLoss(count_weight=0.0, flatten_channels=True) # Ignore count loss
     
     targets = torch.tensor([[[10.0, 0.0]]]) # 1 channel, length 2.
     
@@ -131,7 +131,7 @@ def test_bpnet_loss_profile_logic():
 
 def test_bpnet_loss_count_component_batch_gt_1():
     """Test count loss component with batch size > 1 to ensure shape handling is correct."""
-    loss_fn = BPNetLoss(alpha=1.0, flatten_channels=True)
+    loss_fn = BPNetLoss(count_weight=1.0, flatten_channels=True)
     
     batch_size = 3
     # Targets: (Batch, Channels, Length)
@@ -185,17 +185,17 @@ def test_bpnet_loss_with_log_transform():
     pred_log_counts.requires_grad_(True)
     
     # 2. Standard loss with raw targets
-    loss_fn_std = BPNetLoss(alpha=1.0)
+    loss_fn_std = BPNetLoss(count_weight=1.0)
     loss_std = loss_fn_std((logits, pred_log_counts), targets_raw)
     
     # 3. Loss with logged targets, implicit_log_targets=False (Should be WRONG)
-    loss_fn_wrong = BPNetLoss(alpha=1.0, implicit_log_targets=False)
+    loss_fn_wrong = BPNetLoss(count_weight=1.0, implicit_log_targets=False)
     loss_wrong = loss_fn_wrong((logits, pred_log_counts), targets_logged)
     
     assert not torch.isclose(loss_std, loss_wrong), "Loss should differ when targets are logged but not handled"
     
     # 4. Loss with logged targets, implicit_log_targets=True (Should match std)
-    loss_fn_fixed = BPNetLoss(alpha=1.0, implicit_log_targets=True)
+    loss_fn_fixed = BPNetLoss(count_weight=1.0, implicit_log_targets=True)
     loss_fixed = loss_fn_fixed((logits, pred_log_counts), targets_logged)
     
     assert torch.isclose(loss_std, loss_fixed, atol=1e-5), "Loss should match when implicit_log_targets is True"
@@ -283,13 +283,13 @@ def test_flattened_pearson_vs_global():
     
     assert not torch.isclose(val_channel, val_global, atol=0.1)
 
-def test_bpnet_poisson_loss_forward():
-    """Test forward pass of BPNetPoissonLoss"""
+def test_poisson_multinomial_loss_forward():
+    """Test forward pass of PoissonMultinomialLoss"""
     batch_size = 2
     channels = 2
     length = 10
     
-    loss_fn = BPNetPoissonLoss(alpha=1.0, flatten_channels=True)
+    loss_fn = PoissonMultinomialLoss(count_weight=1.0, flatten_channels=True)
     
     profile_logits = torch.randn(batch_size, channels, length, requires_grad=True)
     # Poisson loss input log_input=True expects log(counts)
@@ -305,9 +305,9 @@ def test_bpnet_poisson_loss_forward():
     assert profile_logits.grad is not None
     assert pred_log_counts.grad is not None
 
-def test_bpnet_poisson_loss_count_component():
+def test_poisson_multinomial_loss_count_component():
     """Test that count loss component uses PoissonNLLLoss"""
-    loss_fn = BPNetPoissonLoss(alpha=10.0, flatten_channels=True)
+    loss_fn = PoissonMultinomialLoss(count_weight=10.0, flatten_channels=True)
     
     # Total counts = 10
     targets = torch.zeros(1, 1, 10)
@@ -329,9 +329,9 @@ def test_bpnet_poisson_loss_count_component():
     
     assert loss2 > loss1
 
-def test_bpnet_poisson_loss_implicit_log_targets():
-    """Test implicit log targets handling in BPNetPoissonLoss"""
-    loss_fn = BPNetPoissonLoss(alpha=1.0, implicit_log_targets=True)
+def test_poisson_multinomial_loss_implicit_log_targets():
+    """Test implicit log targets handling in PoissonMultinomialLoss"""
+    loss_fn = PoissonMultinomialLoss(count_weight=1.0, implicit_log_targets=True)
     
     # Targets are log(x+1)
     targets_raw = torch.tensor([[[10.0]]])
