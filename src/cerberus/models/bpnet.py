@@ -52,7 +52,7 @@ class BPNet(nn.Module):
         input_channels (list[str]): List of input channel names.
         output_channels (list[str]): List of output channel names.
         filters (int): Number of filters in convolutional layers. Default: 64.
-        n_dilated_layers (int): Number of dilated residual layers. Default: 9.
+        n_dilated_layers (int): Number of dilated residual layers. Default: 8.
         conv_kernel_size (int): Kernel size for initial convolution. Default: 21.
         dil_kernel_size (int): Kernel size for dilated convolutions. Default: 3.
         profile_kernel_size (int): Kernel size for profile head convolution. Default: 75.
@@ -67,7 +67,7 @@ class BPNet(nn.Module):
         input_channels: list[str] = ["A", "C", "G", "T"],
         output_channels: list[str] = ["signal"],
         filters: int = 64,
-        n_dilated_layers: int = 9,
+        n_dilated_layers: int = 8,
         conv_kernel_size: int = 21,
         dil_kernel_size: int = 3,
         profile_kernel_size: int = 75,

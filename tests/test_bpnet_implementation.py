@@ -166,7 +166,7 @@ def test_decoupled_pearson_metric():
     targets = torch.randn(batch_size, channels, length)
     
     # Update
-    metric.update(preds, targets)
+    metric.update(preds, targets) # type: ignore
     result = metric.compute()
     
     assert result.dim() == 0
@@ -202,7 +202,7 @@ def test_decoupled_mse_metric():
     targets = torch.randn(batch_size, channels, length)
     
     # Update
-    metric.update(preds, targets)
+    metric.update(preds, targets) # type: ignore
     result = metric.compute()
     
     assert result.dim() == 0

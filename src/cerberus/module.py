@@ -104,7 +104,13 @@ class CerberusModule(pl.LightningModule):
              
         # Metrics
         metric_collection = self.train_metrics if prefix == "train_" else self.val_metrics
-        metric_collection.update(outputs.detach(), targets.detach())
+        
+        if isinstance(outputs, (tuple, list)):
+            outputs_detached = tuple(o.detach() for o in outputs)
+        else:
+            outputs_detached = outputs.detach()
+            
+        metric_collection.update(outputs_detached, targets.detach())
         
         return loss
 
