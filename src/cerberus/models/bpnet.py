@@ -22,7 +22,6 @@ class _ResidualBlock(nn.Module):
         out = self.conv(x)
         # 2. ReLU
         out = F.relu(out)
-        
         # 3. Residual Connection
         # Center crop x to match out
         diff = x.shape[-1] - out.shape[-1]

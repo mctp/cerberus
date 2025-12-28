@@ -52,6 +52,31 @@ class DecoupledFlattenedPearsonCorrCoef(FlattenedPearsonCorrCoef):
         super().update(preds_counts, target)
 
 
+class DecoupledMeanSquaredError(MeanSquaredError):
+    """
+    MeanSquaredError for BPNet style models returning (logits, log_counts).
+    Converts outputs to counts before computing MSE.
+    """
+    def update(self, preds, target: torch.Tensor):
+        # preds[0] = logits (Batch, Channels, Length)
+        # preds[1] = log_counts (Batch, Channels)
+        logits, log_counts = preds
+        probs = F.softmax(logits, dim=-1)
+        total_counts = torch.exp(log_counts)
+        
+        num_channels = logits.shape[1]
+        
+        # Broadcast total_counts: (Batch, Channels) -> (Batch, Channels, 1)
+        if total_counts.dim() == 2 and total_counts.shape[1] == 1:
+            total_counts = total_counts.expand(-1, num_channels)
+        elif total_counts.dim() == 1: # (Batch,) case
+            total_counts = total_counts.view(-1, 1).expand(-1, num_channels)
+        
+        preds_counts = probs * total_counts.unsqueeze(-1)
+        
+        super().update(preds_counts, target)
+
+
 def get_default_metrics(num_channels: int = 1) -> MetricCollection:
     """
     Returns the default MetricCollection used for training/validation.
@@ -73,9 +98,7 @@ def get_bpnet_metrics(num_channels: int = 1) -> MetricCollection:
     """
     return MetricCollection({
         "pearson": DecoupledFlattenedPearsonCorrCoef(num_channels=num_channels),
-        # Note: MeanSquaredError might fail on tuple input unless we implement a BPNetMSE wrapper too.
-        # But Pearson is the primary metric usually. 
-        # For now, let's assume the user configures metrics appropriately.
+        "mse": DecoupledMeanSquaredError(),
     })
 
 
