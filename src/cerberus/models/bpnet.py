@@ -26,6 +26,9 @@ class _ResidualBlock(nn.Module):
         # Center crop x to match out
         diff = x.shape[-1] - out.shape[-1]
         if diff > 0:
+            # Crop the input to match the output size because the convolution
+            # used 'valid' padding, shrinking the sequence. We crop from the
+            # center to maintain alignment.
             crop_l = diff // 2
             crop_r = diff - crop_l
             x = x[..., crop_l:-crop_r]
@@ -138,7 +141,7 @@ class BPNet(nn.Module):
         
         # Crop to target output_len if needed
         # We assume output_len is set to the desired length after all valid convolutions
-        # Typically chrombpnet expects 1000 output from 2114 input
+        # Typically bpnet expects 1000 output from 2114 input
         current_len = profile_logits.shape[-1]
         target_len = self.output_len
         

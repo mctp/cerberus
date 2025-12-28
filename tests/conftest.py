@@ -44,3 +44,25 @@ def mdapca2b_ar_dataset():
     base_dir = get_base_dir()
     data_dir = base_dir / "dataset"
     return download_dataset(data_dir, name="mdapca2b_ar")
+
+@pytest.fixture
+def mock_files(tmp_path):
+    """Creates dummy files required for config validation."""
+    fasta = tmp_path / "genome.fa"
+    fasta.touch()
+    
+    exclude = tmp_path / "exclude.bed"
+    exclude.touch()
+    
+    input_bw = tmp_path / "input.bw"
+    input_bw.touch()
+    
+    target_bw = tmp_path / "target.bw"
+    target_bw.touch()
+    
+    return {
+        "fasta": fasta,
+        "exclude": exclude,
+        "input": input_bw,
+        "target": target_bw
+    }
