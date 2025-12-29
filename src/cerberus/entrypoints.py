@@ -70,7 +70,10 @@ def instantiate(
 
 
 def _configure_callbacks(
-    train_config: TrainConfig, existing_callbacks: Optional[list[pl.Callback]] = None
+    train_config: TrainConfig,
+    existing_callbacks: Optional[list[pl.Callback]] = None,
+    enable_checkpointing: bool = True,
+    use_logger: bool = True,
 ) -> list[pl.Callback]:
     """
     Helper to configure default callbacks (LearningRateMonitor, ModelCheckpoint, EarlyStopping).
@@ -78,6 +81,8 @@ def _configure_callbacks(
     Args:
         train_config: Training configuration.
         existing_callbacks: List of user-provided callbacks.
+        enable_checkpointing: Whether to enable checkpointing.
+        use_logger: Whether to enable logging.
 
     Returns:
         List of configured callbacks.
@@ -90,16 +95,18 @@ def _configure_callbacks(
             current_callbacks.append(callback_cls(**kwargs))
 
     # 1. LearningRateMonitor
-    add_if_missing(LearningRateMonitor, logging_interval="step")
+    if use_logger:
+        add_if_missing(LearningRateMonitor, logging_interval="step")
 
     # 2. ModelCheckpoint
-    add_if_missing(
-        ModelCheckpoint,
-        monitor="val_loss",
-        mode="min",
-        save_top_k=3,
-        filename="checkpoint-{epoch:02d}-{val_loss:.4f}",
-    )
+    if enable_checkpointing:
+        add_if_missing(
+            ModelCheckpoint,
+            monitor="val_loss",
+            mode="min",
+            save_top_k=1,
+            filename="checkpoint-{epoch:02d}-{val_loss:.4f}",
+        )
 
     # 3. EarlyStopping
     add_if_missing(
@@ -159,8 +166,20 @@ def train(
     # Set float32 matmul precision
     torch.set_float32_matmul_precision(matmul_precision)
 
+    # Determine logger status
+    # Logic matches what we do below for creating default logger
+    use_logger = trainer_kwargs.get("logger") is not False
+
+    # Determine checkpointing status
+    enable_checkpointing = trainer_kwargs.get("enable_checkpointing", True)
+
     # Prepare callbacks
-    current_callbacks = _configure_callbacks(train_config, callbacks)
+    current_callbacks = _configure_callbacks(
+        train_config,
+        callbacks,
+        enable_checkpointing=enable_checkpointing,
+        use_logger=use_logger,
+    )
 
     # Handle root_dir convenience argument
     if root_dir is not None:
