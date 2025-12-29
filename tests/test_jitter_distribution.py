@@ -2,7 +2,7 @@ import pytest
 import torch
 import numpy as np
 from cerberus.transform import Jitter
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 def test_jitter_distribution():
     """

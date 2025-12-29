@@ -17,88 +17,7 @@ from cerberus.config import (
 )
 from cerberus.model_manager import ModelManager
 from cerberus.sequence import SequenceExtractor
-from cerberus.core import Interval
-
-
-def parse_intervals(
-    intervals: list[str], interval_paths: list[Path], genome_config: GenomeConfig
-) -> list[tuple[str, int, int]]:
-    """
-    Parses intervals from a list of strings and paths to BED files.
-
-    Args:
-        intervals: List of strings (e.g. ["chr1", "chr2:1000-2000"]).
-        interval_paths: List of paths to BED files.
-        genome_config: Genome configuration containing chromosome sizes.
-
-    Returns:
-        List of (chrom, start, end) tuples.
-    """
-    parsed = []
-    chrom_sizes = genome_config["chrom_sizes"]
-
-    # If both lists are empty, default to whole genome
-    if not intervals and not interval_paths:
-        for chrom in genome_config["allowed_chroms"]:
-            if chrom in chrom_sizes:
-                parsed.append((chrom, 0, chrom_sizes[chrom]))
-        return parsed
-
-    # Process intervals from strings
-    for item in intervals:
-        if ":" in item:
-            try:
-                chrom, coords = item.split(":")
-                start, end = map(int, coords.split("-"))
-                parsed.append((chrom, start, end))
-            except ValueError:
-                raise ValueError(
-                    f"Invalid interval format: {item}. Expected 'chr:start-end'."
-                )
-        else:
-            chrom = item
-            if chrom not in chrom_sizes:
-                raise ValueError(f"Chromosome {chrom} not found in genome config.")
-            parsed.append((chrom, 0, chrom_sizes[chrom]))
-
-    # Process intervals from files
-    for p in interval_paths:
-        with open(p) as f:
-            for line in f:
-                parts = line.strip().split("\t")
-                if len(parts) >= 3:
-                    parsed.append((parts[0], int(parts[1]), int(parts[2])))
-
-    return parsed
-
-
-def merge_intervals(
-    intervals: list[tuple[str, int, int]]
-) -> list[tuple[str, int, int]]:
-    """
-    Sorts and merges overlapping or adjacent intervals.
-    """
-    if not intervals:
-        return []
-
-    # Sort by chrom, then start
-    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))
-
-    merged = []
-    current_chrom, current_start, current_end = sorted_intervals[0]
-
-    for i in range(1, len(sorted_intervals)):
-        chrom, start, end = sorted_intervals[i]
-
-        if chrom == current_chrom and start <= current_end:
-            # Overlap or adjacent, merge
-            current_end = max(current_end, end)
-        else:
-            merged.append((current_chrom, current_start, current_end))
-            current_chrom, current_start, current_end = chrom, start, end
-
-    merged.append((current_chrom, current_start, current_end))
-    return merged
+from cerberus.interval import Interval, parse_intervals, merge_intervals
 
 
 def _predict_to(
@@ -148,7 +67,10 @@ def _predict_to(
     offset = (input_len - output_len) // 2
 
     # 4. Iterate Intervals
-    for chrom, start, end in merged_intervals:
+    for interval in merged_intervals:
+        chrom = interval.chrom
+        start = interval.start
+        end = interval.end
         print(f"Processing {chrom}:{start}-{end}...")
 
         # Align buffer to model_bin_size

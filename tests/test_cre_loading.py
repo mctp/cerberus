@@ -1,7 +1,7 @@
 import pytest
 import torch
 from cerberus.mask import MaskExtractor
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 def test_cre_loading_real(human_genome):
     """

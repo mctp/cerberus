@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from cerberus.core import Interval
+from cerberus.interval import Interval
 from cerberus.samplers import IntervalSampler
 from cerberus.genome import create_genome_folds
 

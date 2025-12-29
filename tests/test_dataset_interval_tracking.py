@@ -4,7 +4,7 @@ import numpy as np
 from pathlib import Path
 from typing import cast
 from cerberus.dataset import CerberusDataset
-from cerberus.core import Interval
+from cerberus.interval import Interval
 from cerberus.transform import Jitter, ReverseComplement
 from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 

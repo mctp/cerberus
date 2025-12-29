@@ -2,7 +2,7 @@ import pytest
 import torch
 from unittest.mock import MagicMock, patch
 from cerberus.sequence import SequenceExtractor, encode_dna
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 def test_encode_dna_invalid_encoding():
     with pytest.raises(ValueError, match="Unsupported encoding"):

@@ -4,7 +4,7 @@ import os
 import numpy as np
 import pybigtools
 import torch
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 
 class BaseSignalExtractor(Protocol):

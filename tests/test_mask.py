@@ -4,7 +4,7 @@ import numpy as np
 import pybigtools
 from pathlib import Path
 from cerberus.mask import MaskExtractor, InMemoryMaskExtractor
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 @pytest.fixture
 def bigbed_file(tmp_path):

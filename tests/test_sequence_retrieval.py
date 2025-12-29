@@ -5,7 +5,7 @@ import numpy as np
 import pysam
 from pathlib import Path
 from cerberus.sequence import SequenceExtractor, encode_dna
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 @pytest.mark.skipif(os.environ.get("RUN_SLOW_TESTS") is None, reason="Skipping slow tests")
 def test_sequence_extraction_correctness_vs_pysam(human_genome):

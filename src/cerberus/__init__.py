@@ -1,4 +1,4 @@
-from .core import Interval
+from .interval import Interval
 from .config import (
     GenomeConfig,
     DataConfig,

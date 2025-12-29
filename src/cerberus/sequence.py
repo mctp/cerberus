@@ -4,7 +4,7 @@ import numpy as np
 import pyfaidx
 import torch
 
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 
 def _create_mapping(encoding: str) -> np.ndarray:

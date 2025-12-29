@@ -31,7 +31,7 @@ from cerberus.signal import SignalExtractor
 from cerberus.samplers import create_sampler
 from cerberus.dataset import CerberusDataset
 from cerberus.datamodule import CerberusDataModule
-from cerberus.core import Interval
+from cerberus.interval import Interval
 from cerberus.exclude import get_exclude_intervals
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 

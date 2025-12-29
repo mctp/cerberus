@@ -7,7 +7,7 @@ from typing import cast
 from cerberus.config import DataConfig, SamplerConfig
 from cerberus.signal import SignalExtractor
 from cerberus.sequence import SequenceExtractor
-from cerberus.core import Interval
+from cerberus.interval import Interval
 from cerberus.transform import Bin, Jitter
 from cerberus.dataset import CerberusDataset
 from cerberus.samplers import SubsetSampler

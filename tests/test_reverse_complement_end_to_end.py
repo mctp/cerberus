@@ -2,7 +2,7 @@ import torch
 import pytest
 from cerberus.transform import Compose, ReverseComplement
 from cerberus.sequence import encode_dna
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 def test_reverse_complement_end_to_end():
     """

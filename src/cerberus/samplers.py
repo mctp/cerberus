@@ -3,7 +3,7 @@ from pathlib import Path
 import gzip
 import numpy as np
 from interlap import InterLap
-from .core import Interval
+from .interval import Interval
 from .config import SamplerConfig
 from .exclude import is_excluded
 

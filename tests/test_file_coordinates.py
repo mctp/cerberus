@@ -5,7 +5,7 @@ from pathlib import Path
 from interlap import InterLap
 from cerberus.samplers import IntervalSampler
 from cerberus.signal import SignalExtractor
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 @pytest.fixture
 def temp_dir(tmp_path):

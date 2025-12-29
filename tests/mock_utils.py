@@ -1,7 +1,7 @@
 from typing import Iterator, Protocol, Callable, Optional
 import numpy as np
 import torch
-from cerberus.core import Interval
+from cerberus.interval import Interval
 from cerberus.samplers import Sampler, BaseSampler, SubsetSampler
 from cerberus.sequence import BaseSequenceExtractor, SequenceExtractor, encode_dna
 from cerberus.signal import BaseSignalExtractor

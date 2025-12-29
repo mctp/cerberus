@@ -4,7 +4,7 @@ import numpy as np
 from pathlib import Path
 from cerberus.genome import create_genome_config
 from cerberus.sequence import encode_dna, SequenceExtractor, InMemorySequenceExtractor
-from cerberus.core import Interval
+from cerberus.interval import Interval
 
 def test_genome_from_fasta_human_supported(tmp_path):
     fasta_path = tmp_path / "test.fa"

@@ -8,6 +8,7 @@ import os
 from torchmetrics import MetricCollection
 
 from cerberus.predict import predict_to_bigwig, parse_intervals, merge_intervals, _predict_to
+from cerberus.interval import Interval
 from cerberus.config import (
     GenomeConfig,
     DataConfig,
@@ -53,8 +54,8 @@ def test_parse_intervals(genome_setup, tmp_path):
     intervals = ["chr1:0-100", "chr2"]
     parsed = parse_intervals(intervals, [], genome_config)
     assert len(parsed) == 2
-    assert parsed[0] == ("chr1", 0, 100)
-    assert parsed[1] == ("chr2", 0, 1000)
+    assert parsed[0] == Interval("chr1", 0, 100)
+    assert parsed[1] == Interval("chr2", 0, 1000)
     
     # Test file intervals
     bed_path = tmp_path / "test.bed"
@@ -63,13 +64,13 @@ def test_parse_intervals(genome_setup, tmp_path):
     
     parsed_file = parse_intervals([], [bed_path], genome_config)
     assert len(parsed_file) == 1
-    assert parsed_file[0] == ("chr1", 200, 300)
+    assert parsed_file[0] == Interval("chr1", 200, 300)
     
     # Test default whole genome
     parsed_default = parse_intervals([], [], genome_config)
     assert len(parsed_default) == 2 # chr1 and chr2
-    assert ("chr1", 0, 1000) in parsed_default
-    assert ("chr2", 0, 1000) in parsed_default
+    assert Interval("chr1", 0, 1000) in parsed_default
+    assert Interval("chr2", 0, 1000) in parsed_default
 
     # Test invalid format
     with pytest.raises(ValueError, match="Invalid interval format"):
@@ -79,28 +80,74 @@ def test_parse_intervals(genome_setup, tmp_path):
     with pytest.raises(ValueError, match="Chromosome chr3 not found"):
         parse_intervals(["chr3"], [], genome_config)
 
+def test_parse_intervals_edge_cases(genome_setup, tmp_path):
+    genome_config = genome_setup
+    
+    # 1. Mixed Inputs
+    bed_path = tmp_path / "mixed.bed"
+    with open(bed_path, "w") as f:
+        f.write("chr2\t500\t600\n")
+        
+    parsed = parse_intervals(["chr1:100-200"], [bed_path], genome_config)
+    assert len(parsed) == 2
+    assert Interval("chr1", 100, 200) in parsed
+    assert Interval("chr2", 500, 600) in parsed
+
+    # 2. BED File Robustness (extra columns, empty lines)
+    robust_bed = tmp_path / "robust.bed"
+    with open(robust_bed, "w") as f:
+        f.write("chr1\t100\t200\tname\t0\t+\n") # Extra columns
+        f.write("chr2\n") # Too few columns
+        f.write("\n") # Empty line
+        
+    parsed_robust = parse_intervals([], [robust_bed], genome_config)
+    assert len(parsed_robust) == 1
+    assert parsed_robust[0] == Interval("chr1", 100, 200)
+
+    # 3. Malformed Coordinates in BED
+    bad_bed = tmp_path / "bad.bed"
+    with open(bad_bed, "w") as f:
+        f.write("chr1\tstart\tend\n")
+        
+    with pytest.raises(ValueError):
+        parse_intervals([], [bad_bed], genome_config)
+
+    # 4. Whitespace in string format
+    # "chr1: 100 - 200" -> int() handles spaces around numbers
+    parsed_spaces = parse_intervals(["chr1: 100 - 200"], [], genome_config)
+    assert parsed_spaces[0] == Interval("chr1", 100, 200)
+
+    # 5. Non-existent file
+    with pytest.raises(FileNotFoundError):
+        parse_intervals([], [tmp_path / "non_existent.bed"], genome_config)
+
+    # 6. Chromosome not in config (Coordinate based)
+    # The current implementation DOES NOT check if chrom is in config if coordinates are provided
+    parsed_unknown = parse_intervals(["chrUnknown:0-100"], [], genome_config)
+    assert parsed_unknown[0] == Interval("chrUnknown", 0, 100)
+
 def test_merge_intervals():
     # Test merging overlapping
-    intervals = [("chr1", 0, 100), ("chr1", 50, 150)]
+    intervals = [Interval("chr1", 0, 100), Interval("chr1", 50, 150)]
     merged = merge_intervals(intervals)
     assert len(merged) == 1
-    assert merged[0] == ("chr1", 0, 150)
+    assert merged[0] == Interval("chr1", 0, 150)
     
     # Test merging adjacent
-    intervals = [("chr1", 0, 100), ("chr1", 100, 200)]
+    intervals = [Interval("chr1", 0, 100), Interval("chr1", 100, 200)]
     merged = merge_intervals(intervals)
     assert len(merged) == 1
-    assert merged[0] == ("chr1", 0, 200)
+    assert merged[0] == Interval("chr1", 0, 200)
     
     # Test non-overlapping
-    intervals = [("chr1", 0, 100), ("chr1", 200, 300)]
+    intervals = [Interval("chr1", 0, 100), Interval("chr1", 200, 300)]
     merged = merge_intervals(intervals)
     assert len(merged) == 2
-    assert merged[0] == ("chr1", 0, 100)
-    assert merged[1] == ("chr1", 200, 300)
+    assert merged[0] == Interval("chr1", 0, 100)
+    assert merged[1] == Interval("chr1", 200, 300)
     
     # Test different chroms
-    intervals = [("chr1", 0, 100), ("chr2", 0, 100)]
+    intervals = [Interval("chr1", 0, 100), Interval("chr2", 0, 100)]
     merged = merge_intervals(intervals)
     assert len(merged) == 2
 
