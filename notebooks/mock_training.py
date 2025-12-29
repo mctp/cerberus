@@ -40,7 +40,7 @@ try:
 except ImportError:
     # If tests module is not importable, we might need to add it to path
     sys.path.append(str(project_root / "tests"))
-    from mock_utils import (
+    from mock_utils import ( # type: ignore
         MockSampler,
         MockSequenceExtractor,
         MockSignalExtractor,
@@ -94,6 +94,7 @@ class MockDataModule(CerberusDataModule):
         # Create Full Dataset
         # We pass dummy configs because CerberusDataset verifies them, 
         # but we override the components so the paths aren't used.
+        assert in_memory is not None, "in_memory must be specified"
         full_dataset = CerberusDataset(
             genome_config=self.genome_config,
             data_config=data_config_no_inputs,
