@@ -13,7 +13,6 @@ from tests.mock_utils import (
     GaussianSignalGenerator,
 )
 
-
 def test_mock_dataset_end_to_end(mock_files):
     # 1. Configs
     genome_config: GenomeConfig = {
