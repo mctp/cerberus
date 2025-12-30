@@ -31,10 +31,10 @@ def get_args():
     
     # Script arguments
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data")
-    parser.add_argument("--output-dir", type=str, default="training_logs", help="Directory for logs and checkpoints")
+    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b", help="Root directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
-    parser.add_argument("--max-epochs", type=int, default=100, help="Maximum number of epochs")
+    parser.add_argument("--max-epochs", type=int, default=20, help="Maximum number of epochs")
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
@@ -56,6 +56,14 @@ def main():
     data_dir.mkdir(parents=True, exist_ok=True)
     
     output_dir = Path(args.output_dir).resolve()
+    if args.multi and args.genome:
+        output_dir = output_dir / "genome-multi"
+    elif args.multi:
+        output_dir = output_dir / "peaks-multi"
+    elif args.genome:
+        output_dir = output_dir / "genome-single"
+    else:
+        output_dir = output_dir / "peaks-single"
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"Data Directory: {data_dir}")
@@ -143,7 +151,6 @@ def main():
     }
 
     # Model Config
-    # No wrapper needed! GlobalProfileCNN accepts input_channels/output_channels (list) and extra args.
     model_config: ModelConfig = {
         "name": "GlobalProfileCNN",
         "model_cls": GlobalProfileCNN,
