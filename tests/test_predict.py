@@ -9,7 +9,6 @@ from torchmetrics import MetricCollection
 
 from cerberus.interval import parse_intervals, merge_intervals, Interval
 from cerberus.predict import (
-    predict_interval, 
     predict_intervals, 
     _aggregate_ensemble_outputs, 
     _aggregate_overlapping_output_intervals
@@ -395,7 +394,7 @@ def test_predict_interval_validation(mock_dataset, mock_model_manager):
     config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
     
     with pytest.raises(ValueError, match="length 50, expected 100"):
-        predict_interval(interval, mock_dataset, mock_model_manager, config, device="cpu")
+        predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
 
 def test_predict_interval_single_model(mock_dataset, mock_model_manager):
     interval = Interval("chr1", 0, 100)
@@ -405,7 +404,7 @@ def test_predict_interval_single_model(mock_dataset, mock_model_manager):
     model = MockModel(value=2.0, output_len=60)
     mock_model_manager.get_models.return_value = [model]
     
-    output, out_interval = predict_interval(interval, mock_dataset, mock_model_manager, config, device="cpu")
+    output, out_interval = predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
     
     # Output should be length 60
     assert isinstance(output, tuple)
@@ -422,7 +421,7 @@ def test_predict_interval_mean_aggregation(mock_dataset, mock_model_manager):
     model2 = MockModel(value=4.0, output_len=60)
     mock_model_manager.get_models.return_value = [model1, model2]
     
-    output, out_interval = predict_interval(interval, mock_dataset, mock_model_manager, config, device="cpu")
+    output, out_interval = predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
     
     assert isinstance(output, tuple)
     assert output[0].shape[-1] == 60
@@ -437,7 +436,7 @@ def test_predict_interval_tuple_output(mock_dataset, mock_model_manager):
     model2 = MockTupleModel(value1=4.0, value2=20.0, output_len=60)
     mock_model_manager.get_models.return_value = [model1, model2]
     
-    output, out_interval = predict_interval(interval, mock_dataset, mock_model_manager, config, device="cpu")
+    output, out_interval = predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
     
     assert isinstance(output, tuple)
     assert output[0].shape[-1] == 60

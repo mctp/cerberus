@@ -11,21 +11,6 @@ from cerberus.model_manager import ModelManager
 from cerberus.config import PredictConfig
 
 
-def predict_interval(
-    interval: Interval,
-    dataset: CerberusDataset,
-    model_manager: ModelManager,
-    predict_config: PredictConfig,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
-) -> Tuple[Any, Interval]:
-    """
-    Wrapper around predict_intervals for single interval.
-    """
-    return predict_intervals(
-        [interval], dataset, model_manager, predict_config, device
-    )
-
-
 def predict_intervals(
     intervals: Iterable[Interval],
     dataset: CerberusDataset,
@@ -47,7 +32,11 @@ def predict_intervals(
 
     Returns:
         A tuple containing:
-        - The aggregated output from the models. Always a Tuple of arrays/tensors.
+        - The aggregated output from the models. Always a Tuple of numpy arrays.
+          Each element in the tuple corresponds to a model output head (e.g., profile, total counts).
+          All outputs are returned as tracks with dimensions (Channels, Bins), where Bins corresponds
+          to the merged interval length divided by dataset.data_config['output_bin_size'].
+          Scalar outputs (like total counts) are broadcasted to the full length of the merged interval.
         - The merged genomic interval corresponding to the aggregated output.
     """
     iterator = iter(intervals)
