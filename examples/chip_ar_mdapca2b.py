@@ -27,7 +27,8 @@ from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
 from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.loss import get_default_metrics, TupleAwarePoissonNLLLoss
+from cerberus.models.bpnet import BPNet
+from cerberus.loss import get_default_metrics, TupleAwarePoissonNLLLoss, BPNetLoss, get_bpnet_metrics
 from cerberus.entrypoints import train_fold, train_multi
 
 def get_args():
@@ -42,7 +43,8 @@ def get_args():
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
-    
+    parser.add_argument("--model", type=str, default="baseline", choices=["baseline", "bpnet"], help="Model architecture to use")
+
     # Sampler arguments
     parser.add_argument("--genome", action="store_true", help="Use genome-wide sliding window sampler instead of peak intervals")
 
@@ -98,18 +100,29 @@ def main():
     # Data Config
     # Input: 2048bp DNA
     # Output: 256 bins @ 4bp resolution (covering 1024bp)
-    input_len = 2048
-    output_len = 1024
     
+    if args.model == "bpnet":
+        # BPNet standard params
+        input_len = 2114
+        output_len = 1000
+        output_bin_size = 1 # BPNet is usually base-resolution
+        log_transform = False # BPNet typically trains on raw counts with PoissonMultinomial/BPNetLoss
+    else:
+        # Baseline Gopher params
+        input_len = 2048
+        output_len = 1024
+        output_bin_size = 4
+        log_transform = True
+
     data_config: DataConfig = {
         "inputs": {}, # No additional input tracks, just DNA
         "targets": {"signal": dataset_files["bigwig"]},
         "input_len": input_len,
         "output_len": output_len, 
         "max_jitter": 128,  # Augmentation jitter
-        "output_bin_size": 4, # Binning resolution
+        "output_bin_size": output_bin_size, # Binning resolution
         "encoding": "ACGT", # Standard One-Hot
-        "log_transform": True, # Log(x+1) transform targets
+        "log_transform": log_transform, # Log(x+1) transform targets
         "reverse_complement": True, # Augmentation
         "use_sequence": True,
     }
@@ -155,19 +168,41 @@ def main():
     }
 
     # Model Config
-    model_config: ModelConfig = {
-        "name": "GlobalProfileCNN",
-        "model_cls": GlobalProfileCNN,
-        "loss_cls": TupleAwarePoissonNLLLoss,
-        "loss_args": {"log_input": True, "full": False},
-        # Cast function to expected type for static analysis
-        "metrics_cls": cast(type[MetricCollection], get_default_metrics),
-        "metrics_args": {"num_channels": 1},
-        "model_args": {
-            "input_channels": ["A", "C", "G", "T"],
-            "output_channels": ["signal"],
+    if args.model == "bpnet":
+        print("Using BPNet Model...")
+        model_config: ModelConfig = {
+            "name": "BPNet",
+            "model_cls": BPNet,
+            "loss_cls": BPNetLoss,
+            "loss_args": {
+                "count_weight": 1.0, 
+                "flatten_channels": False,
+                "implicit_log_targets": log_transform # Should be False if data not transformed
+            },
+            "metrics_cls": cast(type[MetricCollection], get_bpnet_metrics),
+            "metrics_args": {"num_channels": 1},
+            "model_args": {
+                "input_channels": ["A", "C", "G", "T"],
+                "output_channels": ["signal"],
+                "filters": 64,
+                "n_dilated_layers": 8
+            }
         }
-    }
+    else:
+        print("Using Baseline (GlobalProfileCNN) Model...")
+        model_config: ModelConfig = {
+            "name": "GlobalProfileCNN",
+            "model_cls": GlobalProfileCNN,
+            "loss_cls": TupleAwarePoissonNLLLoss,
+            "loss_args": {"log_input": True, "full": False},
+            # Cast function to expected type for static analysis
+            "metrics_cls": cast(type[MetricCollection], get_default_metrics),
+            "metrics_args": {"num_channels": 1},
+            "model_args": {
+                "input_channels": ["A", "C", "G", "T"],
+                "output_channels": ["signal"],
+            }
+        }
 
     print("\nConfigurations:")
     print("-" * 20)
