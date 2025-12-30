@@ -15,6 +15,7 @@ from cerberus.config import (
     TrainConfig,
     ModelConfig,
     PredictConfig,
+    SamplerConfig,
 )
 
 class DummyModel(nn.Module):
@@ -235,6 +236,175 @@ def test_predict_generator_logic(tmp_path, genome_setup):
     total_len = sum(r[2] - r[1] for r in results)
     assert total_len == 200
 
+def test_predict_dataset(tmp_path, genome_setup):
+    from cerberus.dataset import CerberusDataset
+    from cerberus.predict import predict_dataset
+    from cerberus.model_manager import ModelManager
+    
+    genome_config = genome_setup
+    
+    # Create interval file
+    bed_path = tmp_path / "test.bed"
+    with open(bed_path, "w") as f:
+        f.write("chr1\t0\t200\n")
+
+    data_config: DataConfig = {
+        "inputs": {},
+        "targets": {},
+        "input_len": 100,
+        "output_len": 50,
+        "max_jitter": 0,
+        "output_bin_size": 1,
+        "encoding": "ACGT",
+        "log_transform": False,
+        "reverse_complement": False,
+        "use_sequence": True,
+    }
+
+    sampler_config: SamplerConfig = {
+        "sampler_type": "interval",
+        "padded_size": 100,
+        "sampler_args": {
+            "intervals_path": bed_path
+        }
+    }
+    
+    dataset = CerberusDataset(
+        genome_config=genome_config,
+        data_config=data_config,
+        sampler_config=sampler_config,
+    )
+    
+    # Model Setup
+    model = DummyModel(input_len=100, output_len=50, output_bin_size=1)
+    ckpt_path = tmp_path / "model.ckpt"
+    torch.save({"state_dict": model.state_dict()}, ckpt_path)
+    
+    model_config: ModelConfig = {
+        "name": "dummy",
+        "model_cls": DummyModel,
+        "loss_cls": nn.MSELoss,
+        "loss_args": {},
+        "metrics_cls": MetricCollection,
+        "metrics_args": {"metrics": {}},
+        "model_args": {}
+    }
+    
+    train_config: TrainConfig = {
+        "batch_size": 2,
+        "max_epochs": 1,
+        "learning_rate": 0.01,
+        "weight_decay": 0.0,
+        "patience": 1,
+        "optimizer": "adam",
+        "filter_bias_and_bn": False,
+        "scheduler_type": "default",
+        "scheduler_args": {}
+    }
+    
+    model_manager = ModelManager(
+        ckpt_path, model_config, data_config, train_config, genome_config, torch.device("cpu")
+    )
+    
+    # Run prediction
+    gen = predict_dataset(
+        dataset=dataset,
+        model_manager=model_manager,
+        stride=50,
+        batch_size=2,
+        device="cpu"
+    )
+    
+    results = list(gen)
+    assert len(results) > 0
+    # With IntervalSampler padded_size=100, interval 0-200 -> center 100 -> 50-150.
+    # Prediction on 50-150 with stride 50, output_len 50, input_len 100.
+    # Buffer 50-150 (size 100).
+    # 1. in_start=50-25=25. out=50-100.
+    # 2. in_start=75. out=100-150.
+    # Total covered: 50-150. Length 100.
+    total_len = sum(r[2] - r[1] for r in results)
+    assert total_len == 100
+
+def test_predict_subfunctions(tmp_path):
+    from cerberus.predict import _get_buffer_params, _yield_predictions, _prepare_sequence_input
+    from cerberus.sequence import SequenceExtractor
+    import numpy as np
+    import torch
+    
+    # Test _get_buffer_params
+    # start=100, end=200, bin_size=10
+    # aligned start: 100 // 10 * 10 = 100
+    # aligned end: (200 + 10 - 1) // 10 * 10 = 210 -> (209)//10 -> 20*10 = 200.
+    b_start, b_end, n_bins = _get_buffer_params(100, 200, 10)
+    assert b_start == 100
+    assert b_end == 200
+    assert n_bins == 10
+    
+    # Unaligned: start=105, end=205, bin_size=10
+    # start: 105//10 = 10 -> 100
+    # end: (205+9)//10 = 21 -> 210
+    # n_bins: (210-100)//10 = 11
+    b_start, b_end, n_bins = _get_buffer_params(105, 205, 10)
+    assert b_start == 100
+    assert b_end == 210
+    assert n_bins == 11
+
+    # Test _yield_predictions
+    accum = np.array([10.0, 20.0, 30.0], dtype=np.float32)
+    counts = np.array([1.0, 2.0, 1.0], dtype=np.float32)
+    # vals: 10, 10, 30
+    buffer_start = 100
+    model_bin_size = 10
+    n_bins = 3
+    # bins: 100-110, 110-120, 120-130
+    
+    # Request 105-125
+    # Bin 0 (100-110): overlaps 105-110. val=10
+    # Bin 1 (110-120): overlaps 110-120. val=10
+    # Bin 2 (120-130): overlaps 120-125. val=30
+    
+    gen = _yield_predictions(
+        chrom="chr1",
+        start=105,
+        end=125,
+        accum=accum,
+        counts=counts,
+        buffer_start=buffer_start,
+        model_bin_size=model_bin_size,
+        n_bins=n_bins
+    )
+    res = list(gen)
+    assert len(res) == 3
+    assert res[0] == ("chr1", 105, 110, 10.0)
+    assert res[1] == ("chr1", 110, 120, 10.0)
+    assert res[2] == ("chr1", 120, 125, 30.0)
+
+    # Test _prepare_sequence_input
+    # Mock fasta
+    fasta_path = tmp_path / "test.fa"
+    with open(fasta_path, "w") as f:
+        f.write(">chr1\n" + "A" * 50 + "C" * 50 + "\n") # 100bp
+    
+    extractor = SequenceExtractor(fasta_path)
+    
+    # Case 1: fully inside
+    # curr_in_start = 10. input_len=10.
+    seq = _prepare_sequence_input("chr1", 10, 10, 100, extractor)
+    assert seq.shape == (4, 10)
+    
+    # Case 2: left pad
+    # curr_in_start = -5. input_len=10.
+    seq = _prepare_sequence_input("chr1", -5, 10, 100, extractor)
+    assert seq.shape == (4, 10)
+    assert torch.all(seq[:, :5] == 0)
+    
+    # Case 3: right pad
+    # curr_in_start = 95. input_len=10.
+    seq = _prepare_sequence_input("chr1", 95, 10, 100, extractor)
+    assert seq.shape == (4, 10)
+    assert torch.all(seq[:, 5:] == 0)
+
 
 def test_predict_to_bigwig_integration(tmp_path, genome_setup):
     # Setup (reuse logic from previous test, but use fixture)
@@ -310,3 +480,86 @@ def test_predict_to_bigwig_integration(tmp_path, genome_setup):
         vals = list(bw.records("chr1", 0, 200))
         assert len(vals) > 0
         assert np.isclose(vals[0][2], 1.0)
+
+def test_predict_single_interval_direct(tmp_path, genome_setup):
+    from cerberus.predict import _predict_single_interval
+    
+    genome_config = genome_setup
+    
+    # Setup model and checkpoint
+    model = DummyModel(input_len=100, output_len=50, output_bin_size=1)
+    ckpt_path = tmp_path / "model.ckpt"
+    torch.save({"state_dict": model.state_dict()}, ckpt_path)
+    
+    data_config: DataConfig = {
+        "inputs": {},
+        "targets": {},
+        "input_len": 100,
+        "output_len": 50,
+        "max_jitter": 0,
+        "output_bin_size": 1,
+        "encoding": "ACGT",
+        "log_transform": False,
+        "reverse_complement": False,
+        "use_sequence": True,
+    }
+    
+    model_config: ModelConfig = {
+        "name": "dummy",
+        "model_cls": DummyModel,
+        "loss_cls": nn.MSELoss,
+        "loss_args": {},
+        "metrics_cls": MetricCollection,
+        "metrics_args": {"metrics": {}},
+        "model_args": {}
+    }
+    
+    train_config: TrainConfig = {
+        "batch_size": 2,
+        "max_epochs": 1,
+        "learning_rate": 0.01,
+        "weight_decay": 0.0,
+        "patience": 1,
+        "optimizer": "adam",
+        "filter_bias_and_bn": False,
+        "scheduler_type": "default",
+        "scheduler_args": {}
+    }
+
+    # Prepare objects
+    from cerberus.model_manager import ModelManager
+    from cerberus.sequence import SequenceExtractor
+    
+    model_manager = ModelManager(
+        ckpt_path, model_config, data_config, train_config, genome_config, torch.device("cpu")
+    )
+    extractor = SequenceExtractor(genome_config["fasta_path"])
+    
+    interval = Interval("chr1", 0, 200)
+    
+    # Call the function
+    gen = _predict_single_interval(
+        interval=interval,
+        model_manager=model_manager,
+        extractor=extractor,
+        chrom_sizes=genome_config["chrom_sizes"],
+        input_len=data_config["input_len"],
+        output_len=data_config["output_len"],
+        model_bin_size=data_config["output_bin_size"],
+        stride=50,
+        use_folds=["test"],
+        aggregation="mean",
+        batch_size=2,
+        device=torch.device("cpu")
+    )
+    
+    results = list(gen)
+    assert len(results) > 0
+    
+    # Verify coverage and values
+    for res in results:
+        assert res[0] == "chr1"
+        assert np.isclose(res[3], 1.0)
+        
+    total_len = sum(r[2] - r[1] for r in results)
+    assert total_len == 200
