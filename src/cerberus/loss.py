@@ -14,6 +14,9 @@ class FlattenedPearsonCorrCoef(PearsonCorrCoef):
         self.num_channels = num_channels
 
     def update(self, preds: torch.Tensor, target: torch.Tensor):
+        if isinstance(preds, (tuple, list)) and len(preds) == 1:
+            preds = preds[0]
+            
         # Assumes preds, target: (Batch, Channels, Length)
         # (B, C, L) -> (B, L, C) -> (B*L, C)
         # We ensure channel dimension is last, then flatten batch and length dimensions.
@@ -77,6 +80,16 @@ class DecoupledMeanSquaredError(MeanSquaredError):
         super().update(preds_counts, target)
 
 
+class TupleAwareMeanSquaredError(MeanSquaredError):
+    """
+    MeanSquaredError that handles tuple inputs by unpacking single-element tuples.
+    """
+    def update(self, preds, target: torch.Tensor):
+        if isinstance(preds, (tuple, list)) and len(preds) == 1:
+            preds = preds[0]
+        super().update(preds, target)
+
+
 def get_default_metrics(num_channels: int = 1) -> MetricCollection:
     """
     Returns the default MetricCollection used for training/validation.
@@ -88,7 +101,7 @@ def get_default_metrics(num_channels: int = 1) -> MetricCollection:
         "pearson": FlattenedPearsonCorrCoef(num_channels=num_channels),
         # MSE is element-wise, so Global MSE is equivalent to Mean Per-Channel MSE
         # (assuming equal number of elements per channel). Thus no custom flattening is needed.
-        "mse": MeanSquaredError(),
+        "mse": TupleAwareMeanSquaredError(),
     })
 
 
@@ -102,9 +115,19 @@ def get_bpnet_metrics(num_channels: int = 1) -> MetricCollection:
     })
 
 
+class TupleAwarePoissonNLLLoss(nn.PoissonNLLLoss):
+    """
+    PoissonNLLLoss that handles tuple inputs by unpacking single-element tuples.
+    """
+    def forward(self, log_input, target):
+        if isinstance(log_input, (tuple, list)) and len(log_input) == 1:
+            log_input = log_input[0]
+        return super().forward(log_input, target)
+
+
 def get_default_loss() -> nn.Module:
     """Returns the default loss function (PoissonNLLLoss)."""
-    return nn.PoissonNLLLoss(log_input=True, full=False)
+    return TupleAwarePoissonNLLLoss(log_input=True, full=False)
 
 
 class BPNetLoss(nn.Module):

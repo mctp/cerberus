@@ -23,7 +23,7 @@ from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
 from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.loss import get_default_metrics
+from cerberus.loss import get_default_metrics, TupleAwarePoissonNLLLoss
 from cerberus.entrypoints import train_fold, train_multi
 
 def get_args():
@@ -147,7 +147,7 @@ def main():
     model_config: ModelConfig = {
         "name": "GlobalProfileCNN",
         "model_cls": GlobalProfileCNN,
-        "loss_cls": nn.PoissonNLLLoss,
+        "loss_cls": TupleAwarePoissonNLLLoss,
         "loss_args": {"log_input": True, "full": False},
         # Cast function to expected type for static analysis
         "metrics_cls": cast(type[MetricCollection], get_default_metrics),

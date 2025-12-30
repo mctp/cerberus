@@ -209,7 +209,7 @@ class ConvNeXtDCNN(nn.Module):
             final_dropout=config['final_dropout']
         )
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor]:
         # Input x: (Batch, Channels, Length)
         
         # Original model did transpose here because it expected (Batch, Length, Channels)
@@ -226,4 +226,4 @@ class ConvNeXtDCNN(nn.Module):
         # _BasenjiCoreBlock now returns (Batch, Tracks, Length)
         # No transpose needed
         
-        return x
+        return (x,)

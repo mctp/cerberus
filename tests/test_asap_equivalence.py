@@ -298,14 +298,14 @@ def test_convnext_dcnn_equivalence():
     
     y_original_transposed = y_original.transpose(1, 2)
     
-    print(f"Cerberus Output Shape: {y_cerberus.shape}")
+    print(f"Cerberus Output Shape: {y_cerberus[0].shape}")
     print(f"Original Output Shape: {y_original.shape}")
     
     # Check shapes
-    assert y_cerberus.shape == y_original_transposed.shape, f"Shape mismatch: {y_cerberus.shape} vs {y_original_transposed.shape}"
+    assert y_cerberus[0].shape == y_original_transposed.shape, f"Shape mismatch: {y_cerberus[0].shape} vs {y_original_transposed.shape}"
     
     # Check values
-    diff = (y_cerberus - y_original_transposed).abs().max().item()
+    diff = (y_cerberus[0] - y_original_transposed).abs().max().item()
     print(f"Max difference: {diff}")
     
     assert np.isclose(diff, 0, atol=1e-5), f"Outputs do not match. Max diff: {diff}"

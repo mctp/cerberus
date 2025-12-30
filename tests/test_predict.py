@@ -8,7 +8,12 @@ from unittest.mock import MagicMock, Mock
 from torchmetrics import MetricCollection
 
 from cerberus.interval import parse_intervals, merge_intervals, Interval
-from cerberus.predict import predict_interval, predict_intervals
+from cerberus.predict import (
+    predict_interval, 
+    predict_intervals, 
+    _aggregate_ensemble_outputs, 
+    _aggregate_overlapping_output_intervals
+)
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
 from cerberus.model_manager import ModelManager
@@ -31,7 +36,7 @@ class DummyModel(nn.Module):
     def forward(self, x):
         # x: (B, 4, L)
         # Output (B, 1, output_dim)
-        return torch.ones((x.shape[0], 1, self.output_dim), device=x.device)
+        return (torch.ones((x.shape[0], 1, self.output_dim), device=x.device),)
 
 @pytest.fixture
 def integration_setup(tmp_path):
@@ -116,7 +121,7 @@ class MockModel(nn.Module):
                 diff = curr - self.output_len
                 start = diff // 2
                 out = out[..., start : start + self.output_len]
-        return out
+        return (out,)
 
 class MockTupleModel(nn.Module):
     def __init__(self, value1=1.0, value2=2.0, output_len=None):
@@ -144,7 +149,7 @@ class MockScalarModel(nn.Module):
         
     def forward(self, x):
         # Return (Batch, 1) scalar
-        return torch.ones(x.shape[0], 1) * self.value
+        return (torch.ones(x.shape[0], 1) * self.value,)
 
 @pytest.fixture
 def mock_dataset():
@@ -306,8 +311,9 @@ def test_predict_intervals_valid(integration_setup):
     
     # Output dim is 50. Model returns (B, 1, 50).
     # Aggregation yields (C, n_bins) = (1, 50).
-    assert values.shape == (1, 50)
-    assert np.allclose(values, 1.0)
+    assert isinstance(values, tuple)
+    assert values[0].shape == (1, 50)
+    assert np.allclose(values[0], 1.0)
     
     # Input 500-600 (center 550). Output len 50. 
     # Output interval: 525-575.
@@ -333,8 +339,9 @@ def test_predict_intervals_boundary_skip(integration_setup):
     interval = Interval("chr1", 0, 100)
     values, merged_interval = predict_intervals([interval], dataset, model_manager, predict_config, device="cpu")
     
-    assert values.shape == (1, 50)
-    assert np.allclose(values, 1.0)
+    assert isinstance(values, tuple)
+    assert values[0].shape == (1, 50)
+    assert np.allclose(values[0], 1.0)
     
     assert merged_interval.start == 25
     assert merged_interval.end == 75
@@ -364,7 +371,8 @@ def test_predict_intervals_batching(integration_setup):
     assert merged_interval.start == 1025
     assert merged_interval.end == 1375
     span = 1375 - 1025 # 350
-    assert values.shape == (1, 350)
+    assert isinstance(values, tuple)
+    assert values[0].shape == (1, 350)
     
     # Check filled regions (should be 1.0)
     # Relative starts: 0, 100, 200, 300
@@ -372,13 +380,13 @@ def test_predict_intervals_batching(integration_setup):
     # 0-50, 100-150, 200-250, 300-350 should be 1.0
     # Gaps: 50-100, 150-200, 250-300 should be 0.0
     
-    assert np.allclose(values[0, 0:50], 1.0)
-    assert np.allclose(values[0, 50:100], 0.0)
-    assert np.allclose(values[0, 100:150], 1.0)
-    assert np.allclose(values[0, 150:200], 0.0)
-    assert np.allclose(values[0, 200:250], 1.0)
-    assert np.allclose(values[0, 250:300], 0.0)
-    assert np.allclose(values[0, 300:350], 1.0)
+    assert np.allclose(values[0][0, 0:50], 1.0)
+    assert np.allclose(values[0][0, 50:100], 0.0)
+    assert np.allclose(values[0][0, 100:150], 1.0)
+    assert np.allclose(values[0][0, 150:200], 0.0)
+    assert np.allclose(values[0][0, 200:250], 1.0)
+    assert np.allclose(values[0][0, 250:300], 0.0)
+    assert np.allclose(values[0][0, 300:350], 1.0)
 
 # --- Unit Tests for Logic (from original test_predict3.py) ---
 
@@ -400,8 +408,9 @@ def test_predict_interval_single_model(mock_dataset, mock_model_manager):
     output, out_interval = predict_interval(interval, mock_dataset, mock_model_manager, config, device="cpu")
     
     # Output should be length 60
-    assert output.shape[-1] == 60
-    assert np.allclose(output, np.ones((4, 60)) * 2.0)
+    assert isinstance(output, tuple)
+    assert output[0].shape[-1] == 60
+    assert np.allclose(output[0], np.ones((4, 60)) * 2.0)
     assert out_interval.start == 20
     assert out_interval.end == 80
 
@@ -415,8 +424,9 @@ def test_predict_interval_mean_aggregation(mock_dataset, mock_model_manager):
     
     output, out_interval = predict_interval(interval, mock_dataset, mock_model_manager, config, device="cpu")
     
-    assert output.shape[-1] == 60
-    assert np.allclose(output, np.ones((4, 60)) * 3.0)
+    assert isinstance(output, tuple)
+    assert output[0].shape[-1] == 60
+    assert np.allclose(output[0], np.ones((4, 60)) * 3.0)
     assert out_interval.start == 20
 
 def test_predict_interval_tuple_output(mock_dataset, mock_model_manager):
@@ -459,7 +469,7 @@ def test_predict_intervals_overlap(mock_dataset, mock_model_manager):
             super().__init__()
             self.value = value
         def forward(self, x):
-            return x[:, :, 20:80] * self.value
+            return (x[:, :, 20:80] * self.value,)
 
     model = MockCroppedModel(value=1.0)
     mock_model_manager.get_models.return_value = [model]
@@ -477,15 +487,16 @@ def test_predict_intervals_overlap(mock_dataset, mock_model_manager):
     
     # Range: 20 to 90. Length 70.
     # arr shape: (1, 70)
-    assert arr.shape == (1, 70)
+    assert isinstance(arr, tuple)
+    assert arr[0].shape == (1, 70)
     
     # [20, 30): From Int1 (val 1) -> Indices 0-10
     # [30, 80): Overlap (val 1 and 2) -> Indices 10-60 -> (1+2)/2 = 1.5
     # [80, 90): From Int2 (val 2) -> Indices 60-70
     
-    assert np.allclose(arr[0, 0:10], 1.0)
-    assert np.allclose(arr[0, 10:60], 1.5)
-    assert np.allclose(arr[0, 60:70], 2.0)
+    assert np.allclose(arr[0][0, 0:10], 1.0)
+    assert np.allclose(arr[0][0, 10:60], 1.5)
+    assert np.allclose(arr[0][0, 60:70], 2.0)
 
 def test_predict_intervals_scalar_broadcast(mock_dataset, mock_model_manager):
     # Scalar output
@@ -500,8 +511,9 @@ def test_predict_intervals_scalar_broadcast(mock_dataset, mock_model_manager):
     arr, merged_interval = results
     
     # Output length 60. Scalar should be broadcast to 60.
-    assert arr.shape == (1, 60)
-    assert np.allclose(arr, 5.0)
+    assert isinstance(arr, tuple)
+    assert arr[0].shape == (1, 60)
+    assert np.allclose(arr[0], 5.0)
     assert merged_interval.start == 20
     assert merged_interval.end == 80
 
@@ -542,3 +554,88 @@ def test_predict_intervals_tuple_recursive(mock_dataset, mock_model_manager):
     
     assert merged_interval.start == 20
     assert merged_interval.end == 80
+
+def test_predict_intervals_empty_input(mock_dataset, mock_model_manager):
+    config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
+    with pytest.raises(ValueError, match="No intervals provided"):
+        predict_intervals([], mock_dataset, mock_model_manager, config, device="cpu")
+
+def test_aggregate_ensemble_outputs_empty():
+    with pytest.raises(ValueError, match="No outputs to aggregate"):
+        _aggregate_ensemble_outputs([], method="mean")
+
+def test_aggregate_overlapping_output_intervals_empty():
+    with pytest.raises(ValueError, match="No results to aggregate"):
+        _aggregate_overlapping_output_intervals([], output_bin_size=1, output_len=100)
+
+def test_merged_interval_is_multiple_of_bin_size(mock_dataset, mock_model_manager):
+    # Setup intervals such that merged interval should be multiple of bin_size=10
+    mock_dataset.data_config["output_bin_size"] = 10
+    mock_dataset.data_config["output_len"] = 100
+    
+    # Input len 100. Output len 100.
+    # Interval 1: 0-100. Output 0-100.
+    # Interval 2: 50-150. Output 50-150.
+    # Merged: 0-150.
+    # 150 % 10 == 0.
+    
+    interval_1 = Interval("chr1", 0, 100)
+    interval_2 = Interval("chr1", 50, 150)
+    intervals = [interval_1, interval_2]
+    
+    config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
+    
+    # Mock models
+    class MockModelBin10(nn.Module):
+        def forward(self, x):
+            # Output length 100 // 10 = 10 bins
+            return (torch.ones(x.shape[0], 1, 10),)
+
+    model = MockModelBin10()
+    mock_model_manager.get_models.return_value = [model]
+    
+    # Dataset needs to return inputs for these intervals
+    mock_dataset.get_interval.return_value = {"inputs": torch.ones(4, 100)}
+    
+    values, merged_interval = predict_intervals(intervals, mock_dataset, mock_model_manager, config, device="cpu")
+    
+    merged_len = merged_interval.end - merged_interval.start
+    assert merged_len % 10 == 0
+    assert merged_len == 150
+
+def test_predict_intervals_batching_param(integration_setup):
+    # Test batch_size parameter
+    dataset, model_manager = integration_setup
+    
+    predict_config = cast(PredictConfig, {
+        "stride": 50,
+        "intervals": [],
+        "intervals_paths": [],
+        "use_folds": ["test"],
+        "aggregation": "mean"
+    })
+    
+    intervals = [
+        Interval("chr1", 1000, 1100),
+        Interval("chr1", 1100, 1200),
+        Interval("chr1", 1200, 1300),
+        Interval("chr1", 1300, 1400)
+    ]
+    
+    # Run with batch_size=2
+    values, merged_interval = predict_intervals(
+        intervals, dataset, model_manager, predict_config, device="cpu", batch_size=2
+    )
+    
+    assert merged_interval.start == 1025
+    assert merged_interval.end == 1375
+    assert values[0].shape == (1, 350)
+    
+    # Check values similar to test_predict_intervals_batching
+    assert np.allclose(values[0][0, 0:50], 1.0)
+    assert np.allclose(values[0][0, 50:100], 0.0)
+    assert np.allclose(values[0][0, 100:150], 1.0)
+    assert np.allclose(values[0][0, 150:200], 0.0)
+    assert np.allclose(values[0][0, 200:250], 1.0)
+    assert np.allclose(values[0][0, 250:300], 0.0)
+    assert np.allclose(values[0][0, 300:350], 1.0)

@@ -27,6 +27,7 @@ model = BPNet(
     filters=64,
     n_dilated_layers=9
 )
+# Returns (profile_logits, log_counts)
 ```
 
 ## GlobalProfileCNN (Baseline)
@@ -38,4 +39,4 @@ A baseline architecture based on the "Gopher" model (ResNet-style CNN with globa
 
 ### Key Features
 *   **Structure**: 3 Convolutional Blocks -> Global Dense Bottleneck -> Global Projection -> Final Conv.
-*   **Output**: Predicts signal profiles directly (Single Head).
+*   **Output**: Predicts signal profiles directly (Single Head). Returns a tuple containing the profile tensor.
