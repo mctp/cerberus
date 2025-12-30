@@ -9,9 +9,13 @@ Usage:
     python examples/chip_ar_mdapca2b.py --help
     python examples/chip_ar_mdapca2b.py --batch-size 64 --max-epochs 50
     python examples/chip_ar_mdapca2b.py --multi --batch-size 64
+
+    # Apple Silicon (M1/M2/M3) Recommendation:
+    python examples/chip_ar_mdapca2b.py --accelerator mps --batch-size 64 --num-workers 0
 """
 
 import argparse
+import torch
 from pathlib import Path
 from pprint import pprint
 import torch.nn as nn
@@ -187,13 +191,27 @@ def main():
             # If it's a list like "0,1", keep as string or parse list if needed by PL
             pass
 
-    # Precision settings for NVIDIA Ampere+ (A100/H100)
+    # Hardware-specific optimization
+    accelerator = args.accelerator
+    num_workers = args.num_workers
+
+    # Auto-detect Apple Silicon (MPS)
+    if accelerator == "auto" and torch.backends.mps.is_available():
+        accelerator = "mps"
+
+    if accelerator == "mps":
+        print(f"[INFO] Using Apple Silicon (MPS) acceleration.")
+        # MPS is often unstable with multiprocessing in DataLoaders
+        if num_workers > 0:
+            print(f"[WARN] num_workers={num_workers} may cause instability on MPS. Recommend setting --num-workers 0.")
+    
+    # Precision settings
     precision_args = {
-        "precision": "16-mixed",
-        "matmul_precision": "high",
-        "accelerator": args.accelerator,
+        "precision": "16-mixed", # Mixed precision works well on M2
+        "matmul_precision": "high", # Mainly for NVIDIA Tensor Cores
+        "accelerator": accelerator,
         "devices": devices,
-        "strategy": "ddp" if args.accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto"
+        "strategy": "ddp" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto"
     }
 
     if args.multi:
