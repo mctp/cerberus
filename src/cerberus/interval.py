@@ -30,6 +30,22 @@ class Interval:
         """Returns a string representation: 'chrom:start-end(strand)'."""
         return f"{self.chrom}:{self.start}-{self.end}({self.strand})"
 
+    def center(self, width: int) -> "Interval":
+        """
+        Returns a new interval of the specified width, centered within this interval.
+        
+        Args:
+            width: The desired length of the new interval.
+            
+        Returns:
+            A new Interval object centered on the current one.
+        """
+        current_len = len(self)
+        offset = (current_len - width) // 2
+        new_start = self.start + offset
+        new_end = new_start + width
+        return Interval(self.chrom, new_start, new_end, self.strand)
+
 
 def parse_intervals(
     intervals: list[str], interval_paths: list[Path], genome_config: "GenomeConfig"

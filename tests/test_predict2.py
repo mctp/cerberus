@@ -10,7 +10,7 @@ from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
 from cerberus.genome import create_genome_config
 from cerberus.config import DataConfig, SamplerConfig, ModelConfig, TrainConfig, PredictConfig
-from cerberus.predict2 import predict_interval
+from cerberus.predict2 import predict_intervals, predict_single_interval_matrix
 from cerberus.model_manager import ModelManager
 
 class DummyModel(nn.Module):
@@ -87,7 +87,7 @@ def predict2_setup(tmp_path):
     
     return dataset, model_manager
 
-def test_predict_interval_valid(predict2_setup):
+def test_predict_intervals_valid(predict2_setup):
     dataset, model_manager = predict2_setup
     
     predict_config = cast(PredictConfig, {
@@ -99,8 +99,8 @@ def test_predict_interval_valid(predict2_setup):
     })
     
     interval = Interval("chr1", 500, 600)
-    # Using argument order: interval, dataset, model_manager, predict_config
-    gen = predict_interval(interval, dataset, model_manager, predict_config, device="cpu")
+    # Using argument order: intervals, dataset, model_manager, predict_config
+    gen = predict_intervals([interval], dataset, model_manager, predict_config, device="cpu")
     
     results = list(gen)
     assert len(results) > 0
@@ -108,7 +108,7 @@ def test_predict_interval_valid(predict2_setup):
     assert total_len == 100
     assert all(r[3] == 1.0 for r in results)
 
-def test_predict_interval_boundary_skip(predict2_setup):
+def test_predict_intervals_boundary_skip(predict2_setup):
     dataset, model_manager = predict2_setup
     
     predict_config = cast(PredictConfig, {
@@ -124,7 +124,7 @@ def test_predict_interval_boundary_skip(predict2_setup):
     # Second window (25 to 125) should be valid (output 50-100).
     
     interval = Interval("chr1", 0, 100)
-    gen = predict_interval(interval, dataset, model_manager, predict_config, device="cpu")
+    gen = predict_intervals([interval], dataset, model_manager, predict_config, device="cpu")
     results = list(gen)
     
     # Check that we got results
@@ -176,7 +176,7 @@ def test_predict_single_interval_matrix(tmp_path):
         genome_config, 
         data_config, 
         sampler_config,
-        target_signal_extractor=MockSignalExtractor() # Provide dummy targets to avoid Bin transform crash
+        target_signal_extractor=MockSignalExtractor()
     )
     
     # Model output dim = 50 // 10 = 5
@@ -211,20 +211,20 @@ def test_predict_single_interval_matrix(tmp_path):
     )
     
     predict_config = cast(PredictConfig, {
-        "stride": 50, # Multiple of 10
+        "stride": 50,
         "intervals": [],
         "intervals_paths": [],
         "use_folds": ["test"],
         "aggregation": "mean"
     })
     
-    interval = Interval("chr1", 500, 600) # Length 100, multiple of 10
+    interval = Interval("chr1", 500, 600)
     
     # Test Binned
     arr_binned = predict_single_interval_matrix(
         interval, dataset, model_manager, predict_config, device="cpu", resolution="binned"
     )
-    assert arr_binned.shape == (10,) # 100 // 10
+    assert arr_binned.shape == (10,)
     assert np.allclose(arr_binned, 1.0)
     
     # Test BP
@@ -234,7 +234,42 @@ def test_predict_single_interval_matrix(tmp_path):
     assert arr_bp.shape == (100,)
     assert np.allclose(arr_bp, 1.0)
     
-    # Verify expansion logic manually
-    # If we had [1, 2] -> [1..1, 2..2]
-    # Mocking return
-    # ... assuming implementation is correct based on code read.
+def test_predict_intervals_batching(predict2_setup):
+    # Test multiple short intervals to ensure they are batched together
+    dataset, model_manager = predict2_setup
+    
+    predict_config = cast(PredictConfig, {
+        "stride": 50,
+        "intervals": [],
+        "intervals_paths": [],
+        "use_folds": ["test"],
+        "aggregation": "mean"
+    })
+    
+    # Create 4 small intervals of length 50 (output_len)
+    # output_bin_size is 1
+    # Each interval should produce 1 window
+    # Batch size is 64, so all 4 should be processed in one batch if logic works
+    
+    intervals = [
+        Interval("chr1", 1000, 1050),
+        Interval("chr1", 1100, 1150),
+        Interval("chr1", 1200, 1250),
+        Interval("chr1", 1300, 1350)
+    ]
+    
+    gen = predict_intervals(intervals, dataset, model_manager, predict_config, batch_size=4, device="cpu")
+    results = list(gen)
+    
+    # 4 intervals * 50 bins each = 200 tuples
+    assert len(results) == 200
+    assert all(r[3] == 1.0 for r in results)
+    
+    # Check that we have results for all intervals
+    result_starts = set(r[1] for r in results)
+    # Each interval starts at 1000, 1100, 1200, 1300
+    # and has bins 1000..1049, etc.
+    assert 1000 in result_starts
+    assert 1100 in result_starts
+    assert 1200 in result_starts
+    assert 1300 in result_starts
