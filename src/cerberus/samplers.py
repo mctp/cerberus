@@ -31,6 +31,8 @@ class Sampler(Protocol):
         self, test_fold: int | None = None, val_fold: int | None = None
     ) -> tuple["Sampler", "Sampler", "Sampler"]:
         ...
+    def resolve_interval(self, query: str | tuple | Interval) -> Interval:
+        ...
 
 
 class BaseSampler(Sampler):
@@ -112,6 +114,54 @@ class BaseSampler(Sampler):
             self._subset(val_indices),
             self._subset(test_indices),
         )
+
+    def resolve_interval(self, query: str | tuple | Interval) -> Interval:
+        """
+        Resolves a query into an Interval object.
+
+        Supported formats:
+        - Interval object: returned as is.
+        - string: "chrom:start-end" (e.g. "chr1:100-200")
+        - tuple: (chrom, start, end) (e.g. ("chr1", 100, 200))
+        """
+        if isinstance(query, Interval):
+            return query
+
+        if isinstance(query, str):
+            try:
+                chrom, coords = query.split(":")
+                start, end = map(int, coords.split("-"))
+                return Interval(chrom, start, end)
+            except ValueError:
+                raise ValueError(f"Invalid interval string format: {query}. Expected 'chrom:start-end'.")
+
+        if isinstance(query, (tuple, list)):
+            if len(query) < 3:
+                raise ValueError(f"Invalid interval tuple: {query}. Expected (chrom, start, end).")
+            return Interval(str(query[0]), int(query[1]), int(query[2]))
+
+        raise TypeError(f"Unsupported interval query type: {type(query)}")
+
+
+class DummySampler(BaseSampler):
+    """
+    A dummy sampler that does not contain any intervals but provides interval resolution.
+    Used when no sampler config is provided.
+    """
+    def __init__(self, chrom_sizes: dict[str, int]):
+        self.chrom_sizes = chrom_sizes
+        self.exclude_intervals = {}
+        self.folds = []
+        self._intervals = []
+
+    def __iter__(self):
+        return iter([])
+
+    def __len__(self):
+        return 0
+
+    def __getitem__(self, idx: int):
+        raise NotImplementedError("DummySampler does not support indexing.")
 
 
 class SubsetSampler(BaseSampler):
@@ -484,6 +534,9 @@ def create_sampler(
             exclude_intervals=exclude_intervals,
             folds=folds,
         )
+
+    elif sampler_type == "dummy":
+        return DummySampler(chrom_sizes=chrom_sizes)
 
     elif sampler_type == "multi":
         samplers = []

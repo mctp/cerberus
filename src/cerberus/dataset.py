@@ -18,6 +18,7 @@ from .genome import GenomeConfig, create_genome_folds
 from .sequence import SequenceExtractor, InMemorySequenceExtractor, BaseSequenceExtractor
 from .signal import SignalExtractor, InMemorySignalExtractor, BaseSignalExtractor
 from .transform import DataTransform, Compose, create_default_transforms
+from .interval import Interval
 
 
 class CerberusDataset(Dataset):
@@ -185,22 +186,24 @@ class CerberusDataset(Dataset):
         """Returns the total number of samples available."""
         return len(self.sampler)
 
-    def __getitem__(self, idx: int) -> dict[str, Any]:
+    def get_interval(self, query: Any) -> dict[str, Any]:
         """
-        Retrieves a sample at the given index.
+        Retrieves inputs and targets for a specific interval, side-stepping the sampler.
+        Resolves query into an Interval object first.
 
         Args:
-            idx: Index of the sample to retrieve.
+            query: Interval object, string "chr:start-end", or tuple (chr, start, end).
 
         Returns:
-            dict: A dictionary containing:
-                - 'inputs': Tensor of shape (Channels, Length). Concatenation of sequence (4 channels)
-                            and optional input signals.
-                - 'targets': Tensor of shape (Target_Channels, Output_Length).
-                - 'intervals': String representation of the genomic interval.
+            dict: Same structure as __getitem__.
         """
-        interval = self.sampler[idx]
+        interval = self.sampler.resolve_interval(query)
+        return self._get_interval(interval)
 
+    def _get_interval(self, interval: Interval) -> dict[str, Any]:
+        """
+        Internal method to extract data for a resolved interval.
+        """
         # Extract inputs
         input_tensors = []
         
@@ -230,6 +233,23 @@ class CerberusDataset(Dataset):
             "targets": targets,
             "intervals": str(interval),
         }
+
+    def __getitem__(self, idx: int) -> dict[str, Any]:
+        """
+        Retrieves a sample at the given index.
+
+        Args:
+            idx: Index of the sample to retrieve.
+
+        Returns:
+            dict: A dictionary containing:
+                - 'inputs': Tensor of shape (Channels, Length). Concatenation of sequence (4 channels)
+                            and optional input signals.
+                - 'targets': Tensor of shape (Target_Channels, Output_Length).
+                - 'intervals': String representation of the genomic interval.
+        """
+        interval = self.sampler[idx]
+        return self._get_interval(interval)
 
     def __getitems__(self, indices: list[int]):
         """Batch retrieval optimization (optional)."""

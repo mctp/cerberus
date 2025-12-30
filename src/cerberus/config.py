@@ -406,6 +406,9 @@ def validate_sampler_config(config: SamplerConfig) -> SamplerConfig:
             raise ValueError(
                 f"SlidingWindowSampler args missing required keys: {missing}"
             )
+            
+    elif config["sampler_type"] == "dummy":
+        pass
 
     return {
         "sampler_type": config["sampler_type"],
