@@ -1,9 +1,7 @@
 import torch
-import torch.nn as nn
-from typing import List, Tuple, Union, Any, cast, Dict, Iterable
+from typing import List, Tuple, Any, Iterable
 import itertools
 import numpy as np
-from collections import defaultdict
 
 from cerberus.interval import Interval
 from cerberus.dataset import CerberusDataset
@@ -258,3 +256,66 @@ def _aggregate_tensor_track_values(
     final_values = accumulator / counts
     
     return final_values, merged_interval
+
+
+def predict_output_intervals(
+    intervals: Iterable[Interval],
+    dataset: CerberusDataset,
+    model_manager: ModelManager,
+    predict_config: PredictConfig,
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    batch_size: int = 64,
+) -> List[Tuple[Any, Interval]]:
+    """
+    Predicts outputs for a list of target intervals by tiling them with input intervals.
+
+    For each target interval, this function generates the necessary input intervals to cover it,
+    runs the prediction (using predict_intervals), and returns the aggregated result.
+
+    Args:
+        intervals: Iterable of target intervals.
+        dataset: CerberusDataset instance containing data configuration.
+        model_manager: ModelManager instance for retrieving models.
+        predict_config: PredictConfig instance containing 'stride'.
+        device: Device to run models on.
+        batch_size: Number of intervals to process in each batch.
+
+    Returns:
+        List[Tuple[Any, Interval]]: A list of tuples, each containing the aggregated output
+        and the merged genomic interval for a target interval.
+    """
+    input_len = dataset.data_config["input_len"]
+    output_len = dataset.data_config["output_len"]
+    stride = predict_config["stride"]
+
+    offset = (input_len - output_len) // 2
+
+    results = []
+
+    for target in intervals:
+        target_input_intervals = []
+        current_start = target.start
+
+        while current_start < target.end:
+            # Calculate input interval corresponding to output window at current_start
+            input_start = current_start - offset
+            input_end = input_start + input_len
+
+            target_input_intervals.append(
+                Interval(target.chrom, input_start, input_end, target.strand)
+            )
+
+            current_start += stride
+
+        if target_input_intervals:
+            prediction = predict_intervals(
+                target_input_intervals,
+                dataset,
+                model_manager,
+                predict_config,
+                device,
+                batch_size,
+            )
+            results.append(prediction)
+
+    return results
