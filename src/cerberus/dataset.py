@@ -44,7 +44,9 @@ class CerberusDataset(Dataset):
     input_signal_extractor: BaseSignalExtractor | None
     target_signal_extractor: BaseSignalExtractor | None
     transforms: Compose
+    deterministic_transforms: Compose
     in_memory: bool
+    is_train: bool
 
     def __init__(
         self,
@@ -57,7 +59,9 @@ class CerberusDataset(Dataset):
         sampler: Sampler | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
         transforms: list[DataTransform] | None = None,
+        deterministic_transforms: list[DataTransform] | None = None,
         in_memory: bool = False,
+        is_train: bool = True,
     ):
         """
         Initializes the CerberusDataset.
@@ -71,8 +75,11 @@ class CerberusDataset(Dataset):
             target_signal_extractor: Optional custom target signal extractor. If None, created based on config.
             sampler: Optional custom sampler. If None, created based on config.
             exclude_intervals: Optional pre-computed exclude intervals. If None, loaded from config.
-            transforms: Optional list of transforms. If None, defaults are created from data_config.
+            transforms: Optional list of transforms for training. If None, defaults are created from data_config.
+            deterministic_transforms: Optional list of deterministic transforms for val/test. 
+                                      Must be provided if transforms is provided.
             in_memory: Whether to load data into memory (default: False).
+            is_train: Whether this dataset is used for training (enables random transforms).
         
         Raises:
             ValueError: If configurations are invalid.
@@ -82,6 +89,7 @@ class CerberusDataset(Dataset):
         self.sampler_config = validate_sampler_config(sampler_config)
         self.data_config = validate_data_config(data_config)
         self.in_memory = in_memory
+        self.is_train = is_train
 
         validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
 
@@ -160,12 +168,22 @@ class CerberusDataset(Dataset):
             )
 
         # Initialize Transforms
-        if transforms:
+        if (transforms is None) != (deterministic_transforms is None):
+            raise ValueError(
+                "Both 'transforms' and 'deterministic_transforms' must be provided, or neither (to use defaults)."
+            )
+
+        if transforms and deterministic_transforms:
             self.transforms = Compose(transforms)
+            self.deterministic_transforms = Compose(deterministic_transforms)
         else:
             # Auto-create from DataConfig
-            defaults = create_default_transforms(self.data_config)
-            self.transforms = Compose(defaults)
+            self.transforms = Compose(
+                create_default_transforms(self.data_config, deterministic=False)
+            )
+            self.deterministic_transforms = Compose(
+                create_default_transforms(self.data_config, deterministic=True)
+            )
 
     def _get_exclude_intervals(self) -> dict[str, InterLap]:
         """Loads excluded intervals from files specified in config."""
@@ -225,8 +243,16 @@ class CerberusDataset(Dataset):
             targets = torch.empty(0)
 
         # Apply transforms
-        if self.transforms:
-            inputs, targets, interval = self.transforms(inputs, targets, interval)
+        if self.is_train:
+            if self.transforms:
+                inputs, targets, interval = self.transforms(
+                    inputs, targets, interval
+                )
+        else:
+            if self.deterministic_transforms:
+                inputs, targets, interval = self.deterministic_transforms(
+                    inputs, targets, interval
+                )
 
         return {
             "inputs": inputs,
@@ -256,7 +282,7 @@ class CerberusDataset(Dataset):
         # Batch optimization if needed, for now loop
         return [self.__getitem__(idx) for idx in indices]
 
-    def _subset(self, sampler: Sampler) -> "CerberusDataset":
+    def _subset(self, sampler: Sampler, is_train: bool = True) -> "CerberusDataset":
         """
         Internal method to create a new dataset instance using the provided sampler.
         Shares the sequence extractor, configuration, and exclude intervals with the current instance.
@@ -270,8 +296,12 @@ class CerberusDataset(Dataset):
             target_signal_extractor=self.target_signal_extractor,
             sampler=sampler,
             exclude_intervals=self.exclude_intervals,
-            transforms=self.transforms.transforms if self.transforms else None,
+            transforms=(
+                self.transforms.transforms if self.transforms else None),
+            deterministic_transforms=(
+                self.deterministic_transforms.transforms if self.deterministic_transforms else None),
             in_memory=self.in_memory,
+            is_train=is_train,
         )
 
     def split_folds(
@@ -295,9 +325,9 @@ class CerberusDataset(Dataset):
         )
 
         return (
-            self._subset(train_sampler),
-            self._subset(val_sampler),
-            self._subset(test_sampler),
+            self._subset(train_sampler, is_train=True),
+            self._subset(val_sampler, is_train=False),
+            self._subset(test_sampler, is_train=False),
         )
 
     def resample(self, seed: int | None = None):

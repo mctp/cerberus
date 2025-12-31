@@ -298,7 +298,9 @@ class Bin:
         return inputs, targets, interval
 
 
-def create_default_transforms(data_config: DataConfig) -> list[DataTransform]:
+def create_default_transforms(
+    data_config: DataConfig, deterministic: bool = False
+) -> list[DataTransform]:
     """
     Creates a list of default transforms based on DataConfig options.
     
@@ -311,6 +313,7 @@ def create_default_transforms(data_config: DataConfig) -> list[DataTransform]:
 
     Args:
         data_config: Dictionary containing transform parameters.
+        deterministic: If True, disables random augmentations (jitter=0, no RC).
     
     Returns:
         list[DataTransform]: List of instantiated transforms.
@@ -318,12 +321,13 @@ def create_default_transforms(data_config: DataConfig) -> list[DataTransform]:
     transforms: list[DataTransform] = []
 
     # 1. Jitter (random)
-    transforms.append(
-        Jitter(input_len=data_config["input_len"], max_jitter=data_config["max_jitter"])
-    )
+    # If deterministic, force max_jitter=0 (center crop)
+    max_jitter = 0 if deterministic else data_config["max_jitter"]
+    transforms.append(Jitter(input_len=data_config["input_len"], max_jitter=max_jitter))
 
     # 2. Reverse Complement (random)
-    if data_config["reverse_complement"]:
+    # If deterministic, skip RC
+    if data_config["reverse_complement"] and not deterministic:
         transforms.append(ReverseComplement())
 
     # 3. Target Cropping (deterministic)
