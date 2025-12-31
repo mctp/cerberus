@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import pytest
 from cerberus.models.bpnet import BPNet, _ResidualBlock
-from cerberus.loss import PoissonMultinomialLoss, BPNetLoss, DecoupledFlattenedPearsonCorrCoef, DecoupledMeanSquaredError, get_bpnet_metrics
+from cerberus.loss import PoissonMultinomialLoss, BPNetLoss, DecoupledFlattenedPearsonCorrCoef, DecoupledMeanSquaredError, BPNetMetricCollection
 
 def test_bpnet_residual_block_cropping():
     filters = 16
@@ -180,8 +180,8 @@ def test_decoupled_pearson_metric():
     # We can't easily verify the pearson value without re-implementing, 
     # but we checked no crash.
 
-def test_get_bpnet_metrics():
-    metrics = get_bpnet_metrics(num_channels=1)
+def test_bpnet_metric_collection():
+    metrics = BPNetMetricCollection(num_channels=1)
     assert "pearson" in metrics
     assert isinstance(metrics["pearson"], DecoupledFlattenedPearsonCorrCoef)
     assert "mse" in metrics

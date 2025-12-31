@@ -3,16 +3,16 @@ import pytest
 from torchmetrics import PearsonCorrCoef
 import torch.nn as nn
 from torchmetrics import MeanSquaredError
-from cerberus.loss import BPNetLoss, PoissonMultinomialLoss, FlattenedPearsonCorrCoef, get_default_metrics, get_default_loss
+from cerberus.loss import BPNetLoss, PoissonMultinomialLoss, FlattenedPearsonCorrCoef, DefaultMetricCollection, TupleAwarePoissonNLLLoss
 
-def test_get_default_loss():
-    loss = get_default_loss()
+def test_tuple_aware_poisson_nll_loss():
+    loss = TupleAwarePoissonNLLLoss(log_input=True, full=False)
     assert isinstance(loss, nn.PoissonNLLLoss)
     assert loss.log_input is True
     assert loss.full is False
 
-def test_get_default_metrics():
-    metrics = get_default_metrics(num_channels=3)
+def test_default_metric_collection():
+    metrics = DefaultMetricCollection(num_channels=3)
     assert "pearson" in metrics
     assert "mse" in metrics
     assert isinstance(metrics["pearson"], FlattenedPearsonCorrCoef)

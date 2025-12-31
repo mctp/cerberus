@@ -19,7 +19,7 @@ from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
 from cerberus.models.bpnet import BPNet
-from cerberus.loss import BPNetLoss, get_bpnet_metrics
+from cerberus.loss import BPNetLoss, BPNetMetricCollection
 from cerberus.module import CerberusModule
 from cerberus.entrypoints import train
 
@@ -179,7 +179,7 @@ model = BPNet(
 
 # Define Loss and Metrics
 criterion = BPNetLoss() 
-metrics = get_bpnet_metrics(num_channels=1)
+metrics = BPNetMetricCollection(num_channels=1)
 
 # Create Lightning Module
 module = CerberusModule(

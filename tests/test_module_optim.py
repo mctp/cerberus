@@ -4,7 +4,7 @@ import torch.nn as nn
 from typing import cast
 from cerberus.module import CerberusModule
 from cerberus.config import TrainConfig
-from cerberus.loss import get_default_loss, get_default_metrics
+from cerberus.loss import TupleAwarePoissonNLLLoss, DefaultMetricCollection
 from timm.scheduler.cosine_lr import CosineLRScheduler
 
 class DummyModel(nn.Module):
@@ -32,7 +32,7 @@ def base_config():
 
 def test_configure_optimizers_default(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=get_default_loss(), metrics=get_default_metrics())
+    module = CerberusModule(model, base_config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     
     optim_conf = module.configure_optimizers()
     
@@ -44,7 +44,7 @@ def test_configure_optimizers_sgd(base_config):
     config = cast(TrainConfig, base_config.copy())
     config["optimizer"] = "sgd"
     model = DummyModel()
-    module = CerberusModule(model, config, criterion=get_default_loss(), metrics=get_default_metrics())
+    module = CerberusModule(model, config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     
     optim_conf = module.configure_optimizers()
     assert isinstance(optim_conf["optimizer"], torch.optim.SGD)
@@ -61,7 +61,7 @@ def test_configure_optimizers_with_cosine_scheduler(base_config):
     }
     
     model = DummyModel()
-    module = CerberusModule(model, config, criterion=get_default_loss(), metrics=get_default_metrics())
+    module = CerberusModule(model, config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     
     optim_conf = module.configure_optimizers()
     
@@ -84,7 +84,7 @@ def test_configure_optimizers_invalid_opt(base_config):
     config["optimizer"] = "invalid_opt_name_xyz" 
     
     model = DummyModel()
-    module = CerberusModule(model, config, criterion=get_default_loss(), metrics=get_default_metrics())
+    module = CerberusModule(model, config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     
     # timm raises Exception/KeyError
     with pytest.raises(Exception):

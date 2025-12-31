@@ -28,7 +28,7 @@ from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.genome import create_genome_config
 from cerberus.models.baseline_gopher import GlobalProfileCNN
 from cerberus.models.bpnet import BPNet
-from cerberus.loss import get_default_metrics, TupleAwarePoissonNLLLoss, BPNetLoss, get_bpnet_metrics
+from cerberus.loss import DefaultMetricCollection, TupleAwarePoissonNLLLoss, BPNetLoss, BPNetMetricCollection
 from cerberus.entrypoints import train_fold, train_multi
 
 def get_args():
@@ -179,7 +179,7 @@ def main():
                 "flatten_channels": False,
                 "implicit_log_targets": log_transform # Should be False if data not transformed
             },
-            "metrics_cls": cast(type[MetricCollection], get_bpnet_metrics),
+            "metrics_cls": BPNetMetricCollection,
             "metrics_args": {"num_channels": 1},
             "model_args": {
                 "input_channels": ["A", "C", "G", "T"],
@@ -196,7 +196,7 @@ def main():
             "loss_cls": TupleAwarePoissonNLLLoss,
             "loss_args": {"log_input": True, "full": False},
             # Cast function to expected type for static analysis
-            "metrics_cls": cast(type[MetricCollection], get_default_metrics),
+            "metrics_cls": DefaultMetricCollection,
             "metrics_args": {"num_channels": 1},
             "model_args": {
                 "input_channels": ["A", "C", "G", "T"],

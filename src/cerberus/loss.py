@@ -90,29 +90,28 @@ class TupleAwareMeanSquaredError(MeanSquaredError):
         super().update(preds, target)
 
 
-def get_default_metrics(num_channels: int = 1) -> MetricCollection:
+class DefaultMetricCollection(MetricCollection):
     """
-    Returns the default MetricCollection used for training/validation.
-    
-    Args:
-        num_channels: Number of output channels.
+    Default MetricCollection used for training/validation.
     """
-    return MetricCollection({
-        "pearson": FlattenedPearsonCorrCoef(num_channels=num_channels),
-        # MSE is element-wise, so Global MSE is equivalent to Mean Per-Channel MSE
-        # (assuming equal number of elements per channel). Thus no custom flattening is needed.
-        "mse": TupleAwareMeanSquaredError(),
-    })
+    def __init__(self, num_channels: int = 1):
+        super().__init__({
+            "pearson": FlattenedPearsonCorrCoef(num_channels=num_channels),
+            # MSE is element-wise, so Global MSE is equivalent to Mean Per-Channel MSE
+            # (assuming equal number of elements per channel). Thus no custom flattening is needed.
+            "mse": TupleAwareMeanSquaredError(),
+        })
 
 
-def get_bpnet_metrics(num_channels: int = 1) -> MetricCollection:
+class BPNetMetricCollection(MetricCollection):
     """
-    Returns MetricCollection for BPNet models (using DecoupledFlattenedPearsonCorrCoef).
+    MetricCollection for BPNet models (using DecoupledFlattenedPearsonCorrCoef).
     """
-    return MetricCollection({
-        "pearson": DecoupledFlattenedPearsonCorrCoef(num_channels=num_channels),
-        "mse": DecoupledMeanSquaredError(),
-    })
+    def __init__(self, num_channels: int = 1):
+        super().__init__({
+            "pearson": DecoupledFlattenedPearsonCorrCoef(num_channels=num_channels),
+            "mse": DecoupledMeanSquaredError(),
+        })
 
 
 class TupleAwarePoissonNLLLoss(nn.PoissonNLLLoss):
@@ -125,9 +124,6 @@ class TupleAwarePoissonNLLLoss(nn.PoissonNLLLoss):
         return super().forward(log_input, target)
 
 
-def get_default_loss() -> nn.Module:
-    """Returns the default loss function (PoissonNLLLoss)."""
-    return TupleAwarePoissonNLLLoss(log_input=True, full=False)
 
 
 class BPNetLoss(nn.Module):

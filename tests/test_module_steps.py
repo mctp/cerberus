@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from unittest.mock import MagicMock
 from cerberus.module import CerberusModule
-from cerberus.loss import get_default_loss, get_default_metrics
+from cerberus.loss import TupleAwarePoissonNLLLoss, DefaultMetricCollection
 
 class DummyModel(nn.Module):
     def __init__(self):
@@ -29,7 +29,7 @@ def base_config():
 
 def test_training_step(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=get_default_loss(), metrics=get_default_metrics())
+    module = CerberusModule(model, base_config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     module.log = MagicMock()
     
     # Batch: inputs (B, 10), targets (B, 1, 1)
@@ -48,7 +48,7 @@ def test_training_step(base_config):
 
 def test_validation_step(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=get_default_loss(), metrics=get_default_metrics())
+    module = CerberusModule(model, base_config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     module.log = MagicMock()
     
     batch = {
@@ -63,7 +63,7 @@ def test_validation_step(base_config):
 
 def test_on_validation_epoch_end(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=get_default_loss(), metrics=get_default_metrics())
+    module = CerberusModule(model, base_config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     module.log_dict = MagicMock()
     
     # Simulate some updates

@@ -19,7 +19,7 @@ from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
 from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.loss import get_default_loss, get_default_metrics
+from cerberus.loss import TupleAwarePoissonNLLLoss, DefaultMetricCollection
 from cerberus.module import CerberusModule
 from cerberus.entrypoints import train
 
@@ -173,8 +173,8 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
 model = GlobalProfileCNN(input_len=2048, output_len=1024, output_bin_size=4)
 
 # Define Loss and Metrics
-criterion = get_default_loss() # PoissonNLLLoss
-metrics = get_default_metrics(num_channels=1)
+criterion = TupleAwarePoissonNLLLoss(log_input=True, full=False)
+metrics = DefaultMetricCollection(num_channels=1)
 
 # Create Lightning Module
 module = CerberusModule(

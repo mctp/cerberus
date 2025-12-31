@@ -16,7 +16,7 @@ from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.datamodule import CerberusDataModule
 from cerberus.dataset import CerberusDataset
 from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.loss import get_default_loss, get_default_metrics
+from cerberus.loss import TupleAwarePoissonNLLLoss, DefaultMetricCollection
 from cerberus.module import CerberusModule
 from cerberus.entrypoints import train
 
@@ -146,8 +146,8 @@ def analyze_predictions():
     module = CerberusModule(
         model=model,
         train_config=train_config,
-        criterion=get_default_loss(),
-        metrics=get_default_metrics(num_channels=1)
+        criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False),
+        metrics=DefaultMetricCollection(num_channels=1)
     )
 
     # Train

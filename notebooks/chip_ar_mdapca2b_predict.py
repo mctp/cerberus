@@ -30,7 +30,7 @@ from cerberus.config import (
 )
 from cerberus.genome import create_genome_config
 from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.loss import get_default_metrics, TupleAwarePoissonNLLLoss
+from cerberus.loss import DefaultMetricCollection, TupleAwarePoissonNLLLoss
 from cerberus.dataset import CerberusDataset
 from cerberus.model_manager import ModelManager
 from cerberus.predict import predict_intervals
@@ -128,7 +128,7 @@ model_config: ModelConfig = {
     "model_cls": GlobalProfileCNN,
     "loss_cls": TupleAwarePoissonNLLLoss,
     "loss_args": {"log_input": True, "full": False},
-    "metrics_cls": cast(type[MetricCollection], get_default_metrics),
+    "metrics_cls": DefaultMetricCollection,
     "metrics_args": {"num_channels": 1},
     "model_args": {
         "input_channels": ["A", "C", "G", "T"],

@@ -31,7 +31,7 @@ from cerberus.config import (
 )
 from cerberus.genome import create_genome_config
 from cerberus.models.bpnet import BPNet
-from cerberus.loss import BPNetLoss, get_bpnet_metrics
+from cerberus.loss import BPNetLoss, BPNetMetricCollection
 from cerberus.dataset import CerberusDataset
 from cerberus.model_manager import ModelManager
 from cerberus.predict import predict_intervals
@@ -97,7 +97,7 @@ data_config: DataConfig = {
     "targets": {"signal": dataset_files["bigwig"]},
     "input_len": input_len,
     "output_len": output_len, 
-    "max_jitter": 128,        # Matches training config (ignored if is_train=False)
+    "max_jitter": 128, # Matches training config (ignored if is_train=False)
     "output_bin_size": output_bin_size,
     "encoding": "ACGT",
     "log_transform": log_transform,
@@ -119,7 +119,7 @@ sampler_config: SamplerConfig = {
     }
 }
 
-# Model/Train Config
+# Train Config
 train_config: TrainConfig = {
     "batch_size": 64,
     "max_epochs": 1,
@@ -132,6 +132,7 @@ train_config: TrainConfig = {
     "scheduler_args": {}
 }
 
+# Model Config for BPNet
 model_config: ModelConfig = {
     "name": "BPNet",
     "model_cls": BPNet,
@@ -141,7 +142,7 @@ model_config: ModelConfig = {
         "flatten_channels": False,
         "implicit_log_targets": log_transform
     },
-    "metrics_cls": cast(type[MetricCollection], get_bpnet_metrics),
+    "metrics_cls": BPNetMetricCollection,
     "metrics_args": {"num_channels": 1},
     "model_args": {
         "input_channels": ["A", "C", "G", "T"],
