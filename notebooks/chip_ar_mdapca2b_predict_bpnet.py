@@ -7,7 +7,6 @@
 # %%
 import torch
 import torch.nn.functional as F
-import numpy as np
 import matplotlib.pyplot as plt
 from typing import cast
 from torchmetrics import MetricCollection
@@ -98,18 +97,23 @@ data_config: DataConfig = {
     "targets": {"signal": dataset_files["bigwig"]},
     "input_len": input_len,
     "output_len": output_len, 
-    "max_jitter": 0,          # Disabled for prediction
+    "max_jitter": 128,        # Matches training config (ignored if is_train=False)
     "output_bin_size": output_bin_size,
     "encoding": "ACGT",
     "log_transform": log_transform,
-    "reverse_complement": False, # Disabled for prediction
+    "reverse_complement": True, # Matches training config (ignored if is_train=False)
     "use_sequence": True,
 }
 
 # Sampler Config
+# Note: For prediction, we want exact windows centered on peaks.
+# However, if we reuse training configs, we might have padded_size = input_len + 2*max_jitter.
+# The Jitter transform (when deterministic) performs a center crop.
+# So we can define padded_size to accommodate jitter if we want to reuse config exactly.
+# But here we define a prediction-specific sampler config.
 sampler_config: SamplerConfig = {
     "sampler_type": "interval",
-    "padded_size": input_len, # Exact input length
+    "padded_size": input_len + 2 * 128, # Matches training setup
     "sampler_args": {
         "intervals_path": dataset_files["narrowPeak"]
     }
@@ -154,10 +158,13 @@ model_config: ModelConfig = {
 
 # %%
 print("Initializing Dataset...")
+# We set is_train=False to ensure deterministic behavior (disables jitter/RC)
+# even though the config has them enabled.
 dataset = CerberusDataset(
     genome_config=genome_config,
     data_config=data_config,
-    sampler_config=sampler_config
+    sampler_config=sampler_config,
+    is_train=False 
 )
 
 print("Splitting folds (Test Fold = 0)...")

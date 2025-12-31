@@ -92,11 +92,11 @@ data_config: DataConfig = {
     "targets": {"signal": dataset_files["bigwig"]},
     "input_len": input_len,
     "output_len": output_len, 
-    "max_jitter": 0, # Disabled for prediction
+    "max_jitter": 128,        # Matches training config (ignored if is_train=False)
     "output_bin_size": 4,
     "encoding": "ACGT",
-    "log_transform": True, # Keep consistent with training
-    "reverse_complement": False, # Disabled for prediction
+    "log_transform": True, 
+    "reverse_complement": True, # Matches training config (ignored if is_train=False)
     "use_sequence": True,
 }
 
@@ -104,7 +104,7 @@ data_config: DataConfig = {
 # We use the peak intervals from the dataset
 sampler_config: SamplerConfig = {
     "sampler_type": "interval",
-    "padded_size": input_len, # Exact input length
+    "padded_size": input_len + 2 * 128, # Matches training setup
     "sampler_args": {
         "intervals_path": dataset_files["narrowPeak"]
     }
@@ -143,10 +143,13 @@ model_config: ModelConfig = {
 
 # %%
 print("Initializing Dataset...")
+# We set is_train=False to ensure deterministic behavior (disables jitter/RC)
+# even though the config has them enabled.
 dataset = CerberusDataset(
     genome_config=genome_config,
     data_config=data_config,
-    sampler_config=sampler_config
+    sampler_config=sampler_config,
+    is_train=False
 )
 
 print("Splitting folds (Test Fold = 0)...")
