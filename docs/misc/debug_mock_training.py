@@ -15,8 +15,9 @@ if str(project_root) not in sys.path:
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.datamodule import CerberusDataModule
 from cerberus.dataset import CerberusDataset
-from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.loss import TupleAwarePoissonNLLLoss, DefaultMetricCollection
+from cerberus.models.gopher import GlobalProfileCNN
+from cerberus.metrics import DefaultMetricCollection
+from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.module import CerberusModule
 from cerberus.entrypoints import train
 
@@ -31,7 +32,7 @@ try:
     )
 except ImportError:
     sys.path.append(str(project_root / "tests"))
-    from mock_utils import (
+    from mock_utils import ( # type: ignore
         MockSampler,
         MockSequenceExtractor,
         MockSignalExtractor,
@@ -75,7 +76,7 @@ class MockDataModule(CerberusDataModule):
             sequence_extractor=seq_extractor,
             input_signal_extractor=input_extractor,
             target_signal_extractor=target_extractor,
-            in_memory=in_memory
+            in_memory=in_memory # type: ignore
         )
         
         self.train_dataset, self.val_dataset, self.test_dataset = full_dataset.split_folds()
@@ -136,17 +137,17 @@ train_config = {
 
 def analyze_predictions():
     datamodule = MockDataModule(
-        genome_config=genome_config,
-        data_config=data_config,
-        sampler_config=sampler_config,
+        genome_config=genome_config, # type: ignore
+        data_config=data_config, # type: ignore
+        sampler_config=sampler_config, # type: ignore
     )
 
     model = GlobalProfileCNN(input_len=2048, output_len=2048, output_bin_size=1)
     
     module = CerberusModule(
         model=model,
-        train_config=train_config,
-        criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False),
+        train_config=train_config, # type: ignore
+        criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
         metrics=DefaultMetricCollection(num_channels=1)
     )
 
@@ -154,7 +155,7 @@ def analyze_predictions():
     train(
         module=module,
         datamodule=datamodule,
-        train_config=train_config,
+        train_config=train_config, # type: ignore
         num_workers=0,
         accelerator="auto",
         devices=1,

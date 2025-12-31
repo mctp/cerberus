@@ -23,8 +23,9 @@ if str(project_root) not in sys.path:
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.datamodule import CerberusDataModule
 from cerberus.dataset import CerberusDataset
-from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.loss import TupleAwarePoissonNLLLoss, DefaultMetricCollection
+from cerberus.models.gopher import GlobalProfileCNN
+from cerberus.metrics import DefaultMetricCollection
+from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.module import CerberusModule
 from cerberus.entrypoints import train
 
@@ -192,7 +193,7 @@ datamodule = MockDataModule(
 model = GlobalProfileCNN(input_len=2048, output_len=2048, output_bin_size=1)
 
 # Initialize Lightning Module
-criterion = TupleAwarePoissonNLLLoss(log_input=True, full=False)
+criterion = ProfilePoissonNLLLoss(log_input=True, full=False)
 metrics = DefaultMetricCollection(num_channels=1)
 
 module = CerberusModule(
@@ -254,9 +255,13 @@ if __name__ == "__main__":
             targets = batch["targets"] # (B, 1, 2048)
             
             # Predict
-            preds = model(inputs) # (B, 1, 2048)
-            if isinstance(preds, tuple):
-                preds = preds[0]
+            outputs = model(inputs) # (B, 1, 2048)
+            if hasattr(outputs, "logits"):
+                preds = outputs.logits
+            elif isinstance(outputs, tuple):
+                preds = outputs[0]
+            else:
+                preds = outputs
             
             # Use Poisson output (log scale) -> exp
             preds = torch.exp(preds)

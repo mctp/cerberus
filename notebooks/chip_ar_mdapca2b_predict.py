@@ -29,8 +29,9 @@ from cerberus.config import (
     PredictConfig
 )
 from cerberus.genome import create_genome_config
-from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.loss import DefaultMetricCollection, TupleAwarePoissonNLLLoss
+from cerberus.models.gopher import GlobalProfileCNN
+from cerberus.metrics import DefaultMetricCollection
+from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.dataset import CerberusDataset
 from cerberus.model_manager import ModelManager
 from cerberus.predict import predict_intervals
@@ -126,7 +127,7 @@ train_config: TrainConfig = {
 model_config: ModelConfig = {
     "name": "GlobalProfileCNN",
     "model_cls": GlobalProfileCNN,
-    "loss_cls": TupleAwarePoissonNLLLoss,
+    "loss_cls": ProfilePoissonNLLLoss,
     "loss_args": {"log_input": True, "full": False},
     "metrics_cls": DefaultMetricCollection,
     "metrics_args": {"num_channels": 1},
@@ -281,7 +282,7 @@ axes[0].legend()
 
 # 2. Transformations
 # Based on config:
-# - Model trained with TupleAwarePoissonNLLLoss(log_input=True).
+# - Model trained with ProfilePoissonNLLLoss(log_input=True).
 #   This means model output (logits) represents log(rate).
 #   So Predicted Rate = exp(logits).
 # - DataConfig has log_transform=True.

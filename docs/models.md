@@ -33,7 +33,7 @@ model = BPNet(
 ## GlobalProfileCNN (Baseline)
 
 **Implementation**: `cerberus.models.GlobalProfileCNN`  
-**Source**: `src/cerberus/models/baseline_gopher.py`
+**Source**: `src/cerberus/models/gopher.py`
 
 A baseline architecture based on the "Gopher" model (ResNet-style CNN with global pooling).
 

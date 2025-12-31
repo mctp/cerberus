@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from cerberus.output import ProfileOutput
+
 class _GRN1d(nn.Module):
     """ ConvNeXt v2 GRN (Global Response Normalization) layer, adapted for 1d
 
@@ -132,7 +134,7 @@ class _BasenjiCoreBlock(nn.Module):
             out_channels=nr_tracks,
             kernel_size=1
         )
-        self.activation = nn.Softplus()
+        # self.activation = nn.Softplus() # Removed to output logits
     
     def forward(self, x:torch.Tensor) -> torch.Tensor:
         for i in range(self.nr_res_blocks):
@@ -151,7 +153,7 @@ class _BasenjiCoreBlock(nn.Module):
         x = self.pool(x)
         # x = torch.transpose(x, -2, -1)  <-- Removed transpose
         x = self.linear_out(x)
-        x = self.activation(x)
+        # x = self.activation(x)
         return x
 
 class ConvNeXtDCNN(nn.Module):
@@ -209,7 +211,7 @@ class ConvNeXtDCNN(nn.Module):
             final_dropout=config['final_dropout']
         )
     
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> ProfileOutput:
         # Input x: (Batch, Channels, Length)
         
         # Original model did transpose here because it expected (Batch, Length, Channels)
@@ -226,4 +228,4 @@ class ConvNeXtDCNN(nn.Module):
         # _BasenjiCoreBlock now returns (Batch, Tracks, Length)
         # No transpose needed
         
-        return (x,)
+        return ProfileOutput(logits=x)

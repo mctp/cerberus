@@ -26,9 +26,10 @@ from torchmetrics import MetricCollection
 from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
-from cerberus.models.baseline_gopher import GlobalProfileCNN
-from cerberus.models.bpnet import BPNet
-from cerberus.loss import DefaultMetricCollection, TupleAwarePoissonNLLLoss, BPNetLoss, BPNetMetricCollection
+from cerberus.models.gopher import GlobalProfileCNN
+from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
+from cerberus.metrics import DefaultMetricCollection
+from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.entrypoints import train_fold, train_multi
 
 def get_args():
@@ -106,7 +107,7 @@ def main():
         input_len = 2114
         output_len = 1000
         output_bin_size = 1 # BPNet is usually base-resolution
-        log_transform = False # BPNet typically trains on raw counts with PoissonMultinomial/BPNetLoss
+        log_transform = False # BPNet typically trains on raw counts with PoissonMultinomial/MSEMultinomialLoss
     else:
         # Baseline Gopher params
         input_len = 2048
@@ -175,8 +176,7 @@ def main():
             "model_cls": BPNet,
             "loss_cls": BPNetLoss,
             "loss_args": {
-                "count_weight": 1.0, 
-                "flatten_channels": False,
+                "alpha": 1.0,
                 "implicit_log_targets": log_transform # Should be False if data not transformed
             },
             "metrics_cls": BPNetMetricCollection,
@@ -193,7 +193,7 @@ def main():
         model_config: ModelConfig = {
             "name": "GlobalProfileCNN",
             "model_cls": GlobalProfileCNN,
-            "loss_cls": TupleAwarePoissonNLLLoss,
+            "loss_cls": ProfilePoissonNLLLoss,
             "loss_args": {"log_input": True, "full": False},
             # Cast function to expected type for static analysis
             "metrics_cls": DefaultMetricCollection,

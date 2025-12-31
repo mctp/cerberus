@@ -1,262 +1,296 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchmetrics import PearsonCorrCoef, MeanSquaredError, MetricCollection
 
-class FlattenedPearsonCorrCoef(PearsonCorrCoef):
+from cerberus.output import ProfileOutput, ProfileCountOutput
+
+class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     """
-    PearsonCorrCoef that automatically flattens input dimensions (Batch, Channels, Length) 
-    to (Batch*Length, Channels) to compute per-channel correlation, 
-    and then averages the result across channels.
+    Poisson NLL Loss on Profile Logits.
+    
+    Interprets logits as unnormalized log-counts (log-intensity).
+    Computes Poisson NLL between exp(logits) and targets.
     """
-    def __init__(self, num_channels=1, **kwargs):
-        super().__init__(num_outputs=num_channels, **kwargs)
-        self.num_channels = num_channels
+    def __init__(self, implicit_log_targets=False, **kwargs):
+        super().__init__(**kwargs)
+        self.implicit_log_targets = implicit_log_targets
 
-    def update(self, preds: torch.Tensor, target: torch.Tensor):
-        if isinstance(preds, (tuple, list)) and len(preds) == 1:
-            preds = preds[0]
-            
-        # Assumes preds, target: (Batch, Channels, Length)
-        # (B, C, L) -> (B, L, C) -> (B*L, C)
-        # We ensure channel dimension is last, then flatten batch and length dimensions.
-        # This is NOT equivalent to flattening all dimensions and mix channels together.
-        preds_flat = preds.detach().permute(0, 2, 1).reshape(-1, self.num_channels)
-        target_flat = target.detach().permute(0, 2, 1).reshape(-1, self.num_channels)
-        
-        super().update(preds_flat, target_flat)
-
-    def compute(self):
-        val = super().compute()
-        if val.numel() > 1:
-            return val.mean()
-        return val
-
-
-class DecoupledFlattenedPearsonCorrCoef(FlattenedPearsonCorrCoef):
-    """
-    PearsonCorrCoef for BPNet style models returning (logits, log_counts).
-    Converts outputs to counts before computing correlation.
-    """
-    def update(self, preds, target: torch.Tensor):
-        # preds[0] = logits (Batch, Channels, Length)
-        # preds[1] = log_counts (Batch, Channels)
-        logits, log_counts = preds
-        probs = F.softmax(logits, dim=-1)
-        total_counts = torch.exp(log_counts)
-        # Broadcast total_counts: (Batch, Channels) -> (Batch, Channels, 1)
-        if total_counts.dim() == 2 and total_counts.shape[1] == 1:
-            total_counts = total_counts.expand(-1, self.num_channels)
-        elif total_counts.dim() == 1: # (Batch,) case
-            total_counts = total_counts.view(-1, 1).expand(-1, self.num_channels)
-        
-        preds_counts = probs * total_counts.unsqueeze(-1)
-        
-        super().update(preds_counts, target)
-
-
-class DecoupledMeanSquaredError(MeanSquaredError):
-    """
-    MeanSquaredError for BPNet style models returning (logits, log_counts).
-    Converts outputs to counts before computing MSE.
-    """
-    def update(self, preds, target: torch.Tensor):
-        # preds[0] = logits (Batch, Channels, Length)
-        # preds[1] = log_counts (Batch, Channels)
-        logits, log_counts = preds
-        probs = F.softmax(logits, dim=-1)
-        total_counts = torch.exp(log_counts)
-        
-        num_channels = logits.shape[1]
-        
-        # Broadcast total_counts: (Batch, Channels) -> (Batch, Channels, 1)
-        if total_counts.dim() == 2 and total_counts.shape[1] == 1:
-            total_counts = total_counts.expand(-1, num_channels)
-        elif total_counts.dim() == 1: # (Batch,) case
-            total_counts = total_counts.view(-1, 1).expand(-1, num_channels)
-        
-        preds_counts = probs * total_counts.unsqueeze(-1)
-        
-        super().update(preds_counts, target)
-
-
-class TupleAwareMeanSquaredError(MeanSquaredError):
-    """
-    MeanSquaredError that handles tuple inputs by unpacking single-element tuples.
-    """
-    def update(self, preds, target: torch.Tensor):
-        if isinstance(preds, (tuple, list)) and len(preds) == 1:
-            preds = preds[0]
-        super().update(preds, target)
-
-
-class DefaultMetricCollection(MetricCollection):
-    """
-    Default MetricCollection used for training/validation.
-    """
-    def __init__(self, num_channels: int = 1):
-        super().__init__({
-            "pearson": FlattenedPearsonCorrCoef(num_channels=num_channels),
-            # MSE is element-wise, so Global MSE is equivalent to Mean Per-Channel MSE
-            # (assuming equal number of elements per channel). Thus no custom flattening is needed.
-            "mse": TupleAwareMeanSquaredError(),
-        })
-
-
-class BPNetMetricCollection(MetricCollection):
-    """
-    MetricCollection for BPNet models (using DecoupledFlattenedPearsonCorrCoef).
-    """
-    def __init__(self, num_channels: int = 1):
-        super().__init__({
-            "pearson": DecoupledFlattenedPearsonCorrCoef(num_channels=num_channels),
-            "mse": DecoupledMeanSquaredError(),
-        })
-
-
-class TupleAwarePoissonNLLLoss(nn.PoissonNLLLoss):
-    """
-    PoissonNLLLoss that handles tuple inputs by unpacking single-element tuples.
-    """
     def forward(self, log_input, target):
-        if isinstance(log_input, (tuple, list)) and len(log_input) == 1:
-            log_input = log_input[0]
+        if not isinstance(log_input, ProfileOutput):
+             raise TypeError("ProfilePoissonNLLLoss requires ProfileOutput (or subclass)")
+        
+        log_input = log_input.logits
+        
+        if self.implicit_log_targets:
+            target = torch.expm1(target)
+            
         return super().forward(log_input, target)
 
 
-
-
-class BPNetLoss(nn.Module):
+class MSEMultinomialLoss(nn.Module):
     """
-    Standard BPNet Loss function (matching chrombpnet-pytorch reference).
+    Multinomial NLL Profile Loss + MSE Count Loss.
+    Also known as BPNet Loss.
     
-    Decomposes loss into:
-    1. Profile Loss: Exact Multinomial Negative Log-Likelihood (including combinatorial terms).
-    2. Count Loss: Mean Squared Error on log(total_counts + 1).
-    
-    Supports both Tuple (Logits, LogCounts) and Tensor (Counts) inputs.
-    
+    Objective:
+      1. Profile Loss: Multinomial NLL (using logits as unnormalized log-probs).
+      2. Count Loss: MSE of log(global_count) (Sum over all channels and length).
+      
+    Requires ProfileCountOutput (logits, log_counts).
     """
-    def __init__(self, count_weight=1.0, flatten_channels=False, implicit_log_targets=False, epsilon=1e-8):
+    def __init__(self, count_weight=1.0, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=False, implicit_log_targets=False, epsilon=1e-8):
         """
         Args:
             count_weight (float): Weight for the count loss component.
-            flatten_channels (bool): If True, flattens channels and length for profile loss.
-                                   Default False corresponds to independent profile loss per channel (strand).
+            profile_weight (float): Weight for the profile loss component.
+            flatten_channels (bool): Controls how profile loss is computed across channels.
+                - If False (default): Computes Multinomial NLL independently for each channel.
+                  Each channel's profile is normalized separately (Softmax over Length).
+                  Loss aggregation across channels depends on `average_channels`.
+                  Useful when channels represent independent distributions (e.g., stranded profiles).
+                - If True: Flattens channels and length into a single dimension.
+                  Computes Multinomial NLL over the entire (Channels x Length) output.
+                  Profile is normalized globally (Softmax over Channels * Length).
+                  Useful when relative abundance between channels matters in the profile shape.
+            count_per_channel (bool): Controls how count loss is computed.
+                - If False (default): Computes count loss on global count (sum over channels and length).
+                - If True: Computes count loss per channel (sum over length only).
+            average_channels (bool): If True, averages profile loss across channels (when flatten_channels=False).
+                                     If False (default), sums profile loss across channels.
             implicit_log_targets (bool): If True, assumes targets are log1p transformed.
             epsilon (float): Small constant for numerical stability.
         """
         super().__init__()
         self.count_weight = count_weight
+        self.profile_weight = profile_weight
         self.flatten_channels = flatten_channels
+        self.count_per_channel = count_per_channel
+        self.average_channels = average_channels
         self.implicit_log_targets = implicit_log_targets
         self.epsilon = epsilon
 
-    def forward(self, outputs, targets):
-        if self.implicit_log_targets:
-            targets = torch.expm1(targets)
-
-        # 1. Determine Logits and LogCounts
-        if isinstance(outputs, (tuple, list)):
-            logits, pred_log_counts = outputs
-        else:
-            # Tensor Input (Counts)
-            logits = torch.log(outputs + self.epsilon)
-            pred_log_counts = torch.log1p(outputs.sum(dim=-1))
-
-        # --- Profile Loss (Exact Multinomial NLL) ---
+    def _compute_profile_loss(self, logits, targets):
         if self.flatten_channels:
             logits_flat = logits.flatten(start_dim=1)
             targets_flat = targets.flatten(start_dim=1)
             
-            total_counts = targets_flat.sum(dim=-1)
+            profile_counts = targets_flat.sum(dim=-1)
             
-            log_fact_sum = torch.lgamma(total_counts + 1)
+            log_fact_sum = torch.lgamma(profile_counts + 1)
             log_prod_fact = torch.sum(torch.lgamma(targets_flat + 1), dim=-1)
             
             log_probs = F.log_softmax(logits_flat, dim=-1)
             log_prod_exp = torch.sum(targets_flat * log_probs, dim=-1)
             
             profile_loss = -log_fact_sum + log_prod_fact - log_prod_exp
-            profile_loss = profile_loss.mean()
+            return profile_loss.mean()
             
         else:
-            total_counts = targets.sum(dim=-1) 
+            profile_counts = targets.sum(dim=-1) 
             
-            log_fact_sum = torch.lgamma(total_counts + 1)
+            log_fact_sum = torch.lgamma(profile_counts + 1)
             log_prod_fact = torch.sum(torch.lgamma(targets + 1), dim=-1) 
             
             log_probs = F.log_softmax(logits, dim=-1)
             log_prod_exp = torch.sum(targets * log_probs, dim=-1)
             
             profile_loss_per_channel = -log_fact_sum + log_prod_fact - log_prod_exp
-            profile_loss = profile_loss_per_channel.sum(dim=-1).mean()
+            
+            if self.average_channels:
+                return profile_loss_per_channel.mean()
+            else:
+                return profile_loss_per_channel.sum(dim=-1).mean()
+
+    def forward(self, outputs, targets):
+        if self.implicit_log_targets:
+            targets = torch.expm1(targets)
+
+        if not isinstance(outputs, ProfileCountOutput):
+             raise TypeError("MSEMultinomialLoss requires ProfileCountOutput")
+        
+        logits = outputs.logits
+        pred_log_counts = outputs.log_counts
+
+        # --- Profile Loss ---
+        profile_loss = self._compute_profile_loss(logits, targets)
 
         # --- Count Loss (MSE) ---
-        if pred_log_counts.dim() == 2 and pred_log_counts.shape[1] > 1:
-            true_counts = targets.sum(dim=-1)
-            true_log_counts = torch.log1p(true_counts)
-            count_loss = F.mse_loss(pred_log_counts, true_log_counts)
+        if self.count_per_channel:
+            target_counts = targets.sum(dim=2) # (B, C)
+            target_log_counts = torch.log1p(target_counts)
+            # pred_log_counts should be (B, C)
+            count_loss = F.mse_loss(pred_log_counts, target_log_counts)
         else:
-            true_total_counts = targets.sum(dim=(1, 2))
-            true_log_counts = torch.log1p(true_total_counts)
+            target_global_count = targets.sum(dim=(1, 2))
+            target_log_global_count = torch.log1p(target_global_count)
             pred_log_counts = pred_log_counts.flatten()
-            count_loss = F.mse_loss(pred_log_counts, true_log_counts)
+            count_loss = F.mse_loss(pred_log_counts, target_log_global_count)
         
-        return profile_loss + self.count_weight * count_loss
+        return self.profile_weight * profile_loss + self.count_weight * count_loss
+
+
+class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
+    """
+    Multinomial NLL Profile Loss + MSE Count Loss (Coupled).
+    Mathematically equivalent to MSEMultinomialLoss but derives counts from logits.
+    
+    Objective:
+      1. Profile Loss: Multinomial NLL.
+      2. Count Loss: MSE of log(global_count).
+    
+    Accepts ProfileOutput only. Simulates log_counts via LogSumExp of logits
+    (interpreting logits as log-intensities) over all channels and bins.
+    Does NOT accept ProfileCountOutput (to avoid ambiguity with MSEMultinomialLoss).
+    """
+    def forward(self, outputs, targets):
+        if self.implicit_log_targets:
+            targets = torch.expm1(targets)
+
+        if isinstance(outputs, ProfileCountOutput):
+            raise TypeError("CoupledMSEMultinomialLoss does not accept ProfileCountOutput. Use MSEMultinomialLoss instead.")
+
+        if not isinstance(outputs, ProfileOutput):
+             raise TypeError("CoupledMSEMultinomialLoss requires ProfileOutput")
+        
+        logits = outputs.logits
+
+        if self.count_per_channel:
+            # Simulate log_counts per channel (Sum over Length)
+            pred_log_counts = torch.logsumexp(logits, dim=2) # (B, C)
+            target_counts = targets.sum(dim=2) # (B, C)
+            target_log_counts = torch.log1p(target_counts)
+            count_loss = F.mse_loss(pred_log_counts, target_log_counts)
+        else:
+            # Simulate log_counts from logits (Global Sum)
+            # Flatten channels and length to sum over everything
+            logits_flat = logits.flatten(start_dim=1)
+            pred_log_counts = torch.logsumexp(logits_flat, dim=-1) # (B,)
+            target_global_count = targets.sum(dim=(1, 2))
+            target_log_global_count = torch.log1p(target_global_count)
+            count_loss = F.mse_loss(pred_log_counts, target_log_global_count)
+        
+        # --- Profile Loss ---
+        profile_loss = self._compute_profile_loss(logits, targets)
+        
+        return self.profile_weight * profile_loss + self.count_weight * count_loss
 
 
 class PoissonMultinomialLoss(nn.Module):
     """
-    Poisson Multinomial Loss.
+    Poisson Multinomial Loss (Global Count).
     
-    Decomposes loss into:
-    1. Profile Loss: Multinomial Negative Log-Likelihood (Cross-Entropy form).
-    2. Count Loss: Poisson Negative Log-Likelihood.
-    
-    Supports both Tuple (Logits, LogCounts) and Tensor (Counts) inputs.
-    
+    Objective:
+      1. Profile Loss: Cross Entropy (Multinomial NLL form).
+      2. Count Loss: Poisson NLL on Global Count.
+      
+    Requires ProfileCountOutput.
     """
-    def __init__(self, count_weight=0.2, flatten_channels=False, implicit_log_targets=False, epsilon=1e-8):
+    def __init__(self, count_weight=0.2, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=True, implicit_log_targets=False, epsilon=1e-8):
         """
         Args:
             count_weight (float): Weight for the count loss component.
-            flatten_channels (bool): If True, flattens channels and length for profile loss.
+            profile_weight (float): Weight for the profile loss component.
+            flatten_channels (bool): Controls how profile loss is computed across channels.
+                - If False (default): Computes Cross Entropy independently for each channel.
+                  (Softmax over Length). Summed across channels.
+                - If True: Flattens channels and length. Computes Cross Entropy over 
+                  (Channels x Length). (Softmax over Channels * Length).
+            count_per_channel (bool): Controls how count loss is computed.
+                - If False (default): Computes count loss on global count (sum over channels and length).
+                - If True: Computes count loss per channel (sum over length only).
+            average_channels (bool): If True (default), averages profile loss across channels (when flatten_channels=False).
+                                     If False, sums profile loss across channels.
             implicit_log_targets (bool): If True, assumes targets are log1p transformed.
             epsilon (float): Small constant for numerical stability.
         """
         super().__init__()
         self.count_weight = count_weight
+        self.profile_weight = profile_weight
         self.flatten_channels = flatten_channels
+        self.count_per_channel = count_per_channel
+        self.average_channels = average_channels
         self.implicit_log_targets = implicit_log_targets
         self.epsilon = epsilon
         self.count_loss_fn = nn.PoissonNLLLoss(log_input=True, full=False)
-        self.count_loss_fn_linear = nn.PoissonNLLLoss(log_input=False, full=False)
+
+    def _compute_profile_loss(self, logits, targets):
+         if self.flatten_channels:
+             logits_flat = logits.flatten(start_dim=1)
+             targets_flat = targets.flatten(start_dim=1)
+             log_probs = F.log_softmax(logits_flat, dim=-1)
+             loss_shape = -torch.sum(targets_flat * log_probs, dim=-1).mean()
+         else:
+             log_probs = F.log_softmax(logits, dim=-1)
+             loss_shape_per_channel = -torch.sum(targets * log_probs, dim=-1)
+             if self.average_channels:
+                 loss_shape = loss_shape_per_channel.mean()
+             else:
+                 loss_shape = loss_shape_per_channel.sum(dim=-1).mean()
+         return loss_shape
 
     def forward(self, predictions, targets):
         if self.implicit_log_targets:
             targets = torch.expm1(targets)
 
-        # 1. Determine Logits and LogCounts
-        if isinstance(predictions, (tuple, list)):
-            logits, log_counts = predictions
-            count_true = targets.sum(dim=-1)
-            loss_count = self.count_loss_fn(log_counts, count_true)
-        else:
-            # Tensor Input (Counts)
-            logits = torch.log(predictions + self.epsilon)
-            count_pred = predictions.sum(dim=-1)
-            count_true = targets.sum(dim=-1)
-            loss_count = self.count_loss_fn_linear(count_pred, count_true)
+        if not isinstance(predictions, ProfileCountOutput):
+             raise TypeError("PoissonMultinomialLoss requires ProfileCountOutput")
 
-        # --- Profile Loss (Cross Entropy) ---
-        if self.flatten_channels:
-             logits_flat = logits.flatten(start_dim=1)
-             targets_flat = targets.flatten(start_dim=1)
-             log_probs = F.log_softmax(logits_flat, dim=-1)
-             loss_shape = -torch.sum(targets_flat * log_probs, dim=-1).mean()
+        logits = predictions.logits
+        pred_log_counts = predictions.log_counts
+        
+        if self.count_per_channel:
+            target_counts = targets.sum(dim=2) # (B, C)
+            # pred_log_counts should be (B, C)
+            loss_count = self.count_loss_fn(pred_log_counts, target_counts)
         else:
-             log_probs = F.log_softmax(logits, dim=-1)
-             loss_shape = -torch.sum(targets * log_probs, dim=-1).mean()
+            # --- Count Loss (Global Count) ---
+            target_global_count = targets.sum(dim=(1, 2)) # (B,)
+            pred_log_counts = pred_log_counts.flatten() # (B,)
+            loss_count = self.count_loss_fn(pred_log_counts, target_global_count)
 
-        return self.count_weight * loss_count + loss_shape
+        # --- Profile Loss ---
+        loss_shape = self._compute_profile_loss(logits, targets)
+
+        return self.count_weight * loss_count + self.profile_weight * loss_shape
+
+
+class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
+    """
+    Poisson Multinomial Loss (Coupled/Global Count).
+    Mathematically equivalent to PoissonMultinomialLoss but derives counts from logits.
+    
+    Objective:
+      1. Profile Loss: Cross Entropy.
+      2. Count Loss: Poisson NLL on Global Count.
+    
+    Accepts ProfileOutput only. Simulates log_counts via LogSumExp of logits over all channels.
+    Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
+    """
+    def forward(self, predictions, targets):
+        if self.implicit_log_targets:
+            targets = torch.expm1(targets)
+
+        if isinstance(predictions, ProfileCountOutput):
+            raise TypeError("CoupledPoissonMultinomialLoss does not accept ProfileCountOutput. Use PoissonMultinomialLoss instead.")
+
+        if not isinstance(predictions, ProfileOutput):
+             raise TypeError("CoupledPoissonMultinomialLoss requires ProfileOutput")
+
+        logits = predictions.logits
+
+        if self.count_per_channel:
+            # Simulate log_counts per channel
+            pred_log_counts = torch.logsumexp(logits, dim=2) # (B, C)
+            target_counts = targets.sum(dim=2) # (B, C)
+            loss_count = self.count_loss_fn(pred_log_counts, target_counts)
+        else:
+            # Simulate log_counts from logits (Global Sum)
+            logits_flat = logits.flatten(start_dim=1)
+            pred_log_counts = torch.logsumexp(logits_flat, dim=-1) # (B,)
+            target_global_count = targets.sum(dim=(1, 2)) # (B,)
+            loss_count = self.count_loss_fn(pred_log_counts, target_global_count)
+
+        # --- Profile Loss ---
+        loss_shape = self._compute_profile_loss(logits, targets)
+
+        return self.count_weight * loss_count + self.profile_weight * loss_shape

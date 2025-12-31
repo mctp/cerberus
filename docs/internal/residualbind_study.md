@@ -45,7 +45,7 @@ The original model is implemented in Keras (`residualbind.py`).
 
 ## 3. Implementation in Cerberus
 
-The implementation will reside in `src/cerberus/models/residualbind.py`. It should follow the pattern established in `src/cerberus/models/baseline_gopher.py` (`GlobalProfileCNN`).
+The implementation will reside in `src/cerberus/models/residualbind.py`. It should follow the pattern established in `src/cerberus/models/gopher.py` (`GlobalProfileCNN`).
 
 ### 3.1. Input/Output Shapes & Adapters
 

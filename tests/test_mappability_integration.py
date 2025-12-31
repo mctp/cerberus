@@ -78,7 +78,8 @@ def test_sequence_and_signal_extraction(human_genome, mappability_file, fasta_fi
         data_config=data_config,
         sampler_config=sampler_config,
         sampler=sampler,
-        transforms=[] # Explicitly no transforms
+        transforms=[], # Explicitly no transforms
+        deterministic_transforms=[]
     )
     
     item = dataset[0]

@@ -1,6 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchmetrics import MetricCollection
+
+from cerberus.loss import MSEMultinomialLoss
+from cerberus.output import ProfileCountOutput
+from cerberus.metrics import DecoupledFlattenedPearsonCorrCoef, DecoupledMeanSquaredError
 
 class _ResidualBlock(nn.Module):
     """
@@ -117,7 +122,7 @@ class BPNet(nn.Module):
         num_count_outputs = 1 if self.predict_total_count else self.n_output_channels
         self.count_dense = nn.Linear(filters, num_count_outputs)
 
-    def forward(self, x):
+    def forward(self, x) -> ProfileCountOutput:
         """
         Forward pass.
         
@@ -125,8 +130,8 @@ class BPNet(nn.Module):
             x (Tensor): Input sequence (Batch, Channels, Input_Len)
             
         Returns:
-            Tuple[Tensor, Tensor]: (profile_logits, log_counts)
-                profile_logits: (Batch, Out_Channels, Out_Len)
+            ProfileCountOutput: Contains profile_logits and log_counts.
+                logits: (Batch, Out_Channels, Out_Len)
                 log_counts: (Batch, Out_Channels) - representing log(total_counts)
         """
         # 1. Initial Conv + ReLU
@@ -169,4 +174,78 @@ class BPNet(nn.Module):
         
         log_counts = self.count_dense(x_pooled) # (B, Out_Channels)
         
-        return profile_logits, log_counts
+        return ProfileCountOutput(logits=profile_logits, log_counts=log_counts)
+
+
+class BPNetLoss(MSEMultinomialLoss):
+    """
+    BPNet Loss with parameters fixed to match chrombpnet-pytorch implementation.
+    
+    Objective:
+      1. Profile Loss: Multinomial NLL (using logits as unnormalized log-probs).
+      2. Count Loss: MSE of log(global_count).
+      
+    Weights:
+      Loss = beta * profile_loss + alpha * count_loss
+      
+    Differences from MSEMultinomialLoss:
+      - Profile loss is averaged over channels (instead of summed) (average_channels=True).
+      - Uses alpha/beta parameterization map to count_weight/profile_weight.
+
+    Compatibility Note:
+        This loss is mathematically equivalent to the loss in `bpnet-lite` and `chrombpnet-pytorch`.
+        
+        1. Profile Loss:
+           - bpnet-lite: Calculates Multinomial NLL per channel (summing over sequence length),
+             resulting in a (Batch, Channels) tensor. Then takes the MEAN over all elements 
+             (batch and channels).
+           - BPNetLoss: Sets `average_channels=True` and `flatten_channels=False`. This computes 
+             NLL per channel (summing over length) and then takes the MEAN over batch and channels.
+             Result: Identical.
+             
+        2. Count Loss:
+           - bpnet-lite: Sums target counts over all channels and length. Calculates MSE between 
+             predicted log-counts and log(total_counts + 1). Takes MEAN over batch.
+           - BPNetLoss: Sets `count_per_channel=False`. This sums target counts over channels and length,
+             computes log1p, and calculates MSE with predicted log-counts. Takes MEAN over batch.
+             Result: Identical.
+    """
+    def __init__(self, alpha=1.0, beta=1.0, **kwargs):
+        """
+        Args:
+            alpha (float): Weight for count loss. Default: 1.0.
+            beta (float): Weight for profile loss. Default: 1.0.
+            **kwargs: Other arguments passed to MSEMultinomialLoss.
+        """
+        # Remove constrained arguments from kwargs if they exist to avoid multiple values error
+        kwargs.pop("average_channels", None)
+        kwargs.pop("flatten_channels", None)
+        kwargs.pop("count_per_channel", None)
+        kwargs.pop("implicit_log_targets", None)
+        kwargs.pop("count_weight", None)
+        kwargs.pop("profile_weight", None)
+
+        # chrombpnet: loss = beta * profile + alpha * count
+        # MSEMultinomialLoss: loss = profile_weight * profile + count_weight * count
+        # We explicitly set all parameters to ensure strict compatibility regardless of defaults
+        super().__init__(
+            count_weight=alpha, 
+            profile_weight=beta, 
+            average_channels=True, 
+            flatten_channels=False,
+            count_per_channel=False,
+            implicit_log_targets=False,
+            **kwargs
+        )
+
+
+class BPNetMetricCollection(MetricCollection):
+    """
+    MetricCollection for BPNet models.
+    Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
+    """
+    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
+        super().__init__({
+            "pearson": DecoupledFlattenedPearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
+            "mse": DecoupledMeanSquaredError(implicit_log_targets=implicit_log_targets),
+        })

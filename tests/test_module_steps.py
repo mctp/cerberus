@@ -3,7 +3,9 @@ import torch
 import torch.nn as nn
 from unittest.mock import MagicMock
 from cerberus.module import CerberusModule
-from cerberus.loss import TupleAwarePoissonNLLLoss, DefaultMetricCollection
+from cerberus.loss import ProfilePoissonNLLLoss
+from cerberus.metrics import DefaultMetricCollection
+from cerberus.output import ProfileOutput
 
 class DummyModel(nn.Module):
     def __init__(self):
@@ -11,7 +13,8 @@ class DummyModel(nn.Module):
         self.layer = nn.Linear(10, 1)
     def forward(self, x):
         # Output (Batch, 1, 1) to match (Batch, Channels, Length) expectation
-        return torch.abs(self.layer(x)).unsqueeze(-1)
+        logits = torch.abs(self.layer(x)).unsqueeze(-1)
+        return ProfileOutput(logits=logits)
 
 @pytest.fixture
 def base_config():
@@ -29,7 +32,7 @@ def base_config():
 
 def test_training_step(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
+    module = CerberusModule(model, base_config, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     module.log = MagicMock()
     
     # Batch: inputs (B, 10), targets (B, 1, 1)
@@ -48,7 +51,7 @@ def test_training_step(base_config):
 
 def test_validation_step(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
+    module = CerberusModule(model, base_config, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     module.log = MagicMock()
     
     batch = {
@@ -63,14 +66,15 @@ def test_validation_step(base_config):
 
 def test_on_validation_epoch_end(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=TupleAwarePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
+    module = CerberusModule(model, base_config, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
     module.log_dict = MagicMock()
     
     # Simulate some updates
-    # Use (Batch, Channels=1, Length=1) shape
-    preds = torch.tensor([1.0, 2.0]).view(2, 1, 1)
-    targets = torch.tensor([1.0, 2.0]).view(2, 1, 1)
-    module.val_metrics.update(preds, targets)
+    # Use (Batch, Channels=1, Length=2) shape to ensure non-zero variance after Softmax(dim=-1)
+    # If Length=1, Softmax always returns 1.0, which has 0 variance.
+    preds = torch.randn(2, 1, 2)
+    targets = torch.randn(2, 1, 2)
+    module.val_metrics.update(ProfileOutput(logits=preds), targets)
     
     module.on_validation_epoch_end()
     

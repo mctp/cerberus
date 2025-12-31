@@ -2,11 +2,13 @@ import torch
 from typing import List, Tuple, Any, Iterable
 import itertools
 import numpy as np
+import dataclasses
 
 from cerberus.interval import Interval
 from cerberus.dataset import CerberusDataset
 from cerberus.model_manager import ModelManager
 from cerberus.config import PredictConfig
+from cerberus.output import ModelOutput
 
 
 def predict_intervals(
@@ -93,6 +95,13 @@ def predict_intervals(
         with torch.no_grad():
             for model in models:
                 out = model(batch_inputs)
+                if isinstance(out, ModelOutput):
+                    out = dataclasses.astuple(out)
+                else:
+                    raise TypeError(
+                        f"Model output must be an instance of cerberus.output.ModelOutput, "
+                        f"got {type(out)}."
+                    )
                 batch_outputs.append(out)
 
         # 4. Aggregate Ensemble Outputs (result is still batched)

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from cerberus.output import ProfileOutput
+
 class _Reshape(nn.Module):
     """
     Internal helper module to reshape tensors within an nn.Sequential block.
@@ -153,7 +155,7 @@ class GlobalProfileCNN(nn.Module):
         # We output Logits (Linear) to use with PoissonNLLLoss(log_input=True).
         self.head = nn.Conv1d(256, num_output_channels, kernel_size=1)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> ProfileOutput:
         # x: (Batch, Channels, Length)
         
         # Conv Blocks
@@ -174,4 +176,4 @@ class GlobalProfileCNN(nn.Module):
         x = self.head(x)
         
         # Output: (Batch, Num_Output_Channels, Out_Len)
-        return (x,)
+        return ProfileOutput(logits=x)

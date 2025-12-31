@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast, List, Tuple, Union, Any, Dict, Iterable
 from unittest.mock import MagicMock, Mock
 from torchmetrics import MetricCollection
+from dataclasses import dataclass
 
 from cerberus.interval import parse_intervals, merge_intervals, Interval
 from cerberus.predict import (
@@ -24,8 +25,16 @@ from cerberus.config import (
     PredictConfig,
     SamplerConfig,
 )
+from cerberus.output import ModelOutput
 
 # --- Fixtures and Helpers for Integration Tests ---
+
+@dataclass
+class DummyOutput(ModelOutput):
+    logits: torch.Tensor
+    
+    def detach(self):
+        return DummyOutput(logits=self.logits.detach())
 
 class DummyModel(nn.Module):
     def __init__(self, input_len, output_len, output_bin_size, **kwargs):
@@ -35,7 +44,7 @@ class DummyModel(nn.Module):
     def forward(self, x):
         # x: (B, 4, L)
         # Output (B, 1, output_dim)
-        return (torch.ones((x.shape[0], 1, self.output_dim), device=x.device),)
+        return DummyOutput(logits=torch.ones((x.shape[0], 1, self.output_dim), device=x.device))
 
 @pytest.fixture
 def integration_setup(tmp_path):
@@ -105,6 +114,12 @@ def integration_setup(tmp_path):
 
 # --- Fixtures and Helpers for Unit Tests (Mocking) ---
 
+@dataclass
+class MockOutput(ModelOutput):
+    out: torch.Tensor
+    def detach(self):
+        return MockOutput(out=self.out.detach())
+
 class MockModel(nn.Module):
     def __init__(self, value=1.0, output_len=None):
         super().__init__()
@@ -120,7 +135,14 @@ class MockModel(nn.Module):
                 diff = curr - self.output_len
                 start = diff // 2
                 out = out[..., start : start + self.output_len]
-        return (out,)
+        return MockOutput(out=out)
+
+@dataclass
+class MockTupleOutput(ModelOutput):
+    out1: torch.Tensor
+    out2: torch.Tensor
+    def detach(self):
+        return MockTupleOutput(out1=self.out1.detach(), out2=self.out2.detach())
 
 class MockTupleModel(nn.Module):
     def __init__(self, value1=1.0, value2=2.0, output_len=None):
@@ -139,7 +161,7 @@ class MockTupleModel(nn.Module):
                 start = diff // 2
                 out1 = out1[..., start : start + self.output_len]
                 out2 = out2[..., start : start + self.output_len]
-        return (out1, out2)
+        return MockTupleOutput(out1=out1, out2=out2)
 
 class MockScalarModel(nn.Module):
     def __init__(self, value=1.0):
@@ -148,7 +170,7 @@ class MockScalarModel(nn.Module):
         
     def forward(self, x):
         # Return (Batch, 1) scalar
-        return (torch.ones(x.shape[0], 1) * self.value,)
+        return MockOutput(out=torch.ones(x.shape[0], 1) * self.value)
 
 @pytest.fixture
 def mock_dataset():
@@ -468,7 +490,7 @@ def test_predict_intervals_overlap(mock_dataset, mock_model_manager):
             super().__init__()
             self.value = value
         def forward(self, x):
-            return (x[:, :, 20:80] * self.value,)
+            return MockOutput(out=x[:, :, 20:80] * self.value)
 
     model = MockCroppedModel(value=1.0)
     mock_model_manager.get_models.return_value = [model]
@@ -524,12 +546,18 @@ def test_predict_intervals_tuple_recursive(mock_dataset, mock_model_manager):
     interval_1 = Interval("chr1", 0, 100)
     config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
     
+    @dataclass
+    class MockTupleOutput2(ModelOutput):
+        prof: torch.Tensor
+        scalar: torch.Tensor
+        def detach(self): return self
+
     class MockCorrectProfileModel(nn.Module):
         def forward(self, x):
             # Return (Profile 60, Scalar)
             prof = torch.ones(x.shape[0], 1, 60) * 3.0
             scalar = torch.ones(x.shape[0], 1) * 7.0
-            return (prof, scalar)
+            return MockTupleOutput2(prof=prof, scalar=scalar)
 
     model = MockCorrectProfileModel()
     mock_model_manager.get_models.return_value = [model]
@@ -588,7 +616,7 @@ def test_merged_interval_is_multiple_of_bin_size(mock_dataset, mock_model_manage
     class MockModelBin10(nn.Module):
         def forward(self, x):
             # Output length 100 // 10 = 10 bins
-            return (torch.ones(x.shape[0], 1, 10),)
+            return MockOutput(out=torch.ones(x.shape[0], 1, 10))
 
     model = MockModelBin10()
     mock_model_manager.get_models.return_value = [model]

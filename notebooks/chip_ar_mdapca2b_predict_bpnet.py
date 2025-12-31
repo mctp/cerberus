@@ -30,8 +30,7 @@ from cerberus.config import (
     PredictConfig
 )
 from cerberus.genome import create_genome_config
-from cerberus.models.bpnet import BPNet
-from cerberus.loss import BPNetLoss, BPNetMetricCollection
+from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.dataset import CerberusDataset
 from cerberus.model_manager import ModelManager
 from cerberus.predict import predict_intervals
@@ -138,8 +137,7 @@ model_config: ModelConfig = {
     "model_cls": BPNet,
     "loss_cls": BPNetLoss,
     "loss_args": {
-        "count_weight": 1.0, 
-        "flatten_channels": False,
+        "alpha": 1.0, 
         "implicit_log_targets": log_transform
     },
     "metrics_cls": BPNetMetricCollection,
@@ -204,6 +202,12 @@ model_manager = ModelManager(
 # Select a single interval for demonstration
 target_idx = 0
 target_interval = test_sampler[target_idx]
+
+# Ensure interval matches input_len (center crop if needed)
+# predict_intervals expects intervals of exact input_len
+if len(target_interval) > input_len:
+    target_interval = target_interval.center(input_len)
+
 intervals_to_predict = [target_interval]
 
 print(f"Predicting on interval: {target_interval}")

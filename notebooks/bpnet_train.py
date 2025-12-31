@@ -18,8 +18,7 @@ from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
-from cerberus.models.bpnet import BPNet
-from cerberus.loss import BPNetLoss, BPNetMetricCollection
+from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.module import CerberusModule
 from cerberus.entrypoints import train
 
@@ -161,7 +160,7 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 1000)
 # We use the `BPNet` architecture.
 # 
 # The `BPNet` model returns a tuple: `(profile_logits, log_total_counts)`.
-# We use `BPNetLoss` which handles this tuple and computes profile and count losses.
+# We use `MSEMultinomialLoss` which handles this tuple and computes profile and count losses.
 # 
 # Configuration:
 # - We set `n_dilated_layers=8` to match the receptive field requirements for 2114->1000 with this implementation.
@@ -178,7 +177,7 @@ model = BPNet(
 )
 
 # Define Loss and Metrics
-criterion = BPNetLoss() 
+criterion = BPNetLoss()
 metrics = BPNetMetricCollection(num_channels=1)
 
 # Create Lightning Module
