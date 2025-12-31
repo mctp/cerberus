@@ -33,36 +33,31 @@ The training phase is responsible for learning the mapping from DNA sequence to 
 ### The Process
 
 1.  **Data Setup**: Download/Prepare genome FASTA and signal BigWigs.
-2.  **Config Definition**: Set up the dictionaries.
+2.  **Config Definition**: Set up the configuration dictionaries.
 3.  **Execution**: Call `train_fold` or `train_multi`.
 4.  **Output**: Cerberus saves model checkpoints (`.ckpt`) and logs to the specified output directory.
 
 **Example Reference**: `examples/chip_ar_mdapca2b.py` demonstrates a full training script that supports both single-fold and multi-fold training for Baseline CNN and BPNet architectures.
 
-> **Note on Validation Metrics**:
-> Validation and test folds used during training are **deterministic by default**. Random augmentations like Jitter and Reverse Complement are disabled for these folds, ensuring stable metric calculation. You can override this behavior by providing custom transforms if needed.
-
 ---
 
 ## 2. Prediction (Inference)
 
-Once a model is trained, the prediction phase involves applying it to specific genomic regions. This often requires slightly adjusting the configuration to suit inference rather than training (e.g., disabling augmentation).
+Once a model is trained, the prediction phase involves applying it to specific genomic regions. The workflow is streamlined to reuse the same configurations from training, with the system automatically handling the switch to deterministic behavior.
 
-### Key Differences from Training
+### Key Concepts
 
-*   **Configuration Adjustments**:
-    *   `DataConfig`: Disable `max_jitter` and `reverse_complement` to ensure deterministic outputs.
-    *   `SamplerConfig`: Set `padded_size` to equal `input_len` (no jitter buffer needed).
-*   **Model Loading**: The `ModelManager` class is used to load the model state from a checkpoint, ensuring the architecture matches the config.
+*   **Deterministic Transforms**: When performing inference, we want reproducible results without random augmentations (like jitter or reverse complement). Cerberus handles this automatically.
+*   **Model Loading**: The `ModelManager` class loads the model state from a checkpoint, ensuring the architecture matches the config.
 
 ### The Process
 
-1.  **Load Configs**: Re-create the configuration objects used during training.
-2.  **Adjust Configs**: Modify `DataConfig` to disable augmentation.
-3.  **Load Model**: Use `ModelManager(checkpoint_path=...)` to instantiate the model and load weights.
-4.  **Initialize Dataset**: Create a `CerberusDataset` for the test fold.
-5.  **Run Prediction**: Use `predict_intervals()` to generate predictions for a list of genomic intervals.
-    *   *Note*: `predict_intervals` handles the complexity of stitching together predictions if needed, though typically prediction is done on specific windows.
+1.  **Load Configs**: Reuse the `GenomeConfig`, `DataConfig`, and `ModelConfig` used during training.
+2.  **Load Model**: Use `ModelManager(checkpoint_path=...)` to instantiate the model and load weights.
+3.  **Initialize Dataset**: Create a `CerberusDataset` with `is_train=False`.
+    *   This automatically switches the data pipeline to use **deterministic transforms** (e.g., center-cropping instead of random jitter, disabling reverse-complement augmentation).
+    *   No manual adjustment of `DataConfig` is required.
+4.  **Run Prediction**: Use `predict_intervals()` to generate predictions for a list of genomic intervals.
 
 **Example Reference**: `notebooks/chip_ar_mdapca2b_predict_bpnet.py` shows how to load a trained BPNet model and run inference on test set peaks.
 
@@ -99,8 +94,8 @@ Different models produce different outputs:
 | Component | Training Role | Prediction Role |
 | :--- | :--- | :--- |
 | **GenomeConfig** | Defines genome & exclusions | Same (ensures consistent coordinates) |
-| **DataConfig** | Defines I/O shapes & Augmentations | Defines I/O shapes (Augmentations Disabled) |
-| **SamplerConfig** | Defines training batches (w/ jitter) | Defines test intervals (Exact windows) |
+| **DataConfig** | Defines I/O shapes & Augmentations | Defines I/O shapes (Augmentations auto-disabled) |
+| **SamplerConfig** | Defines training batches (w/ jitter) | Not strictly used if providing explicit intervals |
 | **ModelManager** | *Not used (created via Entrypoint)* | **Loads checkpoint & reinstantiates model** |
-| **CerberusDataset** | Feeds DataLoader for training | Feeds `predict_intervals` |
+| **CerberusDataset** | Feeds DataLoader (`is_train=True`) | Feeds `predict_intervals` (`is_train=False`) |
 | **predict_intervals** | *N/A* | Executes forward pass & aggregation |
