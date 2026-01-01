@@ -1,4 +1,3 @@
-import pytest
 from cerberus.interval import Interval
 
 def test_interval_init():

@@ -1,11 +1,9 @@
 import pytest
 import numpy as np
 import pyBigWig
-from pathlib import Path
-from interlap import InterLap
+from cerberus.interval import Interval
 from cerberus.samplers import IntervalSampler
 from cerberus.signal import SignalExtractor
-from cerberus.interval import Interval
 
 @pytest.fixture
 def temp_dir(tmp_path):

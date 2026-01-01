@@ -1,9 +1,7 @@
 import pytest
 import torch
-import numpy as np
-import pybigtools
-from pathlib import Path
 from cerberus.mask import MaskExtractor, InMemoryMaskExtractor
+import pybigtools
 from cerberus.interval import Interval
 
 @pytest.fixture

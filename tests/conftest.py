@@ -1,7 +1,6 @@
 import pytest
 import os
 import shutil
-import urllib.request
 from pathlib import Path
 from cerberus.download import download_dataset, download_human_reference
 

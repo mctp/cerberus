@@ -1,11 +1,9 @@
 import pytest
-import torch
-from pathlib import Path
 from typing import cast
 from cerberus.dataset import CerberusDataset
-from cerberus.transform import Jitter, ReverseComplement, Compose, DataTransform
+from cerberus.transform import Jitter, ReverseComplement, DataTransform
 from cerberus.genome import create_genome_config
-from cerberus.config import DataConfig, SamplerConfig, GenomeConfig
+from cerberus.config import DataConfig, SamplerConfig
 
 @pytest.fixture
 def basic_files(tmp_path):

@@ -1,10 +1,7 @@
-import pytest
-from unittest.mock import MagicMock, patch, ANY
 from typing import cast
-from pathlib import Path
+from unittest.mock import MagicMock, patch
 from cerberus.entrypoints import train_multi
-from cerberus.config import TrainConfig, GenomeConfig, DataConfig, SamplerConfig, ModelConfig
-import pytorch_lightning as pl
+from cerberus.config import TrainConfig, GenomeConfig, ModelConfig
 
 def test_train_multi_loop():
     # Mocks

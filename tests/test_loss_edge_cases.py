@@ -1,7 +1,5 @@
 import torch
 import pytest
-import torch.nn.functional as F
-from torchmetrics import MetricCollection
 from cerberus.loss import (
     MSEMultinomialLoss, PoissonMultinomialLoss, ProfilePoissonNLLLoss
 )

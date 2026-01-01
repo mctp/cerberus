@@ -18,9 +18,6 @@ import argparse
 import torch
 from pathlib import Path
 from pprint import pprint
-import torch.nn as nn
-from typing import cast
-from torchmetrics import MetricCollection
 
 # Cerberus imports
 from cerberus.download import download_dataset, download_human_reference

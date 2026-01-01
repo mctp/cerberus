@@ -1,10 +1,9 @@
 import pytest
-from pathlib import Path
-from typing import cast
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
 from cerberus.samplers import IntervalSampler
 from cerberus.config import DataConfig, SamplerConfig
+from typing import cast
 
 def test_dataset_instantiates_interval_sampler(tmp_path):
     # 1. Setup Files

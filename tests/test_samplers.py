@@ -1,8 +1,7 @@
 import pytest
-from pathlib import Path
 from interlap import InterLap
 from cerberus.interval import Interval
-from cerberus.samplers import IntervalSampler, SlidingWindowSampler, BaseSampler
+from cerberus.samplers import IntervalSampler, SlidingWindowSampler
 from cerberus.genome import create_genome_folds
 
 def test_load_bed3(tmp_path):

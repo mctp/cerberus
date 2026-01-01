@@ -1,8 +1,6 @@
 import pytest
-from pathlib import Path
-from cerberus.interval import Interval
-from cerberus.samplers import IntervalSampler
 from cerberus.genome import create_genome_folds
+from cerberus.samplers import IntervalSampler
 
 @pytest.fixture
 def mock_bed_file(tmp_path):

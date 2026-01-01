@@ -1,10 +1,8 @@
-import pytest
 from unittest.mock import MagicMock, patch
 from typing import cast
 from cerberus.entrypoints import train
 from cerberus.config import TrainConfig
 import pytorch_lightning as pl
-import torch
 
 def test_train_wrapper_matmul_precision():
     # Mock model and datamodule

@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import MagicMock, patch
 from typing import cast
 from cerberus.entrypoints import train

@@ -1,6 +1,5 @@
 from pathlib import Path
-from typing import Protocol, Mapping
-import os
+from typing import Protocol
 import numpy as np
 import pybigtools
 import torch

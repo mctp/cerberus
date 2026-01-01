@@ -1,7 +1,6 @@
-from typing import Any, cast
+from typing import Any
 import torch
 from torch.utils.data import Dataset
-import numpy as np
 from interlap import InterLap
 from .config import (
     DataConfig,

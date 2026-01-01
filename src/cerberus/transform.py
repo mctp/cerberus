@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from typing import Protocol, Any
+from typing import Protocol
 from .interval import Interval
 from .config import DataConfig
 

@@ -12,12 +12,7 @@
 # We will use the **hg38** genome and the **mdapca2b_ar** dataset (example files included in tests).
 
 # %%
-import sys
-import os
-from pathlib import Path
 import torch
-import numpy as np
-import matplotlib.pyplot as plt
 
 try:
     from paths import get_project_root
@@ -321,7 +316,7 @@ print("New Targets shape:", item_small["targets"].shape)
 # These can be manually composed or automatically created from `DataConfig`.
 
 # %%
-from cerberus.transform import Jitter, ReverseComplement, Compose
+from cerberus.transform import Jitter, ReverseComplement
 
 # Create a sample batch (inputs, targets, interval)
 # Inputs: (4+1, 1000) - 4 DNA channels + 1 signal channel

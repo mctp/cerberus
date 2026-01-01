@@ -1,14 +1,12 @@
 import torch
-import pytest
-from torchmetrics import PearsonCorrCoef
 import torch.nn as nn
-from torchmetrics import MeanSquaredError
+from torchmetrics import MeanSquaredError, PearsonCorrCoef
 from cerberus.loss import (
     MSEMultinomialLoss, PoissonMultinomialLoss, ProfilePoissonNLLLoss
 )
 from cerberus.metrics import (
     FlattenedPearsonCorrCoef, DefaultMetricCollection,
-    ProfileMeanSquaredError, DecoupledMeanSquaredError, DecoupledFlattenedPearsonCorrCoef
+    ProfileMeanSquaredError, DecoupledMeanSquaredError
 )
 from cerberus.models.bpnet import BPNetMetricCollection
 from cerberus.output import ProfileOutput, ProfileCountOutput

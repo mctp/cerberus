@@ -1,7 +1,5 @@
-import pytest
-from pathlib import Path
-from interlap import InterLap
 from cerberus.exclude import get_exclude_intervals, is_excluded
+from interlap import InterLap
 
 def test_get_exclude_intervals_basic(tmp_path):
     f = tmp_path / "exclude.bed"

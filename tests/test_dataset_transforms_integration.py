@@ -1,10 +1,9 @@
 import pytest
-from pathlib import Path
-from typing import cast
 from cerberus.dataset import CerberusDataset
 from cerberus.transform import Jitter, TargetCrop, Log1p, Bin, ReverseComplement, Compose
 from cerberus.genome import create_genome_config
 from cerberus.config import DataConfig, SamplerConfig
+from typing import cast
 
 @pytest.fixture
 def mock_genome(tmp_path):

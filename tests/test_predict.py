@@ -2,11 +2,10 @@ import pytest
 import torch
 import torch.nn as nn
 import numpy as np
-from pathlib import Path
-from typing import cast, List, Tuple, Union, Any, Dict, Iterable
-from unittest.mock import MagicMock, Mock
-from torchmetrics import MetricCollection
+from typing import cast
+from unittest.mock import MagicMock
 from dataclasses import dataclass
+from torchmetrics import MetricCollection
 
 from cerberus.interval import parse_intervals, merge_intervals, Interval
 from cerberus.predict import (

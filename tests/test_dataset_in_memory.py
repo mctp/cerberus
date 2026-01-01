@@ -1,10 +1,8 @@
-import pytest
-from pathlib import Path
-from typing import cast
-from cerberus.dataset import CerberusDataset
 from cerberus.config import DataConfig, SamplerConfig
 from cerberus.genome import create_genome_config
 from cerberus.sequence import InMemorySequenceExtractor, SequenceExtractor
+from typing import cast
+from cerberus.dataset import CerberusDataset
 
 def test_dataset_in_memory_extractor(tmp_path):
     # Setup

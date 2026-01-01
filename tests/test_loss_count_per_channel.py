@@ -1,8 +1,5 @@
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import pytest
 from cerberus.loss import (
     MSEMultinomialLoss, CoupledMSEMultinomialLoss, 
     PoissonMultinomialLoss, CoupledPoissonMultinomialLoss

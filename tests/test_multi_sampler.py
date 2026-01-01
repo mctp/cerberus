@@ -1,6 +1,4 @@
 import pytest
-from pathlib import Path
-import numpy as np
 from cerberus.samplers import MultiSampler, IntervalSampler, create_sampler
 from cerberus.genome import create_genome_folds
 

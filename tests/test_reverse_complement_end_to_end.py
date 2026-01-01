@@ -1,5 +1,4 @@
 import torch
-import pytest
 from cerberus.transform import Compose, ReverseComplement
 from cerberus.sequence import encode_dna
 from cerberus.interval import Interval

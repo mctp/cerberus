@@ -1,10 +1,8 @@
 
 import pytest
-import os
-from pathlib import Path
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 from typing import cast
 from cerberus.dataset import CerberusDataset
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 @pytest.fixture
 def mock_fasta(tmp_path):

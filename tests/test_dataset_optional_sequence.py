@@ -1,14 +1,8 @@
 import pytest
 import torch
-from pathlib import Path
 from typing import cast
 from cerberus.dataset import CerberusDataset
-from cerberus.config import (
-    DataConfig,
-    SamplerConfig,
-    validate_data_config,
-    validate_genome_config,
-)
+from cerberus.config import DataConfig, SamplerConfig
 from cerberus.genome import create_genome_config
 
 @pytest.fixture

@@ -1,10 +1,8 @@
-import pytest
-from pathlib import Path
-from typing import cast
-from cerberus.samplers import IntervalSampler
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_folds, GenomeConfig
 from cerberus.config import DataConfig, SamplerConfig
+from typing import cast
+from cerberus.samplers import IntervalSampler
 
 def test_sampler_split_folds(tmp_path):
     # Create a mock BED file

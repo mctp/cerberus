@@ -1,5 +1,4 @@
 import pytest
-from pathlib import Path
 from cerberus.config import validate_predict_config, PredictConfig
 
 def test_validate_predict_config_valid(tmp_path):

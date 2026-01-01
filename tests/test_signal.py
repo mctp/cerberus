@@ -1,10 +1,7 @@
 import os
 import pytest
 import torch
-import numpy as np
-from pathlib import Path
 from cerberus.signal import SignalExtractor, InMemorySignalExtractor
-from cerberus.interval import Interval
 
 @pytest.fixture
 def bigwig_path(mdapca2b_ar_dataset):

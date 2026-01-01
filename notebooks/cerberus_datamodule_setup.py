@@ -5,10 +5,7 @@
 # It covers configuration of the genome, dataset, and sampler, and shows how to inspect the resulting data batches.
 
 # %%
-import os
-import sys
 import pprint
-from pathlib import Path
 import torch
 
 from cerberus.genome import create_genome_config

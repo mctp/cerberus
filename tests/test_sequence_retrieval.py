@@ -3,7 +3,6 @@ import pytest
 import torch
 import numpy as np
 import pysam
-from pathlib import Path
 from cerberus.sequence import SequenceExtractor, encode_dna
 from cerberus.interval import Interval
 

@@ -1,12 +1,9 @@
 import pytest
 import torch
-import numpy as np
-from pathlib import Path
-from typing import cast
-from cerberus.dataset import CerberusDataset
-from cerberus.interval import Interval
 from cerberus.transform import Jitter, ReverseComplement
 from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
+from typing import cast
+from cerberus.dataset import CerberusDataset
 
 # Mocking helpers
 class MockSequenceExtractor:

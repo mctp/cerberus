@@ -1,5 +1,3 @@
-import pytest
-import os
 
 def test_mdapca2b_ar_dataset_download(mdapca2b_ar_dataset):
     """

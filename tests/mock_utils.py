@@ -1,9 +1,9 @@
-from typing import Iterator, Protocol, Callable, Optional
+from typing import Protocol
 import numpy as np
 import torch
 from cerberus.interval import Interval
-from cerberus.samplers import Sampler, BaseSampler, SubsetSampler
-from cerberus.sequence import BaseSequenceExtractor, SequenceExtractor, encode_dna
+from cerberus.samplers import BaseSampler, SubsetSampler
+from cerberus.sequence import BaseSequenceExtractor, SequenceExtractor
 from cerberus.signal import BaseSignalExtractor
 
 class MotifInserter(Protocol):

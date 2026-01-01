@@ -4,7 +4,6 @@
 # This notebook demonstrates how to use `predict_intervals` to run inference on genomic intervals.
 
 # %%
-import os
 import torch
 import torch.nn as nn
 import numpy as np

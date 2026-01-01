@@ -1,11 +1,7 @@
 import os
 import pytest
-import torch
-import numpy as np
 import pyBigWig as pybigwig
-from pathlib import Path
 from cerberus.signal import SignalExtractor
-from cerberus.interval import Interval
 
 @pytest.mark.skipif(os.environ.get("RUN_SLOW_TESTS") is None, reason="Skipping slow tests")
 def test_compare_signal_extraction_with_pybigwig(mdapca2b_ar_dataset):

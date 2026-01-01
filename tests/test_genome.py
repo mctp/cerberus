@@ -1,10 +1,8 @@
 import pytest
 import torch
-import numpy as np
-from pathlib import Path
-from cerberus.genome import create_genome_config
 from cerberus.sequence import encode_dna, SequenceExtractor, InMemorySequenceExtractor
 from cerberus.interval import Interval
+from cerberus.genome import create_genome_config
 
 def test_genome_from_fasta_human_supported(tmp_path):
     fasta_path = tmp_path / "test.fa"

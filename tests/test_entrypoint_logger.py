@@ -1,10 +1,8 @@
-import pytest
 from unittest.mock import MagicMock, patch
 from typing import cast
 from cerberus.entrypoints import train
 from cerberus.config import TrainConfig
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import CSVLogger
 
 def test_train_wrapper_logger_setup():
     # Mock model and datamodule

@@ -8,8 +8,6 @@
 import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from typing import cast
-from torchmetrics import MetricCollection
 
 # Add project root to path if needed to import notebooks.paths
 import sys

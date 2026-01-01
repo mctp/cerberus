@@ -1,7 +1,4 @@
 import pytest
-from pathlib import Path
-from cerberus.samplers import IntervalSampler
-from interlap import InterLap
 
 def test_interval_sampler_reads_narrowpeak_gz(mdapca2b_ar_dataset):
     """

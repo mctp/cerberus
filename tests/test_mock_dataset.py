@@ -1,7 +1,4 @@
-import pytest
 import torch
-from pathlib import Path
-from typing import cast
 from torch.utils.data import DataLoader
 from cerberus.dataset import CerberusDataset
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig

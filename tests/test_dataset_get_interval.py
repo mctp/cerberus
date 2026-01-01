@@ -1,12 +1,11 @@
 import pytest
 import torch
-from pathlib import Path
-from typing import cast
 from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
 from cerberus.genome import create_genome_config
 from cerberus.config import DataConfig, SamplerConfig
 from cerberus.samplers import DummySampler
+from typing import cast
 
 def test_get_interval_with_arbitrary_interval(tmp_path):
     """

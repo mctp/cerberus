@@ -1,5 +1,4 @@
 import pytest
-import torch
 from unittest.mock import MagicMock, patch
 from cerberus.sequence import SequenceExtractor, encode_dna
 from cerberus.interval import Interval

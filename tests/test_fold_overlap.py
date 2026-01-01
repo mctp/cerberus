@@ -1,8 +1,5 @@
 
-import pytest
-from interlap import InterLap
-from cerberus.samplers import IntervalSampler, create_sampler
-from cerberus.interval import Interval
+from cerberus.samplers import IntervalSampler
 from cerberus.genome import create_genome_folds
 
 def test_sampler_split_folds_overlap(tmp_path):
