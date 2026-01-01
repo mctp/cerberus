@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import List, Dict
 import torch
 from torch import nn
 import re
@@ -34,7 +33,7 @@ class ModelManager:
         self.genome_config = genome_config
         self.device = device
         
-        self.cache: Dict[str, nn.Module] = {}
+        self.cache: dict[str, nn.Module] = {}
         self.is_multifold = self._detect_multifold()
         
         if self.is_multifold:
@@ -52,7 +51,7 @@ class ModelManager:
             return any((self.checkpoint_path / f"fold_{i}").exists() for i in range(2))
         return False
 
-    def _select_best_checkpoint(self, checkpoints: List[Path]) -> Path:
+    def _select_best_checkpoint(self, checkpoints: list[Path]) -> Path:
         """
         Selects the best checkpoint from a list based on validation loss.
         Assumes filename format like '...val_loss=0.1234...' or '...val_loss-0.1234...'.
@@ -74,7 +73,7 @@ class ModelManager:
         sorted_ckpts = sorted(checkpoints, key=lambda p: (get_val_loss(p), p.name))
         return sorted_ckpts[0]
 
-    def get_models(self, chrom: str, start: int, end: int, use_folds: List[str] = ["test", "val"]) -> List[nn.Module]:
+    def get_models(self, chrom: str, start: int, end: int, use_folds: list[str] = ["test", "val"]) -> list[nn.Module]:
         """
         Returns list of models applicable for the interval.
         

@@ -4,7 +4,6 @@ import urllib.request
 import shutil
 import gzip
 import pyfaidx
-from typing import Dict
 
 def _download_file(url: str, dest: Path):
     """Downloads a file from a URL to a destination path."""
@@ -15,7 +14,7 @@ def _download_file(url: str, dest: Path):
     with urllib.request.urlopen(req) as response, open(dest, "wb") as out_file:
         shutil.copyfileobj(response, out_file)
 
-def download_dataset(output_dir: Path | str, name: str) -> Dict[str, Path]:
+def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
     """
     Downloads a specified dataset.
 

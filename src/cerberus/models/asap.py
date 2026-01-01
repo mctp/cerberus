@@ -1,4 +1,3 @@
-from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
@@ -105,7 +104,7 @@ class _ConvBlock(nn.Module):
 class _BasenjiCoreBlock(nn.Module):
     def __init__(self, nr_tracks: int, window: int, filters_in,
                   nr_res_blocks: int = 11, rate_mult: float = 1.5, bin_size: int = 100, filters1: int = 128,
-                  filters3: Optional[int] = None, kernel1: int = 3, kernel2: int = 1, dropout: float = 0.3,
+                  filters3: int | None = None, kernel1: int = 3, kernel2: int = 1, dropout: float = 0.3,
                   final_dropout: float = 0.05):
         super().__init__()
         if not filters3:

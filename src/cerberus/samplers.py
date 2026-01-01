@@ -102,11 +102,16 @@ class BaseSampler(Sampler):
             return (start, end - 1) in fold_intervals[chrom]
 
         for i, interval in enumerate(self._intervals):
-            if is_in_fold(test_fold_intervals, interval.chrom, interval.start, interval.end):
+            in_test = is_in_fold(test_fold_intervals, interval.chrom, interval.start, interval.end)
+            in_val = is_in_fold(val_fold_intervals, interval.chrom, interval.start, interval.end)
+
+            if in_test:
                 test_indices.append(i)
-            elif is_in_fold(val_fold_intervals, interval.chrom, interval.start, interval.end):
+            
+            if in_val:
                 val_indices.append(i)
-            else:
+            
+            if not in_test and not in_val:
                 train_indices.append(i)
 
         return (

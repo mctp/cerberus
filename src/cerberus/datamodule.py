@@ -2,7 +2,6 @@ import pytorch_lightning as pl
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
-from typing import Optional
 from .dataset import CerberusDataset
 from .config import (
     GenomeConfig,
@@ -27,8 +26,8 @@ class CerberusDataModule(pl.LightningDataModule):
         genome_config: GenomeConfig,
         data_config: DataConfig,
         sampler_config: SamplerConfig,
-        test_fold: int = 0,
-        val_fold: int = 1,
+        test_fold: int | None = 0,
+        val_fold: int | None = 1,
         pin_memory: bool = True,
     ):
         """
@@ -55,9 +54,9 @@ class CerberusDataModule(pl.LightningDataModule):
         self.val_fold = val_fold
         self.pin_memory = pin_memory
 
-        self.train_dataset: Optional[CerberusDataset] = None
-        self.val_dataset: Optional[CerberusDataset] = None
-        self.test_dataset: Optional[CerberusDataset] = None
+        self.train_dataset: CerberusDataset | None = None
+        self.val_dataset: CerberusDataset | None = None
+        self.test_dataset: CerberusDataset | None = None
         self._is_initialized = False
 
     @staticmethod
@@ -77,10 +76,10 @@ class CerberusDataModule(pl.LightningDataModule):
 
     def setup(
         self, 
-        stage: Optional[str] = None, 
-        batch_size: Optional[int] = None, 
-        num_workers: Optional[int] = None,
-        in_memory: Optional[bool] = None,
+        stage: str | None = None, 
+        batch_size: int | None = None, 
+        num_workers: int | None = None,
+        in_memory: bool | None = None,
     ):
         """
         Sets up the datasets for the specified stage.

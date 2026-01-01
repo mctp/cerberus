@@ -1,7 +1,7 @@
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from typing import Optional, cast, Any
+from typing import cast, Any
 from pathlib import Path
 
 from .datamodule import CerberusDataModule
@@ -71,7 +71,7 @@ def instantiate(
 
 def _configure_callbacks(
     train_config: TrainConfig,
-    existing_callbacks: Optional[list[pl.Callback]] = None,
+    existing_callbacks: list[pl.Callback] | None = None,
     enable_checkpointing: bool = True,
     use_logger: bool = True,
 ) -> list[pl.Callback]:
@@ -123,12 +123,12 @@ def train(
     module: pl.LightningModule,
     datamodule: CerberusDataModule,
     train_config: TrainConfig,
-    callbacks: Optional[list[pl.Callback]] = None,
+    callbacks: list[pl.Callback] | None = None,
     num_workers: int = 0,
     in_memory: bool = False,
     matmul_precision: str = "highest",
     precision: Any = "32-true",
-    root_dir: Optional[str | Path] = None,
+    root_dir: str | Path | None = None,
     **trainer_kwargs,
 ) -> pl.Trainer:
     """
@@ -218,14 +218,14 @@ def train(
     return trainer
 
 
-def train_fold(
+def train_single(
     genome_config: GenomeConfig,
     data_config: DataConfig,
     sampler_config: SamplerConfig,
     model_config: ModelConfig,
     train_config: TrainConfig,
-    test_fold: int = 0,
-    val_fold: int = 1,
+    test_fold: int | None = 0,
+    val_fold: int | None = 1,
     compile: bool = False,
     num_workers: int = 0,
     in_memory: bool = False,
@@ -342,7 +342,7 @@ def train_multi(
 
         print(f"Starting training for Fold {test_fold} (Val: {val_fold})...")
 
-        trainer = train_fold(
+        trainer = train_single(
             genome_config=genome_config,
             data_config=data_config,
             sampler_config=sampler_config,

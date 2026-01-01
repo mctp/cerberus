@@ -1,53 +1,48 @@
 #!/usr/bin/env python
 """
-Full-scale training example for a CNN model using Cerberus.
+BPNet training example for ChIP-seq data using Cerberus.
 
-This script demonstrates how to train a model using the high-level configuration-driven API.
-It supports both single-fold training (default) and multi-fold cross-validation.
+This script implements a standard BPNet training run using the MDA-PCA-2b AR dataset.
+It follows the standard configuration:
+- Input: 2114bp DNA sequence
+- Output: 1000bp base-resolution profile
+- Model: BPNet (8 dilated layers)
+- Loss: BPNetLoss (Multinomial NLL + MSE log counts)
+- Training: Based on peak intervals (narrowPeak)
 
 Usage:
-    python examples/chip_ar_mdapca2b.py --help
-    python examples/chip_ar_mdapca2b.py --batch-size 64 --max-epochs 50
-    python examples/chip_ar_mdapca2b.py --multi --batch-size 64
-
-    # Apple Silicon (M1/M2/M3) Recommendation:
-    python examples/chip_ar_mdapca2b.py --accelerator mps --batch-size 64 --num-workers 0
+    python examples/chip_ar_mdapca2b_bpnet.py --batch-size 64 --max-epochs 50
+    python examples/chip_ar_mdapca2b_bpnet.py --multi --batch-size 64
 """
 
 import argparse
 import torch
 from pathlib import Path
 from pprint import pprint
-import torch.nn as nn
-from typing import cast
-from torchmetrics import MetricCollection
 
 # Cerberus imports
 from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
-from cerberus.models.gopher import GlobalProfileCNN
 from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
-from cerberus.metrics import DefaultMetricCollection
-from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.entrypoints import train_single, train_multi
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Train a CNN model with Cerberus")
+    parser = argparse.ArgumentParser(description="Train a BPNet model with Cerberus")
     
     # Script arguments
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data")
-    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b", help="Root directory for logs and checkpoints")
+    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_bpnet", help="Root directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
-    parser.add_argument("--max-epochs", type=int, default=20, help="Maximum number of epochs")
+    parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
-    parser.add_argument("--model", type=str, default="baseline", choices=["baseline", "bpnet"], help="Model architecture to use")
 
-    # Sampler arguments
-    parser.add_argument("--genome", action="store_true", help="Use genome-wide sliding window sampler instead of peak intervals")
+    # Hyperparameters
+    parser.add_argument("--jitter", type=int, default=128, help="Maximum jitter for data augmentation (half-width)")
+    parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
 
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
@@ -63,14 +58,10 @@ def main():
     data_dir.mkdir(parents=True, exist_ok=True)
     
     output_dir = Path(args.output_dir).resolve()
-    if args.multi and args.genome:
-        output_dir = output_dir / "genome-multi"
-    elif args.multi:
-        output_dir = output_dir / "peaks-multi"
-    elif args.genome:
-        output_dir = output_dir / "genome-single"
+    if args.multi:
+        output_dir = output_dir / "multi-fold"
     else:
-        output_dir = output_dir / "peaks-single"
+        output_dir = output_dir / "single-fold"
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"Data Directory: {data_dir}")
@@ -98,58 +89,38 @@ def main():
         }
     )
 
-    # Data Config
-    # Input: 2048bp DNA
-    # Output: 256 bins @ 4bp resolution (covering 1024bp)
-    
-    if args.model == "bpnet":
-        # BPNet standard params
-        input_len = 2114
-        output_len = 1000
-        output_bin_size = 1 # BPNet is usually base-resolution
-        log_transform = False # BPNet typically trains on raw counts with PoissonMultinomial/MSEMultinomialLoss
-    else:
-        # Baseline Gopher params
-        input_len = 2048
-        output_len = 1024
-        output_bin_size = 4
-        log_transform = True
+    # Data Config for BPNet
+    # Input: 2114bp DNA
+    # Output: 1000bp at base resolution
+    input_len = 2114
+    output_len = 1000
+    output_bin_size = 1
+    max_jitter = args.jitter
 
     data_config: DataConfig = {
         "inputs": {}, # No additional input tracks, just DNA
         "targets": {"signal": dataset_files["bigwig"]},
         "input_len": input_len,
         "output_len": output_len, 
-        "max_jitter": 128,  # Augmentation jitter
-        "output_bin_size": output_bin_size, # Binning resolution
-        "encoding": "ACGT", # Standard One-Hot
-        "log_transform": log_transform, # Log(x+1) transform targets
+        "max_jitter": max_jitter,
+        "output_bin_size": output_bin_size,
+        "encoding": "ACGT",
+        "log_transform": False, # BPNet uses raw counts for multinomial loss
         "reverse_complement": True, # Augmentation
         "use_sequence": True,
     }
 
-    # Sampler Config
-    # padded_size >= input_len + 2 * max_jitter
-    padded_size = input_len + 2 * data_config["max_jitter"]
+    # Sampler Config - Peak Intervals
+    padded_size = input_len + 2 * max_jitter
+    print(f"Using Peak Sampler (Intervals) with padded_size={padded_size}...")
     
-    if args.genome:
-        print("Using Genome Sampler (Sliding Window)...")
-        sampler_config: SamplerConfig = {
-            "sampler_type": "sliding_window",
-            "padded_size": padded_size,
-            "sampler_args": {
-                "stride": 1024
-            }
+    sampler_config: SamplerConfig = {
+        "sampler_type": "interval",
+        "padded_size": padded_size,
+        "sampler_args": {
+            "intervals_path": dataset_files["narrowPeak"]
         }
-    else:
-        print("Using Peak Sampler (Intervals)...")
-        sampler_config: SamplerConfig = {
-            "sampler_type": "interval",
-            "padded_size": padded_size,
-            "sampler_args": {
-                "intervals_path": dataset_files["narrowPeak"]
-            }
-        }
+    }
 
     # Train Config
     train_config: TrainConfig = {
@@ -157,64 +128,38 @@ def main():
         "max_epochs": args.max_epochs,
         "learning_rate": 1e-3,
         "weight_decay": 0.01,
-        "patience": 10,
+        "patience": 15,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
         "scheduler_type": "cosine",
         "scheduler_args": {
             "num_epochs": args.max_epochs,
-            "warmup_epochs": 5, # Warmup for 5 epochs
+            "warmup_epochs": 10,
             "min_lr": 1e-5
         }
     }
 
-    # Model Config
-    if args.model == "bpnet":
-        print("Using BPNet Model...")
-        model_config: ModelConfig = {
-            "name": "BPNet",
-            "model_cls": BPNet,
-            "loss_cls": BPNetLoss,
-            "loss_args": {
-                "alpha": 1.0,
-                "implicit_log_targets": log_transform # Should be False if data not transformed
-            },
-            "metrics_cls": BPNetMetricCollection,
-            "metrics_args": {},
-            "model_args": {
-                "input_channels": ["A", "C", "G", "T"],
-                "output_channels": ["signal"],
-                "filters": 64,
-                "n_dilated_layers": 8
-            }
+    # Model Config for BPNet
+    print("Using BPNet Model...")
+    model_config: ModelConfig = {
+        "name": "BPNet",
+        "model_cls": BPNet,
+        "loss_cls": BPNetLoss,
+        "loss_args": {
+            "alpha": args.alpha,
+        },
+        "metrics_cls": BPNetMetricCollection,
+        "metrics_args": {},
+        "model_args": {
+            "input_channels": ["A", "C", "G", "T"],
+            "output_channels": ["signal"],
+            "filters": 64,
+            "n_dilated_layers": 8,
+            "input_len": input_len,
+            "output_len": output_len,
+            "output_bin_size": output_bin_size
         }
-    else:
-        print("Using Baseline (GlobalProfileCNN) Model...")
-        model_config: ModelConfig = {
-            "name": "GlobalProfileCNN",
-            "model_cls": GlobalProfileCNN,
-            "loss_cls": ProfilePoissonNLLLoss,
-            "loss_args": {"log_input": True, "full": False},
-            # Cast function to expected type for static analysis
-            "metrics_cls": DefaultMetricCollection,
-            "metrics_args": {},
-            "model_args": {
-                "input_channels": ["A", "C", "G", "T"],
-                "output_channels": ["signal"],
-            }
-        }
-
-    print("\nConfigurations:")
-    print("-" * 20)
-    print("Genome Config:")
-    pprint(genome_config)
-    print("\nData Config:")
-    pprint(data_config)
-    print("\nSampler Config:")
-    pprint(sampler_config)
-    print("\nTrain Config:")
-    pprint(train_config)
-    print("-" * 20 + "\n")
+    }
 
     # 3. Training
     # Handle devices argument
@@ -223,7 +168,6 @@ def main():
         try:
             devices = int(devices)
         except ValueError:
-            # If it's a list like "0,1", keep as string or parse list if needed by PL
             pass
 
     # Hardware-specific optimization
@@ -236,18 +180,34 @@ def main():
 
     if accelerator == "mps":
         print(f"[INFO] Using Apple Silicon (MPS) acceleration.")
-        # MPS is often unstable with multiprocessing in DataLoaders
         if num_workers > 0:
             print(f"[WARN] num_workers={num_workers} may cause instability on MPS. Recommend setting --num-workers 0.")
     
     # Precision settings
     precision_args = {
-        "precision": "16-mixed", # Mixed precision works well on M2
-        "matmul_precision": "high", # Mainly for NVIDIA Tensor Cores
+        "precision": "16-mixed",
+        "matmul_precision": "high",
         "accelerator": accelerator,
         "devices": devices,
         "strategy": "ddp" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto"
     }
+
+    print("\nConfigurations:")
+    print("-" * 20)
+    print("Genome Config:")
+    pprint(genome_config)
+    print("\nData Config:")
+    pprint(data_config)
+    print("\nSampler Config:")
+    pprint(sampler_config)
+    print("\nTrain Config:")
+    pprint(train_config)
+    print("\nModel Config:")
+    pprint(model_config)
+    print("\nPrecision and Hardware Args:")
+    pprint(precision_args)
+    print("-" * 20 + "\n")
+
 
     if args.multi:
         print("Starting Multi-Fold Training (train_multi)...")

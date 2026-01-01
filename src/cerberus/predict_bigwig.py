@@ -1,5 +1,5 @@
 import torch
-from typing import List, Tuple, Iterable
+from collections.abc import Iterable
 import pybigtools
 from pathlib import Path
 
@@ -38,7 +38,7 @@ def predict_to_bigwig(
     data_config = dataset.data_config
     
     # Prepare generator for pybigtools
-    def stream_generator() -> Iterable[Tuple[str, int, int, float]]:
+    def stream_generator() -> Iterable[tuple[str, int, int, float]]:
         chrom_sizes = genome_config["chrom_sizes"]
         allowed_chroms = genome_config["allowed_chroms"]
         input_len = data_config["input_len"]
@@ -60,7 +60,7 @@ def predict_to_bigwig(
                 folds=[],  # No folds needed for prediction generation
             )
 
-            current_island: List[Interval] = []
+            current_island: list[Interval] = []
             prev_input_start = -999999
 
             for window in sampler:
@@ -101,13 +101,13 @@ def predict_to_bigwig(
 
 
 def _process_island(
-    island_intervals: List[Interval],
+    island_intervals: list[Interval],
     dataset: CerberusDataset,
     model_manager: ModelManager,
     predict_config: PredictConfig,
     device: str,
     batch_size: int,
-) -> Iterable[Tuple[str, int, int, float]]:
+) -> Iterable[tuple[str, int, int, float]]:
     """
     Runs prediction on a contiguous island of intervals and yields values.
     """
@@ -116,7 +116,7 @@ def _process_island(
         island_intervals, dataset, model_manager, predict_config, device, batch_size
     )
 
-    # aggregated_output is Tuple[np.ndarray, ...] (tracks)
+    # aggregated_output is tuple[np.ndarray, ...] (tracks)
     # We take the first track (index 0) and first channel (index 0)
     track_data = aggregated_output[0]  # Shape: (Channels, Bins) or (Channels,)
     
