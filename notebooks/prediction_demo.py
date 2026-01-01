@@ -27,6 +27,7 @@ from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
 from cerberus.model_manager import ModelManager
 from cerberus.predict import predict_intervals
+from cerberus.output import ProfileCountOutput
 
 # %% [markdown]
 # ## 1. Setup Configuration
@@ -110,7 +111,7 @@ class SimpleModel(nn.Module):
         # Dummy counts
         counts = torch.ones((batch_size, 1), device=x.device) * 10.0
         
-        return (profile, counts)
+        return ProfileCountOutput(logits=profile, log_counts=counts)
 
 # %% [markdown]
 # ## 3. Setup Model Manager
@@ -204,8 +205,9 @@ print("Merged Interval:", merged_interval)
 # %%
 print("Number of output heads:", len(outputs))
 
-profile_track = outputs[0]
-counts_track = outputs[1]
+# outputs is a dict with keys 'logits' and 'log_counts'
+profile_track = outputs["logits"]
+counts_track = outputs["log_counts"]
 
 print("Profile Track Shape:", profile_track.shape)
 print("Counts Track Shape:", counts_track.shape)

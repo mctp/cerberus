@@ -4,7 +4,7 @@ from cerberus.loss import (
     MSEMultinomialLoss, CoupledMSEMultinomialLoss, 
     PoissonMultinomialLoss, CoupledPoissonMultinomialLoss
 )
-from cerberus.output import ProfileOutput, ProfileCountOutput
+from cerberus.output import ProfileOutput, ProfileCountOutput, ProfileLogRates
 
 def test_bpnet_loss_count_per_channel():
     """Test BPNetLoss with count_per_channel=True"""
@@ -77,7 +77,7 @@ def test_coupled_bpnet_loss_count_per_channel():
     logits_perfect[:, 1, :] = val1
     logits_perfect.requires_grad_(True)
     
-    outputs_perfect = ProfileOutput(logits=logits_perfect)
+    outputs_perfect = ProfileLogRates(log_rates=logits_perfect)
     
     # Count loss involves log1p(targets).
     # Coupled loss calculates logsumexp(logits).
@@ -93,7 +93,7 @@ def test_coupled_bpnet_loss_count_per_channel():
     logits_bad[:, 1, :] += 1.0 # Increases count estimate for Ch1
     logits_bad.requires_grad_(True)
     
-    outputs_bad = ProfileOutput(logits=logits_bad)
+    outputs_bad = ProfileLogRates(log_rates=logits_bad)
     loss_bad = loss_fn(outputs_bad, targets)
     
     assert loss_bad > loss_perfect
@@ -131,6 +131,7 @@ def test_poisson_multinomial_loss_count_per_channel():
     loss_bad.backward()
     # Check gradients separate per channel
     grad = pred_log_counts_bad.grad
+    assert grad is not None
     assert torch.abs(grad[:, 1]).sum() > 0 # Ch1 changed
     # Ch0 perfect, but Poisson loss derivative isn't 0 at the mode unless using Stirling approx or specific conditions?
     # Poisson NLL = lambda - k * log(lambda). d/d(log_lam) = lam - k.
@@ -158,7 +159,7 @@ def test_coupled_poisson_multinomial_loss_count_per_channel():
     logits[:, 1, :] = val1
     logits.requires_grad_(True)
     
-    outputs = ProfileOutput(logits=logits)
+    outputs = ProfileLogRates(log_rates=logits)
     
     loss = loss_fn(outputs, targets)
     loss.backward()
@@ -171,4 +172,5 @@ def test_coupled_poisson_multinomial_loss_count_per_channel():
     # Targets [5, 5] -> uniform. Logits [log5, log5] -> uniform.
     # So shape loss should also be minimal/optimal.
     
+    assert logits.grad is not None
     assert torch.allclose(logits.grad, torch.zeros_like(logits), atol=1e-5)

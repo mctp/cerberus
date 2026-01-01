@@ -4,7 +4,7 @@ import pytest
 from cerberus.models.bpnet import BPNet, _ResidualBlock, BPNetMetricCollection, BPNetLoss
 from cerberus.loss import PoissonMultinomialLoss, MSEMultinomialLoss, CoupledMSEMultinomialLoss, CoupledPoissonMultinomialLoss
 from cerberus.metrics import DecoupledFlattenedPearsonCorrCoef, DecoupledMeanSquaredError
-from cerberus.output import ProfileCountOutput, ProfileOutput
+from cerberus.output import ProfileCountOutput, ProfileOutput, ProfileLogRates
 
 def test_bpnet_residual_block_cropping():
     filters = 16
@@ -217,7 +217,8 @@ def test_bpnet_loss_integration():
     out_m = model_multi(x)
     targets_m = torch.randint(0, 10, (2, 2, 500)).float()
     
-    out_profile_only = ProfileOutput(logits=out_m.logits)
+    # Treat BPNet logits as log-rates for the purpose of testing coupled loss mechanics
+    out_profile_only = ProfileLogRates(log_rates=out_m.logits)
     loss_c = loss_coupled(out_profile_only, targets_m)
     assert not torch.isnan(loss_c)
     
@@ -271,7 +272,7 @@ def test_bpnet_coupled_equivalence():
     
     # 2. CoupledMSEMultinomialLoss
     loss_fn_coupled = CoupledMSEMultinomialLoss()
-    out_coupled = ProfileOutput(logits=logits)
+    out_coupled = ProfileLogRates(log_rates=logits)
     loss_coupled = loss_fn_coupled(out_coupled, targets)
     
     # Tolerances might need adjustment if logsumexp precision varies
@@ -301,7 +302,7 @@ def test_poisson_coupled_equivalence():
     
     # 2. Coupled
     loss_fn_coupled = CoupledPoissonMultinomialLoss()
-    out_coupled = ProfileOutput(logits=logits)
+    out_coupled = ProfileLogRates(log_rates=logits)
     loss_coupled = loss_fn_coupled(out_coupled, targets)
     
     assert torch.isclose(loss_std, loss_coupled, atol=1e-6)

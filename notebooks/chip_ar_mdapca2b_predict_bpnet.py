@@ -247,8 +247,8 @@ gt_targets = dataset.target_signal_extractor.extract(merged_interval)
 print(f"Ground Truth Shape: {gt_targets.shape}")
 
 # Inspect Outputs
-for i, track in enumerate(outputs):
-    print(f"\nOutput Track {i}:")
+for key, track in outputs.items():
+    print(f"\nOutput Track '{key}':")
     print(f"  Shape: {track.shape}")
     print(f"  Min: {track.min():.4f}, Max: {track.max():.4f}, Mean: {track.mean():.4f}")
 
@@ -271,11 +271,11 @@ print(f"Number of Bins: {n_bins}")
 
 # Extract prediction tracks
 # Track 0: Profile Logits
-logits = outputs[0][:, rel_start_bin : rel_start_bin + n_bins]
+logits = outputs["logits"][:, rel_start_bin : rel_start_bin + n_bins]
 logits_tensor = torch.from_numpy(logits)
 
 # Track 1: Log Total Counts (constant over interval)
-log_counts = outputs[1][:, rel_start_bin : rel_start_bin + n_bins]
+log_counts = outputs["log_counts"][:, rel_start_bin : rel_start_bin + n_bins]
 log_counts_val = torch.tensor(log_counts[0, 0]) # Take first value
 total_counts = torch.exp(log_counts_val)
 

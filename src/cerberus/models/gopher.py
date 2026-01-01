@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from cerberus.output import ProfileOutput
+from cerberus.output import ProfileLogRates
 
 class _Reshape(nn.Module):
     """
@@ -154,7 +154,7 @@ class GlobalProfileCNN(nn.Module):
         # We output Logits (Linear) to use with PoissonNLLLoss(log_input=True).
         self.head = nn.Conv1d(256, num_output_channels, kernel_size=1)
 
-    def forward(self, x: torch.Tensor) -> ProfileOutput:
+    def forward(self, x: torch.Tensor) -> ProfileLogRates:
         # x: (Batch, Channels, Length)
         
         # Conv Blocks
@@ -175,4 +175,4 @@ class GlobalProfileCNN(nn.Module):
         x = self.head(x)
         
         # Output: (Batch, Num_Output_Channels, Out_Len)
-        return ProfileOutput(logits=x)
+        return ProfileLogRates(log_rates=x)

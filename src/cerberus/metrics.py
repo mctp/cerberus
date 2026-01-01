@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torchmetrics import PearsonCorrCoef, MeanSquaredError, MetricCollection
-from cerberus.output import ProfileOutput, ProfileCountOutput
+from cerberus.output import ProfileOutput, ProfileCountOutput, ProfileLogRates, ProfileLogits
 
 class FlattenedPearsonCorrCoef(PearsonCorrCoef):
     """
@@ -10,18 +10,21 @@ class FlattenedPearsonCorrCoef(PearsonCorrCoef):
     Flattens dimensions (Batch, Length) for each channel to compute correlation
     per channel, then averages across channels.
     
-    Operates on probabilities (Softmax of logits).
+    Operates on probabilities (Softmax of logits or log_rates).
     """
     def __init__(self, num_channels=1, implicit_log_targets=False, **kwargs):
         super().__init__(num_outputs=num_channels, **kwargs)
         self.num_channels = num_channels
         self.implicit_log_targets = implicit_log_targets
 
-    def update(self, preds: ProfileOutput, target: torch.Tensor):
-        if not isinstance(preds, ProfileOutput):
-            raise TypeError("FlattenedPearsonCorrCoef requires ProfileOutput (or subclass)")
+    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor):
+        if isinstance(preds, ProfileLogRates):
+            logits = preds.log_rates
+        elif isinstance(preds, ProfileLogits):
+            logits = preds.logits
+        else:
+            raise TypeError("FlattenedPearsonCorrCoef requires ProfileLogRates or ProfileLogits")
         
-        logits = preds.logits
         probs = F.softmax(logits, dim=-1)
 
         if self.implicit_log_targets:
@@ -128,11 +131,14 @@ class ProfileMeanSquaredError(MeanSquaredError):
         super().__init__(**kwargs)
         self.implicit_log_targets = implicit_log_targets
 
-    def update(self, preds: ProfileOutput, target: torch.Tensor):
-        if not isinstance(preds, ProfileOutput):
-             raise TypeError("ProfileMeanSquaredError requires ProfileOutput (or subclass)")
+    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor):
+        if isinstance(preds, ProfileLogRates):
+            logits = preds.log_rates
+        elif isinstance(preds, ProfileLogits):
+            logits = preds.logits
+        else:
+             raise TypeError("ProfileMeanSquaredError requires ProfileLogRates or ProfileLogits")
         
-        logits = preds.logits
         probs = F.softmax(logits, dim=-1)
         
         if self.implicit_log_targets:

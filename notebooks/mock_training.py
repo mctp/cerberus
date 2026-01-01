@@ -216,6 +216,7 @@ if __name__ == "__main__":
         limit_val_batches=10,
         enable_checkpointing=True, 
         logger=True, 
+        enable_progress_bar=False,
         default_root_dir=str(dummy_dir / "logs")
     )
 
@@ -258,6 +259,8 @@ if __name__ == "__main__":
             outputs = model(inputs) # (B, 1, 2048)
             if hasattr(outputs, "logits"):
                 preds = outputs.logits
+            elif hasattr(outputs, "log_rates"):
+                preds = outputs.log_rates
             elif isinstance(outputs, tuple):
                 preds = outputs[0]
             else:

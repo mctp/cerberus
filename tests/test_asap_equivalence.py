@@ -291,7 +291,7 @@ def test_convnext_dcnn_equivalence():
         y_cerberus_out = cerberus_model(x_cerberus)
         # Apply Softplus manually to match Original Model (which has built-in Softplus)
         # Cerberus model now returns logits (linear)
-        y_cerberus_logits = y_cerberus_out.logits
+        y_cerberus_logits = y_cerberus_out.log_rates
         y_cerberus = F.softplus(y_cerberus_logits)
         
         y_original = original_model(x_original, return_unmap=False)

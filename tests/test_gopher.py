@@ -20,7 +20,7 @@ def test_cnn_default():
     expected_output_bins = output_len // output_bin_size
     expected_shape = (batch_size, len(output_channels), expected_output_bins)
     
-    assert output.logits.shape == expected_shape
+    assert output.log_rates.shape == expected_shape
 
 def test_cnn_flexible_input():
     batch_size = 2
@@ -37,7 +37,7 @@ def test_cnn_flexible_input():
     expected_output_bins = output_len // output_bin_size
     expected_shape = (batch_size, len(output_channels), expected_output_bins)
     
-    assert output.logits.shape == expected_shape
+    assert output.log_rates.shape == expected_shape
 
 def test_cnn_large_input():
     batch_size = 2 # Need >1 for BatchNorm
@@ -50,7 +50,7 @@ def test_cnn_large_input():
     output = model(x)
     
     expected_output_bins = output_len // output_bin_size
-    assert output.logits.shape == (batch_size, 1, expected_output_bins)
+    assert output.log_rates.shape == (batch_size, 1, expected_output_bins)
 
 def test_cnn_flexible_channels():
     batch_size = 2
@@ -75,7 +75,7 @@ def test_cnn_flexible_channels():
     expected_output_bins = output_len // output_bin_size
     expected_shape = (batch_size, len(output_channels), expected_output_bins)
     
-    assert output.logits.shape == expected_shape
+    assert output.log_rates.shape == expected_shape
 
 def test_gopher_binning_options():
     """Test output shapes for different bin sizes."""
@@ -86,12 +86,12 @@ def test_gopher_binning_options():
     # Bin size 1
     model = GlobalProfileCNN(input_len=input_len, output_len=output_len, output_bin_size=1)
     output = model(torch.randn(batch_size, 4, input_len))
-    assert output.logits.shape == (batch_size, 1, 1024)
+    assert output.log_rates.shape == (batch_size, 1, 1024)
     
     # Bin size 32
     model = GlobalProfileCNN(input_len=input_len, output_len=output_len, output_bin_size=32)
     output = model(torch.randn(batch_size, 4, input_len))
-    assert output.logits.shape == (batch_size, 1, 32)
+    assert output.log_rates.shape == (batch_size, 1, 32)
 
 def test_gopher_bottleneck_config():
     """Test bottleneck channel configuration."""
@@ -102,7 +102,7 @@ def test_gopher_bottleneck_config():
     
     x = torch.randn(2, 4, 2048)
     output = model(x)
-    assert output.logits.shape == (2, 1, 256)
+    assert output.log_rates.shape == (2, 1, 256)
 
 def test_gopher_fixed_input_constraint():
     """Test that model fails if input length changes at runtime."""
@@ -175,7 +175,7 @@ def test_compile_compatibility():
         pytest.fail(f"Forward pass with compiled model failed: {e}")
         
     expected_shape = (batch_size, 1, output_len // output_bin_size)
-    assert output.logits.shape == expected_shape
+    assert output.log_rates.shape == expected_shape
 
 def test_compile_graph_breaks():
     """Test that there are no graph breaks when compiling the model."""

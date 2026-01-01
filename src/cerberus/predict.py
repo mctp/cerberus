@@ -18,7 +18,7 @@ def predict_intervals(
     predict_config: PredictConfig,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
     batch_size: int = 64,
-) -> Any:
+) -> tuple[dict[str, np.ndarray], Interval]:
     """
     Predicts and aggregates outputs for multiple intervals in batches.
 
@@ -32,8 +32,8 @@ def predict_intervals(
 
     Returns:
         A tuple containing:
-        - The aggregated output from the models. Always a tuple of numpy arrays.
-          Each element in the tuple corresponds to a model output head (e.g., profile, total counts).
+        - The aggregated output from the models as a dictionary mapping output names (e.g., 'logits', 'log_counts', 'log_rates')
+          to numpy arrays.
           All outputs are returned as tracks with dimensions (Channels, Bins), where Bins corresponds
           to the merged interval length divided by dataset.data_config['output_bin_size'].
           Scalar outputs (like total counts) are broadcasted to the full length of the merged interval.
@@ -95,8 +95,9 @@ def predict_intervals(
         with torch.no_grad():
             for model in models:
                 out = model(batch_inputs)
-                out = dataclasses.astuple(out)
-                batch_outputs.append(out)
+                # Convert dataclass to dict to preserve field names
+                out_dict = dataclasses.asdict(out)
+                batch_outputs.append(out_dict)
 
         # 4. Aggregate Ensemble Outputs (result is still batched)
         if not batch_outputs:
@@ -120,84 +121,68 @@ def predict_intervals(
 
 
 def _aggregate_ensemble_outputs(
-    outputs: list[tuple[torch.Tensor, ...]], method: str
-) -> tuple[torch.Tensor, ...]:
+    outputs: list[dict[str, torch.Tensor]], method: str
+) -> dict[str, torch.Tensor]:
     """
-    Aggregates a list of model outputs.
-    Outputs are expected to be tuples of Tensors.
+    Aggregates a list of model outputs (dictionaries).
     """
     if not outputs:
         raise ValueError("No outputs to aggregate.")
 
-    n_elements = len(outputs[0])
-    aggregated_elements = []
+    keys = outputs[0].keys()
+    aggregated_elements = {}
     
-    for i in range(n_elements):
+    for key in keys:
         # Stack: (N_Models, Batch, ...)
-        stacked = torch.stack([out[i] for out in outputs])
+        stacked = torch.stack([out[key] for out in outputs])
         
         if method == "mean":
             # mean over N_Models dimension (dim 0)
-            aggregated_elements.append(torch.mean(stacked, dim=0))
+            aggregated_elements[key] = torch.mean(stacked, dim=0)
         elif method == "median":
             # median over N_Models dimension (dim 0)
-            aggregated_elements.append(torch.median(stacked, dim=0).values)
+            aggregated_elements[key] = torch.median(stacked, dim=0).values
         else:
             raise ValueError(f"Unknown aggregation method: {method}")
             
-    return tuple(aggregated_elements)
+    return aggregated_elements
 
 
-def _unbatch_output(batched_output: tuple[torch.Tensor, ...], batch_size: int) -> list[tuple[torch.Tensor, ...]]:
+def _unbatch_output(batched_output: dict[str, torch.Tensor], batch_size: int) -> list[dict[str, torch.Tensor]]:
     """
-    Splits a batched output (tuple of Tensors) into a list of individual intervals (list of tuples).
+    Splits a batched output (dict of Tensors) into a list of individual intervals (list of dicts).
     """
-
-    # Unbind each component
-    # unbatched_components: list[list[Tensor]] -> [ [T1_0, T1_1, ...], [T2_0, T2_1, ...] ]
-    unbatched_components = [list(torch.unbind(tensor, dim=0)) for tensor in batched_output]
+    keys = batched_output.keys()
     
-    # Zip to get per-interval tuples
-    # zip(*unbatched_components) -> ( (T1_0, T2_0), (T1_1, T2_1), ... )
-    return list(zip(*unbatched_components))
+    # Unbind each component
+    # unbatched_components: dict[str, list[Tensor]]
+    unbatched_components = {key: list(torch.unbind(batched_output[key], dim=0)) for key in keys}
+    
+    # Reassemble into list of dicts
+    result_list = []
+    for i in range(batch_size):
+        item = {key: unbatched_components[key][i] for key in keys}
+        result_list.append(item)
+        
+    return result_list
 
 
 def _aggregate_overlapping_output_intervals(
-    results: list[tuple[tuple[Any, ...], Interval]],
+    results: list[tuple[dict[str, Any], Interval]],
     output_bin_size: int,
     output_len: int,
-) -> tuple[tuple[np.ndarray, ...], Interval]:
+) -> tuple[dict[str, np.ndarray], Interval]:
     """
     Aggregates overlapping predictions into a single merged output.
     """
     if not results:
         raise ValueError("No results to aggregate")
 
-    outputs = [r[0] for r in results] # list[tuple[Tensor, ...]]
-    intervals = [r[1] for r in results]
+    # results is list of (dict, Interval)
     
-    n_elements = len(outputs[0])
+    keys = results[0][0].keys()
+    intervals = [r[1] for r in results]
 
-    aggregated_components = []    
-    for i in range(n_elements):
-        component_outputs = [out[i] for out in outputs]
-        agg_comp, merged_interval = _aggregate_tensor_track_values(
-            component_outputs, intervals, output_bin_size, output_len
-        )
-        aggregated_components.append(agg_comp)
-
-    return tuple(aggregated_components), merged_interval
-
-
-def _aggregate_tensor_track_values(
-    outputs: list[torch.Tensor],
-    intervals: list[Interval],
-    output_bin_size: int,
-    output_len: int,
-) -> tuple[np.ndarray, Interval]:
-    """
-    Aggregates a list of tensors into a single merged array.
-    """
     # Compute merged interval, assuming all intervals are on the same chrom and strand
     chrom = intervals[0].chrom
     strand = intervals[0].strand
@@ -209,7 +194,29 @@ def _aggregate_tensor_track_values(
          raise ValueError(
              f"Merged interval span ({len(merged_interval)}) is not a multiple of output_bin_size ({output_bin_size})."
          )
+    
+    aggregated_components = {}
+    
+    for key in keys:
+        component_outputs = [r[0][key] for r in results] # list[Tensor]
+        agg_comp = _aggregate_tensor_track_values(
+            component_outputs, intervals, merged_interval, output_bin_size, output_len
+        )
+        aggregated_components[key] = agg_comp
 
+    return aggregated_components, merged_interval
+
+
+def _aggregate_tensor_track_values(
+    outputs: list[torch.Tensor],
+    intervals: list[Interval],
+    merged_interval: Interval,
+    output_bin_size: int,
+    output_len: int,
+) -> np.ndarray:
+    """
+    Aggregates a list of tensors into a single merged array.
+    """
     # Merged extent
     min_start = merged_interval.start
     max_end = merged_interval.end
@@ -258,7 +265,7 @@ def _aggregate_tensor_track_values(
     counts = np.maximum(counts, 1.0)
     final_values = accumulator / counts
     
-    return final_values, merged_interval
+    return final_values
 
 
 def predict_output_intervals(
@@ -268,7 +275,7 @@ def predict_output_intervals(
     predict_config: PredictConfig,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
     batch_size: int = 64,
-) -> list[tuple[Any, Interval]]:
+) -> list[tuple[dict[str, np.ndarray], Interval]]:
     """
     Predicts outputs for a list of target intervals by tiling them with input intervals.
 
@@ -284,7 +291,7 @@ def predict_output_intervals(
         batch_size: Number of intervals to process in each batch.
 
     Returns:
-        list[tuple[Any, Interval]]: A list of tuples, each containing the aggregated output
+        list[tuple[dict[str, np.ndarray], Interval]]: A list of tuples, each containing the aggregated output
         and the merged genomic interval for a target interval.
     """
     input_len = dataset.data_config["input_len"]

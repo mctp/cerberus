@@ -9,17 +9,35 @@ class ModelOutput:
         raise NotImplementedError
 
 @dataclass
-class ProfileOutput(ModelOutput):
-    """Output for models predicting only a profile (shape)."""
+class ProfileLogits(ModelOutput):
+    """
+    Output for models predicting a profile (shape) using unnormalized log-probabilities.
+    Interpretation: softmax(logits) = probabilities.
+    """
     logits: torch.Tensor # (Batch, Channels, Length)
 
     def detach(self):
-        return ProfileOutput(logits=self.logits.detach())
+        return ProfileLogits(logits=self.logits.detach())
 
 @dataclass
-class ProfileCountOutput(ProfileOutput):
-    """Output for models predicting profile and total counts."""
+class ProfileLogRates(ModelOutput):
+    """
+    Output for models predicting log-rates (log-intensities).
+    Interpretation: exp(log_rates) = counts.
+    """
+    log_rates: torch.Tensor # (Batch, Channels, Length)
+
+    def detach(self):
+        return ProfileLogRates(log_rates=self.log_rates.detach())
+
+@dataclass
+class ProfileCountOutput(ProfileLogits):
+    """Output for models predicting profile (logits) and total counts."""
     log_counts: torch.Tensor # (Batch, Channels)
 
     def detach(self):
         return ProfileCountOutput(logits=self.logits.detach(), log_counts=self.log_counts.detach())
+
+# Alias for backward compatibility (if needed during refactor)
+# but we aim to remove usage of ProfileOutput
+ProfileOutput = ProfileLogits

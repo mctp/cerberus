@@ -208,6 +208,7 @@ trainer = train(
     limit_val_batches=5,
     enable_checkpointing=True,
     logger=True, # Enable logging
+    enable_progress_bar=False,
     log_every_n_steps=5
 )
 

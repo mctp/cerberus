@@ -91,7 +91,7 @@ data_config: DataConfig = {
     "targets": {"signal": dataset_files["bigwig"]},
     "input_len": input_len,
     "output_len": output_len, 
-    "max_jitter": 128,        # Matches training config (ignored if is_train=False)
+    "max_jitter": 0,        # Set to 0 for prediction to match input_len padded_size
     "output_bin_size": 4,
     "encoding": "ACGT",
     "log_transform": True, 
@@ -103,7 +103,7 @@ data_config: DataConfig = {
 # We use the peak intervals from the dataset
 sampler_config: SamplerConfig = {
     "sampler_type": "interval",
-    "padded_size": input_len + 2 * 128, # Matches training setup
+    "padded_size": input_len, # Exact input length for prediction (no jitter padding needed)
     "sampler_args": {
         "intervals_path": dataset_files["narrowPeak"]
     }
@@ -231,8 +231,8 @@ gt_targets = dataset.target_signal_extractor.extract(merged_interval)
 print(f"Ground Truth Shape: {gt_targets.shape}")
 
 # Inspect Outputs
-for i, track in enumerate(outputs):
-    print(f"\nOutput Track {i}:")
+for key, track in outputs.items():
+    print(f"\nOutput Track '{key}':")
     print(f"  Shape: {track.shape}")
     print(f"  Min: {track.min():.4f}, Max: {track.max():.4f}, Mean: {track.mean():.4f}")
 
@@ -257,8 +257,9 @@ print(f"Relative Start Bin: {rel_start_bin}")
 print(f"Number of Bins: {n_bins}")
 
 # Extract prediction for this interval
-# Track 0 is Profile (logits)
-pred_profile = outputs[0][:, rel_start_bin : rel_start_bin + n_bins]
+# Key 'logits' is usually the profile output for GlobalProfileCNN
+output_key = "logits" if "logits" in outputs else list(outputs.keys())[0]
+pred_profile = outputs[output_key][:, rel_start_bin : rel_start_bin + n_bins]
 
 # Extract Ground Truth for this interval
 # gt_targets is in bp resolution (1024 bp). We need to select the region and bin it to match prediction (256 bins).

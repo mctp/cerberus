@@ -7,7 +7,7 @@ from cerberus.metrics import (
     FlattenedPearsonCorrCoef, DecoupledFlattenedPearsonCorrCoef, 
     DecoupledMeanSquaredError, ProfileMeanSquaredError
 )
-from cerberus.output import ProfileOutput, ProfileCountOutput
+from cerberus.output import ProfileOutput, ProfileCountOutput, ProfileLogRates
 
 # --- Fixtures ---
 
@@ -75,13 +75,14 @@ def test_metrics_implicit_log_equivalence():
     
     preds_prof = ProfileOutput(logits=logits)
     preds_count = ProfileCountOutput(logits=logits, log_counts=log_counts)
+    preds_rates = ProfileLogRates(log_rates=logits) # For Poisson loss which strictly requires rates
     
     metrics_to_test = [
         (FlattenedPearsonCorrCoef(num_channels=C), preds_prof),
         (DecoupledFlattenedPearsonCorrCoef(num_channels=C), preds_count),
         (DecoupledMeanSquaredError(), preds_count),
         (ProfileMeanSquaredError(), preds_prof),
-        (ProfilePoissonNLLLoss(), preds_prof) # It's a loss but also used as metric sometimes
+        (ProfilePoissonNLLLoss(), preds_rates) # It's a loss but also used as metric sometimes
     ]
     
     for metric_cls, preds in metrics_to_test:
@@ -220,8 +221,8 @@ def test_invalid_input_types():
     """Test that metrics raise TypeError for wrong input types."""
     metric = ProfileMeanSquaredError()
     with pytest.raises(TypeError):
-        metric.update(torch.randn(10, 10), torch.randn(10, 10))
+        metric.update(torch.randn(10, 10), torch.randn(10, 10)) # type: ignore
 
     metric_dec = DecoupledMeanSquaredError()
     with pytest.raises(TypeError):
-        metric_dec.update(ProfileOutput(logits=torch.randn(10)), torch.randn(10))
+        metric_dec.update(ProfileOutput(logits=torch.randn(10)), torch.randn(10)) # type: ignore

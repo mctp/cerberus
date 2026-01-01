@@ -2,24 +2,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from cerberus.output import ProfileOutput, ProfileCountOutput
+from cerberus.output import ProfileCountOutput, ProfileLogRates
 
 class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     """
-    Poisson NLL Loss on Profile Logits.
+    Poisson NLL Loss on Profile LogRates.
     
-    Interprets logits as unnormalized log-counts (log-intensity).
-    Computes Poisson NLL between exp(logits) and targets.
+    Interprets input as unnormalized log-counts (log-intensity).
+    Computes Poisson NLL between exp(log_rates) and targets.
     """
     def __init__(self, implicit_log_targets=False, **kwargs):
         super().__init__(**kwargs)
         self.implicit_log_targets = implicit_log_targets
 
     def forward(self, log_input, target):
-        if not isinstance(log_input, ProfileOutput):
-             raise TypeError("ProfilePoissonNLLLoss requires ProfileOutput (or subclass)")
+        if not isinstance(log_input, ProfileLogRates):
+             raise TypeError("ProfilePoissonNLLLoss requires ProfileLogRates")
         
-        log_input = log_input.logits
+        log_input = log_input.log_rates
         
         if self.implicit_log_targets:
             target = torch.expm1(target)
@@ -132,14 +132,14 @@ class MSEMultinomialLoss(nn.Module):
 class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
     """
     Multinomial NLL Profile Loss + MSE Count Loss (Coupled).
-    Mathematically equivalent to MSEMultinomialLoss but derives counts from logits.
+    Mathematically equivalent to MSEMultinomialLoss but derives counts from log_rates.
     
     Objective:
       1. Profile Loss: Multinomial NLL.
       2. Count Loss: MSE of log(global_count).
     
-    Accepts ProfileOutput only. Simulates log_counts via LogSumExp of logits
-    (interpreting logits as log-intensities) over all channels and bins.
+    Accepts ProfileLogRates only. Simulates log_counts via LogSumExp
+    (interpreting inputs as log-intensities) over all channels and bins.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with MSEMultinomialLoss).
     """
     def forward(self, outputs, targets):
@@ -149,10 +149,10 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
         if isinstance(outputs, ProfileCountOutput):
             raise TypeError("CoupledMSEMultinomialLoss does not accept ProfileCountOutput. Use MSEMultinomialLoss instead.")
 
-        if not isinstance(outputs, ProfileOutput):
-             raise TypeError("CoupledMSEMultinomialLoss requires ProfileOutput")
+        if not isinstance(outputs, ProfileLogRates):
+             raise TypeError("CoupledMSEMultinomialLoss requires ProfileLogRates")
         
-        logits = outputs.logits
+        logits = outputs.log_rates
 
         if self.count_per_channel:
             # Simulate log_counts per channel (Sum over Length)
@@ -257,13 +257,13 @@ class PoissonMultinomialLoss(nn.Module):
 class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
     """
     Poisson Multinomial Loss (Coupled/Global Count).
-    Mathematically equivalent to PoissonMultinomialLoss but derives counts from logits.
+    Mathematically equivalent to PoissonMultinomialLoss but derives counts from log_rates.
     
     Objective:
       1. Profile Loss: Cross Entropy.
       2. Count Loss: Poisson NLL on Global Count.
     
-    Accepts ProfileOutput only. Simulates log_counts via LogSumExp of logits over all channels.
+    Accepts ProfileLogRates only. Simulates log_counts via LogSumExp of logits over all channels.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
     """
     def forward(self, predictions, targets):
@@ -273,10 +273,10 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
         if isinstance(predictions, ProfileCountOutput):
             raise TypeError("CoupledPoissonMultinomialLoss does not accept ProfileCountOutput. Use PoissonMultinomialLoss instead.")
 
-        if not isinstance(predictions, ProfileOutput):
-             raise TypeError("CoupledPoissonMultinomialLoss requires ProfileOutput")
+        if not isinstance(predictions, ProfileLogRates):
+             raise TypeError("CoupledPoissonMultinomialLoss requires ProfileLogRates")
 
-        logits = predictions.logits
+        logits = predictions.log_rates
 
         if self.count_per_channel:
             # Simulate log_counts per channel

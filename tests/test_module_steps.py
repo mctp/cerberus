@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from cerberus.module import CerberusModule
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.metrics import DefaultMetricCollection
-from cerberus.output import ProfileOutput
+from cerberus.output import ProfileLogRates
 
 class DummyModel(nn.Module):
     def __init__(self):
@@ -14,7 +14,7 @@ class DummyModel(nn.Module):
     def forward(self, x):
         # Output (Batch, 1, 1) to match (Batch, Channels, Length) expectation
         logits = torch.abs(self.layer(x)).unsqueeze(-1)
-        return ProfileOutput(logits=logits)
+        return ProfileLogRates(log_rates=logits)
 
 @pytest.fixture
 def base_config():
@@ -74,7 +74,8 @@ def test_on_validation_epoch_end(base_config):
     # If Length=1, Softmax always returns 1.0, which has 0 variance.
     preds = torch.randn(2, 1, 2)
     targets = torch.randn(2, 1, 2)
-    module.val_metrics.update(ProfileOutput(logits=preds), targets)
+    # Use ProfileLogRates as DummyModel produces them, and metrics now support them
+    module.val_metrics.update(ProfileLogRates(log_rates=preds), targets)
     
     module.on_validation_epoch_end()
     

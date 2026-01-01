@@ -331,9 +331,9 @@ def test_predict_intervals_valid(integration_setup):
     
     # Output dim is 50. Model returns (B, 1, 50).
     # Aggregation yields (C, n_bins) = (1, 50).
-    assert isinstance(values, tuple)
-    assert values[0].shape == (1, 50)
-    assert np.allclose(values[0], 1.0)
+    assert isinstance(values, dict)
+    assert values['logits'].shape == (1, 50)
+    assert np.allclose(values['logits'], 1.0)
     
     # Input 500-600 (center 550). Output len 50. 
     # Output interval: 525-575.
@@ -359,9 +359,9 @@ def test_predict_intervals_boundary_skip(integration_setup):
     interval = Interval("chr1", 0, 100)
     values, merged_interval = predict_intervals([interval], dataset, model_manager, predict_config, device="cpu")
     
-    assert isinstance(values, tuple)
-    assert values[0].shape == (1, 50)
-    assert np.allclose(values[0], 1.0)
+    assert isinstance(values, dict)
+    assert values['logits'].shape == (1, 50)
+    assert np.allclose(values['logits'], 1.0)
     
     assert merged_interval.start == 25
     assert merged_interval.end == 75
@@ -391,8 +391,8 @@ def test_predict_intervals_batching(integration_setup):
     assert merged_interval.start == 1025
     assert merged_interval.end == 1375
     span = 1375 - 1025 # 350
-    assert isinstance(values, tuple)
-    assert values[0].shape == (1, 350)
+    assert isinstance(values, dict)
+    assert values['logits'].shape == (1, 350)
     
     # Check filled regions (should be 1.0)
     # Relative starts: 0, 100, 200, 300
@@ -400,13 +400,13 @@ def test_predict_intervals_batching(integration_setup):
     # 0-50, 100-150, 200-250, 300-350 should be 1.0
     # Gaps: 50-100, 150-200, 250-300 should be 0.0
     
-    assert np.allclose(values[0][0, 0:50], 1.0)
-    assert np.allclose(values[0][0, 50:100], 0.0)
-    assert np.allclose(values[0][0, 100:150], 1.0)
-    assert np.allclose(values[0][0, 150:200], 0.0)
-    assert np.allclose(values[0][0, 200:250], 1.0)
-    assert np.allclose(values[0][0, 250:300], 0.0)
-    assert np.allclose(values[0][0, 300:350], 1.0)
+    assert np.allclose(values['logits'][0, 0:50], 1.0)
+    assert np.allclose(values['logits'][0, 50:100], 0.0)
+    assert np.allclose(values['logits'][0, 100:150], 1.0)
+    assert np.allclose(values['logits'][0, 150:200], 0.0)
+    assert np.allclose(values['logits'][0, 200:250], 1.0)
+    assert np.allclose(values['logits'][0, 250:300], 0.0)
+    assert np.allclose(values['logits'][0, 300:350], 1.0)
 
 # --- Unit Tests for Logic (from original test_predict3.py) ---
 
@@ -428,9 +428,9 @@ def test_predict_interval_single_model(mock_dataset, mock_model_manager):
     output, out_interval = predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
     
     # Output should be length 60
-    assert isinstance(output, tuple)
-    assert output[0].shape[-1] == 60
-    assert np.allclose(output[0], np.ones((4, 60)) * 2.0)
+    assert isinstance(output, dict)
+    assert output['out'].shape[-1] == 60
+    assert np.allclose(output['out'], np.ones((4, 60)) * 2.0)
     assert out_interval.start == 20
     assert out_interval.end == 80
 
@@ -444,9 +444,9 @@ def test_predict_interval_mean_aggregation(mock_dataset, mock_model_manager):
     
     output, out_interval = predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
     
-    assert isinstance(output, tuple)
-    assert output[0].shape[-1] == 60
-    assert np.allclose(output[0], np.ones((4, 60)) * 3.0)
+    assert isinstance(output, dict)
+    assert output['out'].shape[-1] == 60
+    assert np.allclose(output['out'], np.ones((4, 60)) * 3.0)
     assert out_interval.start == 20
 
 def test_predict_interval_tuple_output(mock_dataset, mock_model_manager):
@@ -459,10 +459,10 @@ def test_predict_interval_tuple_output(mock_dataset, mock_model_manager):
     
     output, out_interval = predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
     
-    assert isinstance(output, tuple)
-    assert output[0].shape[-1] == 60
-    assert np.allclose(output[0], np.ones((4, 60)) * 3.0)
-    assert np.allclose(output[1], np.ones((4, 60)) * 15.0)
+    assert isinstance(output, dict)
+    assert output['out1'].shape[-1] == 60
+    assert np.allclose(output['out1'], np.ones((4, 60)) * 3.0)
+    assert np.allclose(output['out2'], np.ones((4, 60)) * 15.0)
 
 def test_predict_intervals_overlap(mock_dataset, mock_model_manager):
     # Output is length 60, offset 20.
@@ -507,16 +507,16 @@ def test_predict_intervals_overlap(mock_dataset, mock_model_manager):
     
     # Range: 20 to 90. Length 70.
     # arr shape: (1, 70)
-    assert isinstance(arr, tuple)
-    assert arr[0].shape == (1, 70)
+    assert isinstance(arr, dict)
+    assert arr['out'].shape == (1, 70)
     
     # [20, 30): From Int1 (val 1) -> Indices 0-10
     # [30, 80): Overlap (val 1 and 2) -> Indices 10-60 -> (1+2)/2 = 1.5
     # [80, 90): From Int2 (val 2) -> Indices 60-70
     
-    assert np.allclose(arr[0][0, 0:10], 1.0)
-    assert np.allclose(arr[0][0, 10:60], 1.5)
-    assert np.allclose(arr[0][0, 60:70], 2.0)
+    assert np.allclose(arr['out'][0, 0:10], 1.0)
+    assert np.allclose(arr['out'][0, 10:60], 1.5)
+    assert np.allclose(arr['out'][0, 60:70], 2.0)
 
 def test_predict_intervals_scalar_broadcast(mock_dataset, mock_model_manager):
     # Scalar output
@@ -531,9 +531,9 @@ def test_predict_intervals_scalar_broadcast(mock_dataset, mock_model_manager):
     arr, merged_interval = results
     
     # Output length 60. Scalar should be broadcast to 60.
-    assert isinstance(arr, tuple)
-    assert arr[0].shape == (1, 60)
-    assert np.allclose(arr[0], 5.0)
+    assert isinstance(arr, dict)
+    assert arr['out'].shape == (1, 60)
+    assert np.allclose(arr['out'], 5.0)
     assert merged_interval.start == 20
     assert merged_interval.end == 80
 
@@ -564,11 +564,11 @@ def test_predict_intervals_tuple_recursive(mock_dataset, mock_model_manager):
     results = predict_intervals([interval_1], mock_dataset, mock_model_manager, config, device="cpu")
     
     values, merged_interval = results
-    assert isinstance(values, tuple)
+    assert isinstance(values, dict)
     assert len(values) == 2
     
-    track_prof = values[0]
-    track_scalar = values[1]
+    track_prof = values['prof']
+    track_scalar = values['scalar']
     
     # Check Profile
     assert track_prof.shape == (1, 60)
@@ -655,13 +655,13 @@ def test_predict_intervals_batching_param(integration_setup):
     
     assert merged_interval.start == 1025
     assert merged_interval.end == 1375
-    assert values[0].shape == (1, 350)
+    assert values['logits'].shape == (1, 350)
     
     # Check values similar to test_predict_intervals_batching
-    assert np.allclose(values[0][0, 0:50], 1.0)
-    assert np.allclose(values[0][0, 50:100], 0.0)
-    assert np.allclose(values[0][0, 100:150], 1.0)
-    assert np.allclose(values[0][0, 150:200], 0.0)
-    assert np.allclose(values[0][0, 200:250], 1.0)
-    assert np.allclose(values[0][0, 250:300], 0.0)
-    assert np.allclose(values[0][0, 300:350], 1.0)
+    assert np.allclose(values['logits'][0, 0:50], 1.0)
+    assert np.allclose(values['logits'][0, 50:100], 0.0)
+    assert np.allclose(values['logits'][0, 100:150], 1.0)
+    assert np.allclose(values['logits'][0, 150:200], 0.0)
+    assert np.allclose(values['logits'][0, 200:250], 1.0)
+    assert np.allclose(values['logits'][0, 250:300], 0.0)
+    assert np.allclose(values['logits'][0, 300:350], 1.0)
