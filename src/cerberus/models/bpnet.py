@@ -195,7 +195,7 @@ class BPNetLoss(MSEMultinomialLoss):
         This loss is mathematically equivalent to the loss in `bpnet-lite` and `chrombpnet-pytorch`.
         
         1. Profile Loss:
-           - bpnet-lite: Calculates Multinomial NLL per channel (summing over sequence length),
+           - chrombpnet-pytorch: Calculates Multinomial NLL per channel (summing over sequence length),
              resulting in a (Batch, Channels) tensor. Then takes the MEAN over all elements 
              (batch and channels).
            - BPNetLoss: Sets `average_channels=True` and `flatten_channels=False`. This computes 
@@ -203,7 +203,7 @@ class BPNetLoss(MSEMultinomialLoss):
              Result: Identical.
              
         2. Count Loss:
-           - bpnet-lite: Sums target counts over all channels and length. Calculates MSE between 
+           - chrombpnet-pytorch: Sums target counts over all channels and length. Calculates MSE between 
              predicted log-counts and log(total_counts + 1). Takes MEAN over batch.
            - BPNetLoss: Sets `count_per_channel=False`. This sums target counts over channels and length,
              computes log1p, and calculates MSE with predicted log-counts. Takes MEAN over batch.
