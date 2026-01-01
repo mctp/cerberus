@@ -213,6 +213,14 @@ def validate_genome_config(config: GenomeConfig) -> GenomeConfig:
     if not isinstance(config["fold_args"], dict):
         raise TypeError("fold_args must be a dictionary")
 
+    # Validate common fold_args keys if present
+    for key in ["k", "val_fold", "test_fold"]:
+        if key in config["fold_args"]:
+            if not isinstance(config["fold_args"][key], int):
+                raise TypeError(f"fold_args['{key}'] must be an integer")
+            if config["fold_args"][key] < 0:
+                raise ValueError(f"fold_args['{key}'] must be non-negative")
+
     path_val = config["fasta_path"]
     if not isinstance(path_val, (str, Path)):
         raise TypeError("fasta_path must be a string or Path")

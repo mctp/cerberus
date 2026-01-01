@@ -183,3 +183,24 @@ def test_validate_genome_config_invalid_chrom_sizes(tmp_path):
     
     with pytest.raises(TypeError, match="chrom_sizes values must be integers"):
         validate_genome_config(config)
+
+def test_validate_genome_config_invalid_fold_args_types(tmp_path):
+    genome = tmp_path / "genome.fa"
+    genome.touch()
+    
+    config = cast(GenomeConfig, {
+        "name": "test", 
+        "fasta_path": genome, 
+        "allowed_chroms": ["chr1"],
+        "exclude_intervals": {},
+        "fold_type": "chrom_partition",
+        "fold_args": {"k": 5, "val_fold": "1"}, # Invalid type
+        "chrom_sizes": {"chr1": 100},
+    })
+    
+    with pytest.raises(TypeError, match="fold_args\\['val_fold'\\] must be an integer"):
+        validate_genome_config(config)
+
+    config["fold_args"] = {"k": 5, "test_fold": -1}
+    with pytest.raises(ValueError, match="fold_args\\['test_fold'\\] must be non-negative"):
+        validate_genome_config(config)

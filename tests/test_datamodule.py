@@ -36,7 +36,7 @@ def test_datamodule_setup(
     mock_instance.split_folds.return_value = (train_ds, val_ds, test_ds)
     
     # Configs
-    genome_config = cast(GenomeConfig, {"mock": "genome"})
+    genome_config = cast(GenomeConfig, {"mock": "genome", "fold_args": {}})
     data_config = cast(DataConfig, {"mock": "data"})
     sampler_config = cast(SamplerConfig, {"mock": "sampler"})
     
@@ -96,7 +96,7 @@ def test_datamodule_dataloaders(
     mock_instance.split_folds.return_value = (train_ds, val_ds, test_ds)
     
     dm = CerberusDataModule(
-        cast(GenomeConfig, {}),
+        cast(GenomeConfig, {"fold_args": {}}),
         cast(DataConfig, {}),
         cast(SamplerConfig, {}),
     )
@@ -140,7 +140,7 @@ def test_datamodule_resample_via_dataloader(
     mock_instance.split_folds.return_value = (train_ds, MagicMock(), MagicMock())
     
     dm = CerberusDataModule(
-        cast(GenomeConfig, {}),
+        cast(GenomeConfig, {"fold_args": {}}),
         cast(DataConfig, {}),
         cast(SamplerConfig, {}),
     )

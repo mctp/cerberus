@@ -26,8 +26,8 @@ class CerberusDataModule(pl.LightningDataModule):
         genome_config: GenomeConfig,
         data_config: DataConfig,
         sampler_config: SamplerConfig,
-        test_fold: int | None = 0,
-        val_fold: int | None = 1,
+        test_fold: int | None = None,
+        val_fold: int | None = None,
         pin_memory: bool = True,
     ):
         """
@@ -49,6 +49,12 @@ class CerberusDataModule(pl.LightningDataModule):
         self.batch_size = 1
         self.num_workers = 0
         self.in_memory = False
+
+        # Resolve fold indices: argument > config > default
+        if test_fold is None:
+            test_fold = self.genome_config["fold_args"].get("test_fold", 0)
+        if val_fold is None:
+            val_fold = self.genome_config["fold_args"].get("val_fold", 1)
         
         self.test_fold = test_fold
         self.val_fold = val_fold
