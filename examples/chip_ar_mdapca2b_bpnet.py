@@ -41,7 +41,7 @@ def get_args():
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
 
     # Hyperparameters
-    parser.add_argument("--jitter", type=int, default=128, help="Maximum jitter for data augmentation (half-width)")
+    parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
     parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
 
     # Hardware arguments
