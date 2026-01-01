@@ -1,4 +1,7 @@
 
+from cerberus.mask import MaskExtractor
+from cerberus.interval import Interval
+
 def test_cre_loading_real(human_genome):
     """
     Tests loading the real ENCODE cCREs BigBed file downloaded by the fixture.

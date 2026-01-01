@@ -1,4 +1,5 @@
 import pytest
+from cerberus.samplers import IntervalSampler
 
 def test_interval_sampler_reads_narrowpeak_gz(mdapca2b_ar_dataset):
     """

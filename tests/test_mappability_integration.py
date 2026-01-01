@@ -2,6 +2,7 @@
 import os
 import pytest
 import torch
+from typing import cast
 from cerberus.config import DataConfig, SamplerConfig
 from cerberus.signal import SignalExtractor
 from cerberus.sequence import SequenceExtractor

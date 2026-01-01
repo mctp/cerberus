@@ -1,6 +1,7 @@
 import os
 import pytest
 import torch
+from cerberus.interval import Interval
 from cerberus.signal import SignalExtractor, InMemorySignalExtractor
 
 @pytest.fixture

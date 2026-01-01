@@ -1,4 +1,5 @@
 import time
+from typing import cast
 from cerberus.genome import create_genome_config
 from cerberus import CerberusDataModule
 from cerberus.config import DataConfig, SamplerConfig
