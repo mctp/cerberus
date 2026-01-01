@@ -11,8 +11,8 @@ It follows the standard configuration:
 - Training: Based on peak intervals (narrowPeak)
 
 Usage:
-    python examples/chip_ar_mdapca2b_bpnet.py --batch-size 64 --max-epochs 50
-    python examples/chip_ar_mdapca2b_bpnet.py --multi --batch-size 64
+    python examples/chip_ar_mdapca2b_bpnet.py --batch-size 32 --max-epochs 50
+    python examples/chip_ar_mdapca2b_bpnet.py --multi --batch-size 32
 """
 
 import argparse
@@ -154,10 +154,7 @@ def main():
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
             "filters": 64,
-            "n_dilated_layers": 8,
-            "input_len": input_len,
-            "output_len": output_len,
-            "output_bin_size": output_bin_size
+            "n_dilated_layers": 8
         }
     }
 
@@ -232,8 +229,6 @@ def main():
             sampler_config=sampler_config,
             model_config=model_config,
             train_config=train_config,
-            test_fold=0, # Default fold
-            val_fold=1, # Default fold
             num_workers=args.num_workers,
             in_memory=False,
             root_dir=str(output_dir),
