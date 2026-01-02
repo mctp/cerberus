@@ -116,9 +116,16 @@ def _process_island(
         island_intervals, dataset, model_manager, predict_config, device, batch_size
     )
 
-    # aggregated_output is tuple[np.ndarray, ...] (tracks)
-    # We take the first track (index 0) and first channel (index 0)
-    track_data = aggregated_output[0]  # Shape: (Channels, Bins) or (Channels,)
+    # aggregated_output is a dict[str, np.ndarray]
+    # We attempt to retrieve the primary profile track
+    if "log_rates" in aggregated_output:
+        track_data = aggregated_output["log_rates"]
+    elif "logits" in aggregated_output:
+        track_data = aggregated_output["logits"]
+    else:
+        raise ValueError(
+            f"Could not identify a profile track in output keys: {list(aggregated_output.keys())}"
+        )
     
     values = track_data[0]  # Shape: (Bins,)
 
