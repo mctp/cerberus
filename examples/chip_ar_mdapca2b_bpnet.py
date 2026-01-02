@@ -17,6 +17,7 @@ Usage:
 
 import argparse
 import torch
+torch.set_flush_denormal(True)
 from pathlib import Path
 from pprint import pprint
 
@@ -219,6 +220,7 @@ def main():
             root_dir=str(output_dir),
             enable_checkpointing=True,
             log_every_n_steps=10,
+            val_batch_size=args.batch_size * 4,
             **precision_args
         )
     else:
@@ -234,6 +236,7 @@ def main():
             root_dir=str(output_dir),
             enable_checkpointing=True,
             log_every_n_steps=10,
+            val_batch_size=args.batch_size * 4,
             **precision_args
         )
 

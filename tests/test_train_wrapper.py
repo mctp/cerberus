@@ -50,6 +50,7 @@ def test_train_wrapper_calls_trainer_fit():
         # Verify datamodule setup called with runtime params
         datamodule.setup.assert_called_once_with(
             batch_size=32,
+            val_batch_size=None,
             num_workers=2,
             in_memory=False
         )

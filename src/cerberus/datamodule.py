@@ -47,6 +47,7 @@ class CerberusDataModule(pl.LightningDataModule):
         
         # Runtime settings (configured via setup)
         self.batch_size = 1
+        self.val_batch_size = 1
         self.num_workers = 0
         self.in_memory = False
 
@@ -84,6 +85,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self, 
         stage: str | None = None, 
         batch_size: int | None = None, 
+        val_batch_size: int | None = None,
         num_workers: int | None = None,
         in_memory: bool | None = None,
     ):
@@ -96,11 +98,18 @@ class CerberusDataModule(pl.LightningDataModule):
         Args:
             stage: Stage name (e.g., 'fit', 'test'). Optional.
             batch_size: Batch size override.
+            val_batch_size: Validation/Test batch size override.
             num_workers: Number of workers override.
             in_memory: Whether to load data into memory.
         """
         if batch_size is not None:
             self.batch_size = batch_size
+        
+        if val_batch_size is not None:
+            self.val_batch_size = val_batch_size
+        elif batch_size is not None:
+            self.val_batch_size = batch_size
+
         if num_workers is not None:
             self.num_workers = num_workers
         if in_memory is not None:
@@ -158,7 +167,7 @@ class CerberusDataModule(pl.LightningDataModule):
         assert self.val_dataset is not None
         return DataLoader(
             self.val_dataset,
-            batch_size=self.batch_size,
+            batch_size=self.val_batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
@@ -172,7 +181,7 @@ class CerberusDataModule(pl.LightningDataModule):
         assert self.test_dataset is not None
         return DataLoader(
             self.test_dataset,
-            batch_size=self.batch_size,
+            batch_size=self.val_batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,

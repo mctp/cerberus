@@ -129,6 +129,7 @@ def train(
     matmul_precision: str = "highest",
     precision: Any = "32-true",
     root_dir: str | Path | None = None,
+    val_batch_size: int | None = None,
     **trainer_kwargs,
 ) -> pl.Trainer:
     """
@@ -208,6 +209,7 @@ def train(
     # Passing runtime parameters to setup allowing for final adjustments
     datamodule.setup(
         batch_size=train_config["batch_size"],
+        val_batch_size=val_batch_size,
         num_workers=num_workers,
         in_memory=in_memory,
     )
@@ -232,6 +234,7 @@ def train_single(
     matmul_precision: str = "highest",
     precision: str = "32-true",
     root_dir: str | Path = ".",
+    val_batch_size: int | None = None,
     **trainer_kwargs,
 ) -> pl.Trainer:
     """
@@ -286,6 +289,7 @@ def train_single(
         matmul_precision=matmul_precision,
         precision=precision,
         root_dir=root_dir,
+        val_batch_size=val_batch_size,
         **trainer_kwargs,
     )
 
@@ -302,6 +306,7 @@ def train_multi(
     matmul_precision: str = "highest",
     precision: str = "32-true",
     root_dir: str | Path = ".",
+    val_batch_size: int | None = None,
     **trainer_kwargs,
 ) -> list[pl.Trainer]:
     """
@@ -356,6 +361,7 @@ def train_multi(
             matmul_precision=matmul_precision,
             precision=precision,
             root_dir=fold_dir,
+            val_batch_size=val_batch_size,
             **trainer_kwargs,
         )
 

@@ -46,12 +46,16 @@ def plot_metrics(metrics_path, output_dir):
     
     # Set style
     sns.set_style("whitegrid")
+
+    # Get step range for consistent x-axis
+    step_min = df["step"].min()
+    step_max = df["step"].max()
     
     # 1. Training Loss (step-wise)
     if "train_loss" in df.columns:
         plt.figure(figsize=(10, 6))
         # Filter rows where train_loss is not NaN
-        train_df = df.filter(pl.col("train_loss").is_not_null())
+        train_df = df.filter(pl.col("train_loss").is_not_null() & pl.col("train_loss").is_not_nan())
         if train_df.height > 0:
             sns.lineplot(data=train_df.to_pandas(), x="step", y="train_loss", label="Train Loss", alpha=0.6)
             # Add a smoothed version
@@ -63,13 +67,14 @@ def plot_metrics(metrics_path, output_dir):
         
         # Add validation loss if available
         if "val_loss" in df.columns:
-            val_df = df.filter(pl.col("val_loss").is_not_null())
+            val_df = df.filter(pl.col("val_loss").is_not_null() & pl.col("val_loss").is_not_nan())
             if val_df.height > 0:
                 sns.lineplot(data=val_df.to_pandas(), x="step", y="val_loss", label="Validation Loss", marker="o", markersize=6, linewidth=2)
         
         plt.title("Training and Validation Loss")
         plt.xlabel("Step")
         plt.ylabel("Loss")
+        plt.xlim(step_min, step_max)
         plt.legend()
         plt.tight_layout()
         plt.savefig(plots_dir / "loss_curve.png", dpi=300)
@@ -85,7 +90,7 @@ def plot_metrics(metrics_path, output_dir):
     if metrics_to_plot:
         plt.figure(figsize=(10, 6))
         for metric in metrics_to_plot:
-            metric_df = df.filter(pl.col(metric).is_not_null())
+            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
             if metric_df.height > 0:
                 label = "Train Pearson" if "train" in metric else "Validation Pearson"
                 # Use step for x-axis
@@ -94,6 +99,7 @@ def plot_metrics(metrics_path, output_dir):
         plt.title("Pearson Correlation")
         plt.xlabel("Step")
         plt.ylabel("Pearson Correlation")
+        plt.xlim(step_min, step_max)
         plt.legend()
         plt.tight_layout()
         plt.savefig(plots_dir / "pearson_curve.png", dpi=300)
@@ -109,7 +115,7 @@ def plot_metrics(metrics_path, output_dir):
     if mse_metrics:
         plt.figure(figsize=(10, 6))
         for metric in mse_metrics:
-            metric_df = df.filter(pl.col(metric).is_not_null())
+            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
             if metric_df.height > 0:
                 label = "Train MSE" if "train" in metric else "Validation MSE"
                 sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
@@ -117,6 +123,7 @@ def plot_metrics(metrics_path, output_dir):
         plt.title("Mean Squared Error")
         plt.xlabel("Step")
         plt.ylabel("MSE")
+        plt.xlim(step_min, step_max)
         plt.legend()
         plt.tight_layout()
         plt.savefig(plots_dir / "mse_curve.png", dpi=300)
