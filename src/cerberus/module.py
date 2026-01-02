@@ -1,7 +1,8 @@
 import torch.nn as nn
 import pytorch_lightning as pl
 from torchmetrics import MetricCollection
-from typing import Callable
+from typing import Callable, Any
+from pathlib import Path
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
@@ -13,6 +14,17 @@ from cerberus.config import (
     SamplerConfig,
     ModelConfig,
 )
+
+
+def _sanitize_config(config: Any) -> Any:
+    """Recursively convert Path objects to strings for clean serialization."""
+    if isinstance(config, dict):
+        return {k: _sanitize_config(v) for k, v in config.items()}
+    elif isinstance(config, list):
+        return [_sanitize_config(v) for v in config]
+    elif isinstance(config, Path):
+        return str(config)
+    return config
 
 
 class CerberusModule(pl.LightningModule):
@@ -48,7 +60,16 @@ class CerberusModule(pl.LightningModule):
             model_config: Model configuration for logging.
         """
         super().__init__()
-        self.save_hyperparameters(ignore=["model", "criterion", "metrics"])
+        
+        # Save sanitized configurations (converting Path -> str)
+        self.save_hyperparameters({
+            "train_config": _sanitize_config(train_config),
+            "genome_config": _sanitize_config(genome_config),
+            "data_config": _sanitize_config(data_config),
+            "sampler_config": _sanitize_config(sampler_config),
+            "model_config": _sanitize_config(model_config),
+        })
+        
         self.model = model
         self.train_config = validate_train_config(train_config)
         
