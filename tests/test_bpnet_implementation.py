@@ -3,7 +3,7 @@ import torch.nn as nn
 import pytest
 from cerberus.models.bpnet import BPNet, _ResidualBlock, BPNetMetricCollection, BPNetLoss
 from cerberus.loss import PoissonMultinomialLoss, MSEMultinomialLoss, CoupledMSEMultinomialLoss, CoupledPoissonMultinomialLoss
-from cerberus.metrics import DecoupledFlattenedPearsonCorrCoef, DecoupledMeanSquaredError
+from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
 from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
 
 def test_bpnet_residual_block_cropping():
@@ -106,7 +106,7 @@ def test_poisson_multinomial_loss_bpnet_flattened():
     loss.backward()
 
 def test_decoupled_pearson_metric():
-    metric = DecoupledFlattenedPearsonCorrCoef(num_channels=2)
+    metric = CountProfilePearsonCorrCoef(num_channels=2)
     batch_size = 2
     channels = 2
     length = 50
@@ -123,12 +123,14 @@ def test_decoupled_pearson_metric():
 def test_bpnet_metric_collection():
     metrics = BPNetMetricCollection(num_channels=1)
     assert "pearson" in metrics
-    assert isinstance(metrics["pearson"], DecoupledFlattenedPearsonCorrCoef)
-    assert "mse" in metrics
-    assert isinstance(metrics["mse"], DecoupledMeanSquaredError)
+    assert isinstance(metrics["pearson"], CountProfilePearsonCorrCoef)
+    assert "mse_profile" in metrics
+    assert isinstance(metrics["mse_profile"], CountProfileMeanSquaredError)
+    assert "mse_log_counts" in metrics
+    assert isinstance(metrics["mse_log_counts"], LogCountsMeanSquaredError)
 
 def test_decoupled_mse_metric():
-    metric = DecoupledMeanSquaredError()
+    metric = CountProfileMeanSquaredError()
     batch_size = 2
     channels = 2
     length = 50

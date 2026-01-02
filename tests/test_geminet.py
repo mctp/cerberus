@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import pytest
-from cerberus.models.geminet import GemiNet, PGCBlock
+from cerberus.models.geminet import GemiNet, PGCBlock, GemiNetMetricCollection
 from cerberus.models.bpnet import BPNetLoss
 from cerberus.output import ProfileCountOutput
 
@@ -155,3 +155,23 @@ def test_geminet_loss_integration():
     
     loss.backward()
     assert model.profile_conv.weight.grad is not None
+
+def test_geminet_metrics():
+    metrics = GemiNetMetricCollection(num_channels=2)
+    
+    # Mock output
+    logits = torch.randn(2, 2, 100)
+    log_counts = torch.randn(2, 1)
+    preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
+    
+    # Mock targets (counts)
+    targets = torch.abs(torch.randn(2, 2, 100))
+    
+    # Update
+    metrics.update(preds, targets)
+    result = metrics.compute()
+    
+    assert "pearson" in result
+    assert "mse_profile" in result
+    assert "mse_log_counts" in result
+    assert result["pearson"].ndim == 0

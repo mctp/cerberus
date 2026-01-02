@@ -121,8 +121,8 @@ A flexible loss function combining Poisson NLL for total counts and Multinomial 
 
 ## Metrics
 
-### FlattenedPearsonCorrCoef
-Computes Pearson Correlation Coefficient per channel.
+### ProfilePearsonCorrCoef
+Computes Pearson Correlation Coefficient per channel on profile probabilities.
 
 *   **Behavior**: Flattens batch and length dimensions to compute correlation between the predicted and target signal vectors for each channel independently, then averages across channels.
 *   **Why**: Standard global Pearson correlation can be misleading if channels have vastly different dynamic ranges.

@@ -8,7 +8,7 @@ from cerberus.loss import (
     CoupledPoissonMultinomialLoss,
     MSEMultinomialLoss
 )
-from cerberus.metrics import FlattenedPearsonCorrCoef, ProfileMeanSquaredError
+from cerberus.metrics import ProfilePearsonCorrCoef, ProfileMeanSquaredError
 
 # --- 1. Output Class Semantics ---
 
@@ -118,8 +118,8 @@ def test_mse_multinomial_requirements():
 # --- 3. Metrics Flexibility ---
 
 def test_pearson_metric_polymorphism():
-    """Verify FlattenedPearsonCorrCoef accepts both Logits and Rates."""
-    metric = FlattenedPearsonCorrCoef(num_channels=1)
+    """Verify ProfilePearsonCorrCoef accepts both Logits and Rates."""
+    metric = ProfilePearsonCorrCoef(num_channels=1)
     
     # Setup consistent inputs
     # Let log_rates = [0, 1, 2]. Softmax -> probs
@@ -166,6 +166,6 @@ def test_profile_mse_metric_polymorphism():
 
 def test_metrics_reject_invalid_types():
     """Verify metrics reject tensors or unknown types."""
-    metric = FlattenedPearsonCorrCoef()
+    metric = ProfilePearsonCorrCoef()
     with pytest.raises(TypeError, match="requires ProfileLogRates or ProfileLogits"):
         metric.update(torch.randn(1,1,10), torch.randn(1,1,10)) # type: ignore

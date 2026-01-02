@@ -127,7 +127,7 @@ model_config = {
     "metrics_args": {
         "metrics": {
             "pearson": PearsonCorrCoef(),
-            "mse": MeanSquaredError()
+            "mse_profile": MeanSquaredError()
         }
     },
     "model_args": {

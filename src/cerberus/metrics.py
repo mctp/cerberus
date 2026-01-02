@@ -3,9 +3,9 @@ import torch.nn.functional as F
 from torchmetrics import PearsonCorrCoef, MeanSquaredError, MetricCollection
 from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
 
-class FlattenedPearsonCorrCoef(PearsonCorrCoef):
+class ProfilePearsonCorrCoef(PearsonCorrCoef):
     """
-    Pearson Correlation Coefficient for profile data.
+    Pearson Correlation Coefficient for profile probabilities.
     
     Flattens dimensions (Batch, Length) for each channel to compute correlation
     per channel, then averages across channels.
@@ -23,7 +23,7 @@ class FlattenedPearsonCorrCoef(PearsonCorrCoef):
         elif isinstance(preds, ProfileLogits):
             logits = preds.logits
         else:
-            raise TypeError("FlattenedPearsonCorrCoef requires ProfileLogRates or ProfileLogits")
+            raise TypeError("ProfilePearsonCorrCoef requires ProfileLogRates or ProfileLogits")
         
         probs = F.softmax(logits, dim=-1)
 
@@ -46,9 +46,9 @@ class FlattenedPearsonCorrCoef(PearsonCorrCoef):
         return val
 
 
-class DecoupledFlattenedPearsonCorrCoef(FlattenedPearsonCorrCoef):
+class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef):
     """
-    Pearson Correlation for 'Decoupled' models (BPNet-style).
+    Pearson Correlation for reconstructed profile counts (BPNet-style).
     
     Reconstructs predicted profile counts from (logits, log_counts) before
     computing correlation.
@@ -59,7 +59,7 @@ class DecoupledFlattenedPearsonCorrCoef(FlattenedPearsonCorrCoef):
 
     def update(self, preds: ProfileCountOutput, target: torch.Tensor):
         if not isinstance(preds, ProfileCountOutput):
-             raise TypeError("DecoupledFlattenedPearsonCorrCoef requires ProfileCountOutput")
+             raise TypeError("CountProfilePearsonCorrCoef requires ProfileCountOutput")
 
         logits = preds.logits
         log_counts = preds.log_counts
@@ -84,9 +84,9 @@ class DecoupledFlattenedPearsonCorrCoef(FlattenedPearsonCorrCoef):
         PearsonCorrCoef.update(self, preds_flat, target_flat)
 
 
-class DecoupledMeanSquaredError(MeanSquaredError):
+class CountProfileMeanSquaredError(MeanSquaredError):
     """
-    Mean Squared Error for 'Decoupled' models (BPNet-style).
+    Mean Squared Error for reconstructed profile counts (BPNet-style).
     
     Reconstructs predicted profile counts from (logits, log_counts) before
     computing MSE against targets.
@@ -98,7 +98,7 @@ class DecoupledMeanSquaredError(MeanSquaredError):
 
     def update(self, preds: ProfileCountOutput, target: torch.Tensor):
         if not isinstance(preds, ProfileCountOutput):
-             raise TypeError("DecoupledMeanSquaredError requires ProfileCountOutput")
+             raise TypeError("CountProfileMeanSquaredError requires ProfileCountOutput")
 
         logits = preds.logits
         log_counts = preds.log_counts
@@ -152,15 +152,62 @@ class ProfileMeanSquaredError(MeanSquaredError):
         super().update(probs, target_probs)
 
 
+class LogCountsMeanSquaredError(MeanSquaredError):
+    """
+    Mean Squared Error on Log Counts.
+    
+    Computes MSE between:
+    1. Predicted Log Counts (from log_counts or logsumexp of log_rates)
+    2. Target Log Counts (log1p of sum of targets)
+    """
+    def __init__(self, count_per_channel=False, implicit_log_targets=False, **kwargs):
+        super().__init__(**kwargs)
+        self.count_per_channel = count_per_channel
+        self.implicit_log_targets = implicit_log_targets
+
+    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor):
+        if isinstance(preds, ProfileCountOutput):
+            pred_log_counts = preds.log_counts
+            # If we want global count but have per-channel counts, aggregate them
+            if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
+                pred_log_counts = torch.logsumexp(pred_log_counts, dim=1)
+                
+        elif isinstance(preds, ProfileLogRates):
+            if self.count_per_channel:
+                pred_log_counts = torch.logsumexp(preds.log_rates, dim=2)
+            else:
+                pred_log_counts = torch.logsumexp(preds.log_rates.flatten(start_dim=1), dim=-1)
+        else:
+             raise TypeError("LogCountsMeanSquaredError requires ProfileCountOutput or ProfileLogRates")
+        
+        if self.implicit_log_targets:
+            target = torch.expm1(target)
+            
+        if self.count_per_channel:
+            target_counts = target.sum(dim=2)
+            target_log_counts = torch.log1p(target_counts)
+        else:
+            target_global_count = target.sum(dim=(1, 2))
+            target_log_counts = torch.log1p(target_global_count)
+            
+        # Ensure dimensions match (flatten to 1D if global)
+        if not self.count_per_channel:
+            pred_log_counts = pred_log_counts.flatten()
+            target_log_counts = target_log_counts.flatten()
+            
+        super().update(pred_log_counts, target_log_counts)
+
+
 class DefaultMetricCollection(MetricCollection):
     """
     Default MetricCollection used for training/validation.
-    Includes Pearson Correlation and Profile MSE.
+    Includes Pearson Correlation, Profile MSE, and Log Counts MSE.
     """
     def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
         super().__init__({
-            "pearson": FlattenedPearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
+            "pearson": ProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
             # MSE is element-wise, so Global MSE is equivalent to Mean Per-Channel MSE
             # (assuming equal number of elements per channel). Thus no custom flattening is needed.
-            "mse": ProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
+            "mse_profile": ProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
+            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
         })

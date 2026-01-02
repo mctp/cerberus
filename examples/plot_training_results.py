@@ -105,28 +105,59 @@ def plot_metrics(metrics_path, output_dir):
         plt.savefig(plots_dir / "pearson_curve.png", dpi=300)
         plt.close()
 
-    # 3. MSE
-    mse_metrics = []
-    if "train_mse" in df.columns:
-        mse_metrics.append("train_mse")
-    if "val_mse" in df.columns:
-        mse_metrics.append("val_mse")
+    # 3. MSE (Profile)
+    mse_profile_metrics = []
+    if "train_mse_profile" in df.columns:
+        mse_profile_metrics.append("train_mse_profile")
+    if "val_mse_profile" in df.columns:
+        mse_profile_metrics.append("val_mse_profile")
+    
+    # Backward compatibility
+    if not mse_profile_metrics:
+        if "train_mse" in df.columns:
+            mse_profile_metrics.append("train_mse")
+        if "val_mse" in df.columns:
+            mse_profile_metrics.append("val_mse")
         
-    if mse_metrics:
+    if mse_profile_metrics:
         plt.figure(figsize=(10, 6))
-        for metric in mse_metrics:
+        for metric in mse_profile_metrics:
             metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
             if metric_df.height > 0:
-                label = "Train MSE" if "train" in metric else "Validation MSE"
+                label = "Train MSE (Profile)" if "train" in metric else "Validation MSE (Profile)"
                 sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
         
-        plt.title("Mean Squared Error")
+        plt.title("Profile Mean Squared Error")
         plt.xlabel("Step")
         plt.ylabel("MSE")
         plt.xlim(step_min, step_max)
         plt.legend()
         plt.tight_layout()
-        plt.savefig(plots_dir / "mse_curve.png", dpi=300)
+        plt.savefig(plots_dir / "mse_profile_curve.png", dpi=300)
+        plt.close()
+
+    # 4. MSE (Log Counts)
+    mse_counts_metrics = []
+    if "train_mse_log_counts" in df.columns:
+        mse_counts_metrics.append("train_mse_log_counts")
+    if "val_mse_log_counts" in df.columns:
+        mse_counts_metrics.append("val_mse_log_counts")
+        
+    if mse_counts_metrics:
+        plt.figure(figsize=(10, 6))
+        for metric in mse_counts_metrics:
+            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            if metric_df.height > 0:
+                label = "Train MSE (Log Counts)" if "train" in metric else "Validation MSE (Log Counts)"
+                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
+        
+        plt.title("Log Counts Mean Squared Error")
+        plt.xlabel("Step")
+        plt.ylabel("MSE")
+        plt.xlim(step_min, step_max)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(plots_dir / "mse_log_counts_curve.png", dpi=300)
         plt.close()
 
     print(f"Plots saved to {plots_dir}")

@@ -4,8 +4,8 @@ from cerberus.loss import (
     MSEMultinomialLoss, PoissonMultinomialLoss, ProfilePoissonNLLLoss
 )
 from cerberus.metrics import (
-    FlattenedPearsonCorrCoef, DecoupledFlattenedPearsonCorrCoef, 
-    DecoupledMeanSquaredError, ProfileMeanSquaredError
+    ProfilePearsonCorrCoef, CountProfilePearsonCorrCoef, 
+    CountProfileMeanSquaredError, ProfileMeanSquaredError
 )
 from cerberus.output import ProfileLogits, ProfileCountOutput, ProfileLogRates
 
@@ -78,9 +78,9 @@ def test_metrics_implicit_log_equivalence():
     preds_rates = ProfileLogRates(log_rates=logits) # For Poisson loss which strictly requires rates
     
     metrics_to_test = [
-        (FlattenedPearsonCorrCoef(num_channels=C), preds_prof),
-        (DecoupledFlattenedPearsonCorrCoef(num_channels=C), preds_count),
-        (DecoupledMeanSquaredError(), preds_count),
+        (ProfilePearsonCorrCoef(num_channels=C), preds_prof),
+        (CountProfilePearsonCorrCoef(num_channels=C), preds_count),
+        (CountProfileMeanSquaredError(), preds_count),
         (ProfileMeanSquaredError(), preds_prof),
         (ProfilePoissonNLLLoss(), preds_rates) # It's a loss but also used as metric sometimes
     ]
@@ -133,13 +133,13 @@ def test_dimension_minimal(shapes):
     val = mse.compute()
     assert not torch.isnan(val)
     
-    # Flattened Pearson
+    # Profile Pearson
     # With Length=1, correlation is undefined (variance=0) or NaN depending on implementation
     # PearsonCorrCoef usually returns NaN if input has no variance?
     # Or if we flatten over B*L = 1*1 = 1 sample, correlation is definitely undefined.
     # We need at least 2 samples.
     
-    pearson = FlattenedPearsonCorrCoef(num_channels=C)
+    pearson = ProfilePearsonCorrCoef(num_channels=C)
     # This should probably produce NaN or raise error or handle gracefully
     # torchmetrics Pearson often returns NaN for insufficient data
     
@@ -158,7 +158,7 @@ def test_dimension_single_length(shapes):
     logits = torch.randn(B, C, L)
     targets = torch.randn(B, C, L).abs()
     
-    pearson = FlattenedPearsonCorrCoef(num_channels=C)
+    pearson = ProfilePearsonCorrCoef(num_channels=C)
     # Flattening: (B, C, L) -> (B*L, C) -> (4, 2).
     # However, Softmax is applied along dim=-1 (Length).
     # With Length=1, Softmax([x]) = [1.0].
@@ -190,7 +190,7 @@ def test_profile_mse_zero_targets():
     # So error will be non-zero but finite.
 
 def test_decoupled_mse_broadcasting():
-    """Test DecoupledMeanSquaredError broadcasting behavior."""
+    """Test CountProfileMeanSquaredError broadcasting behavior."""
     # Logits: (B, C, L)
     # LogCounts: (B, 1) or (B, 1, 1)
     # Should broadcast correctly.
@@ -208,7 +208,7 @@ def test_decoupled_mse_broadcasting():
     
     targets = torch.randn(B, C, L).abs()
     
-    mse = DecoupledMeanSquaredError()
+    mse = CountProfileMeanSquaredError()
     
     # Run both, should not crash
     mse.update(preds_1, targets)
@@ -223,6 +223,6 @@ def test_invalid_input_types():
     with pytest.raises(TypeError):
         metric.update(torch.randn(10, 10), torch.randn(10, 10)) # type: ignore
 
-    metric_dec = DecoupledMeanSquaredError()
+    metric_dec = CountProfileMeanSquaredError()
     with pytest.raises(TypeError):
         metric_dec.update(ProfileLogits(logits=torch.randn(10)), torch.randn(10)) # type: ignore

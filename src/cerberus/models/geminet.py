@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchmetrics import MetricCollection
 
 from cerberus.output import ProfileCountOutput
+from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
 
 class PGCBlock(nn.Module):
     """
@@ -216,3 +218,16 @@ class GemiNet(nn.Module):
         log_counts = self.count_dense(x_pooled) # (B, Out_Channels)
         
         return ProfileCountOutput(logits=profile_logits, log_counts=log_counts)
+
+
+class GemiNetMetricCollection(MetricCollection):
+    """
+    MetricCollection for GemiNet models.
+    Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
+    """
+    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
+        super().__init__({
+            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
+            "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
+            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
+        })

@@ -85,5 +85,6 @@ def test_on_validation_epoch_end(base_config):
     args, kwargs = module.log_dict.call_args
     metrics_arg = args[0]
     assert "val_pearson" in metrics_arg
-    assert "val_mse" in metrics_arg
+    assert "val_mse_profile" in metrics_arg
+    assert "val_mse_log_counts" in metrics_arg
     assert kwargs.get("sync_dist") is True

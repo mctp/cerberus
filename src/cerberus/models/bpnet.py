@@ -4,7 +4,7 @@ from torchmetrics import MetricCollection
 
 from cerberus.loss import MSEMultinomialLoss
 from cerberus.output import ProfileCountOutput
-from cerberus.metrics import DecoupledFlattenedPearsonCorrCoef, DecoupledMeanSquaredError
+from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
 
 class _ResidualBlock(nn.Module):
     """
@@ -245,6 +245,7 @@ class BPNetMetricCollection(MetricCollection):
     """
     def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
         super().__init__({
-            "pearson": DecoupledFlattenedPearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
-            "mse": DecoupledMeanSquaredError(implicit_log_targets=implicit_log_targets),
+            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
+            "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
+            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
         })
