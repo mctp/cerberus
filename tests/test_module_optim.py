@@ -6,7 +6,7 @@ from cerberus.module import CerberusModule
 from cerberus.config import TrainConfig
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.metrics import DefaultMetricCollection
-from cerberus.output import ProfileOutput
+from cerberus.output import ProfileLogits
 from timm.scheduler.cosine_lr import CosineLRScheduler
 
 class DummyModel(nn.Module):
@@ -14,7 +14,7 @@ class DummyModel(nn.Module):
         super().__init__()
         self.layer = nn.Linear(1, 1)
     def forward(self, x):
-        return ProfileOutput(logits=self.layer(x))
+        return ProfileLogits(logits=self.layer(x))
 
 @pytest.fixture
 def base_config():

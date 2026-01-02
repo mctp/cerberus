@@ -4,7 +4,7 @@ from cerberus.loss import (
     MSEMultinomialLoss, CoupledMSEMultinomialLoss, 
     PoissonMultinomialLoss, CoupledPoissonMultinomialLoss
 )
-from cerberus.output import ProfileOutput, ProfileCountOutput, ProfileLogRates
+from cerberus.output import ProfileLogits, ProfileCountOutput, ProfileLogRates
 
 def test_bpnet_loss_count_per_channel():
     """Test BPNetLoss with count_per_channel=True"""

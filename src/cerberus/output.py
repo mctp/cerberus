@@ -37,7 +37,3 @@ class ProfileCountOutput(ProfileLogits):
 
     def detach(self):
         return ProfileCountOutput(logits=self.logits.detach(), log_counts=self.log_counts.detach())
-
-# Alias for backward compatibility (if needed during refactor)
-# but we aim to remove usage of ProfileOutput
-ProfileOutput = ProfileLogits

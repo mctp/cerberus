@@ -7,7 +7,7 @@ from cerberus.metrics import (
     FlattenedPearsonCorrCoef, DecoupledFlattenedPearsonCorrCoef, 
     DecoupledMeanSquaredError, ProfileMeanSquaredError
 )
-from cerberus.output import ProfileOutput, ProfileCountOutput, ProfileLogRates
+from cerberus.output import ProfileLogits, ProfileCountOutput, ProfileLogRates
 
 # --- Fixtures ---
 
@@ -73,7 +73,7 @@ def test_metrics_implicit_log_equivalence():
     logits = torch.randn(B, C, L)
     log_counts = torch.randn(B, 1) # (B, 1) for decoupled
     
-    preds_prof = ProfileOutput(logits=logits)
+    preds_prof = ProfileLogits(logits=logits)
     preds_count = ProfileCountOutput(logits=logits, log_counts=log_counts)
     preds_rates = ProfileLogRates(log_rates=logits) # For Poisson loss which strictly requires rates
     
@@ -129,7 +129,7 @@ def test_dimension_minimal(shapes):
     
     # Profile MSE
     mse = ProfileMeanSquaredError()
-    mse.update(ProfileOutput(logits=logits), targets)
+    mse.update(ProfileLogits(logits=logits), targets)
     val = mse.compute()
     assert not torch.isnan(val)
     
@@ -144,7 +144,7 @@ def test_dimension_minimal(shapes):
     # torchmetrics Pearson often returns NaN for insufficient data
     
     with pytest.warns(UserWarning, match="variance.*close to zero"):
-        pearson.update(ProfileOutput(logits=logits), targets)
+        pearson.update(ProfileLogits(logits=logits), targets)
         val_p = pearson.compute()
     
     # Pearson on 1 sample is undefined/NaN
@@ -166,7 +166,7 @@ def test_dimension_single_length(shapes):
     # Pearson Correlation should be NaN (or raise warning).
     
     with pytest.warns(UserWarning, match="variance.*close to zero"):
-        pearson.update(ProfileOutput(logits=logits), targets)
+        pearson.update(ProfileLogits(logits=logits), targets)
         val = pearson.compute()
     assert torch.isnan(val), "Length=1 should result in NaN correlation due to Softmax normalization (constant 1.0 predictions)"
 
@@ -180,7 +180,7 @@ def test_profile_mse_zero_targets():
     
     # Should handle normalization division by zero safely
     mse = ProfileMeanSquaredError()
-    mse.update(ProfileOutput(logits=logits), targets)
+    mse.update(ProfileLogits(logits=logits), targets)
     val = mse.compute()
     assert not torch.isnan(val)
     # Target probs should be uniform or zeros?
@@ -225,4 +225,4 @@ def test_invalid_input_types():
 
     metric_dec = DecoupledMeanSquaredError()
     with pytest.raises(TypeError):
-        metric_dec.update(ProfileOutput(logits=torch.randn(10)), torch.randn(10)) # type: ignore
+        metric_dec.update(ProfileLogits(logits=torch.randn(10)), torch.randn(10)) # type: ignore

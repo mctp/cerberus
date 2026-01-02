@@ -4,7 +4,7 @@ import pytest
 from cerberus.models.bpnet import BPNet, _ResidualBlock, BPNetMetricCollection, BPNetLoss
 from cerberus.loss import PoissonMultinomialLoss, MSEMultinomialLoss, CoupledMSEMultinomialLoss, CoupledPoissonMultinomialLoss
 from cerberus.metrics import DecoupledFlattenedPearsonCorrCoef, DecoupledMeanSquaredError
-from cerberus.output import ProfileCountOutput, ProfileOutput, ProfileLogRates
+from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
 
 def test_bpnet_residual_block_cropping():
     filters = 16
@@ -204,7 +204,7 @@ def test_bpnet_loss_integration():
     assert not torch.isnan(loss)
     assert loss.dim() == 0
 
-    # Test Coupled Loss with ProfileOutput (simulated counts)
+    # Test Coupled Loss with ProfileLogits (simulated counts)
     loss_coupled = CoupledMSEMultinomialLoss()
     model_multi = BPNet(
         input_len=1000,

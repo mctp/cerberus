@@ -9,7 +9,7 @@ from cerberus.metrics import (
     ProfileMeanSquaredError, DecoupledMeanSquaredError
 )
 from cerberus.models.bpnet import BPNetMetricCollection
-from cerberus.output import ProfileOutput, ProfileCountOutput
+from cerberus.output import ProfileLogits, ProfileCountOutput
 
 def test_profile_poisson_nll_loss():
     loss = ProfilePoissonNLLLoss(log_input=True, full=False)
@@ -51,14 +51,14 @@ def test_profile_mse_implicit_log_targets():
     
     # 1. Test with raw targets (standard)
     mse_std = ProfileMeanSquaredError(implicit_log_targets=False)
-    mse_std.update(ProfileOutput(logits=logits), raw_targets)
+    mse_std.update(ProfileLogits(logits=logits), raw_targets)
     val_std = mse_std.compute()
     assert torch.isclose(val_std, torch.tensor(0.0), atol=1e-6)
     
     # 2. Test with log targets without flag (Should fail/be high)
     log_targets = torch.log1p(raw_targets)
     mse_wrong = ProfileMeanSquaredError(implicit_log_targets=False)
-    mse_wrong.update(ProfileOutput(logits=logits), log_targets)
+    mse_wrong.update(ProfileLogits(logits=logits), log_targets)
     val_wrong = mse_wrong.compute()
     # Log targets: log(11) approx 2.4. Probs: 2.4/4.8 = 0.5.
     # Actually for uniform counts, log counts are also uniform, so probs are still 0.5.
@@ -82,13 +82,13 @@ def test_profile_mse_implicit_log_targets():
     
     # Correct config with log targets
     mse_correct = ProfileMeanSquaredError(implicit_log_targets=True)
-    mse_correct.update(ProfileOutput(logits=logits_perfect_raw), log_targets)
+    mse_correct.update(ProfileLogits(logits=logits_perfect_raw), log_targets)
     val_correct = mse_correct.compute()
     assert torch.isclose(val_correct, torch.tensor(0.0), atol=1e-5)
     
     # Incorrect config with log targets (using normalized log counts as ground truth)
     mse_incorrect = ProfileMeanSquaredError(implicit_log_targets=False)
-    mse_incorrect.update(ProfileOutput(logits=logits_perfect_raw), log_targets)
+    mse_incorrect.update(ProfileLogits(logits=logits_perfect_raw), log_targets)
     val_incorrect = mse_incorrect.compute()
     
     assert val_incorrect > 0.01 # Should be significantly different
@@ -131,7 +131,7 @@ def test_flattened_pearson_implicit_log_targets():
     
     # Correct config: Un-logs targets -> gets raw counts -> correlation 1.0
     corr_correct = FlattenedPearsonCorrCoef(num_channels=1, implicit_log_targets=True)
-    corr_correct.update(ProfileOutput(logits=logits), log_targets)
+    corr_correct.update(ProfileLogits(logits=logits), log_targets)
     val_correct = corr_correct.compute()
     assert torch.isclose(val_correct, torch.tensor(1.0), atol=1e-5)
     
@@ -149,12 +149,12 @@ def test_flattened_pearson_implicit_log_targets():
     log_targets_3 = torch.log1p(raw_targets_3)
     
     corr_correct_3 = FlattenedPearsonCorrCoef(num_channels=1, implicit_log_targets=True)
-    corr_correct_3.update(ProfileOutput(logits=logits_3), log_targets_3)
+    corr_correct_3.update(ProfileLogits(logits=logits_3), log_targets_3)
     val_correct_3 = corr_correct_3.compute()
     assert torch.isclose(val_correct_3, torch.tensor(1.0), atol=1e-5)
     
     corr_incorrect_3 = FlattenedPearsonCorrCoef(num_channels=1, implicit_log_targets=False)
-    corr_incorrect_3.update(ProfileOutput(logits=logits_3), log_targets_3)
+    corr_incorrect_3.update(ProfileLogits(logits=logits_3), log_targets_3)
     val_incorrect_3 = corr_incorrect_3.compute()
     
     # Correlation between x and log(x) is high but not 1.0
@@ -353,7 +353,7 @@ def test_flattened_pearson_single_channel():
     # Targets perfectly correlated with PROBABILITIES
     targets = probs * 2 + 1
     
-    val = metric(ProfileOutput(logits=logits), targets)
+    val = metric(ProfileLogits(logits=logits), targets)
     assert torch.isclose(val, torch.tensor(1.0), atol=1e-5)
     
     # Check that it matches manual calculation via base class with flattening of PROBS
@@ -383,7 +383,7 @@ def test_flattened_pearson_multi_channel():
     
     targets = torch.stack([t1, t2], dim=0).unsqueeze(0) # (1, 2, 100)
     
-    val = metric(ProfileOutput(logits=logits), targets)
+    val = metric(ProfileLogits(logits=logits), targets)
     
     # Expected: Mean(1.0, -1.0) = 0.0
     assert torch.isclose(val, torch.tensor(0.0), atol=1e-5)
@@ -411,7 +411,7 @@ def test_flattened_pearson_vs_global():
     targets = torch.stack([t1, t2], dim=0).unsqueeze(0)
     
     # Per-channel correlation should be near 0 (average of two uncorrelated signals)
-    val_channel = metric_channel(ProfileOutput(logits=logits), targets)
+    val_channel = metric_channel(ProfileLogits(logits=logits), targets)
     
     # Global correlation:
     # Metric uses probs. Probs are in range [0, 1].

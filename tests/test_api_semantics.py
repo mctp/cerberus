@@ -1,7 +1,7 @@
 import torch
 import pytest
 import torch.nn.functional as F
-from cerberus.output import ProfileOutput, ProfileCountOutput, ProfileLogRates, ProfileLogits
+from cerberus.output import ProfileLogits, ProfileCountOutput, ProfileLogRates, ProfileLogits
 from cerberus.loss import (
     ProfilePoissonNLLLoss, 
     CoupledMSEMultinomialLoss, 
@@ -39,9 +39,9 @@ def test_output_class_structure():
     assert hasattr(out_count, 'log_counts')
 
 def test_profile_output_alias():
-    """Verify ProfileOutput is an alias for ProfileLogits."""
-    assert ProfileOutput is ProfileLogits
-    out = ProfileOutput(logits=torch.randn(1,1,10))
+    """Verify ProfileLogits is an alias for ProfileLogits."""
+    assert ProfileLogits is ProfileLogits
+    out = ProfileLogits(logits=torch.randn(1,1,10))
     assert isinstance(out, ProfileLogits)
 
 # --- 2. Loss Function Strictness ---
