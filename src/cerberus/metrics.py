@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torchmetrics import PearsonCorrCoef, MeanSquaredError, MetricCollection
-from cerberus.output import ProfileOutput, ProfileCountOutput, ProfileLogRates, ProfileLogits
+from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
 
 class FlattenedPearsonCorrCoef(PearsonCorrCoef):
     """
