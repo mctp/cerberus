@@ -20,6 +20,8 @@ def instantiate(
     data_config: DataConfig,
     train_config: TrainConfig,
     compile: bool = False,
+    genome_config: GenomeConfig | None = None,
+    sampler_config: SamplerConfig | None = None,
 ) -> "CerberusModule":
     """
     Factory function to instantiate a CerberusModule from configurations.
@@ -65,7 +67,14 @@ def instantiate(
     metrics = metrics_cls(**metrics_args)
 
     return CerberusModule(
-        model=model, train_config=train_config, criterion=criterion, metrics=metrics
+        model=model,
+        train_config=train_config,
+        criterion=criterion,
+        metrics=metrics,
+        genome_config=genome_config,
+        data_config=data_config,
+        sampler_config=sampler_config,
+        model_config=model_config,
     )
 
 
@@ -277,6 +286,8 @@ def train_single(
         data_config=data_config,
         train_config=train_config,
         compile=compile,
+        genome_config=genome_config,
+        sampler_config=sampler_config,
     )
 
     # 3. Train

@@ -171,6 +171,12 @@ trainers = train_multi(
 )
 ```
 
+### Logging
+
+Cerberus automatically logs all configuration dictionaries (`genome_config`, `data_config`, `sampler_config`, `model_config`, `train_config`) to the experiment log directory.
+You can find these parameters in:
+`lightning_logs/version_{#}/hparams.yaml`
+
 ## Manual Usage (PyTorch Dataset)
 
 If you aren't using Lightning, you can use `CerberusDataset` directly.

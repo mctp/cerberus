@@ -5,7 +5,14 @@ from typing import Callable
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
-from cerberus.config import TrainConfig, validate_train_config
+from cerberus.config import (
+    TrainConfig,
+    validate_train_config,
+    GenomeConfig,
+    DataConfig,
+    SamplerConfig,
+    ModelConfig,
+)
 
 
 class CerberusModule(pl.LightningModule):
@@ -23,6 +30,11 @@ class CerberusModule(pl.LightningModule):
         train_config: TrainConfig,
         criterion: nn.Module | Callable,
         metrics: MetricCollection,
+        # Optional logging configuration
+        genome_config: GenomeConfig | None = None,
+        data_config: DataConfig | None = None,
+        sampler_config: SamplerConfig | None = None,
+        model_config: ModelConfig | None = None,
     ):
         """
         Args:
@@ -30,6 +42,10 @@ class CerberusModule(pl.LightningModule):
             train_config: Configuration dictionary (TrainConfig).
             criterion: Loss function. Required.
             metrics: MetricCollection for evaluation. Required.
+            genome_config: Genome configuration for logging.
+            data_config: Data configuration for logging.
+            sampler_config: Sampler configuration for logging.
+            model_config: Model configuration for logging.
         """
         super().__init__()
         self.save_hyperparameters(ignore=["model", "criterion", "metrics"])
