@@ -30,7 +30,7 @@ from cerberus.config import (
 from cerberus.genome import create_genome_config
 from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.dataset import CerberusDataset
-from cerberus.model_manager import ModelManager
+from cerberus.model_ensemble import ModelEnsemble
 from cerberus.predict import predict_intervals
 
 # %% [markdown]
@@ -173,7 +173,7 @@ print(f"Number of test intervals: {len(test_sampler)}")
 # %% [markdown]
 # ## 4. Load Model
 #
-# We use `ModelManager` to load the trained model from the checkpoint.
+# We use `ModelEnsemble` to load the trained model from the checkpoint.
 
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -182,7 +182,7 @@ if torch.backends.mps.is_available():
 print(f"Using device: {device}")
 
 print("Loading Model...")
-model_manager = ModelManager(
+model_ensemble = ModelEnsemble(
     checkpoint_path=checkpoint_dir,
     model_config=model_config,
     data_config=data_config,
@@ -218,14 +218,18 @@ predict_config: PredictConfig = {
     "aggregation": "mean"
 }
 
-outputs, merged_interval = predict_intervals(
+output = predict_intervals(
     intervals=intervals_to_predict,
     dataset=dataset, 
-    model_manager=model_manager,
+    model_ensemble=model_ensemble,
     predict_config=predict_config,
     device=str(device),
     batch_size=64
 )
+# Convert ModelOutput to dict for analysis
+import dataclasses
+outputs = dataclasses.asdict(output)
+merged_interval = output.out_interval
 
 print("Prediction Complete!")
 print(f"Merged Interval: {merged_interval}")

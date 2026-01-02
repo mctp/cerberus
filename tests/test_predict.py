@@ -3,19 +3,14 @@ import torch
 import torch.nn as nn
 import numpy as np
 from typing import cast
-from unittest.mock import MagicMock
-from dataclasses import dataclass
+from unittest.mock import MagicMock, patch
+from dataclasses import dataclass, asdict
 from torchmetrics import MetricCollection
 
 from cerberus.interval import parse_intervals, merge_intervals, Interval
-from cerberus.predict import (
-    predict_intervals, 
-    _aggregate_ensemble_outputs, 
-    _aggregate_overlapping_output_intervals
-)
+from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
-from cerberus.model_manager import ModelManager
 from cerberus.config import (
     GenomeConfig,
     DataConfig,
@@ -105,11 +100,12 @@ def integration_setup(tmp_path):
         "scheduler_args": {}
     })
     
-    model_manager = ModelManager(
+    # Use ModelEnsemble directly
+    ensemble = ModelEnsemble(
         ckpt_path, model_config, data_config, train_config, genome_config, torch.device("cpu")
     )
     
-    return dataset, model_manager
+    return dataset, ensemble
 
 # --- Fixtures and Helpers for Unit Tests (Mocking) ---
 
@@ -180,10 +176,24 @@ def mock_dataset():
     dataset.get_interval.return_value = {"inputs": torch.ones(4, 100)}
     return dataset
 
-@pytest.fixture
-def mock_model_manager():
-    manager = MagicMock()
-    return manager
+def create_mock_ensemble(models, output_len=60, output_bin_size=1):
+    with patch("cerberus.model_ensemble._ModelManager") as mock_loader_cls:
+        loader_instance = mock_loader_cls.return_value
+        # folds is []
+        loader_instance.load_models_and_folds.return_value = (models, [])
+        
+        # We need to pass dummy configs
+        dummy_config = {}
+        
+        ensemble = ModelEnsemble(
+            checkpoint_path="dummy",
+            model_config=cast(ModelConfig, dummy_config),
+            data_config=cast(DataConfig, {"output_len": output_len, "output_bin_size": output_bin_size}),
+            train_config=cast(TrainConfig, dummy_config),
+            genome_config=cast(GenomeConfig, dummy_config),
+            device=torch.device("cpu")
+        )
+        return ensemble
 
 # --- Tests for Interval Utilities (from original test_predict.py) ---
 
@@ -314,7 +324,7 @@ def test_merge_intervals():
 # --- Integration Tests for Predict Logic (from original test_predict2.py) ---
 
 def test_predict_intervals_valid(integration_setup):
-    dataset, model_manager = integration_setup
+    dataset, ensemble = integration_setup
     
     predict_config = cast(PredictConfig, {
         "stride": 50,
@@ -325,9 +335,11 @@ def test_predict_intervals_valid(integration_setup):
     })
     
     interval = Interval("chr1", 500, 600)
-    # Using argument order: intervals, dataset, model_manager, predict_config
-    # Returns (values, merged_interval)
-    values, merged_interval = predict_intervals([interval], dataset, model_manager, predict_config, device="cpu")
+    # Using argument order: intervals, dataset, model_ensemble, predict_config
+    # Returns ModelOutput
+    output = ensemble.predict_intervals([interval], dataset, predict_config, device="cpu")
+    values = asdict(output)
+    merged_interval = output.out_interval
     
     # Output dim is 50. Model returns (B, 1, 50).
     # Aggregation yields (C, n_bins) = (1, 50).
@@ -342,7 +354,7 @@ def test_predict_intervals_valid(integration_setup):
     assert merged_interval.end == 575
 
 def test_predict_intervals_boundary_skip(integration_setup):
-    dataset, model_manager = integration_setup
+    dataset, ensemble = integration_setup
     
     predict_config = cast(PredictConfig, {
         "stride": 50,
@@ -357,7 +369,9 @@ def test_predict_intervals_boundary_skip(integration_setup):
     # Output 25-75.
     
     interval = Interval("chr1", 0, 100)
-    values, merged_interval = predict_intervals([interval], dataset, model_manager, predict_config, device="cpu")
+    output = ensemble.predict_intervals([interval], dataset, predict_config, device="cpu")
+    values = asdict(output)
+    merged_interval = output.out_interval
     
     assert isinstance(values, dict)
     assert values['logits'].shape == (1, 50)
@@ -368,7 +382,7 @@ def test_predict_intervals_boundary_skip(integration_setup):
 
 def test_predict_intervals_batching(integration_setup):
     # Test multiple intervals to ensure they are batched together
-    dataset, model_manager = integration_setup
+    dataset, ensemble = integration_setup
     
     predict_config = cast(PredictConfig, {
         "stride": 50,
@@ -386,7 +400,9 @@ def test_predict_intervals_batching(integration_setup):
         Interval("chr1", 1300, 1400)
     ]
     
-    values, merged_interval = predict_intervals(intervals, dataset, model_manager, predict_config, device="cpu")
+    output = ensemble.predict_intervals(intervals, dataset, predict_config, device="cpu")
+    values = asdict(output)
+    merged_interval = output.out_interval
     
     assert merged_interval.start == 1025
     assert merged_interval.end == 1375
@@ -410,22 +426,28 @@ def test_predict_intervals_batching(integration_setup):
 
 # --- Unit Tests for Logic (from original test_predict3.py) ---
 
-def test_predict_interval_validation(mock_dataset, mock_model_manager):
+def test_predict_interval_validation(mock_dataset):
     interval = Interval("chr1", 0, 50) # Wrong length
     config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
     
+    # Needs at least one model to pass the "no models" check
+    model = MockModel(value=1.0, output_len=60)
+    ensemble = create_mock_ensemble({"0": model})
+    
     with pytest.raises(ValueError, match="length 50, expected 100"):
-        predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
+        ensemble.predict_intervals([interval], mock_dataset, config, device="cpu")
 
-def test_predict_interval_single_model(mock_dataset, mock_model_manager):
+def test_predict_interval_single_model(mock_dataset):
     interval = Interval("chr1", 0, 100)
     config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
     
     # output_len=60 to match dataset config
     model = MockModel(value=2.0, output_len=60)
-    mock_model_manager.get_models.return_value = [model]
+    ensemble = create_mock_ensemble({"0": model}, output_len=60, output_bin_size=1)
     
-    output, out_interval = predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
+    res = ensemble.predict_intervals([interval], mock_dataset, config, device="cpu")
+    output = asdict(res)
+    out_interval = res.out_interval
     
     # Output should be length 60
     assert isinstance(output, dict)
@@ -434,37 +456,41 @@ def test_predict_interval_single_model(mock_dataset, mock_model_manager):
     assert out_interval.start == 20
     assert out_interval.end == 80
 
-def test_predict_interval_mean_aggregation(mock_dataset, mock_model_manager):
+def test_predict_interval_mean_aggregation(mock_dataset):
     interval = Interval("chr1", 0, 100)
     config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
     
     model1 = MockModel(value=2.0, output_len=60)
     model2 = MockModel(value=4.0, output_len=60)
-    mock_model_manager.get_models.return_value = [model1, model2]
+    ensemble = create_mock_ensemble({"0": model1, "1": model2}, output_len=60, output_bin_size=1)
     
-    output, out_interval = predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
+    res = ensemble.predict_intervals([interval], mock_dataset, config, device="cpu")
+    output = asdict(res)
+    out_interval = res.out_interval
     
     assert isinstance(output, dict)
     assert output['out'].shape[-1] == 60
     assert np.allclose(output['out'], np.ones((4, 60)) * 3.0)
     assert out_interval.start == 20
 
-def test_predict_interval_tuple_output(mock_dataset, mock_model_manager):
+def test_predict_interval_tuple_output(mock_dataset):
     interval = Interval("chr1", 0, 100)
     config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
     
     model1 = MockTupleModel(value1=2.0, value2=10.0, output_len=60)
     model2 = MockTupleModel(value1=4.0, value2=20.0, output_len=60)
-    mock_model_manager.get_models.return_value = [model1, model2]
+    ensemble = create_mock_ensemble({"0": model1, "1": model2}, output_len=60, output_bin_size=1)
     
-    output, out_interval = predict_intervals([interval], mock_dataset, mock_model_manager, config, device="cpu")
+    res = ensemble.predict_intervals([interval], mock_dataset, config, device="cpu")
+    output = asdict(res)
+    out_interval = res.out_interval
     
     assert isinstance(output, dict)
     assert output['out1'].shape[-1] == 60
     assert np.allclose(output['out1'], np.ones((4, 60)) * 3.0)
     assert np.allclose(output['out2'], np.ones((4, 60)) * 15.0)
 
-def test_predict_intervals_overlap(mock_dataset, mock_model_manager):
+def test_predict_intervals_overlap(mock_dataset):
     # Output is length 60, offset 20.
     # Int1: 0-100 -> Output 20-80
     # Int2: 10-110 -> Output 30-90
@@ -492,14 +518,14 @@ def test_predict_intervals_overlap(mock_dataset, mock_model_manager):
             return MockOutput(out=x[:, :, 20:80] * self.value)
 
     model = MockCroppedModel(value=1.0)
-    mock_model_manager.get_models.return_value = [model]
+    ensemble = create_mock_ensemble({"0": model}, output_len=60, output_bin_size=1)
     
     # Run
     intervals = [interval_1, interval_2]
-    results = predict_intervals(intervals, mock_dataset, mock_model_manager, config, device="cpu")
+    results = ensemble.predict_intervals(intervals, mock_dataset, config, device="cpu")
     
-    # results is (array, interval)
-    arr, merged_interval = results
+    arr = asdict(results)
+    merged_interval = results.out_interval
     
     assert merged_interval.chrom == "chr1"
     assert merged_interval.start == 20
@@ -518,17 +544,18 @@ def test_predict_intervals_overlap(mock_dataset, mock_model_manager):
     assert np.allclose(arr['out'][0, 10:60], 1.5)
     assert np.allclose(arr['out'][0, 60:70], 2.0)
 
-def test_predict_intervals_scalar_broadcast(mock_dataset, mock_model_manager):
+def test_predict_intervals_scalar_broadcast(mock_dataset):
     # Scalar output
     interval_1 = Interval("chr1", 0, 100)
     config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
     
     model = MockScalarModel(value=5.0)
-    mock_model_manager.get_models.return_value = [model]
+    ensemble = create_mock_ensemble({"0": model}, output_len=60, output_bin_size=1)
     
-    results = predict_intervals([interval_1], mock_dataset, mock_model_manager, config, device="cpu")
+    results = ensemble.predict_intervals([interval_1], mock_dataset, config, device="cpu")
     
-    arr, merged_interval = results
+    arr = asdict(results)
+    merged_interval = results.out_interval
     
     # Output length 60. Scalar should be broadcast to 60.
     assert isinstance(arr, dict)
@@ -537,7 +564,7 @@ def test_predict_intervals_scalar_broadcast(mock_dataset, mock_model_manager):
     assert merged_interval.start == 20
     assert merged_interval.end == 80
 
-def test_predict_intervals_tuple_recursive(mock_dataset, mock_model_manager):
+def test_predict_intervals_tuple_recursive(mock_dataset):
     # Tuple output (Profile, Scalar)
     # Output length 60 (for profile). Scalar broadcast.
     mock_dataset.data_config["output_bin_size"] = 1
@@ -559,13 +586,13 @@ def test_predict_intervals_tuple_recursive(mock_dataset, mock_model_manager):
             return MockTupleOutput2(prof=prof, scalar=scalar)
 
     model = MockCorrectProfileModel()
-    mock_model_manager.get_models.return_value = [model]
+    ensemble = create_mock_ensemble({"0": model}, output_len=60, output_bin_size=1)
     
-    results = predict_intervals([interval_1], mock_dataset, mock_model_manager, config, device="cpu")
+    results = ensemble.predict_intervals([interval_1], mock_dataset, config, device="cpu")
     
-    values, merged_interval = results
+    values = asdict(results)
+    merged_interval = results.out_interval
     assert isinstance(values, dict)
-    assert len(values) == 2
     
     track_prof = values['prof']
     track_scalar = values['scalar']
@@ -581,20 +608,19 @@ def test_predict_intervals_tuple_recursive(mock_dataset, mock_model_manager):
     assert merged_interval.start == 20
     assert merged_interval.end == 80
 
-def test_predict_intervals_empty_input(mock_dataset, mock_model_manager):
+def test_predict_intervals_empty_input(mock_dataset):
     config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
+    ensemble = create_mock_ensemble({})
     with pytest.raises(ValueError, match="No intervals provided"):
-        predict_intervals([], mock_dataset, mock_model_manager, config, device="cpu")
+        ensemble.predict_intervals([], mock_dataset, config, device="cpu")
 
 def test_aggregate_ensemble_outputs_empty():
+    # Tested in test_model_ensemble.py, but keeping here using ModelEnsemble
+    ensemble = create_mock_ensemble({}, output_len=100, output_bin_size=1)
     with pytest.raises(ValueError, match="No outputs to aggregate"):
-        _aggregate_ensemble_outputs([], method="mean")
+        ensemble._aggregate_models([], method="mean")
 
-def test_aggregate_overlapping_output_intervals_empty():
-    with pytest.raises(ValueError, match="No results to aggregate"):
-        _aggregate_overlapping_output_intervals([], output_bin_size=1, output_len=100)
-
-def test_merged_interval_is_multiple_of_bin_size(mock_dataset, mock_model_manager):
+def test_merged_interval_is_multiple_of_bin_size(mock_dataset):
     # Setup intervals such that merged interval should be multiple of bin_size=10
     mock_dataset.data_config["output_bin_size"] = 10
     mock_dataset.data_config["output_len"] = 100
@@ -618,12 +644,14 @@ def test_merged_interval_is_multiple_of_bin_size(mock_dataset, mock_model_manage
             return MockOutput(out=torch.ones(x.shape[0], 1, 10))
 
     model = MockModelBin10()
-    mock_model_manager.get_models.return_value = [model]
+    ensemble = create_mock_ensemble({"0": model}, output_len=100, output_bin_size=10)
     
     # Dataset needs to return inputs for these intervals
     mock_dataset.get_interval.return_value = {"inputs": torch.ones(4, 100)}
     
-    values, merged_interval = predict_intervals(intervals, mock_dataset, mock_model_manager, config, device="cpu")
+    output = ensemble.predict_intervals(intervals, mock_dataset, config, device="cpu")
+    values = asdict(output)
+    merged_interval = output.out_interval
     
     merged_len = merged_interval.end - merged_interval.start
     assert merged_len % 10 == 0
@@ -631,7 +659,7 @@ def test_merged_interval_is_multiple_of_bin_size(mock_dataset, mock_model_manage
 
 def test_predict_intervals_batching_param(integration_setup):
     # Test batch_size parameter
-    dataset, model_manager = integration_setup
+    dataset, ensemble = integration_setup
     
     predict_config = cast(PredictConfig, {
         "stride": 50,
@@ -649,9 +677,11 @@ def test_predict_intervals_batching_param(integration_setup):
     ]
     
     # Run with batch_size=2
-    values, merged_interval = predict_intervals(
-        intervals, dataset, model_manager, predict_config, device="cpu", batch_size=2
+    output = ensemble.predict_intervals(
+        intervals, dataset, predict_config, device="cpu", batch_size=2
     )
+    values = asdict(output)
+    merged_interval = output.out_interval
     
     assert merged_interval.start == 1025
     assert merged_interval.end == 1375

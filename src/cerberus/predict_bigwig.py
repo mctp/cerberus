@@ -2,19 +2,19 @@ import torch
 from collections.abc import Iterable
 import pybigtools
 from pathlib import Path
+import dataclasses
 
 from cerberus.interval import Interval
 from cerberus.dataset import CerberusDataset
-from cerberus.model_manager import ModelManager
+from cerberus.model_ensemble import ModelEnsemble
 from cerberus.config import PredictConfig
 from cerberus.samplers import SlidingWindowSampler
-from cerberus.predict import predict_intervals
 
 
 def predict_to_bigwig(
     output_path: str | Path,
     dataset: CerberusDataset,
-    model_manager: ModelManager,
+    model_ensemble: ModelEnsemble,
     predict_config: PredictConfig,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
     batch_size: int = 64,
@@ -29,7 +29,7 @@ def predict_to_bigwig(
     Args:
         output_path: Path to the output BigWig file.
         dataset: Initialized CerberusDataset (provides data configuration and extractors).
-        model_manager: Initialized ModelManager (provides models).
+        model_ensemble: Initialized ModelEnsemble (provides models).
         predict_config: Prediction configuration.
         device: Device to run inference on.
         batch_size: Batch size for inference.
@@ -74,7 +74,7 @@ def predict_to_bigwig(
                     yield from _process_island(
                         current_island,
                         dataset,
-                        model_manager,
+                        model_ensemble,
                         predict_config,
                         device,
                         batch_size,
@@ -88,7 +88,7 @@ def predict_to_bigwig(
                 yield from _process_island(
                     current_island,
                     dataset,
-                    model_manager,
+                    model_ensemble,
                     predict_config,
                     device,
                     batch_size,
@@ -103,7 +103,7 @@ def predict_to_bigwig(
 def _process_island(
     island_intervals: list[Interval],
     dataset: CerberusDataset,
-    model_manager: ModelManager,
+    model_ensemble: ModelEnsemble,
     predict_config: PredictConfig,
     device: str,
     batch_size: int,
@@ -112,9 +112,13 @@ def _process_island(
     Runs prediction on a contiguous island of intervals and yields values.
     """
     # predict_intervals aggregates the island into one result
-    aggregated_output, merged_interval = predict_intervals(
-        island_intervals, dataset, model_manager, predict_config, device, batch_size
+    output = model_ensemble.predict_intervals(
+        island_intervals, dataset, predict_config, device, batch_size
     )
+    aggregated_output = dataclasses.asdict(output)
+    merged_interval = output.out_interval
+    if merged_interval is None:
+        raise ValueError("ModelOutput.out_interval is None, but expected a merged interval.")
 
     # aggregated_output is a dict[str, np.ndarray]
     # We attempt to retrieve the primary profile track

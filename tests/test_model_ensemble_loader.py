@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import torch.nn as nn
 import torch
 
-from cerberus.model_manager import ModelManager
+from cerberus.model_ensemble import _ModelManager as ModelManager, ModelEnsemble
 from cerberus.config import (
     ModelConfig,
     DataConfig,
@@ -102,7 +102,7 @@ def test_load_model_direct_path(model_manager, tmp_path):
     ckpt_path.touch()
     
     # Mock dependencies
-    with patch("cerberus.model_manager.instantiate") as mock_instantiate, \
+    with patch("cerberus.model_ensemble.instantiate") as mock_instantiate, \
          patch("torch.load") as mock_load:
         
         # Setup mocks
@@ -135,7 +135,7 @@ def test_load_model_directory(model_manager, tmp_path):
     p1.touch()
     p2.touch()
     
-    with patch("cerberus.model_manager.instantiate") as mock_instantiate, \
+    with patch("cerberus.model_ensemble.instantiate") as mock_instantiate, \
          patch("torch.load") as mock_load:
         
         mock_module = MagicMock()
@@ -160,8 +160,48 @@ def test_load_model_caching(model_manager, tmp_path):
     
     # Run
     # Should return cached without calling instantiate/load
-    with patch("cerberus.model_manager.instantiate") as mock_instantiate:
+    with patch("cerberus.model_ensemble.instantiate") as mock_instantiate:
         model = model_manager._load_model("cached_key", ckpt_path)
         
         assert model == cached_model
         mock_instantiate.assert_not_called()
+
+def test_load_models_and_folds(model_manager, tmp_path):
+    # Setup dummy single fold
+    ckpt_path = tmp_path / "model.ckpt"
+    ckpt_path.touch()
+    
+    # Mock _load_model to avoid instantiating real models
+    with patch.object(model_manager, "_load_model") as mock_load:
+        mock_load.return_value = MagicMock(spec=nn.Module)
+        
+        models, folds = model_manager.load_models_and_folds()
+        
+        assert isinstance(models, dict)
+        assert len(models) == 1
+        assert "single" in models
+        mock_load.assert_called_with("single", model_manager.checkpoint_path)
+
+def test_load_models_and_folds_multifold(model_manager, tmp_path):
+    # Enable multifold
+    model_manager.is_multifold = True
+    model_manager.folds = [{"chr1": MagicMock()}] # Dummy folds
+    
+    # Setup fold directories
+    fold_dir = tmp_path / "fold_0"
+    fold_dir.mkdir()
+    p1 = fold_dir / "model.ckpt"
+    p1.touch()
+    
+    with patch.object(model_manager, "_load_model") as mock_load:
+        mock_load.return_value = MagicMock(spec=nn.Module)
+        
+        models, folds = model_manager.load_models_and_folds()
+        
+        assert isinstance(models, dict)
+        assert len(models) == 1
+        # Should attempt to load fold 0
+        mock_load.assert_called()
+        # Verify it passed the checkpoint path selected
+        args, _ = mock_load.call_args
+        assert args[0] == "fold_0"

@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 import torch
+from cerberus.interval import Interval
 
-@dataclass
+@dataclass(kw_only=True)
 class ModelOutput:
     """Base class for model outputs."""
+    out_interval: Interval | None = None
+
     def detach(self):
         """Returns a new instance with all tensors detached from the graph."""
         raise NotImplementedError
@@ -17,7 +20,7 @@ class ProfileLogits(ModelOutput):
     logits: torch.Tensor # (Batch, Channels, Length)
 
     def detach(self):
-        return ProfileLogits(logits=self.logits.detach())
+        return ProfileLogits(logits=self.logits.detach(), out_interval=self.out_interval)
 
 @dataclass
 class ProfileLogRates(ModelOutput):
@@ -28,7 +31,7 @@ class ProfileLogRates(ModelOutput):
     log_rates: torch.Tensor # (Batch, Channels, Length)
 
     def detach(self):
-        return ProfileLogRates(log_rates=self.log_rates.detach())
+        return ProfileLogRates(log_rates=self.log_rates.detach(), out_interval=self.out_interval)
 
 @dataclass
 class ProfileCountOutput(ProfileLogits):
@@ -36,4 +39,8 @@ class ProfileCountOutput(ProfileLogits):
     log_counts: torch.Tensor # (Batch, Channels)
 
     def detach(self):
-        return ProfileCountOutput(logits=self.logits.detach(), log_counts=self.log_counts.detach())
+        return ProfileCountOutput(
+            logits=self.logits.detach(), 
+            log_counts=self.log_counts.detach(),
+            out_interval=self.out_interval
+        )

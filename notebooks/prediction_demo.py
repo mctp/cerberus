@@ -9,6 +9,7 @@ import torch.nn as nn
 import numpy as np
 from pathlib import Path
 from torchmetrics import MetricCollection
+import dataclasses
 
 try:
     from paths import get_project_root
@@ -25,7 +26,8 @@ from cerberus.config import (
 )
 from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
-from cerberus.model_manager import ModelManager
+from unittest.mock import patch
+from cerberus.model_ensemble import ModelEnsemble
 from cerberus.predict import predict_intervals
 from cerberus.output import ProfileCountOutput
 
@@ -144,15 +146,20 @@ train_config: TrainConfig = {
     "scheduler_args": {}
 }
 
-# Model Manager
-model_manager = ModelManager(
-    ckpt_path,
-    model_config,
-    data_config,
-    train_config,
-    genome_config,
-    device=torch.device("cpu")
-)
+# Model Ensemble
+# We mock the internal loader to return our dummy model instead of loading from disk
+with patch("cerberus.model_ensemble._ModelManager") as MockLoader:
+    loader_instance = MockLoader.return_value
+    loader_instance.load_models_and_folds.return_value = ({"single": model}, [])
+    
+    ensemble = ModelEnsemble(
+        ckpt_path,
+        model_config,
+        data_config,
+        train_config,
+        genome_config,
+        device=torch.device("cpu")
+    )
 
 # Cleanup checkpoint
 if ckpt_path.exists():
@@ -181,21 +188,18 @@ predict_config: PredictConfig = {
     "aggregation": "mean"
 }
 
-# Mock ModelManager.get_models to return our model instance directly if loading fails/folds issue
-# But for demo, let's assume get_models works if we mock the split or just allow it.
-# Simple hack: override get_models
-model_manager.get_models = lambda *args, **kwargs: [model]
-
 # Run prediction
 # We use a small batch size to demonstrate batching
-outputs, merged_interval = predict_intervals(
+output = predict_intervals(
     intervals,
     dataset,
-    model_manager,
+    ensemble,
     predict_config,
     device="cpu",
     batch_size=2
 )
+outputs = dataclasses.asdict(output)
+merged_interval = output.out_interval
 
 print("Merged Interval:", merged_interval)
 
