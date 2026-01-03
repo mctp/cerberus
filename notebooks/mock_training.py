@@ -15,7 +15,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Ensure project root is in path
-project_root = Path(os.getcwd())
+try:
+    from paths import get_project_root
+    project_root = get_project_root()
+except ImportError:
+    if os.path.basename(os.getcwd()) == "notebooks":
+        project_root = Path(os.getcwd()).parent
+    else:
+        project_root = Path(os.getcwd())
+
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
@@ -56,7 +64,7 @@ except ImportError:
 
 # %%
 class MockDataModule(CerberusDataModule):
-    def setup(self, stage=None, batch_size=None, num_workers=0, in_memory=False):
+    def setup(self, stage=None, batch_size=None, num_workers=0, in_memory=False, **kwargs):
         # Override setup to use MockDataset
         self.batch_size = batch_size or self.batch_size
         self.num_workers = num_workers
@@ -333,7 +341,7 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid(True, alpha=0.3)
     
-    plot_path = project_root / "mock_training_scatter.png"
+    plot_path = project_root / "notebooks/plots/mock_training_scatter.png"
     plt.savefig(plot_path)
     print(f"\nScatter plot saved to: {plot_path}")
     

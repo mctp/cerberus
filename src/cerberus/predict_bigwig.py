@@ -76,7 +76,6 @@ def predict_to_bigwig(
                         dataset,
                         model_ensemble,
                         predict_config,
-                        device,
                         batch_size,
                     )
                     current_island = []
@@ -90,7 +89,6 @@ def predict_to_bigwig(
                     dataset,
                     model_ensemble,
                     predict_config,
-                    device,
                     batch_size,
                 )
 
@@ -105,7 +103,6 @@ def _process_island(
     dataset: CerberusDataset,
     model_ensemble: ModelEnsemble,
     predict_config: PredictConfig,
-    device: str,
     batch_size: int,
 ) -> Iterable[tuple[str, int, int, float]]:
     """
@@ -113,7 +110,7 @@ def _process_island(
     """
     # predict_intervals aggregates the island into one result
     output = model_ensemble.predict_intervals(
-        island_intervals, dataset, predict_config, device, batch_size
+        island_intervals, dataset, predict_config, batch_size
     )
     aggregated_output = dataclasses.asdict(output)
     merged_interval = output.out_interval

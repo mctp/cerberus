@@ -210,6 +210,6 @@ plt.ylabel('Signal')
 plt.title('Target Signal')
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
-plt.show()
+plt.savefig(project_root / "notebooks/plots/cerberus_datamodule_setup.png")
 
 # %%

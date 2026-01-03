@@ -217,7 +217,7 @@ print("Profile Track Shape:", profile_track.shape)
 print("Counts Track Shape:", counts_track.shape)
 
 # Since our model returns constant ones, let's check values
-print("Mean Profile Value:", np.mean(profile_track))
-print("Mean Counts Value:", np.mean(counts_track))
+print("Mean Profile Value:", profile_track.mean().item())
+print("Mean Counts Value:", counts_track.mean().item())
 
 # %%

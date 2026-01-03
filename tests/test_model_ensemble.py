@@ -230,7 +230,7 @@ def test_predict_intervals_method():
     
     # Run predict_intervals
     output = ensemble.predict_intervals(
-        intervals, dataset, predict_config, device="cpu", batch_size=2
+        intervals, dataset, predict_config, batch_size=2
     )
     
     merged_interval = output.out_interval
@@ -282,7 +282,7 @@ def test_predict_output_intervals_method():
     
     # Run predict_output_intervals
     outputs = ensemble.predict_output_intervals(
-        intervals, dataset, predict_config, device="cpu", batch_size=2
+        intervals, dataset, predict_config, batch_size=2
     )
     
     assert len(outputs) == 1

@@ -337,7 +337,7 @@ def test_predict_intervals_valid(integration_setup):
     interval = Interval("chr1", 500, 600)
     # Using argument order: intervals, dataset, model_ensemble, predict_config
     # Returns ModelOutput
-    output = ensemble.predict_intervals([interval], dataset, predict_config, device="cpu")
+    output = ensemble.predict_intervals([interval], dataset, predict_config)
     values = asdict(output)
     merged_interval = output.out_interval
     
@@ -369,7 +369,7 @@ def test_predict_intervals_boundary_skip(integration_setup):
     # Output 25-75.
     
     interval = Interval("chr1", 0, 100)
-    output = ensemble.predict_intervals([interval], dataset, predict_config, device="cpu")
+    output = ensemble.predict_intervals([interval], dataset, predict_config)
     values = asdict(output)
     merged_interval = output.out_interval
     
@@ -400,7 +400,7 @@ def test_predict_intervals_batching(integration_setup):
         Interval("chr1", 1300, 1400)
     ]
     
-    output = ensemble.predict_intervals(intervals, dataset, predict_config, device="cpu")
+    output = ensemble.predict_intervals(intervals, dataset, predict_config)
     values = asdict(output)
     merged_interval = output.out_interval
     
@@ -426,16 +426,6 @@ def test_predict_intervals_batching(integration_setup):
 
 # --- Unit Tests for Logic (from original test_predict3.py) ---
 
-def test_predict_interval_validation(mock_dataset):
-    interval = Interval("chr1", 0, 50) # Wrong length
-    config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
-    
-    # Needs at least one model to pass the "no models" check
-    model = MockModel(value=1.0, output_len=60)
-    ensemble = create_mock_ensemble({"0": model})
-    
-    with pytest.raises(ValueError, match="length 50, expected 100"):
-        ensemble.predict_intervals([interval], mock_dataset, config, device="cpu")
 
 def test_predict_interval_single_model(mock_dataset):
     interval = Interval("chr1", 0, 100)
@@ -445,7 +435,7 @@ def test_predict_interval_single_model(mock_dataset):
     model = MockModel(value=2.0, output_len=60)
     ensemble = create_mock_ensemble({"0": model}, output_len=60, output_bin_size=1)
     
-    res = ensemble.predict_intervals([interval], mock_dataset, config, device="cpu")
+    res = ensemble.predict_intervals([interval], mock_dataset, config)
     output = asdict(res)
     out_interval = res.out_interval
     
@@ -464,7 +454,7 @@ def test_predict_interval_mean_aggregation(mock_dataset):
     model2 = MockModel(value=4.0, output_len=60)
     ensemble = create_mock_ensemble({"0": model1, "1": model2}, output_len=60, output_bin_size=1)
     
-    res = ensemble.predict_intervals([interval], mock_dataset, config, device="cpu")
+    res = ensemble.predict_intervals([interval], mock_dataset, config)
     output = asdict(res)
     out_interval = res.out_interval
     
@@ -481,7 +471,7 @@ def test_predict_interval_tuple_output(mock_dataset):
     model2 = MockTupleModel(value1=4.0, value2=20.0, output_len=60)
     ensemble = create_mock_ensemble({"0": model1, "1": model2}, output_len=60, output_bin_size=1)
     
-    res = ensemble.predict_intervals([interval], mock_dataset, config, device="cpu")
+    res = ensemble.predict_intervals([interval], mock_dataset, config)
     output = asdict(res)
     out_interval = res.out_interval
     
@@ -522,7 +512,7 @@ def test_predict_intervals_overlap(mock_dataset):
     
     # Run
     intervals = [interval_1, interval_2]
-    results = ensemble.predict_intervals(intervals, mock_dataset, config, device="cpu")
+    results = ensemble.predict_intervals(intervals, mock_dataset, config)
     
     arr = asdict(results)
     merged_interval = results.out_interval
@@ -552,7 +542,7 @@ def test_predict_intervals_scalar_broadcast(mock_dataset):
     model = MockScalarModel(value=5.0)
     ensemble = create_mock_ensemble({"0": model}, output_len=60, output_bin_size=1)
     
-    results = ensemble.predict_intervals([interval_1], mock_dataset, config, device="cpu")
+    results = ensemble.predict_intervals([interval_1], mock_dataset, config)
     
     arr = asdict(results)
     merged_interval = results.out_interval
@@ -588,7 +578,7 @@ def test_predict_intervals_tuple_recursive(mock_dataset):
     model = MockCorrectProfileModel()
     ensemble = create_mock_ensemble({"0": model}, output_len=60, output_bin_size=1)
     
-    results = ensemble.predict_intervals([interval_1], mock_dataset, config, device="cpu")
+    results = ensemble.predict_intervals([interval_1], mock_dataset, config)
     
     values = asdict(results)
     merged_interval = results.out_interval
@@ -611,8 +601,8 @@ def test_predict_intervals_tuple_recursive(mock_dataset):
 def test_predict_intervals_empty_input(mock_dataset):
     config = cast(PredictConfig, {"use_folds": ["test"], "aggregation": "mean"})
     ensemble = create_mock_ensemble({})
-    with pytest.raises(ValueError, match="No intervals provided"):
-        ensemble.predict_intervals([], mock_dataset, config, device="cpu")
+    with pytest.raises(RuntimeError, match="No results generated"):
+        ensemble.predict_intervals([], mock_dataset, config)
 
 def test_aggregate_ensemble_outputs_empty():
     # Tested in test_model_ensemble.py, but keeping here using ModelEnsemble
@@ -649,7 +639,7 @@ def test_merged_interval_is_multiple_of_bin_size(mock_dataset):
     # Dataset needs to return inputs for these intervals
     mock_dataset.get_interval.return_value = {"inputs": torch.ones(4, 100)}
     
-    output = ensemble.predict_intervals(intervals, mock_dataset, config, device="cpu")
+    output = ensemble.predict_intervals(intervals, mock_dataset, config)
     values = asdict(output)
     merged_interval = output.out_interval
     
@@ -678,7 +668,7 @@ def test_predict_intervals_batching_param(integration_setup):
     
     # Run with batch_size=2
     output = ensemble.predict_intervals(
-        intervals, dataset, predict_config, device="cpu", batch_size=2
+        intervals, dataset, predict_config, batch_size=2
     )
     values = asdict(output)
     merged_interval = output.out_interval

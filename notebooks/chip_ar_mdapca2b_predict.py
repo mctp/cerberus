@@ -235,6 +235,8 @@ print(f"Ground Truth Shape: {gt_targets.shape}")
 
 # Inspect Outputs
 for key, track in outputs.items():
+    if key == "out_interval":
+        continue
     print(f"\nOutput Track '{key}':")
     print(f"  Shape: {track.shape}")
     print(f"  Min: {track.min():.4f}, Max: {track.max():.4f}, Mean: {track.mean():.4f}")
@@ -261,7 +263,8 @@ print(f"Number of Bins: {n_bins}")
 
 # Extract prediction for this interval
 # Key 'logits' is usually the profile output for GlobalProfileCNN
-output_key = "logits" if "logits" in outputs else list(outputs.keys())[0]
+keys = [k for k in outputs.keys() if k != "out_interval"]
+output_key = "logits" if "logits" in keys else keys[0]
 pred_profile = outputs[output_key][:, rel_start_bin : rel_start_bin + n_bins]
 
 # Extract Ground Truth for this interval
@@ -281,6 +284,7 @@ fig, axes = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
 axes[0].plot(gt_slice_binned[0], label="Ground Truth (Signal, Binned)", color="blue")
 axes[0].set_title("Ground Truth")
 axes[0].legend()
+plt.savefig(project_root / "notebooks/plots/chip_ar_mdapca2b_predict_debug.png")
 
 # 2. Transformations
 # Based on config:
@@ -296,7 +300,7 @@ axes[0].legend()
 # Observed = Counts
 # Predicted = exp(Predicted Rate) - 1 = exp(exp(logits)) - 1
 
-logits = torch.from_numpy(pred_profile)
+logits = pred_profile
 pred_rate = torch.exp(logits) # Corresponds to log1p(counts)
 pred_counts = torch.expm1(pred_rate) # Corresponds to counts
 
@@ -323,6 +327,6 @@ axes[2].legend()
 
 plt.xlabel("Bins")
 plt.tight_layout()
-plt.show()
+plt.savefig(project_root / "notebooks/plots/chip_ar_mdapca2b_predict.png")
 
 # %%

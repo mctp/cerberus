@@ -133,3 +133,5 @@ tests/data/
 # VS Code
 *.code-workspace
 lightning_logs/
+notebooks/plots/
+notebooks/plots/
