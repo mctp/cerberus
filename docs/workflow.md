@@ -45,19 +45,21 @@ The training phase is responsible for learning the mapping from DNA sequence to 
 
 Once a model is trained, the prediction phase involves applying it to specific genomic regions. The workflow is streamlined to reuse the same configurations from training, with the system automatically handling the switch to deterministic behavior.
 
+For a detailed guide, see [**Prediction**](prediction.md).
+
 ### Key Concepts
 
-*   **Deterministic Transforms**: When performing inference, we want reproducible results without random augmentations (like jitter or reverse complement). Cerberus handles this automatically.
-*   **Model Loading**: The `ModelManager` class loads the model state from a checkpoint, ensuring the architecture matches the config.
+*   **Deterministic Transforms**: When performing inference, we want reproducible results without random augmentations (like jitter or reverse complement). Cerberus handles this automatically when `is_train=False` in the Dataset.
+*   **Model Ensemble**: The `ModelEnsemble` class is the main entry point. It automatically manages loading single or multiple fold models from checkpoints.
+*   **Aggregation**: Models can be aggregated (e.g., averaged across folds) and overlapping predictions can be merged automatically.
 
 ### The Process
 
 1.  **Load Configs**: Reuse the `GenomeConfig`, `DataConfig`, and `ModelConfig` used during training.
-2.  **Load Model**: Use `ModelManager(checkpoint_path=...)` to instantiate the model and load weights.
+2.  **Initialize Ensemble**: Use `ModelEnsemble(checkpoint_path=...)` to instantiate the models.
 3.  **Initialize Dataset**: Create a `CerberusDataset` with `is_train=False`.
-    *   This automatically switches the data pipeline to use **deterministic transforms** (e.g., center-cropping instead of random jitter, disabling reverse-complement augmentation).
-    *   No manual adjustment of `DataConfig` is required.
-4.  **Run Prediction**: Use `predict_intervals()` to generate predictions for a list of genomic intervals.
+    *   This automatically switches the data pipeline to use **deterministic transforms**.
+4.  **Run Prediction**: Use `model_ensemble.predict_intervals()` or `predict_output_intervals()`.
 
 **Example Reference**: `notebooks/chip_ar_mdapca2b_predict_bpnet.py` shows how to load a trained BPNet model and run inference on test set peaks.
 
@@ -69,14 +71,12 @@ Exploration involves interpreting the raw model outputs, which can vary by archi
 
 ### Understanding Outputs
 
-Different models produce different outputs:
+Models return standardized output objects (see [**Components: Model Outputs**](components.md#model-outputs)):
 
-*   **Baseline CNNs**: Typically output `logits` (log-scale predictions).
-    *   *Transformation*: `exp(logits)` -> Predicted Signal.
-*   **BPNet**: Outputs a tuple of `(profile_logits, log_counts)`.
-    *   `profile_logits`: The shape of the signal (probability distribution over the window).
-    *   `log_counts`: The total magnitude of signal in the window.
-    *   *Transformation*: `softmax(profile_logits) * exp(log_counts)` -> Predicted Signal Counts.
+*   **ProfileLogits**: Typically used by baseline CNNs.
+    *   *Transformation*: `softmax(logits)` -> Probabilities.
+*   **ProfileCountOutput**: Used by BPNet (Profile Logits + Total Log Counts).
+    *   *Transformation*: `softmax(logits) * exp(log_counts)` -> Predicted Signal Counts.
 
 ### The Process
 

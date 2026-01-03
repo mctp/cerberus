@@ -127,23 +127,39 @@ class TrainConfig(TypedDict):
     # Weight decay
     weight_decay: float
     
-    # Patience for early stopping
-    patience: int
-    
     # Optimizer name (e.g. "adamw")
     optimizer: str
     
     # Scheduler type (e.g. "default", "cosine")
     scheduler_type: str
     
-    # Arguments for scheduler
+    # Arguments for scheduler (passed to timm.scheduler.create_scheduler_v2)
     scheduler_args: dict[str, Any]
     
     # Whether to exclude bias and batch norm from weight decay
     filter_bias_and_bn: bool
+    
+    # Patience for EarlyStopping (used by entrypoints)
+    patience: int
 ```
 
 *Note: Runtime parameters like `num_workers`, `in_memory`, `precision`, `matmul_precision`, and `compile` are passed directly to the `train` or `instantiate` functions, not included in `TrainConfig`.*
+
+## PredictConfig
+
+Defines configuration for inference/prediction.
+
+```python
+class PredictConfig(TypedDict):
+    # List of fold roles to use for prediction (e.g. ["test"], ["train", "val"])
+    use_folds: list[str]
+    
+    # Stride for tiling input intervals (used in tiling predictions and bigwig generation)
+    stride: int
+    
+    # Aggregation strategy: "model" (default) or "interval+model"
+    aggregation: str
+```
 
 ## ModelConfig
 

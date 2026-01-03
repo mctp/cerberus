@@ -119,6 +119,22 @@ A flexible loss function combining Poisson NLL for total counts and Multinomial 
     *   `flatten_channels`: Whether to flatten channels/length for profile loss (default: False).
     *   `implicit_log_targets`: Handling of log-transformed targets.
 
+## Model Outputs
+
+Models return standardized dataclasses (defined in `cerberus.output`) to ensure compatibility with losses and metrics.
+
+### ProfileLogits
+*   **Content**: `logits` tensor (Batch, Channels, Length).
+*   **Use Case**: Models predicting profile probability distributions (e.g., via Softmax).
+
+### ProfileLogRates
+*   **Content**: `log_rates` tensor (Batch, Channels, Length).
+*   **Use Case**: Models predicting log-intensities (e.g., Poisson log-rates).
+
+### ProfileCountOutput
+*   **Content**: `logits` (Batch, Channels, Length) and `log_counts` (Batch, Channels).
+*   **Use Case**: BPNet-style models with separate heads for profile shape and total count.
+
 ## Metrics
 
 ### ProfilePearsonCorrCoef
@@ -126,6 +142,16 @@ Computes Pearson Correlation Coefficient per channel on profile probabilities.
 
 *   **Behavior**: Flattens batch and length dimensions to compute correlation between the predicted and target signal vectors for each channel independently, then averages across channels.
 *   **Why**: Standard global Pearson correlation can be misleading if channels have vastly different dynamic ranges.
+
+### CountProfilePearsonCorrCoef
+Computes Pearson Correlation for models that output separate profile logits and counts (like BPNet).
+*   **Behavior**: Reconstructs predicted counts (`Softmax(logits) * Exp(log_counts)`) before computing correlation.
+
+### ProfileMeanSquaredError
+Computes MSE on probability profiles (Softmax of logits) vs normalized target probabilities.
+
+### CountProfileMeanSquaredError
+Computes MSE on reconstructed counts (`Softmax(logits) * Exp(log_counts)`) vs target counts.
 
 ### Default Pipeline Order
 When `transforms` are not explicitly provided to `CerberusDataset`, they are automatically constructed from `DataConfig` in the following order:

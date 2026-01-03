@@ -30,6 +30,29 @@ model = BPNet(
 # Returns (profile_logits, log_counts)
 ```
 
+## GemiNet
+
+**Implementation**: `cerberus.models.GemiNet`
+**Source**: `src/cerberus/models/geminet.py`
+
+A modern profile prediction architecture using Pointwise-Gated Convolutions (PGC) for efficient long-range context modeling.
+
+### Key Features
+*   **PGC Blocks**: Uses depthwise-separable convolutions with gating mechanisms.
+*   **Efficiency**: Higher throughput than BPNet with comparable or better performance.
+*   **Output**: Dual-head (Profile + Counts) similar to BPNet.
+
+## ConvNeXtDCNN (ASAP)
+
+**Implementation**: `cerberus.models.ConvNeXtDCNN`
+**Source**: `src/cerberus/models/asap.py`
+
+An architecture leveraging ConvNeXtV2 blocks for hierarchical feature extraction.
+
+### Key Features
+*   **ConvNeXtV2 Blocks**: Modern CNN building blocks with LayerScale and GRN (Global Response Normalization).
+*   **Output**: Predicts log-rates (ProfileLogRates).
+
 ## GlobalProfileCNN (Baseline)
 
 **Implementation**: `cerberus.models.GlobalProfileCNN`  

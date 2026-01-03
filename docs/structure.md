@@ -8,16 +8,21 @@ Cerberus is organized into modular components to separate concerns between confi
 src/cerberus/
 ├── __init__.py         # Top-level API exports
 ├── config.py           # TypedDict definitions (GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig)
-├── core.py             # Core data structures (e.g., Interval class)
 ├── datamodule.py       # PyTorch Lightning DataModule implementation
 ├── dataset.py          # PyTorch Dataset implementation
 ├── download.py         # Utilities for downloading reference genomes and datasets
 ├── entrypoints.py      # High-level training and model instantiation utilities
 ├── exclude.py          # Logic for handling exclusion intervals (blacklists)
 ├── genome.py           # Genome configuration helpers and folding strategies
-├── loss.py             # Loss functions (BPNetLoss) and metrics
+├── interval.py         # Core Interval dataclass
+├── loss.py             # Loss functions (BPNetLoss, PoissonMultinomialLoss)
 ├── mask.py             # Extractors for mask data (BigBed)
+├── metrics.py          # Evaluation metrics (Pearson, MSE)
+├── model_ensemble.py   # Model loading and ensemble prediction logic
 ├── module.py           # PyTorch Lightning Module wrapper (CerberusModule)
+├── output.py           # Model output dataclasses (ProfileLogits, etc.)
+├── predict.py          # Deprecated prediction wrappers
+├── predict_bigwig.py   # Genome-wide BigWig generation
 ├── samplers.py         # Sampling logic (Interval, SlidingWindow, MultiSampler)
 ├── sequence.py         # Sequence extraction (FASTA handling)
 ├── signal.py           # Signal extraction (BigWig handling)
@@ -36,9 +41,15 @@ These are the main entry points.
 *   `module.py`: `CerberusModule` ties together the Model, Optimizer, Scheduler, and Loss. It defines the training step.
 *   `entrypoints.py`: High-level functions (`instantiate`, `train`) to wire everything up from configuration.
 
-### Model & Training (`loss.py`, `module.py`)
-*   `loss.py`: Domain-specific loss functions (e.g., `BPNetLoss` for profile prediction) and metrics.
+### Model & Training (`loss.py`, `metrics.py`, `module.py`, `output.py`)
+*   `loss.py`: Domain-specific loss functions (e.g., `BPNetLoss` for profile prediction).
+*   `metrics.py`: Metrics for evaluation (Pearson Correlation, MSE).
+*   `output.py`: Standardized data structures for model outputs.
 *   `module.py`: Handles optimization configuration (using `timm`) and logging.
+
+### Prediction (`model_ensemble.py`, `predict_bigwig.py`)
+*   `model_ensemble.py`: Manages loading models (single or multi-fold), selecting models for intervals, and aggregating outputs.
+*   `predict_bigwig.py`: Streamlines genome-wide prediction generation into BigWig files.
 
 ### Sampling (`samplers.py`)
 Contains the logic for generating lists of `Interval` objects. This is decoupled from data reading, allowing lightweight iteration and manipulation of genomic regions before any heavy I/O occurs.
