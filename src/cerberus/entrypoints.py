@@ -18,7 +18,7 @@ from .module import CerberusModule
 def instantiate(
     model_config: ModelConfig,
     data_config: DataConfig,
-    train_config: TrainConfig,
+    train_config: TrainConfig | None = None,
     compile: bool = False,
     genome_config: GenomeConfig | None = None,
     sampler_config: SamplerConfig | None = None,

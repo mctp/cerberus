@@ -39,9 +39,9 @@ class CerberusModule(pl.LightningModule):
     def __init__(
         self,
         model: nn.Module,
-        train_config: TrainConfig,
         criterion: nn.Module | Callable,
         metrics: MetricCollection,
+        train_config: TrainConfig | None = None,
         # Optional logging configuration
         genome_config: GenomeConfig | None = None,
         data_config: DataConfig | None = None,
@@ -71,7 +71,10 @@ class CerberusModule(pl.LightningModule):
         })
         
         self.model = model
-        self.train_config = validate_train_config(train_config)
+        if train_config is not None:
+            self.train_config = validate_train_config(train_config)
+        else:
+            self.train_config = None
         
         self.criterion = criterion
         
@@ -79,6 +82,8 @@ class CerberusModule(pl.LightningModule):
         self.val_metrics = metrics.clone(prefix="val_")
 
     def configure_optimizers(self):
+        if self.train_config is None:
+            raise RuntimeError("Cannot configure optimizers: train_config is missing.")
 
         # Create optimizer using timm
         optimizer = create_optimizer_v2(

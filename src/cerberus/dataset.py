@@ -35,7 +35,7 @@ class CerberusDataset(Dataset):
     """
     genome_config: GenomeConfig
     data_config: DataConfig
-    sampler_config: SamplerConfig
+    sampler_config: SamplerConfig | None
     folds: list[dict[str, InterLap]]
     exclude_intervals: dict[str, InterLap]
     sampler: Sampler
@@ -51,7 +51,7 @@ class CerberusDataset(Dataset):
         self,
         genome_config: GenomeConfig,
         data_config: DataConfig,
-        sampler_config: SamplerConfig,
+        sampler_config: SamplerConfig | None = None,
         sequence_extractor: BaseSequenceExtractor | None = None,
         input_signal_extractor: BaseSignalExtractor | None = None,
         target_signal_extractor: BaseSignalExtractor | None = None,
@@ -85,12 +85,15 @@ class CerberusDataset(Dataset):
         """
 
         self.genome_config = validate_genome_config(genome_config)
-        self.sampler_config = validate_sampler_config(sampler_config)
         self.data_config = validate_data_config(data_config)
         self.in_memory = in_memory
         self.is_train = is_train
-
-        validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
+        
+        if sampler_config is not None:
+            self.sampler_config = validate_sampler_config(sampler_config)
+            validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
+        else:
+            self.sampler_config = None
 
         # Initialize Folds
         self.folds = create_genome_folds(
@@ -109,6 +112,8 @@ class CerberusDataset(Dataset):
         if sampler is not None:
             self.sampler = sampler
         else:
+            if self.sampler_config is None:
+                raise ValueError("sampler_config must be provided if sampler is not provided.")
             self.sampler = self._initialize_sampler()
 
         # Initialize Sequence Extractor
@@ -192,6 +197,9 @@ class CerberusDataset(Dataset):
 
     def _initialize_sampler(self) -> Sampler:
         """Creates the data sampler based on configuration."""
+        if self.sampler_config is None:
+            raise ValueError("Cannot initialize sampler without sampler_config")
+
         return create_sampler(
             self.sampler_config,
             self.genome_config["chrom_sizes"],

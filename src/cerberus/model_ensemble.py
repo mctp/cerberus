@@ -4,7 +4,7 @@ from torch import nn
 import numpy as np
 import re
 import dataclasses
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 import itertools
 from collections import defaultdict
 
@@ -32,12 +32,11 @@ class ModelEnsemble(nn.ModuleDict):
         checkpoint_path: Path | str,
         model_config: ModelConfig,
         data_config: DataConfig,
-        train_config: TrainConfig,
         genome_config: GenomeConfig,
         device: torch.device,
     ):
         loader = _ModelManager(
-            checkpoint_path, model_config, data_config, train_config, genome_config, device
+            checkpoint_path, model_config, data_config, genome_config, device
         )
         models, folds = loader.load_models_and_folds()
 
@@ -118,18 +117,21 @@ class ModelEnsemble(nn.ModuleDict):
             # Convert to numpy
             val = out_tensor.cpu().numpy() # (C, L) or (C,)
             
-            # Check dimensions
-            # Profile: last dim * bin_size == output_len
-            is_profile = (val.shape[-1] * output_bin_size == output_len)
-            
             # Relative start bin
             rel_start_bp = interval.start - min_start
             rel_start_bin = rel_start_bp // output_bin_size
+
+            # Expected bins for this interval
+            interval_len_bp = interval.end - interval.start
+            interval_bins = interval_len_bp // output_bin_size
+            
+            # Check dimensions
+            # It is a profile/track if it has spatial dimension and matches the interval length
+            is_profile = (val.ndim >= 2 and val.shape[-1] == interval_bins)
             
             if is_profile:
                 # val is (C, L_bins)
-                l_bins = val.shape[-1]
-                end_bin = rel_start_bin + l_bins
+                end_bin = rel_start_bin + interval_bins
                 
                 # Bounds check (simple clipping or assume fits)
                 # Since intervals are within merged_interval, it should fit unless precision issues
@@ -140,12 +142,14 @@ class ModelEnsemble(nn.ModuleDict):
                 # Scalar (C,)
                 # Broadcast to interval length to create a constant track over the interval
                 # Interval length in bins
-                int_bins = output_len // output_bin_size
-                end_bin = rel_start_bin + int_bins
+                end_bin = rel_start_bin + interval_bins
                 
                 # val is (C,) -> (C, int_bins)
-                val_b = np.expand_dims(val, -1)
-                
+                if val.ndim == 1:
+                    val_b = np.expand_dims(val, -1)
+                else:
+                    val_b = val
+
                 accumulator[:, rel_start_bin : end_bin] += val_b
                 counts[:, rel_start_bin : end_bin] += 1.0
 
@@ -206,7 +210,7 @@ class ModelEnsemble(nn.ModuleDict):
 
     @staticmethod
     def _aggregate_models(
-        outputs: list[ModelOutput], method: str
+        outputs: Sequence[ModelOutput], method: str
     ) -> ModelOutput:
         """
         Aggregates a list of model outputs.
@@ -557,14 +561,12 @@ class _ModelManager:
         checkpoint_path: Path | str,
         model_config: ModelConfig,
         data_config: DataConfig,
-        train_config: TrainConfig,
         genome_config: GenomeConfig,
         device: torch.device,
     ):
         self.checkpoint_path = Path(checkpoint_path)
         self.model_config = model_config
         self.data_config = data_config
-        self.train_config = train_config
         self.genome_config = genome_config
         self.device = device
         
@@ -670,7 +672,7 @@ class _ModelManager:
         module = instantiate(
             model_config=self.model_config,
             data_config=self.data_config,
-            train_config=self.train_config,
+            train_config=None,
         )
         checkpoint = torch.load(path, map_location=self.device)
         module.load_state_dict(checkpoint["state_dict"])
