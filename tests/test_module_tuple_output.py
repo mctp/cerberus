@@ -63,7 +63,7 @@ def test_cerberus_module_tuple_output():
         "scheduler_args": {}
     }
     
-    module = CerberusModule(model, train_config, loss, metrics)
+    module = CerberusModule(model, loss, metrics, train_config=train_config)
     
     # Mock data
     inputs = torch.randn(4, 10)

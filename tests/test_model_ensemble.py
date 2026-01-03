@@ -75,7 +75,6 @@ def create_ensemble(models, folds, output_len=100, output_bin_size=1):
             checkpoint_path="dummy",
             model_config=cast(ModelConfig, dummy_conf),
             data_config=cast(DataConfig, data_conf),
-            train_config=cast(TrainConfig, dummy_conf),
             genome_config=cast(GenomeConfig, dummy_conf),
             device=torch.device("cpu")
         )

@@ -32,7 +32,7 @@ def base_config():
 
 def test_training_step(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
+    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=base_config)
     module.log = MagicMock()
     
     # Batch: inputs (B, 10), targets (B, 1, 1)
@@ -51,7 +51,7 @@ def test_training_step(base_config):
 
 def test_validation_step(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
+    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=base_config)
     module.log = MagicMock()
     
     batch = {
@@ -66,7 +66,7 @@ def test_validation_step(base_config):
 
 def test_on_validation_epoch_end(base_config):
     model = DummyModel()
-    module = CerberusModule(model, base_config, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection())
+    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=base_config)
     module.log_dict = MagicMock()
     
     # Simulate some updates

@@ -15,6 +15,30 @@ When multiple models predict on the same interval, or when tiling produces overl
 *   **"model"**: Aggregates outputs across models (e.g., averaging predictions from all folds). Returns batched `ModelOutput` objects.
 *   **"interval+model"**: Aggregates across models AND merges overlapping interval predictions into a single contiguous track. Returns unbatched `ModelOutput` objects.
 
+## Setup for Prediction
+
+To perform prediction, you need to instantiate a `ModelEnsemble` and a `CerberusDataset`.
+For inference-only tasks, you can omit `train_config` and `sampler_config` (if providing a sampler directly).
+
+```python
+# Instantiate ModelEnsemble (train_config is not required)
+ensemble = ModelEnsemble(
+    checkpoint_path="path/to/checkpoints",
+    model_config=model_config,
+    data_config=data_config,
+    genome_config=genome_config,
+    device=device
+)
+
+# Instantiate Dataset (sampler_config is not required if providing a custom sampler)
+dataset = CerberusDataset(
+    genome_config=genome_config,
+    data_config=data_config,
+    sampler=my_custom_sampler, # Provide sampler directly
+    is_train=False
+)
+```
+
 ## Configuration: PredictConfig
 
 The prediction behavior is controlled by a `PredictConfig` dictionary.

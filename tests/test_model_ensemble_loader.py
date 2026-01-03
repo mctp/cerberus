@@ -65,7 +65,6 @@ def model_manager(mock_configs, tmp_path):
         checkpoint_path=tmp_path,
         model_config=m_conf,
         data_config=d_conf,
-        train_config=t_conf,
         genome_config=g_conf,
         device=torch.device("cpu")
     )

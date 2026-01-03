@@ -97,6 +97,7 @@ def test_aggregate_models_median():
     outputs = [out1, out2, out3]
     agg = ModelEnsemble._aggregate_models(outputs, method="median")
     
+    assert isinstance(agg, SimpleOutput)
     # Median of 1, 10, 3 is 3
     assert torch.allclose(agg.logits, torch.tensor([3.0]))
 
@@ -217,6 +218,7 @@ def test_aggregate_intervals_integration():
     )
     
     assert isinstance(merged, SimpleOutput)
+    assert merged.out_interval is not None
     assert merged.out_interval.start == 0
     assert merged.out_interval.end == 15
     
@@ -240,7 +242,7 @@ def test_aggregate_intervals_integration():
 
 def test_aggregate_intervals_empty_raises():
     with pytest.raises(ValueError):
-        ModelEnsemble._aggregate_intervals([], [], 100, 1)
+        ModelEnsemble._aggregate_intervals([], [], 100, 1, output_cls=None)
 
 def test_aggregate_intervals_no_cls_raises():
     int1 = Interval("chr1", 0, 10, "+")
@@ -273,7 +275,9 @@ def mock_ensemble():
             torch.nn.ModuleDict.__init__(self)
             
         with patch.object(ModelEnsemble, "__init__", mock_init):
-            ens = ModelEnsemble(None, None, None, None, None, None)
+            # Pass 5 args to match signature (checkpoint_path, model_config, data_config, genome_config, device)
+            # Types are ignored since __init__ is patched
+            ens = ModelEnsemble(None, None, None, None, None) # type: ignore
             ens.device = torch.device("cpu")
             ens.output_len = 10
             ens.output_bin_size = 1
@@ -312,6 +316,7 @@ def test_predict_intervals_basic(mock_ensemble, mock_dataset, mock_intervals):
         
         # Result should be aggregated (merged intervals)
         assert isinstance(result, SimpleOutput)
+        assert result.out_interval is not None
         # Intervals are centered. 
         # Int1: 100-200 (len 100) -> center 150 -> output (len 100) 100-200
         # Int2: 200-300 (len 100) -> center 250 -> output (len 100) 200-300
@@ -343,9 +348,10 @@ def test_predict_intervals_aggregation_interval_model(mock_ensemble, mock_datase
         out_int = Interval("chr1", min_start, max_end, "+")
         
         # Just return dummy data
+        # Profile must match interval length (200 bins) to be treated as track
         return SimpleOutput(
             logits=torch.tensor([1.0]),
-            profile=torch.full((1, 10), 1.0),
+            profile=torch.full((1, 200), 1.0),
             out_interval=out_int
         )
 
