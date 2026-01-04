@@ -4,7 +4,7 @@ import pytest
 from cerberus.models.bpnet import BPNet, _ResidualBlock, BPNetMetricCollection, BPNetLoss
 from cerberus.loss import PoissonMultinomialLoss, MSEMultinomialLoss, CoupledMSEMultinomialLoss, CoupledPoissonMultinomialLoss
 from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
-from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
+from cerberus.output import ProfileCountOutput, ProfileLogRates
 
 def test_bpnet_residual_block_cropping():
     filters = 16
@@ -170,9 +170,9 @@ def test_bpnet_compilation():
     )
     model.eval()
     
+    x = torch.randn(batch_size, 4, input_len)
     try:
         compiled_model = torch.compile(model, fullgraph=True)
-        x = torch.randn(batch_size, 4, input_len)
         with torch.no_grad():
             out = compiled_model(x)
         assert out.logits.shape == (batch_size, 1, output_len)

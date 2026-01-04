@@ -117,9 +117,9 @@ def test_geminet_compilation():
     )
     model.eval()
     
+    x = torch.randn(batch_size, 4, input_len)
     try:
         compiled_model = torch.compile(model, fullgraph=True)
-        x = torch.randn(batch_size, 4, input_len)
         with torch.no_grad():
             out = compiled_model(x)
         assert out.logits.shape == (batch_size, 1, output_len)

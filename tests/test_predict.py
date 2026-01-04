@@ -349,6 +349,7 @@ def test_predict_intervals_valid(integration_setup):
     
     # Input 500-600 (center 550). Output len 50. 
     # Output interval: 525-575.
+    assert merged_interval is not None
     assert merged_interval.chrom == "chr1"
     assert merged_interval.start == 525
     assert merged_interval.end == 575
@@ -371,6 +372,7 @@ def test_predict_intervals_boundary_skip(integration_setup):
     assert values['logits'].shape == (1, 50)
     assert np.allclose(values['logits'], 1.0)
     
+    assert merged_interval is not None
     assert merged_interval.start == 25
     assert merged_interval.end == 75
 
@@ -392,6 +394,7 @@ def test_predict_intervals_batching(integration_setup):
     values = asdict(output)
     merged_interval = output.out_interval
     
+    assert merged_interval is not None
     assert merged_interval.start == 1025
     assert merged_interval.end == 1375
     span = 1375 - 1025 # 350
@@ -432,6 +435,7 @@ def test_predict_interval_single_model(mock_dataset):
     assert isinstance(output, dict)
     assert output['out'].shape[-1] == 60
     assert np.allclose(output['out'], np.ones((4, 60)) * 2.0)
+    assert out_interval is not None
     assert out_interval.start == 20
     assert out_interval.end == 80
 
@@ -451,6 +455,7 @@ def test_predict_interval_mean_aggregation(mock_dataset):
     assert isinstance(output, dict)
     assert output['out'].shape[-1] == 60
     assert np.allclose(output['out'], np.ones((4, 60)) * 3.0)
+    assert out_interval is not None
     assert out_interval.start == 20
 
 def test_predict_interval_tuple_output(mock_dataset):
@@ -508,6 +513,7 @@ def test_predict_intervals_overlap(mock_dataset):
     arr = asdict(results)
     merged_interval = results.out_interval
     
+    assert merged_interval is not None
     assert merged_interval.chrom == "chr1"
     assert merged_interval.start == 20
     assert merged_interval.end == 90
@@ -543,6 +549,7 @@ def test_predict_intervals_scalar_broadcast(mock_dataset):
     assert isinstance(arr, dict)
     assert arr['out'].shape == (1, 60)
     assert np.allclose(arr['out'], 5.0)
+    assert merged_interval is not None
     assert merged_interval.start == 20
     assert merged_interval.end == 80
 
@@ -588,6 +595,7 @@ def test_predict_intervals_tuple_recursive(mock_dataset):
     assert track_scalar.shape == (1, 60)
     assert np.allclose(track_scalar, 7.0)
     
+    assert merged_interval is not None
     assert merged_interval.start == 20
     assert merged_interval.end == 80
 
@@ -631,6 +639,7 @@ def test_merged_interval_is_multiple_of_bin_size(mock_dataset):
     values = asdict(output)
     merged_interval = output.out_interval
     
+    assert merged_interval is not None
     merged_len = merged_interval.end - merged_interval.start
     assert merged_len % 10 == 0
     assert merged_len == 150
@@ -657,6 +666,7 @@ def test_predict_intervals_batching_param(integration_setup):
     values = asdict(output)
     merged_interval = output.out_interval
     
+    assert merged_interval is not None
     assert merged_interval.start == 1025
     assert merged_interval.end == 1375
     assert values['logits'].shape == (1, 350)

@@ -73,7 +73,7 @@ class BaseSampler(Sampler):
 
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
-    ) -> tuple["SubsetSampler", "SubsetSampler", "SubsetSampler"]:
+    ) -> tuple[Sampler, Sampler, Sampler]:
         """
         Split the sampler into train, validation, and test sets using K-fold strategy.
         Uses pre-computed fold intervals.

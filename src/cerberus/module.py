@@ -74,7 +74,7 @@ class CerberusModule(pl.LightningModule):
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")
 
-    def configure_optimizers(self):
+    def configure_optimizers(self): # type: ignore[override]
         if self.train_config is None:
             raise RuntimeError("Cannot configure optimizers: train_config is missing.")
 
@@ -111,7 +111,7 @@ class CerberusModule(pl.LightningModule):
         
         return optim_conf
 
-    def lr_scheduler_step(self, scheduler, optimizer_idx, metric=None):
+    def lr_scheduler_step(self, scheduler, optimizer_idx, metric=None): # type: ignore[override]
         if hasattr(scheduler, "step_update"):
             scheduler.step(epoch=self.current_epoch, metric=metric)
             scheduler.step_update(num_updates=self.global_step)

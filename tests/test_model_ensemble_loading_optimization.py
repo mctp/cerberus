@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 import yaml
+from typing import cast
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.config import ModelConfig, DataConfig, GenomeConfig
 from cerberus.module import CerberusModule
@@ -110,9 +111,9 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
     try:
         ensemble = ModelEnsemble(
             mock_ensemble_dir,
-            model_config=model_config,
-            data_config=data_config,
-            genome_config=genome_config,
+            model_config=cast(ModelConfig, model_config),
+            data_config=cast(DataConfig, data_config),
+            genome_config=cast(GenomeConfig, genome_config),
             device="cpu"
         )
         
@@ -121,7 +122,9 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
         loaded_model = ensemble["0"]
         
         # Check if weights are 1.0 (as set in fixture)
-        assert torch.all(loaded_model.linear.weight == 1.0)
+        # Cast to SimpleModel to access .linear
+        simple_model = cast(SimpleModel, loaded_model)
+        assert torch.all(simple_model.linear.weight == 1.0)
         
         # Verify it is NOT a CerberusModule
         assert isinstance(loaded_model, SimpleModel)

@@ -218,9 +218,9 @@ class OriginalConvNeXtDCNN(nn.Module):
         if return_unmap:
             u = F.max_pool1d(x, 2)
             u = self.unmap_predictor(torch.transpose(u, dim0=-1, dim1=-2))
-        x = self.core(x)
-        if return_unmap:
+            x = self.core(x)
             return x, u
+        x = self.core(x)
         return x
 
 # ==========================================

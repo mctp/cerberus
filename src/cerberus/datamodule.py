@@ -29,6 +29,8 @@ class CerberusDataModule(pl.LightningDataModule):
         test_fold: int | None = None,
         val_fold: int | None = None,
         pin_memory: bool = True,
+        persistent_workers: bool = True,
+        multiprocessing_context: str | None = None,
     ):
         """
         Args:
@@ -38,6 +40,8 @@ class CerberusDataModule(pl.LightningDataModule):
             test_fold: Fold index to use for testing.
             val_fold: Fold index to use for validation.
             pin_memory: Whether to pin memory in DataLoaders (recommended for GPU training).
+            persistent_workers: Whether to use persistent workers in DataLoaders.
+            multiprocessing_context: Context name for multiprocessing (e.g., 'spawn', 'fork').
         """
         super().__init__()
         self.genome_config = validate_genome_config(genome_config)
@@ -59,7 +63,13 @@ class CerberusDataModule(pl.LightningDataModule):
         
         self.test_fold = test_fold
         self.val_fold = val_fold
+
+        # Disable pin_memory on MPS devices as it is currently not supported
+        if pin_memory and torch.backends.mps.is_available():
+            pin_memory = False
         self.pin_memory = pin_memory
+        self.persistent_workers = persistent_workers
+        self.multiprocessing_context = multiprocessing_context
 
         self.train_dataset: CerberusDataset | None = None
         self.val_dataset: CerberusDataset | None = None
@@ -158,6 +168,8 @@ class CerberusDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             worker_init_fn=self._worker_init_fn,
+            persistent_workers=(self.persistent_workers and self.num_workers > 0),
+            multiprocessing_context=self.multiprocessing_context,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -172,6 +184,8 @@ class CerberusDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             worker_init_fn=self._worker_init_fn,
+            persistent_workers=(self.persistent_workers and self.num_workers > 0),
+            multiprocessing_context=self.multiprocessing_context,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -186,4 +200,6 @@ class CerberusDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             worker_init_fn=self._worker_init_fn,
+            persistent_workers=(self.persistent_workers and self.num_workers > 0),
+            multiprocessing_context=self.multiprocessing_context,
         )

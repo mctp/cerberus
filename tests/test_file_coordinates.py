@@ -52,7 +52,7 @@ def test_bed_coordinates(bed_file, chrom_sizes):
     sampler = IntervalSampler(
         file_path=bed_file,
         chrom_sizes=chrom_sizes,
-        padded_size=None,
+        padded_size=100,
         exclude_intervals={},
         folds=[{}, {}, {}] # Dummy folds
     )
@@ -75,7 +75,7 @@ def test_narrowpeak_coordinates(narrowpeak_file, chrom_sizes):
     sampler = IntervalSampler(
         file_path=narrowpeak_file,
         chrom_sizes=chrom_sizes,
-        padded_size=None,
+        padded_size=100,
         exclude_intervals={},
         folds=[{}, {}, {}]
     )

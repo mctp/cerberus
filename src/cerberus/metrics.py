@@ -17,7 +17,7 @@ class ProfilePearsonCorrCoef(PearsonCorrCoef):
         self.num_channels = num_channels
         self.implicit_log_targets = implicit_log_targets
 
-    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor):
+    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor): # type: ignore[override]
         if isinstance(preds, ProfileLogRates):
             logits = preds.log_rates
         elif isinstance(preds, ProfileLogits):
@@ -57,7 +57,7 @@ class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef):
     def __init__(self, num_channels=1, implicit_log_targets=False, **kwargs):
         super().__init__(num_channels=num_channels, implicit_log_targets=implicit_log_targets, **kwargs)
 
-    def update(self, preds: ProfileCountOutput, target: torch.Tensor):
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor): # type: ignore[override]
         if not isinstance(preds, ProfileCountOutput):
              raise TypeError("CountProfilePearsonCorrCoef requires ProfileCountOutput")
 
@@ -96,7 +96,7 @@ class CountProfileMeanSquaredError(MeanSquaredError):
         super().__init__(**kwargs)
         self.implicit_log_targets = implicit_log_targets
 
-    def update(self, preds: ProfileCountOutput, target: torch.Tensor):
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor): # type: ignore[override]
         if not isinstance(preds, ProfileCountOutput):
              raise TypeError("CountProfileMeanSquaredError requires ProfileCountOutput")
 
@@ -131,7 +131,7 @@ class ProfileMeanSquaredError(MeanSquaredError):
         super().__init__(**kwargs)
         self.implicit_log_targets = implicit_log_targets
 
-    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor):
+    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor): # type: ignore[override]
         if isinstance(preds, ProfileLogRates):
             logits = preds.log_rates
         elif isinstance(preds, ProfileLogits):
@@ -165,7 +165,7 @@ class LogCountsMeanSquaredError(MeanSquaredError):
         self.count_per_channel = count_per_channel
         self.implicit_log_targets = implicit_log_targets
 
-    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor):
+    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
         if isinstance(preds, ProfileCountOutput):
             pred_log_counts = preds.log_counts
             # If we want global count but have per-channel counts, aggregate them

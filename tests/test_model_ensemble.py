@@ -97,7 +97,7 @@ def test_forward_no_folds():
     output = ensemble(x, intervals=None) # No intervals provided, defaults to model aggregation
     
     # Should return mean of 1.0 and 2.0 -> 1.5
-    assert output.logits[0,0,0].item() == 1.5
+    assert cast(MockOutput, output).logits[0,0,0].item() == 1.5
 
 def test_forward_selection():
     # Setup 2 folds
@@ -119,14 +119,14 @@ def test_forward_selection():
     interval = Interval("chr1", 0, 50)
     out = ensemble(x, intervals=[interval], use_folds=["test"])
     # Returns aggregated output (single object)
-    assert out.logits[0,0,0].item() == 0.0
+    assert cast(MockOutput, out).logits[0,0,0].item() == 0.0
     
     # Interval in Fold 1 (100-150)
     # Target partition: 1
     # use_folds=['test'] -> Select model 1
     interval = Interval("chr1", 100, 150)
     out = ensemble(x, intervals=[interval], use_folds=["test"])
-    assert out.logits[0,0,0].item() == 1.0
+    assert cast(MockOutput, out).logits[0,0,0].item() == 1.0
     
     # Interval in Fold 0
     # use_folds=['val'] -> (p_idx - 1) % 2.
@@ -134,7 +134,7 @@ def test_forward_selection():
     # Select model 1.
     interval = Interval("chr1", 0, 50)
     out = ensemble(x, intervals=[interval], use_folds=["val"])
-    assert out.logits[0,0,0].item() == 1.0
+    assert cast(MockOutput, out).logits[0,0,0].item() == 1.0
 
 def test_aggregate():
     # ensemble not needed for aggregation logic anymore
@@ -142,7 +142,7 @@ def test_aggregate():
     out2 = MockOutput(logits=torch.ones(2, 2) * 3)
     
     agg = aggregate_models([out1, out2], method="mean")
-    assert torch.allclose(agg.logits, torch.ones(2, 2) * 2)
+    assert torch.allclose(cast(MockOutput, agg).logits, torch.ones(2, 2) * 2)
 
 def test_forward_interval_aggregation():
     # Test that aggregation="interval" correctly centers input intervals
@@ -180,7 +180,7 @@ def test_forward_interval_aggregation():
     # With 1 model, "interval+model" behaves like "interval" but returns single object
     output = ensemble(x, intervals=intervals, aggregation="interval+model")
     
-    logits = output.logits
+    logits = cast(MockOutput, output).logits
     merged_interval = output.out_interval
     
     # Check Merged Interval
@@ -238,7 +238,7 @@ def test_predict_intervals_method():
     assert merged_interval.chrom == "chr1"
     assert merged_interval.start == 40
     assert merged_interval.end == 70
-    assert output.logits.shape[-1] == 30 # type: ignore
+    assert cast(MockOutput, output).logits.shape[-1] == 30
 
 def test_predict_output_intervals_method():
     # Setup
@@ -294,4 +294,4 @@ def test_predict_output_intervals_method():
     assert merged_interval.chrom == "chr1"
     assert merged_interval.start == 200
     assert merged_interval.end == 270
-    assert out.logits.shape[-1] == 70 # type: ignore
+    assert cast(MockOutput, out).logits.shape[-1] == 70

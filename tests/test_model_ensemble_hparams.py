@@ -2,6 +2,8 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from cerberus.model_ensemble import ModelEnsemble
+from cerberus.config import ModelConfig, DataConfig, GenomeConfig
+from typing import cast
 import time
 
 @pytest.fixture
@@ -38,9 +40,9 @@ def test_find_hparams(tmp_path):
         
         ens = ModelEnsemble(
              checkpoint_path=tmp_path,
-             model_config={}, 
-             data_config={"output_len": 1, "output_bin_size": 1}, 
-             genome_config={}
+             model_config=cast(ModelConfig, {}), 
+             data_config=cast(DataConfig, {"output_len": 1, "output_bin_size": 1}), 
+             genome_config=cast(GenomeConfig, {})
         )
         found = ens._find_hparams(root)
         
@@ -89,7 +91,7 @@ def test_init_overrides_configs(tmp_path, mock_model_manager):
         
         ens = ModelEnsemble(
             checkpoint_path=tmp_path,
-            model_config=user_model_config
+            model_config=cast(ModelConfig, user_model_config)
         )
         
         # Verify parse called (since others are missing)
