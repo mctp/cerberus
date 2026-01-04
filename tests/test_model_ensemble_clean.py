@@ -286,7 +286,6 @@ def mock_ensemble():
 
 def test_predict_intervals_basic(mock_ensemble, mock_dataset, mock_intervals):
     """Test basic prediction flow with batching."""
-    predict_config = {"use_folds": ["test"], "aggregation": "model"}
     
     # Mock forward to return a batched SimpleOutput
     # We increase output_len to 100 to match input length so intervals are contiguous
@@ -307,7 +306,8 @@ def test_predict_intervals_basic(mock_ensemble, mock_dataset, mock_intervals):
         result = mock_ensemble.predict_intervals(
             mock_intervals, # 2 intervals
             mock_dataset,
-            predict_config,
+            use_folds=["test"],
+            aggregation="model",
             batch_size=1
         )
         
@@ -331,13 +331,11 @@ def test_predict_intervals_basic(mock_ensemble, mock_dataset, mock_intervals):
         assert torch.allclose(result.profile, torch.tensor([1.0]))
 
 def test_predict_intervals_empty_raises(mock_ensemble, mock_dataset):
-    predict_config = {"use_folds": ["test"]}
     with pytest.raises(RuntimeError, match="No results generated"):
-        mock_ensemble.predict_intervals([], mock_dataset, predict_config)
+        mock_ensemble.predict_intervals([], mock_dataset, use_folds=["test"])
 
 def test_predict_intervals_aggregation_interval_model(mock_ensemble, mock_dataset, mock_intervals):
     """Test with aggregation='interval+model' passed to forward."""
-    predict_config = {"use_folds": ["test"], "aggregation": "interval+model"}
     
     # In this mode, forward returns a MERGED output for the batch
     def forward_side_effect(x, intervals, use_folds, aggregation):
@@ -360,7 +358,8 @@ def test_predict_intervals_aggregation_interval_model(mock_ensemble, mock_datase
         result = mock_ensemble.predict_intervals(
             mock_intervals,
             mock_dataset,
-            predict_config,
+            use_folds=["test"],
+            aggregation="interval+model",
             batch_size=2
         )
         
@@ -376,10 +375,6 @@ def test_predict_output_intervals_tiling(mock_ensemble, mock_dataset):
     # Offset: (100 - 10)/2 = 45
     
     target = Interval("chr1", 0, 200, "+")
-    predict_config = {
-        "stride": 50,
-        "use_folds": ["test"]
-    }
     
     # Mock predict_intervals so we don't need full chain
     # predict_intervals returns a ModelOutput
@@ -391,7 +386,8 @@ def test_predict_output_intervals_tiling(mock_ensemble, mock_dataset):
     results = mock_ensemble.predict_output_intervals(
         [target],
         mock_dataset,
-        predict_config,
+        stride=50,
+        use_folds=["test"],
         batch_size=64
     )
     

@@ -12,7 +12,7 @@ import torch
 from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
-from cerberus.config import GenomeConfig, DataConfig, ModelConfig, PredictConfig
+from cerberus.config import GenomeConfig, DataConfig, ModelConfig
 from cerberus.models.bpnet import BPNet, BPNetLoss, BPNetMetricCollection
 from cerberus.genome import create_genome_config
 from cerberus.output import ProfileCountOutput
@@ -27,7 +27,7 @@ from cerberus.samplers import IntervalSampler
 # Define paths (relative to project root)
 os.chdir(Path(__file__).parent.parent)
 DATA_DIR = Path("tests/data")
-MODEL_DIR = Path("tests/data/models/chip_ar_mdapca2b_bpnet/single-fold")
+MODEL_DIR = Path("tests/data/models/chip_ar_mdapca2b_bpnet")
 
 # 1. Genome Config
 # We use the same genome config as training
@@ -135,16 +135,11 @@ for iv in test_intervals:
 # ## 4. Single Interval Prediction
 
 # %%
-predict_config: PredictConfig = {
-    "stride": 100,
-    "use_folds": ["test"],
-    "aggregation": "interval+model"
-}
-
 pred_iv0 : ProfileCountOutput = ensemble.predict_intervals(
     intervals=[test_intervals[0]],
     dataset=dataset,
-    predict_config=predict_config) # type: ignore
+    use_folds=["test"],
+    aggregation="interval+model")
 
 print(f"Predicted output for interval {test_intervals[0]}:")
 print(f"pred_iv0.out_interval: {pred_iv0.out_interval}")
@@ -159,7 +154,9 @@ iv_block = Interval(chrom="chr8", start=24_000_000, end=24_010_000)
 pred_block: list[ProfileCountOutput] = ensemble.predict_output_intervals(
     intervals=[iv_block],
     dataset=dataset,
-    predict_config=predict_config) # type: ignore
+    stride=100,
+    use_folds=["test"],
+    aggregation="interval+model")
 
 # %% [markdown]
 # ## 6. Visualize Predictions

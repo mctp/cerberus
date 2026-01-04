@@ -7,7 +7,6 @@ import dataclasses
 from cerberus.interval import Interval
 from cerberus.dataset import CerberusDataset
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.config import PredictConfig
 from cerberus.samplers import SlidingWindowSampler
 
 
@@ -15,13 +14,14 @@ def predict_to_bigwig(
     output_path: str | Path,
     dataset: CerberusDataset,
     model_ensemble: ModelEnsemble,
-    predict_config: PredictConfig,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    stride: int | None = None,
+    use_folds: list[str] = ["test", "val"],
+    aggregation: str = "model",
     batch_size: int = 64,
 ) -> None:
     """
     Generates predictions for all chromosomes and writes to a BigWig file.
-    
+
     This function processes the genome chromosome-by-chromosome using a SlidingWindowSampler
     to generate valid input windows (respecting blacklists) and predict_intervals to
     aggregate predictions into contiguous islands. The results are streamed to a BigWig file.
@@ -30,20 +30,24 @@ def predict_to_bigwig(
         output_path: Path to the output BigWig file.
         dataset: Initialized CerberusDataset (provides data configuration and extractors).
         model_ensemble: Initialized ModelEnsemble (provides models).
-        predict_config: Prediction configuration.
+        stride: Stride for sliding window predictions. If None, defaults to output_len // 2.
+        use_folds: Folds to use.
+        aggregation: Aggregation mode.
         device: Device to run inference on.
         batch_size: Batch size for inference.
     """
     genome_config = dataset.genome_config
     data_config = dataset.data_config
-    
+
+    if stride is None:
+        stride = data_config["output_len"] // 2
+
     # Prepare generator for pybigtools
     def stream_generator() -> Iterable[tuple[str, int, int, float]]:
         chrom_sizes = genome_config["chrom_sizes"]
         allowed_chroms = genome_config["allowed_chroms"]
         input_len = data_config["input_len"]
         output_len = data_config["output_len"]
-        stride = predict_config["stride"]
         exclude_intervals = dataset.exclude_intervals
 
         for chrom in allowed_chroms:
@@ -55,7 +59,7 @@ def predict_to_bigwig(
             sampler = SlidingWindowSampler(
                 chrom_sizes={chrom: chrom_sizes[chrom]},
                 padded_size=input_len,
-                stride=stride,
+                stride=stride,  # type: ignore (checked above)
                 exclude_intervals=exclude_intervals,
                 folds=[],  # No folds needed for prediction generation
             )
@@ -75,7 +79,8 @@ def predict_to_bigwig(
                         current_island,
                         dataset,
                         model_ensemble,
-                        predict_config,
+                        use_folds,
+                        aggregation,
                         batch_size,
                     )
                     current_island = []
@@ -88,13 +93,14 @@ def predict_to_bigwig(
                     current_island,
                     dataset,
                     model_ensemble,
-                    predict_config,
+                    use_folds,
+                    aggregation,
                     batch_size,
                 )
 
     print(f"Writing BigWig to {output_path}...")
     # Using pybigtools to write the stream
-    bw = pybigtools.open(str(output_path), "w") # type: ignore
+    bw = pybigtools.open(str(output_path), "w")  # type: ignore
     bw.write(genome_config["chrom_sizes"], stream_generator())
 
 
@@ -102,7 +108,8 @@ def _process_island(
     island_intervals: list[Interval],
     dataset: CerberusDataset,
     model_ensemble: ModelEnsemble,
-    predict_config: PredictConfig,
+    use_folds: list[str],
+    aggregation: str,
     batch_size: int,
 ) -> Iterable[tuple[str, int, int, float]]:
     """
@@ -110,7 +117,11 @@ def _process_island(
     """
     # predict_intervals aggregates the island into one result
     output = model_ensemble.predict_intervals(
-        island_intervals, dataset, predict_config, batch_size
+        island_intervals,
+        dataset,
+        use_folds=use_folds,
+        aggregation=aggregation,
+        batch_size=batch_size,
     )
     aggregated_output = dataclasses.asdict(output)
     merged_interval = output.out_interval

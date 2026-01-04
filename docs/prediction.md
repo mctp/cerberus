@@ -39,22 +39,6 @@ dataset = CerberusDataset(
 )
 ```
 
-## Configuration: PredictConfig
-
-The prediction behavior is controlled by a `PredictConfig` dictionary.
-
-```python
-class PredictConfig(TypedDict):
-    # List of folds to use for prediction (e.g., ["test"], ["train", "val", "test"])
-    use_folds: list[str]
-    
-    # Stride for tiling input windows (used in predict_output_intervals and predict_to_bigwig)
-    stride: int
-    
-    # Aggregation mode (optional, defaults to "model")
-    aggregation: str
-```
-
 ## Prediction Methods
 
 ### 1. Predict on Specific Intervals
@@ -64,7 +48,7 @@ Use `predict_intervals` when you have a list of fixed-length intervals (matching
 output = model_ensemble.predict_intervals(
     intervals=my_intervals,
     dataset=dataset,
-    predict_config={"use_folds": ["test"]},
+    use_folds=["test"],
     batch_size=64
 )
 ```
@@ -76,7 +60,8 @@ Use `predict_output_intervals` when you have target regions of arbitrary length 
 outputs = model_ensemble.predict_output_intervals(
     intervals=gene_regions,
     dataset=dataset,
-    predict_config={"stride": 50, "use_folds": ["test"]},
+    stride=50,
+    use_folds=["test"],
     batch_size=64
 )
 ```
@@ -91,7 +76,8 @@ predict_to_bigwig(
     output_path="predictions.bw",
     dataset=dataset,
     model_ensemble=model_ensemble,
-    predict_config={"stride": 50, "use_folds": ["test"]},
+    stride=50,
+    use_folds=["test"],
     batch_size=256
 )
 ```

@@ -1,5 +1,6 @@
-from typing import TypedDict, Any
+from typing import TypedDict, Any, NotRequired
 from pathlib import Path
+import yaml
 import torch.nn as nn
 from torchmetrics import MetricCollection
 
@@ -109,20 +110,6 @@ class TrainConfig(TypedDict):
     filter_bias_and_bn: bool
 
 
-class PredictConfig(TypedDict):
-    """
-    Configuration for prediction parameters.
-
-    Attributes:
-        stride: Stride for sliding window predictions (default: output_len).
-        use_folds: List of fold types to use models from ('train', 'test', 'val').
-        aggregation: Aggregation mode ('model' or 'interval+model').
-    """
-    stride: int
-    use_folds: list[str]
-    aggregation: str
-
-
 class ModelConfig(TypedDict):
     """
     Configuration for the model architecture.
@@ -141,6 +128,17 @@ class ModelConfig(TypedDict):
     metrics_cls: type[MetricCollection]
     metrics_args: dict[str, Any]
     model_args: dict[str, Any]
+
+
+class CerberusConfig(TypedDict):
+    """
+    Combined configuration for Cerberus.
+    """
+    train_config: TrainConfig
+    genome_config: GenomeConfig
+    data_config: DataConfig
+    sampler_config: SamplerConfig
+    model_config: ModelConfig
 
 
 # --- Validation Logic ---
@@ -524,74 +522,6 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
     }
 
 
-def validate_predict_config(config: PredictConfig) -> PredictConfig:
-    """
-    Validates the prediction configuration dictionary.
-
-    Args:
-        config: Dictionary containing prediction configuration.
-
-    Returns:
-        PredictConfig: Validated and typed configuration object.
-
-    Raises:
-        TypeError: If input is not a dictionary or contains invalid types.
-        ValueError: If required keys are missing or values are invalid.
-    """
-    if not isinstance(config, dict):
-        raise TypeError("Predict config must be a dictionary")
-
-    required_keys = {"stride", "aggregation"}
-    if not all(key in config for key in required_keys):
-        missing = required_keys - config.keys()
-        raise ValueError(f"Predict config missing required keys: {missing}")
-
-    stride = config["stride"]
-    if not isinstance(stride, int) or stride <= 0:
-        raise ValueError("stride must be a positive integer")
-
-    use_folds = config.get("use_folds", ["test", "val"])
-    if not isinstance(use_folds, list):
-        raise TypeError("use_folds must be a list of strings")
-    valid_folds = {"train", "test", "val"}
-    if not all(f in valid_folds for f in use_folds):
-        raise ValueError(f"use_folds must be subset of {valid_folds}")
-
-    aggregation = config["aggregation"]
-    if not isinstance(aggregation, str):
-        raise TypeError("aggregation must be a string")
-    if aggregation not in {"model", "interval+model"}:
-        raise ValueError("aggregation must be 'model' or 'interval+model'")
-
-    return {
-        "stride": stride,
-        "use_folds": use_folds,
-        "aggregation": aggregation,
-    }
-
-
-def validate_predict_and_data_compatibility(
-    predict_config: PredictConfig, data_config: DataConfig
-) -> None:
-    """
-    Validates compatibility between prediction and data configurations.
-
-    Args:
-        predict_config: Validated PredictConfig.
-        data_config: Validated DataConfig.
-
-    Raises:
-        ValueError: If stride > output_len.
-    """
-    stride = predict_config["stride"]
-    output_len = data_config["output_len"]
-
-    if stride > output_len:
-        raise ValueError(
-            f"Prediction stride ({stride}) cannot be larger than model output length ({output_len})."
-        )
-
-
 def validate_model_config(config: ModelConfig) -> ModelConfig:
     """
     Validates the model configuration dictionary.
@@ -712,3 +642,76 @@ def validate_data_and_model_compatibility(
         if not input_tracks.issubset(model_inputs):
             missing = input_tracks - model_inputs
             raise ValueError(f"Data inputs {missing} are not in model input channels")
+
+
+def parse_hparams_config(path: str | Path) -> CerberusConfig:
+    """
+    Parses a hparams.yaml file and returns validated configuration objects.
+    
+    Args:
+        path: Path to the hparams.yaml file.
+        
+    Returns:
+        CerberusConfig: Dictionary containing all validated configurations.
+        
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the file content is invalid or missing required sections.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"hparams file not found at: {p}")
+        
+    with open(p, 'r') as f:
+        # Use unsafe_load to allow importing modules for !!python/name tags
+        # valid hparams.yaml files contain python/name tags that require imports
+        data = yaml.unsafe_load(f)
+        
+    if not isinstance(data, dict):
+        raise ValueError("hparams file must contain a dictionary")
+        
+    # Required top-level keys
+    required_keys = {
+        "train_config",
+        "genome_config", 
+        "data_config",
+        "sampler_config",
+        "model_config"
+    }
+    
+    # Check if all required keys are present
+    # We allow extra keys (like other PL hparams), but ensure we have ours
+    if not all(key in data for key in required_keys):
+        missing = required_keys - data.keys()
+        raise ValueError(f"hparams missing required sections: {missing}")
+        
+    # Validate each section
+    train_conf = validate_train_config(data["train_config"])
+    genome_conf = validate_genome_config(data["genome_config"])
+    data_conf = validate_data_config(data["data_config"])
+    sampler_conf = validate_sampler_config(data["sampler_config"])
+    model_conf = validate_model_config(data["model_config"])
+    
+    # Cross-validation
+    validate_data_and_sampler_compatibility(data_conf, sampler_conf)
+    validate_data_and_model_compatibility(data_conf, model_conf)
+    
+    config: CerberusConfig = {
+        "train_config": train_conf,
+        "genome_config": genome_conf,
+        "data_config": data_conf,
+        "sampler_config": sampler_conf,
+        "model_config": model_conf,
+    }
+        
+    return config
+
+def _sanitize_config(config: Any) -> Any:
+    """Recursively convert Path objects to strings for clean serialization."""
+    if isinstance(config, dict):
+        return {k: _sanitize_config(v) for k, v in config.items()}
+    elif isinstance(config, list):
+        return [_sanitize_config(v) for v in config]
+    elif isinstance(config, Path):
+        return str(config)
+    return config

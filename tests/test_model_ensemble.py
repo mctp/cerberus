@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from typing import cast
 
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.config import ModelConfig, DataConfig, TrainConfig, GenomeConfig, PredictConfig
+from cerberus.config import ModelConfig, DataConfig, TrainConfig, GenomeConfig
 from cerberus.output import ModelOutput
 from cerberus.interval import Interval
 
@@ -72,7 +72,7 @@ def create_ensemble(models, folds, output_len=100, output_bin_size=1):
         data_conf = {"output_len": output_len, "output_bin_size": output_bin_size}
         
         return ModelEnsemble(
-            checkpoint_path="dummy",
+            checkpoint_path=".",
             model_config=cast(ModelConfig, dummy_conf),
             data_config=cast(DataConfig, data_conf),
             genome_config=cast(GenomeConfig, dummy_conf),
@@ -224,12 +224,10 @@ def test_predict_intervals_method():
         Interval("chr1", 0, 100),
         Interval("chr1", 10, 110)
     ]
-    
-    predict_config = cast(PredictConfig, {"aggregation": "model", "use_folds": ["test"], "stride": 10})
-    
+
     # Run predict_intervals
     output = ensemble.predict_intervals(
-        intervals, dataset, predict_config, batch_size=2
+        intervals, dataset, use_folds=["test"], aggregation="model", batch_size=2
     )
     
     merged_interval = output.out_interval
@@ -277,11 +275,9 @@ def test_predict_output_intervals_method():
     
     intervals = [Interval("chr1", 200, 300)]
     
-    predict_config = cast(PredictConfig, {"aggregation": "model", "use_folds": ["test"], "stride": 50})
-    
     # Run predict_output_intervals
     outputs = ensemble.predict_output_intervals(
-        intervals, dataset, predict_config, batch_size=2
+        intervals, dataset, stride=50, use_folds=["test"], aggregation="model", batch_size=2
     )
     
     assert len(outputs) == 1

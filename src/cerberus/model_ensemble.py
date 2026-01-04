@@ -11,9 +11,8 @@ from collections import defaultdict
 from cerberus.config import (
     GenomeConfig,
     DataConfig,
-    TrainConfig,
     ModelConfig,
-    PredictConfig,
+    parse_hparams_config,
 )
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_folds
@@ -30,13 +29,34 @@ class ModelEnsemble(nn.ModuleDict):
     def __init__(
         self,
         checkpoint_path: Path | str,
-        model_config: ModelConfig,
-        data_config: DataConfig,
-        genome_config: GenomeConfig,
-        device: torch.device,
+        model_config: ModelConfig | None = None,
+        data_config: DataConfig | None = None,
+        genome_config: GenomeConfig | None = None,
+        device: torch.device | str | None = None,
     ):
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        elif isinstance(device, str):
+            device = torch.device(device)
+
+        path = Path(checkpoint_path)
+        if not path.is_dir():
+            raise ValueError(f"checkpoint_path must be a directory: {path}")
+
+        # Resolve configuration if any is missing
+        if model_config is None or data_config is None or genome_config is None:
+            hparams_path = self._find_hparams(path)
+            parsed_config = parse_hparams_config(hparams_path)
+            
+            if model_config is None:
+                model_config = parsed_config["model_config"]
+            if data_config is None:
+                data_config = parsed_config["data_config"]
+            if genome_config is None:
+                genome_config = parsed_config["genome_config"]
+
         loader = _ModelManager(
-            checkpoint_path, model_config, data_config, genome_config, device
+            path, model_config, data_config, genome_config, device
         )
         models, folds = loader.load_models_and_folds()
 
@@ -45,6 +65,19 @@ class ModelEnsemble(nn.ModuleDict):
         self.device = device
         self.output_len = data_config["output_len"]
         self.output_bin_size = data_config["output_bin_size"]
+
+    def _find_hparams(self, checkpoint_dir: Path) -> Path:
+        """
+        Recursively searches for hparams.yaml in the checkpoint directory.
+        Returns the most recently modified one.
+        """
+        candidates = list(checkpoint_dir.rglob("hparams.yaml"))
+        if not candidates:
+            raise FileNotFoundError(f"No hparams.yaml found in {checkpoint_dir}")
+        
+        # Sort by modification time (newest first)
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return candidates[0]
 
     @staticmethod
     def _unbatch_modeloutput(batched_output: ModelOutput, batch_size: int) -> list[dict[str, Any]]:
@@ -398,7 +431,8 @@ class ModelEnsemble(nn.ModuleDict):
         self,
         intervals: Iterable[Interval],
         dataset: CerberusDataset,
-        predict_config: PredictConfig,
+        use_folds: list[str] = ["test", "val"],
+        aggregation: str = "model",
         batch_size: int = 64,
     ) -> ModelOutput:
         """
@@ -416,10 +450,8 @@ class ModelEnsemble(nn.ModuleDict):
                 Each interval must match the model's input length.
             dataset (CerberusDataset): The dataset used to retrieve input sequences/signals
                 for the intervals.
-            predict_config (PredictConfig): Configuration dictionary containing:
-                - "use_folds" (list[str]): Folds to use (e.g., ["test"]).
-                - "aggregation" (str, optional): Aggregation mode ("model" or "interval+model").
-                  Defaults to "model".
+            use_folds (list[str]): Folds to use (e.g., ["test"]). Defaults to ["test", "val"].
+            aggregation (str): Aggregation mode ("model" or "interval+model"). Defaults to "model".
             batch_size (int): Number of intervals to process in a single batch. Defaults to 64.
 
         Returns:
@@ -431,18 +463,18 @@ class ModelEnsemble(nn.ModuleDict):
         """
         input_len = dataset.data_config["input_len"]
         output_len = dataset.data_config["output_len"]
-        
-        # Default to model aggregation, or interval+model if specified
-        aggregation = predict_config.get("aggregation", "model")
+
         if aggregation not in ["model", "interval+model"]:
-            aggregation = "model" # Enforce model aggregation if invalid/legacy value
-        
+            raise ValueError(
+                f"aggregation must be 'model' or 'interval+model', got '{aggregation}'"
+            )
+
         results = []
         output_cls = None
-        
+
         for batch_intervals_tuple in itertools.batched(intervals, batch_size):
             batch_intervals = list(batch_intervals_tuple)
-                
+
             # 1. Prepare Batch Data
             inputs_list = []
             for interval in batch_intervals:
@@ -454,10 +486,10 @@ class ModelEnsemble(nn.ModuleDict):
 
             # 2. Run Models (returns single ModelOutput)
             batched_output = self.forward(
-                batch_inputs, 
-                intervals=batch_intervals, 
-                use_folds=predict_config["use_folds"],
-                aggregation=aggregation
+                batch_inputs,
+                intervals=batch_intervals,
+                use_folds=use_folds,
+                aggregation=aggregation,
             )
             
             output_cls = type(batched_output)
@@ -494,7 +526,9 @@ class ModelEnsemble(nn.ModuleDict):
         self,
         intervals: Iterable[Interval],
         dataset: CerberusDataset,
-        predict_config: PredictConfig,
+        stride: int | None = None,
+        use_folds: list[str] = ["test", "val"],
+        aggregation: str = "model",
         batch_size: int = 64,
     ) -> list[ModelOutput]:
         """
@@ -509,9 +543,10 @@ class ModelEnsemble(nn.ModuleDict):
                 of arbitrary length (typically larger than the model output length).
             dataset (CerberusDataset): The dataset used to retrieve data. Must have `input_len`
                 and `output_len` in `data_config`.
-            predict_config (PredictConfig): Configuration dictionary. Must contain:
-                - "stride" (int): The stride/step size for tiling input intervals.
-                - "use_folds" (list[str]): Folds to use.
+            stride (int | None): The stride/step size for tiling input intervals.
+                If None, defaults to output_len // 2.
+            use_folds (list[str]): Folds to use. Defaults to ["test", "val"].
+            aggregation (str): Aggregation mode. Defaults to "model".
             batch_size (int): Batch size for processing tiles. Defaults to 64.
 
         Returns:
@@ -519,7 +554,9 @@ class ModelEnsemble(nn.ModuleDict):
         """
         input_len = dataset.data_config["input_len"]
         output_len = dataset.data_config["output_len"]
-        stride = predict_config["stride"]
+
+        if stride is None:
+            stride = output_len // 2
 
         offset = (input_len - output_len) // 2
 
@@ -544,8 +581,9 @@ class ModelEnsemble(nn.ModuleDict):
                 prediction = self.predict_intervals(
                     target_input_intervals,
                     dataset,
-                    predict_config,
-                    batch_size,
+                    use_folds=use_folds,
+                    aggregation=aggregation,
+                    batch_size=batch_size,
                 )
                 results.append(prediction)
 
@@ -650,11 +688,11 @@ class _ModelManager:
 
     def _load_model(self, key: str, path: Path) -> nn.Module:
         """
-        Loads a single model from a checkpoint path.
+        Loads a single model from a checkpoint directory.
         
         Args:
             key: Key to cache the model under.
-            path: Path to the checkpoint or directory containing checkpoints.
+            path: Directory containing checkpoints.
             
         Returns:
             nn.Module: The loaded model.
@@ -662,19 +700,19 @@ class _ModelManager:
         if key in self.cache:
             return self.cache[key]
         
-        if path.is_dir():
-             checkpoints = list(path.rglob("*.ckpt"))
-             if not checkpoints:
-                 raise FileNotFoundError(f"No checkpoint found in {path}")
-             path = self._select_best_checkpoint(checkpoints)
+        # Assuming path is always a directory
+        checkpoints = list(path.rglob("*.ckpt"))
+        if not checkpoints:
+            raise FileNotFoundError(f"No checkpoint found in {path}")
+        ckpt_path = self._select_best_checkpoint(checkpoints)
 
-        print(f"Loading model from {path} for {key}...")
+        print(f"Loading model from {ckpt_path} for {key}...")
         module = instantiate(
             model_config=self.model_config,
             data_config=self.data_config,
             train_config=None,
         )
-        checkpoint = torch.load(path, map_location=self.device)
+        checkpoint = torch.load(ckpt_path, map_location=self.device, weights_only=False)
         module.load_state_dict(checkpoint["state_dict"])
         module.to(self.device)
         module.eval()

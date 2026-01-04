@@ -5,7 +5,6 @@ from typing import Any
 from cerberus.interval import Interval
 from cerberus.dataset import CerberusDataset
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.config import PredictConfig
 from cerberus.output import ModelOutput
 
 
@@ -13,8 +12,8 @@ def predict_intervals(
     intervals: Iterable[Interval],
     dataset: CerberusDataset,
     model_ensemble: ModelEnsemble,
-    predict_config: PredictConfig,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    use_folds: list[str] = ["test", "val"],
+    aggregation: str = "model",
     batch_size: int = 64,
 ) -> ModelOutput:
     """
@@ -22,7 +21,11 @@ def predict_intervals(
     Predicts and aggregates outputs for multiple intervals in batches.
     """
     return model_ensemble.predict_intervals(
-        intervals, dataset, predict_config, batch_size
+        intervals,
+        dataset,
+        use_folds=use_folds,
+        aggregation=aggregation,
+        batch_size=batch_size,
     )
 
 
@@ -30,8 +33,9 @@ def predict_output_intervals(
     intervals: Iterable[Interval],
     dataset: CerberusDataset,
     model_ensemble: ModelEnsemble,
-    predict_config: PredictConfig,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    stride: int | None = None,
+    use_folds: list[str] = ["test", "val"],
+    aggregation: str = "model",
     batch_size: int = 64,
 ) -> list[ModelOutput]:
     """
@@ -39,5 +43,10 @@ def predict_output_intervals(
     Predicts outputs for a list of target intervals by tiling them with input intervals.
     """
     return model_ensemble.predict_output_intervals(
-        intervals, dataset, predict_config, batch_size
+        intervals,
+        dataset,
+        stride=stride,
+        use_folds=use_folds,
+        aggregation=aggregation,
+        batch_size=batch_size,
     )

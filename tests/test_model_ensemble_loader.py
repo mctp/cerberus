@@ -96,34 +96,6 @@ def test_select_best_checkpoint(model_manager, tmp_path):
     best_no_metric = model_manager._select_best_checkpoint([p6, p5])
     assert best_no_metric == p5 # 'a.ckpt' comes before 'b.ckpt'
 
-def test_load_model_direct_path(model_manager, tmp_path):
-    ckpt_path = tmp_path / "model.ckpt"
-    ckpt_path.touch()
-    
-    # Mock dependencies
-    with patch("cerberus.model_ensemble.instantiate") as mock_instantiate, \
-         patch("torch.load") as mock_load:
-        
-        # Setup mocks
-        mock_module = MagicMock()
-        mock_module.model = MagicMock(spec=nn.Module)
-        mock_instantiate.return_value = mock_module
-        
-        mock_load.return_value = {"state_dict": {}}
-        
-        # Run
-        model = model_manager._load_model("test_key", ckpt_path)
-        
-        # Assertions
-        mock_instantiate.assert_called_once()
-        mock_load.assert_called_with(ckpt_path, map_location=model_manager.device)
-        mock_module.load_state_dict.assert_called_once()
-        mock_module.eval.assert_called_once()
-        
-        assert model == mock_module.model
-        assert "test_key" in model_manager.cache
-        assert model_manager.cache["test_key"] == model
-
 def test_load_model_directory(model_manager, tmp_path):
     # Setup directory with checkpoints
     fold_dir = tmp_path / "fold_0"
@@ -146,7 +118,7 @@ def test_load_model_directory(model_manager, tmp_path):
         model = model_manager._load_model("test_dir", fold_dir)
         
         # Should have selected p2
-        mock_load.assert_called_with(p2, map_location=model_manager.device)
+        mock_load.assert_called_with(p2, map_location=model_manager.device, weights_only=False)
         assert model == mock_module.model
 
 def test_load_model_caching(model_manager, tmp_path):

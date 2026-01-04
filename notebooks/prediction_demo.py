@@ -21,7 +21,6 @@ from cerberus.config import (
     DataConfig,
     TrainConfig,
     ModelConfig,
-    PredictConfig,
     SamplerConfig,
 )
 from cerberus.dataset import CerberusDataset
@@ -156,7 +155,6 @@ with patch("cerberus.model_ensemble._ModelManager") as MockLoader:
         ckpt_path,
         model_config,
         data_config,
-        train_config,
         genome_config,
         device=torch.device("cpu")
     )
@@ -179,23 +177,14 @@ intervals = [
     Interval("chr1", 1000, 1000 + INPUT_LEN)
 ]
 
-# Predict Config
-predict_config: PredictConfig = {
-    "stride": 50,
-    "intervals": [],
-    "intervals_paths": [],
-    "use_folds": ["test"], # Or whatever fold the chroms fall into, ModelManager handles this
-    "aggregation": "mean"
-}
-
 # Run prediction
 # We use a small batch size to demonstrate batching
 output = predict_intervals(
     intervals,
     dataset,
     ensemble,
-    predict_config,
-    device="cpu",
+    use_folds=["test"], # Or whatever fold the chroms fall into, ModelManager handles this
+    aggregation="model",
     batch_size=2
 )
 outputs = dataclasses.asdict(output)

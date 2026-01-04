@@ -23,8 +23,7 @@ from cerberus.config import (
     DataConfig, 
     SamplerConfig, 
     TrainConfig, 
-    ModelConfig,
-    PredictConfig
+    ModelConfig
 )
 from cerberus.genome import create_genome_config
 from cerberus.models.gopher import GlobalProfileCNN
@@ -173,7 +172,6 @@ model_ensemble = ModelEnsemble(
     checkpoint_path=checkpoint_dir,
     model_config=model_config,
     data_config=data_config,
-    train_config=train_config,
     genome_config=genome_config,
     device=device
 )
@@ -195,20 +193,12 @@ intervals_to_predict = [target_interval]
 
 print(f"Predicting on interval: {target_interval}")
 
-predict_config: PredictConfig = {
-    "stride": output_len,
-    "intervals": [],
-    "intervals_paths": [],
-    "use_folds": ["test"], # Use the model corresponding to test fold
-    "aggregation": "mean"
-}
-
 output = predict_intervals(
     intervals=intervals_to_predict,
     dataset=dataset, # Use main dataset (has extractors)
     model_ensemble=model_ensemble,
-    predict_config=predict_config,
-    device=str(device),
+    use_folds=["test"], # Use the model corresponding to test fold
+    aggregation="model",
     batch_size=64
 )
 import dataclasses

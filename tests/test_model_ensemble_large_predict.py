@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from typing import cast
 
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.config import ModelConfig, DataConfig, GenomeConfig, PredictConfig
+from cerberus.config import ModelConfig, DataConfig, GenomeConfig
 from cerberus.output import ModelOutput
 from cerberus.interval import Interval
 
@@ -39,7 +39,7 @@ def create_ensemble(models, folds, output_len=100, output_bin_size=1):
         data_conf = {"output_len": output_len, "output_bin_size": output_bin_size}
         
         return ModelEnsemble(
-            checkpoint_path="dummy",
+            checkpoint_path=".",
             model_config=cast(ModelConfig, dummy_conf),
             data_config=cast(DataConfig, data_conf),
             genome_config=cast(GenomeConfig, dummy_conf),
@@ -72,12 +72,10 @@ def test_predict_large_region_with_counts():
     # This triggers batching and merging of overlapping predictions.
     intervals = [Interval("chr1", 0, 100)]
     
-    predict_config = cast(PredictConfig, {"aggregation": "model", "use_folds": ["test"], "stride": 10})
-    
     # Run predict_output_intervals
     # This should not raise ValueError
     outputs = ensemble.predict_output_intervals(
-        intervals, dataset, predict_config, batch_size=2
+        intervals, dataset, stride=10, use_folds=["test"], aggregation="model", batch_size=2
     )
     
     assert len(outputs) == 1

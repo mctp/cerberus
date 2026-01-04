@@ -13,18 +13,8 @@ from cerberus.config import (
     DataConfig,
     SamplerConfig,
     ModelConfig,
+    _sanitize_config,
 )
-
-
-def _sanitize_config(config: Any) -> Any:
-    """Recursively convert Path objects to strings for clean serialization."""
-    if isinstance(config, dict):
-        return {k: _sanitize_config(v) for k, v in config.items()}
-    elif isinstance(config, list):
-        return [_sanitize_config(v) for v in config]
-    elif isinstance(config, Path):
-        return str(config)
-    return config
 
 
 class CerberusModule(pl.LightningModule):

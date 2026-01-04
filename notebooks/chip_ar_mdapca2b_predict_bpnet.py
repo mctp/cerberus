@@ -24,8 +24,7 @@ from cerberus.config import (
     DataConfig, 
     SamplerConfig, 
     TrainConfig, 
-    ModelConfig,
-    PredictConfig
+    ModelConfig
 )
 from cerberus.genome import create_genome_config
 from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
@@ -43,7 +42,7 @@ from cerberus.predict import predict_intervals
 project_root = get_project_root()
 data_dir = project_root / "tests/data"
 # BPNet Checkpoint Directory
-checkpoint_dir = project_root / "tests/data/models/bpnet-chip_ar_mdapca2b/peaks-single"
+checkpoint_dir = project_root / "tests/data/models/chip_ar_mdapca2b_bpnet/single-fold"
 
 print(f"Data Directory: {data_dir}")
 print(f"Checkpoint Directory: {checkpoint_dir}")
@@ -186,7 +185,6 @@ model_ensemble = ModelEnsemble(
     checkpoint_path=checkpoint_dir,
     model_config=model_config,
     data_config=data_config,
-    train_config=train_config,
     genome_config=genome_config,
     device=device
 )
@@ -210,20 +208,12 @@ intervals_to_predict = [target_interval]
 
 print(f"Predicting on interval: {target_interval}")
 
-predict_config: PredictConfig = {
-    "stride": output_len,
-    "intervals": [],
-    "intervals_paths": [],
-    "use_folds": ["test"], 
-    "aggregation": "mean"
-}
-
 output = predict_intervals(
     intervals=intervals_to_predict,
     dataset=dataset, 
     model_ensemble=model_ensemble,
-    predict_config=predict_config,
-    device=str(device),
+    use_folds=["test"],
+    aggregation="model",
     batch_size=64
 )
 # Convert ModelOutput to dict for analysis
