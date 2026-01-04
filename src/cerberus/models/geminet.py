@@ -67,7 +67,7 @@ class PGCBlock(nn.Module):
         
         # 2. Norm (requires B, L, C)
         x = x.transpose(1, 2) # (B, L, C)
-        x = self.norm1(x)
+        x = self.norm1(x.float()).type_as(x)
         x = x.transpose(1, 2) # (B, C, L)
         
         # 3. Split
@@ -84,7 +84,7 @@ class PGCBlock(nn.Module):
         
         # 7. Norm & Dropout (requires B, L, C)
         x = x.transpose(1, 2)
-        x = self.norm2(x)
+        x = self.norm2(x.float()).type_as(x)
         x = x.transpose(1, 2)
         
         x = self.dropout(x)
