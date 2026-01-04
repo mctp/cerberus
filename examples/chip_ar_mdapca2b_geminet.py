@@ -149,12 +149,12 @@ def main():
     print("Using GemiNet Model...")
     model_config: ModelConfig = {
         "name": "GemiNet",
-        "model_cls": GemiNet,
-        "loss_cls": BPNetLoss,
+        "model_cls": "cerberus.models.geminet.GemiNet",
+        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
         "loss_args": {
             "alpha": args.alpha,
         },
-        "metrics_cls": BPNetMetricCollection,
+        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "metrics_args": {},
         "model_args": {
             "input_channels": ["A", "C", "G", "T"],

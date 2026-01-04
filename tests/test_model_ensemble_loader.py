@@ -107,12 +107,11 @@ def test_load_model_file(model_manager, tmp_path):
     p2 = tmp_path / "ckpt2-val_loss=0.1.ckpt" 
     p2.touch()
     
-    with patch("cerberus.model_ensemble.instantiate") as mock_instantiate, \
+    with patch("cerberus.model_ensemble.instantiate_model") as mock_instantiate_model, \
          patch("torch.load") as mock_load:
         
-        mock_module = MagicMock()
-        mock_module.model = MagicMock()
-        mock_instantiate.return_value = mock_module
+        mock_model = MagicMock()
+        mock_instantiate_model.return_value = mock_model
         mock_load.return_value = {"state_dict": {}}
         
         # Run loading from FILE
@@ -120,7 +119,7 @@ def test_load_model_file(model_manager, tmp_path):
         
         # Should have loaded p2
         mock_load.assert_called_with(p2, map_location=model_manager.device, weights_only=False)
-        assert model == mock_module.model
+        assert model == mock_model
 
 def test_load_model_caching(model_manager, tmp_path):
     ckpt_path = tmp_path / "model.ckpt"
@@ -131,12 +130,12 @@ def test_load_model_caching(model_manager, tmp_path):
     model_manager.cache["cached_key"] = cached_model
     
     # Run
-    # Should return cached without calling instantiate/load
-    with patch("cerberus.model_ensemble.instantiate") as mock_instantiate:
+    # Should return cached without calling instantiate_model/load
+    with patch("cerberus.model_ensemble.instantiate_model") as mock_instantiate_model:
         model = model_manager._load_model("cached_key", ckpt_path)
         
         assert model == cached_model
-        mock_instantiate.assert_not_called()
+        mock_instantiate_model.assert_not_called()
 
 def test_load_models_and_folds(model_manager, tmp_path):
     # Setup dummy single fold

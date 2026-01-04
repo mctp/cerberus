@@ -170,13 +170,13 @@ def main():
         print("Using BPNet Model...")
         model_config: ModelConfig = {
             "name": "BPNet",
-            "model_cls": BPNet,
-            "loss_cls": BPNetLoss,
+            "model_cls": "cerberus.models.bpnet.BPNet",
+            "loss_cls": "cerberus.models.bpnet.BPNetLoss",
             "loss_args": {
                 "alpha": 1.0,
                 "implicit_log_targets": log_transform # Should be False if data not transformed
             },
-            "metrics_cls": BPNetMetricCollection,
+            "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
             "metrics_args": {},
             "model_args": {
                 "input_channels": ["A", "C", "G", "T"],
@@ -189,11 +189,11 @@ def main():
         print("Using Baseline (GlobalProfileCNN) Model...")
         model_config: ModelConfig = {
             "name": "GlobalProfileCNN",
-            "model_cls": GlobalProfileCNN,
-            "loss_cls": ProfilePoissonNLLLoss,
+            "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
+            "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
             "loss_args": {"log_input": True, "full": False},
             # Cast function to expected type for static analysis
-            "metrics_cls": DefaultMetricCollection,
+            "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
             "metrics_args": {},
             "model_args": {
                 "input_channels": ["A", "C", "G", "T"],

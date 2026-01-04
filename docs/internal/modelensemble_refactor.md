@@ -118,6 +118,10 @@ An `ensemble_metadata.yaml` file is now mandatory at the Experiment Root.
     -   Updated `validate_model_config` to strictly enforce string types for class names.
 -   **Example Updates**: Updated `examples/chip_ar_mdapca2b_bpnet.py` to use the new string-based configuration format.
 
+### 5. Cohesion & Architecture Refactor (January 2026)
+-   **Aggregation Logic Moved**: Static aggregation methods (`_unbatch_modeloutput`, `_aggregate_tensor_track_values`, etc.) were moved from `src/cerberus/model_ensemble.py` to `src/cerberus/output.py` to improve cohesion (logic stays with data structures).
+-   **Instantiation Logic Moved**: Factory functions `instantiate` and `instantiate_model` were moved from `src/cerberus/entrypoints.py` to `src/cerberus/module.py`. `entrypoints.py` now re-exports them but focuses on high-level training workflows.
+
 ## ⚠️ Important: Repository History Rewrite
 
 As part of the cleanup (January 2026), the git history was rewritten to remove large binary files in `tests/data/models/`. This requires all developers to update their local repositories.

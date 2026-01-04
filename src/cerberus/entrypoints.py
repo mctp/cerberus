@@ -11,76 +11,9 @@ from .config import (
     DataConfig,
     GenomeConfig,
     SamplerConfig,
-    import_class,
 )
-from .module import CerberusModule
-
-
-def instantiate(
-    model_config: ModelConfig,
-    data_config: DataConfig,
-    train_config: TrainConfig | None = None,
-    compile: bool = False,
-    genome_config: GenomeConfig | None = None,
-    sampler_config: SamplerConfig | None = None,
-) -> "CerberusModule":
-    """
-    Factory function to instantiate a CerberusModule from configurations.
-
-    This function bridges the gap between static configurations and the runtime model.
-    It extracts standard model arguments (input_len, output_len, output_bin_size) from 
-    the data configuration and instantiates the user's model class.
-
-    Args:
-        model_config: Model architecture configuration. Must contain 'model_cls', 'loss_cls', 'metrics_cls'.
-        data_config: Data inputs/outputs configuration.
-        train_config: Training hyperparameters.
-        compile: Whether to compile the model using torch.compile (default: False).
-
-    Returns:
-        Initialized CerberusModule ready for training.
-    """
-    # derived arguments
-    input_len = data_config["input_len"]
-    output_len = data_config["output_len"]
-    output_bin_size = data_config["output_bin_size"]
-
-    # Instantiate user model
-    model_cls_name = model_config["model_cls"]
-    model_cls = import_class(model_cls_name)
-    model_args = model_config["model_args"]
-    
-    model = model_cls(
-        input_len=input_len,
-        output_len=output_len,
-        output_bin_size=output_bin_size,
-        **model_args
-    )
-
-    if compile:
-        model = cast(torch.nn.Module, torch.compile(model))
-
-    # Instantiate criterion and metrics
-    loss_cls_name = model_config["loss_cls"]
-    loss_cls = import_class(loss_cls_name)
-    loss_args = model_config["loss_args"]
-    criterion = loss_cls(**loss_args)
-
-    metrics_cls_name = model_config["metrics_cls"]
-    metrics_cls = import_class(metrics_cls_name)
-    metrics_args = model_config["metrics_args"]
-    metrics = metrics_cls(**metrics_args)
-
-    return CerberusModule(
-        model=model,
-        train_config=train_config,
-        criterion=criterion,
-        metrics=metrics,
-        genome_config=genome_config,
-        data_config=data_config,
-        sampler_config=sampler_config,
-        model_config=model_config,
-    )
+# Moved instantiation logic to module.py
+from .module import CerberusModule, instantiate, instantiate_model
 
 
 def _configure_callbacks(

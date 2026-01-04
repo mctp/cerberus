@@ -687,9 +687,7 @@ def parse_hparams_config(path: str | Path) -> CerberusConfig:
         raise FileNotFoundError(f"hparams file not found at: {p}")
         
     with open(p, 'r') as f:
-        # Use unsafe_load to allow importing modules for !!python/name tags
-        # valid hparams.yaml files contain python/name tags that require imports
-        data = yaml.unsafe_load(f)
+        data = yaml.safe_load(f)
         
     if not isinstance(data, dict):
         raise ValueError("hparams file must contain a dictionary")

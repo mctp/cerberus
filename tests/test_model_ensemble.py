@@ -7,7 +7,7 @@ from typing import cast
 
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.config import ModelConfig, DataConfig, TrainConfig, GenomeConfig
-from cerberus.output import ModelOutput
+from cerberus.output import ModelOutput, aggregate_models
 from cerberus.interval import Interval
 
 @dataclass
@@ -137,12 +137,11 @@ def test_forward_selection():
     assert out.logits[0,0,0].item() == 1.0
 
 def test_aggregate():
-    ensemble = create_ensemble({}, [], output_len=100, output_bin_size=1)
-    
+    # ensemble not needed for aggregation logic anymore
     out1 = MockOutput(logits=torch.ones(2, 2))
     out2 = MockOutput(logits=torch.ones(2, 2) * 3)
     
-    agg = ensemble._aggregate_models([out1, out2], method="mean")
+    agg = aggregate_models([out1, out2], method="mean")
     assert torch.allclose(agg.logits, torch.ones(2, 2) * 2)
 
 def test_forward_interval_aggregation():

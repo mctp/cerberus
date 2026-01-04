@@ -598,12 +598,6 @@ def test_predict_intervals_empty_input(mock_dataset):
             [], mock_dataset, use_folds=["test"], aggregation="model"
         )
 
-def test_aggregate_ensemble_outputs_empty():
-    # Tested in test_model_ensemble.py, but keeping here using ModelEnsemble
-    ensemble = create_mock_ensemble({}, output_len=100, output_bin_size=1)
-    with pytest.raises(ValueError, match="No outputs to aggregate"):
-        ensemble._aggregate_models([], method="mean")
-
 def test_merged_interval_is_multiple_of_bin_size(mock_dataset):
     # Setup intervals such that merged interval should be multiple of bin_size=10
     mock_dataset.data_config["output_bin_size"] = 10

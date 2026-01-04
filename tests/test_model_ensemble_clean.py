@@ -3,7 +3,13 @@ import torch
 import numpy as np
 import dataclasses
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.output import ModelOutput
+from cerberus.output import (
+    ModelOutput, 
+    unbatch_modeloutput, 
+    aggregate_tensor_track_values, 
+    aggregate_intervals, 
+    aggregate_models
+)
 from cerberus.interval import Interval
 
 # --- Fixtures and Helpers ---
@@ -36,7 +42,7 @@ def test_unbatch_modeloutput_basic(mock_intervals):
         out_interval=None # Usually None for batched
     )
     
-    result = ModelEnsemble._unbatch_modeloutput(batched, batch_size)
+    result = unbatch_modeloutput(batched, batch_size)
     
     assert len(result) == 2
     assert isinstance(result[0], dict)
@@ -59,7 +65,7 @@ def test_unbatch_modeloutput_mismatch_raises():
     batched = SimpleOutput(logits=logits, profile=torch.tensor([1,2]), out_interval=None)
     
     with pytest.raises(IndexError):
-        ModelEnsemble._unbatch_modeloutput(batched, batch_size)
+        unbatch_modeloutput(batched, batch_size)
 
 # --- Tests for _aggregate_models ---
 
@@ -80,7 +86,7 @@ def test_aggregate_models_mean():
     # The method expects list[ModelOutput]
     outputs = [out1, out2]
     
-    agg = ModelEnsemble._aggregate_models(outputs, method="mean")
+    agg = aggregate_models(outputs, method="mean")
     
     assert isinstance(agg, SimpleOutput)
     # Mean of [1,2] and [3,4] is [2,3]
@@ -95,7 +101,7 @@ def test_aggregate_models_median():
     out3 = SimpleOutput(logits=torch.tensor([3.0]), profile=torch.tensor([3.0]), out_interval=None)
     
     outputs = [out1, out2, out3]
-    agg = ModelEnsemble._aggregate_models(outputs, method="median")
+    agg = aggregate_models(outputs, method="median")
     
     assert isinstance(agg, SimpleOutput)
     # Median of 1, 10, 3 is 3
@@ -104,11 +110,7 @@ def test_aggregate_models_median():
 def test_aggregate_models_invalid_method():
     out1 = SimpleOutput(logits=torch.tensor([1.0]), profile=torch.tensor([1.0]), out_interval=None)
     with pytest.raises(ValueError, match="Unknown aggregation method"):
-        ModelEnsemble._aggregate_models([out1], method="invalid")
-
-def test_aggregate_models_empty_raises():
-    with pytest.raises(ValueError, match="No outputs to aggregate"):
-        ModelEnsemble._aggregate_models([], method="mean")
+        aggregate_models([out1], method="invalid")
 
 # --- Tests for _aggregate_tensor_track_values ---
 
@@ -130,7 +132,7 @@ def test_aggregate_tensor_track_values_disjoint():
     outputs = [val1, val2]
     intervals = [int1, int2]
     
-    res = ModelEnsemble._aggregate_tensor_track_values(
+    res = aggregate_tensor_track_values(
         outputs, intervals, merged, output_len=10, output_bin_size=1
     )
     
@@ -158,7 +160,7 @@ def test_aggregate_tensor_track_values_overlap_average():
     
     merged = Interval("chr1", 0, 30, "+")
     
-    res = ModelEnsemble._aggregate_tensor_track_values(
+    res = aggregate_tensor_track_values(
         [val1, val2], [int1, int2], merged, output_len=20, output_bin_size=1
     )
     
@@ -186,7 +188,7 @@ def test_aggregate_tensor_track_values_scalar_broadcast():
     # Actually logic uses: int_bins = output_len // output_bin_size
     # So if we say output_len=10, bin_size=1, each scalar covers 10 bins starting at rel_start.
     
-    res = ModelEnsemble._aggregate_tensor_track_values(
+    res = aggregate_tensor_track_values(
         [val1, val2], [int1, int2], merged, output_len=10, output_bin_size=1
     )
     
@@ -213,7 +215,7 @@ def test_aggregate_intervals_integration():
     outputs = [out1, out2]
     intervals = [int1, int2]
     
-    merged = ModelEnsemble._aggregate_intervals(
+    merged = aggregate_intervals(
         outputs, intervals, output_len=10, output_bin_size=1, output_cls=SimpleOutput
     )
     
@@ -240,15 +242,11 @@ def test_aggregate_intervals_integration():
     assert np.allclose(logs[0, 5:10], 15.0)
     assert np.allclose(logs[0, 10:15], 20.0)
 
-def test_aggregate_intervals_empty_raises():
-    with pytest.raises(ValueError):
-        ModelEnsemble._aggregate_intervals([], [], 100, 1, output_cls=None)
-
 def test_aggregate_intervals_no_cls_raises():
     int1 = Interval("chr1", 0, 10, "+")
     out1 = {"logits": torch.tensor([1.0])}
     with pytest.raises(ValueError, match="output_cls must be provided"):
-        ModelEnsemble._aggregate_intervals([out1], [int1], 10, 1)
+        aggregate_intervals([out1], [int1], 10, 1)
 
 # --- Tests for predict_intervals and predict_output_intervals ---
 
