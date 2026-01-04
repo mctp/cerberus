@@ -11,6 +11,7 @@ from .config import (
     DataConfig,
     GenomeConfig,
     SamplerConfig,
+    import_class,
 )
 from .module import CerberusModule
 
@@ -45,8 +46,10 @@ def instantiate(
     output_bin_size = data_config["output_bin_size"]
 
     # Instantiate user model
-    model_cls = model_config["model_cls"]
+    model_cls_name = model_config["model_cls"]
+    model_cls = import_class(model_cls_name)
     model_args = model_config["model_args"]
+    
     model = model_cls(
         input_len=input_len,
         output_len=output_len,
@@ -58,11 +61,13 @@ def instantiate(
         model = cast(torch.nn.Module, torch.compile(model))
 
     # Instantiate criterion and metrics
-    loss_cls = model_config["loss_cls"]
+    loss_cls_name = model_config["loss_cls"]
+    loss_cls = import_class(loss_cls_name)
     loss_args = model_config["loss_args"]
     criterion = loss_cls(**loss_args)
 
-    metrics_cls = model_config["metrics_cls"]
+    metrics_cls_name = model_config["metrics_cls"]
+    metrics_cls = import_class(metrics_cls_name)
     metrics_args = model_config["metrics_args"]
     metrics = metrics_cls(**metrics_args)
 

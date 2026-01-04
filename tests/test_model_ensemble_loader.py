@@ -61,6 +61,12 @@ def mock_configs():
 @pytest.fixture
 def model_manager(mock_configs, tmp_path):
     m_conf, d_conf, t_conf, g_conf = mock_configs
+    
+    # Create required metadata
+    import yaml
+    with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
+        yaml.dump({"folds": ["single"]}, f)
+        
     return ModelManager(
         checkpoint_path=tmp_path,
         model_config=m_conf,
@@ -96,14 +102,9 @@ def test_select_best_checkpoint(model_manager, tmp_path):
     best_no_metric = model_manager._select_best_checkpoint([p6, p5])
     assert best_no_metric == p5 # 'a.ckpt' comes before 'b.ckpt'
 
-def test_load_model_directory(model_manager, tmp_path):
-    # Setup directory with checkpoints
-    fold_dir = tmp_path / "fold_0"
-    fold_dir.mkdir()
-    
-    p1 = fold_dir / "ckpt1-val_loss=0.2.ckpt"
-    p2 = fold_dir / "ckpt2-val_loss=0.1.ckpt" # Best
-    p1.touch()
+def test_load_model_file(model_manager, tmp_path):
+    # Setup file
+    p2 = tmp_path / "ckpt2-val_loss=0.1.ckpt" 
     p2.touch()
     
     with patch("cerberus.model_ensemble.instantiate") as mock_instantiate, \
@@ -114,10 +115,10 @@ def test_load_model_directory(model_manager, tmp_path):
         mock_instantiate.return_value = mock_module
         mock_load.return_value = {"state_dict": {}}
         
-        # Run loading from DIRECTORY
-        model = model_manager._load_model("test_dir", fold_dir)
+        # Run loading from FILE
+        model = model_manager._load_model("test_dir", p2)
         
-        # Should have selected p2
+        # Should have loaded p2
         mock_load.assert_called_with(p2, map_location=model_manager.device, weights_only=False)
         assert model == mock_module.model
 
@@ -139,7 +140,10 @@ def test_load_model_caching(model_manager, tmp_path):
 
 def test_load_models_and_folds(model_manager, tmp_path):
     # Setup dummy single fold
-    ckpt_path = tmp_path / "model.ckpt"
+    # We configured "folds": ["single"] in fixture
+    fold_dir = tmp_path / "fold_single"
+    fold_dir.mkdir()
+    ckpt_path = fold_dir / "model.ckpt"
     ckpt_path.touch()
     
     # Mock _load_model to avoid instantiating real models
@@ -151,12 +155,17 @@ def test_load_models_and_folds(model_manager, tmp_path):
         assert isinstance(models, dict)
         assert len(models) == 1
         assert "single" in models
-        mock_load.assert_called_with("single", model_manager.checkpoint_path)
+        # It finds the checkpoint
+        mock_load.assert_called_with("fold_single", ckpt_path)
 
 def test_load_models_and_folds_multifold(model_manager, tmp_path):
-    # Enable multifold
-    model_manager.is_multifold = True
-    model_manager.folds = [{"chr1": MagicMock()}] # Dummy folds
+    # Update metadata for multifold
+    import yaml
+    with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
+        yaml.dump({"folds": [0]}, f)
+        
+    # Reload metadata (hack since model_manager is already init)
+    model_manager.fold_indices = [0]
     
     # Setup fold directories
     fold_dir = tmp_path / "fold_0"
@@ -175,4 +184,5 @@ def test_load_models_and_folds_multifold(model_manager, tmp_path):
         mock_load.assert_called()
         # Verify it passed the checkpoint path selected
         args, _ = mock_load.call_args
-        assert args[0] == "fold_0"
+        assert args[0] == "fold_0" # Key used for caching/loading
+        assert args[1] == p1

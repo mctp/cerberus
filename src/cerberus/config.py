@@ -1,8 +1,21 @@
-from typing import TypedDict, Any, NotRequired
+from typing import TypedDict, Any
 from pathlib import Path
 import yaml
-import torch.nn as nn
-from torchmetrics import MetricCollection
+import importlib
+
+def import_class(name: str) -> Any:
+    """
+    Dynamically imports a class from a module string (e.g., 'package.module.Class').
+    """
+    if not isinstance(name, str):
+        raise TypeError(f"Class name must be a string, got {type(name)}")
+        
+    try:
+        module_name, class_name = name.rsplit(".", 1)
+        module = importlib.import_module(module_name)
+        return getattr(module, class_name)
+    except (ValueError, ImportError, AttributeError) as e:
+        raise ImportError(f"Could not import class '{name}': {e}")
 
 # --- Configuration Schemas ---
 
@@ -116,16 +129,19 @@ class ModelConfig(TypedDict):
 
     Attributes:
         name: Name of the model.
+        model_cls: Fully qualified class name string of the model.
+        loss_cls: Fully qualified class name string of the loss.
+        metrics_cls: Fully qualified class name string of the metric collection.
         input_channels: List of input channel names.
         output_channels: List of output channel names.
         output_type: Type of output ('signal' or 'decoupled').
     """
 
     name: str
-    model_cls: type[nn.Module]
-    loss_cls: type[nn.Module]
+    model_cls: str
+    loss_cls: str
     loss_args: dict[str, Any]
-    metrics_cls: type[MetricCollection]
+    metrics_cls: str
     metrics_args: dict[str, Any]
     model_args: dict[str, Any]
 
@@ -555,8 +571,16 @@ def validate_model_config(config: ModelConfig) -> ModelConfig:
     if not isinstance(config["name"], str):
         raise TypeError("name must be a string")
 
-    # Validate presence of model/loss classes (context dependent)
+    # Strict validation for class strings
+    if not isinstance(config["model_cls"], str):
+        raise TypeError("model_cls must be a string (fully qualified class name)")
     
+    if not isinstance(config["loss_cls"], str):
+        raise TypeError("loss_cls must be a string (fully qualified class name)")
+        
+    if not isinstance(config["metrics_cls"], str):
+        raise TypeError("metrics_cls must be a string (fully qualified class name)")
+
     # Check for required args in model_args (now optional/convention, but we should validate if present)
     # The requirement is moving them to model_args, so we should assume they might be there.
     # We can validate them if they exist, or check if specific keys are required by policy.

@@ -590,6 +590,8 @@ class ModelEnsemble(nn.ModuleDict):
         return results
 
 
+import yaml
+
 class _ModelManager:
     """
     Manages loading and caching of models for different folds.
@@ -609,43 +611,29 @@ class _ModelManager:
         self.device = device
         
         self.cache: dict[str, nn.Module] = {}
-        self.is_multifold = self._detect_multifold()
         
-        if self.is_multifold:
-            self.folds = create_genome_folds(
-                genome_config["chrom_sizes"],
-                genome_config["fold_type"],
-                genome_config["fold_args"],
-            )
-        else:
-            self.folds = []
+        # Parse metadata
+        meta_path = self.checkpoint_path / "ensemble_metadata.yaml"
+        if not meta_path.exists():
+            raise FileNotFoundError(f"Missing ensemble_metadata.yaml at {meta_path}")
+            
+        with open(meta_path) as f:
+            meta = yaml.safe_load(f)
+            self.fold_indices = meta.get("folds", [])
 
-    def _detect_multifold(self) -> bool:
-        """
-        Detects if the checkpoint path contains multiple folds.
-        
-        Returns:
-            bool: True if multiple folds are detected, False otherwise.
-        """
-        if self.checkpoint_path.is_dir():
-            # Check for fold_0, fold_1, etc.
-            return any((self.checkpoint_path / f"fold_{i}").exists() for i in range(2))
-        return False
+        # Create fold mappings for routing
+        self.folds = create_genome_folds(
+            genome_config["chrom_sizes"],
+            genome_config["fold_type"],
+            genome_config["fold_args"],
+        )
 
     def _select_best_checkpoint(self, checkpoints: list[Path]) -> Path:
         """
         Selects the best checkpoint from a list based on validation loss.
-        
-        Args:
-            checkpoints: List of checkpoint paths.
-            
-        Returns:
-            Path: The path to the best checkpoint.
         """
         def get_val_loss(p: Path) -> float:
             # Pattern to match val_loss=0.1234
-            # Usually PyTorch Lightning formats it as key=value
-            # Use specific regex to avoid capturing trailing dot from .ckpt
             match = re.search(r"val_loss[=_](\d+\.?\d*)", p.name)
             if match:
                 try:
@@ -661,58 +649,39 @@ class _ModelManager:
     def load_models_and_folds(self) -> tuple[dict[str, nn.Module], list]:
         """
         Loads models and fold configuration.
-        
-        Returns:
-            tuple[dict[str, nn.Module], list]: A dictionary of loaded models and a list of fold maps.
         """
         models_dict = {}
         
-        if not self.is_multifold:
-            models_dict["single"] = self._load_model("single", self.checkpoint_path)
-        else:
-            # Load all folds
-            k = len(self.folds)
-            for fold_idx in range(k):
-                fold_dir = self.checkpoint_path / f"fold_{fold_idx}"
-                checkpoints = list(fold_dir.glob("*.ckpt"))
-                if not checkpoints:
-                     checkpoints = list(fold_dir.rglob("*.ckpt"))
-                
-                if checkpoints:
-                    ckpt_path = self._select_best_checkpoint(checkpoints)
-                    models_dict[str(fold_idx)] = self._load_model(f"fold_{fold_idx}", ckpt_path)
-                else:
-                    print(f"Warning: No checkpoint found for fold {fold_idx} in {fold_dir}")
+        for fold_idx in self.fold_indices:
+            fold_dir = self.checkpoint_path / f"fold_{fold_idx}"
+            
+            # Find checkpoint
+            checkpoints = list(fold_dir.glob("*.ckpt"))
+            if not checkpoints:
+                 checkpoints = list(fold_dir.rglob("*.ckpt"))
+            
+            if checkpoints:
+                ckpt_path = self._select_best_checkpoint(checkpoints)
+                models_dict[str(fold_idx)] = self._load_model(f"fold_{fold_idx}", ckpt_path)
+            else:
+                print(f"Warning: No checkpoint found for fold {fold_idx} in {fold_dir}")
             
         return models_dict, self.folds
 
-    def _load_model(self, key: str, path: Path) -> nn.Module:
+    def _load_model(self, key: str, ckpt_file: Path) -> nn.Module:
         """
-        Loads a single model from a checkpoint directory.
-        
-        Args:
-            key: Key to cache the model under.
-            path: Directory containing checkpoints.
-            
-        Returns:
-            nn.Module: The loaded model.
+        Loads a single model from a checkpoint file.
         """
         if key in self.cache:
             return self.cache[key]
         
-        # Assuming path is always a directory
-        checkpoints = list(path.rglob("*.ckpt"))
-        if not checkpoints:
-            raise FileNotFoundError(f"No checkpoint found in {path}")
-        ckpt_path = self._select_best_checkpoint(checkpoints)
-
-        print(f"Loading model from {ckpt_path} for {key}...")
+        print(f"Loading model from {ckpt_file} for {key}...")
         module = instantiate(
             model_config=self.model_config,
             data_config=self.data_config,
             train_config=None,
         )
-        checkpoint = torch.load(ckpt_path, map_location=self.device, weights_only=False)
+        checkpoint = torch.load(ckpt_file, map_location=self.device, weights_only=False)
         module.load_state_dict(checkpoint["state_dict"])
         module.to(self.device)
         module.eval()

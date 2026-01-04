@@ -24,7 +24,6 @@ from pprint import pprint
 from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
-from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.entrypoints import train_single, train_multi
 
 def get_args():
@@ -143,12 +142,12 @@ def main():
     print("Using BPNet Model...")
     model_config: ModelConfig = {
         "name": "BPNet",
-        "model_cls": BPNet,
-        "loss_cls": BPNetLoss,
+        "model_cls": "cerberus.models.bpnet.BPNet",
+        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
         "loss_args": {
             "alpha": args.alpha,
         },
-        "metrics_cls": BPNetMetricCollection,
+        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "metrics_args": {},
         "model_args": {
             "input_channels": ["A", "C", "G", "T"],

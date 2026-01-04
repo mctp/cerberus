@@ -110,6 +110,14 @@ An `ensemble_metadata.yaml` file is now mandatory at the Experiment Root.
     -   Purged these files from git history using `git-filter-repo`.
     -   Tests relying on these files (e.g., `test_hparams_parsing.py`) now gracefully skip if data is missing.
 
+### 4. Refactor Completion (Architecture Simplification)
+-   **Architecture Simplified**: `_ModelManager` in `src/cerberus/model_ensemble.py` has been refactored to strictly follow `ensemble_metadata.yaml`. It no longer guesses directory structures (`_detect_multifold` removed). Single-fold models are treated identically to multi-fold (iterating over `folds` list).
+-   **Config Enhancements**:
+    -   Added `import_class` utility in `src/cerberus/config.py`.
+    -   Updated `src/cerberus/entrypoints.py` to use `import_class` for dynamic class loading from string configs.
+    -   Updated `validate_model_config` to strictly enforce string types for class names.
+-   **Example Updates**: Updated `examples/chip_ar_mdapca2b_bpnet.py` to use the new string-based configuration format.
+
 ## ⚠️ Important: Repository History Rewrite
 
 As part of the cleanup (January 2026), the git history was rewritten to remove large binary files in `tests/data/models/`. This requires all developers to update their local repositories.

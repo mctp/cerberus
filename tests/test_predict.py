@@ -74,15 +74,18 @@ def integration_setup(tmp_path):
     
     # Model
     model = DummyModel(input_len=100, output_len=50, output_bin_size=1)
-    ckpt_path = tmp_path / "model.ckpt"
+    # Create fold_0 and save model there
+    fold_dir = tmp_path / "fold_0"
+    fold_dir.mkdir()
+    ckpt_path = fold_dir / "model.ckpt"
     torch.save({"state_dict": model.state_dict()}, ckpt_path)
     
     model_config = cast(ModelConfig, {
         "name": "dummy",
-        "model_cls": DummyModel,
-        "loss_cls": nn.MSELoss,
+        "model_cls": "tests.test_predict.DummyModel",
+        "loss_cls": "torch.nn.MSELoss",
         "loss_args": {},
-        "metrics_cls": MetricCollection,
+        "metrics_cls": "torchmetrics.MetricCollection",
         "metrics_args": {"metrics": {}},
         "model_args": {}
     })
@@ -101,6 +104,10 @@ def integration_setup(tmp_path):
     
     # Use ModelEnsemble directly
     # ModelEnsemble expects a directory
+    import yaml
+    with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
+        yaml.dump({"folds": [0]}, f)
+        
     ensemble = ModelEnsemble(
         tmp_path, model_config, data_config, genome_config, torch.device("cpu")
     )

@@ -100,10 +100,10 @@ class DummyLoss(nn.Module):
 def test_validate_model_config_valid():
     config = cast(ModelConfig, {
         "name": "test_model",
-        "model_cls": nn.Linear,
-        "loss_cls": DummyLoss,
+        "model_cls": "torch.nn.Linear",
+        "loss_cls": "tests.test_config_validation.DummyLoss",
         "loss_args": {},
-        "metrics_cls": MetricCollection,
+        "metrics_cls": "torchmetrics.MetricCollection",
         "metrics_args": {},
         "model_args": {
             "input_channels": ["A", "C", "G", "T"],
@@ -118,10 +118,10 @@ def test_validate_model_config_valid():
 def test_validate_model_config_invalid_output_type():
     config = cast(ModelConfig, {
         "name": "test",
-        "model_cls": nn.Linear,
-        "loss_cls": DummyLoss,
+        "model_cls": "torch.nn.Linear",
+        "loss_cls": "tests.test_config_validation.DummyLoss",
         "loss_args": {},
-        "metrics_cls": MetricCollection,
+        "metrics_cls": "torchmetrics.MetricCollection",
         "metrics_args": {},
         "model_args": {
             "input_channels": ["A"],
@@ -135,10 +135,10 @@ def test_validate_model_config_invalid_output_type():
 def test_validate_model_config_empty_channels():
     config = cast(ModelConfig, {
         "name": "test",
-        "model_cls": nn.Linear,
-        "loss_cls": DummyLoss,
+        "model_cls": "torch.nn.Linear",
+        "loss_cls": "tests.test_config_validation.DummyLoss",
         "loss_args": {},
-        "metrics_cls": MetricCollection,
+        "metrics_cls": "torchmetrics.MetricCollection",
         "metrics_args": {},
         "model_args": {
             "input_channels": [],
@@ -201,8 +201,8 @@ def test_validate_data_and_model_compatibility_valid():
         "use_sequence": True,
     })
     model_config = cast(ModelConfig, {
-        "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
-        "loss_args": {}, "metrics_cls": MetricCollection, "metrics_args": {},
+        "name": "m", "model_cls": "torch.nn.Linear", "loss_cls": "tests.test_config_validation.DummyLoss", 
+        "loss_args": {}, "metrics_cls": "torchmetrics.MetricCollection", "metrics_args": {},
         "model_args": {
             "input_channels": ["track1", "A", "C", "G", "T"], # data inputs + sequence
             "output_channels": ["target1"],
@@ -222,8 +222,8 @@ def test_validate_data_and_model_compatibility_invalid_targets():
         "use_sequence": True,
     })
     model_config = cast(ModelConfig, {
-        "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
-        "loss_args": {}, "metrics_cls": MetricCollection, "metrics_args": {},
+        "name": "m", "model_cls": "torch.nn.Linear", "loss_cls": "tests.test_config_validation.DummyLoss", 
+        "loss_args": {}, "metrics_cls": "torchmetrics.MetricCollection", "metrics_args": {},
         "model_args": {
             "input_channels": ["A"], 
             "output_channels": ["target2"], # Mismatch
@@ -244,8 +244,8 @@ def test_validate_data_and_model_compatibility_invalid_inputs():
         "use_sequence": True,
     })
     model_config = cast(ModelConfig, {
-        "name": "m", "model_cls": nn.Linear, "loss_cls": DummyLoss, 
-        "loss_args": {}, "metrics_cls": MetricCollection, "metrics_args": {},
+        "name": "m", "model_cls": "torch.nn.Linear", "loss_cls": "tests.test_config_validation.DummyLoss", 
+        "loss_args": {}, "metrics_cls": "torchmetrics.MetricCollection", "metrics_args": {},
         "model_args": {
             "input_channels": ["A"], # Missing track1
             "output_channels": [],

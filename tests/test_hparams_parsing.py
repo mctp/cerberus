@@ -25,8 +25,8 @@ def test_parse_hparams_config_success():
     assert isinstance(config["genome_config"]["fasta_path"], Path)
     assert config["genome_config"]["name"] == "hg38"
     assert config["model_config"]["name"] == "GemiNet"
-    # Check class loading
-    assert config["model_config"]["model_cls"].__name__ == "GemiNet"
+    # Check class string
+    assert config["model_config"]["model_cls"] == "cerberus.models.geminet.GeminiNet"
     
 def test_parse_hparams_config_not_found():
     with pytest.raises(FileNotFoundError):
