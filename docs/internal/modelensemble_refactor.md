@@ -109,3 +109,22 @@ An `ensemble_metadata.yaml` file is now mandatory at the Experiment Root.
     -   Removed legacy model binaries (`bpnet-chip_ar_mdapca2b`, etc.) to reduce repository bloat.
     -   Purged these files from git history using `git-filter-repo`.
     -   Tests relying on these files (e.g., `test_hparams_parsing.py`) now gracefully skip if data is missing.
+
+## ⚠️ Important: Repository History Rewrite
+
+As part of the cleanup (January 2026), the git history was rewritten to remove large binary files in `tests/data/models/`. This requires all developers to update their local repositories.
+
+**Option 1: Fresh Clone (Recommended)**
+```bash
+cd ..
+rm -rf cerberus
+git clone https://github.com/mctp/cerberus.git
+```
+
+**Option 2: Reset Local Branch**
+If you want to keep your existing directory:
+```bash
+git fetch origin
+git reset --hard origin/main
+```
+*Warning: This will discard any uncommitted local changes.*
