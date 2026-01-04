@@ -19,7 +19,6 @@ Usage:
 
 import argparse
 import torch
-torch.set_flush_denormal(True)
 from pathlib import Path
 from pprint import pprint
 
@@ -135,7 +134,7 @@ def main():
         "max_epochs": args.max_epochs,
         "learning_rate": 1e-3,
         "weight_decay": 0.01,
-        "patience": 15,
+        "patience": 10,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
         "scheduler_type": "cosine",
