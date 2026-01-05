@@ -17,19 +17,7 @@ from cerberus.config import (
 )
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_folds
-from cerberus.module import instantiate_model # Will move this next, but for now referencing existing or future location.
-# Wait, I haven't moved instantiate_model yet. It is currently in entrypoints.
-# If I move it to module.py, I should import it from there.
-# If I am doing steps sequentially, I should probably finish model_ensemble refactor first.
-# BUT I am planning to move instantiate_model to module.py.
-# So I will import it from cerberus.module (anticipating step 3).
-# However, if I run tests in between, it will fail.
-# I will assume I will do all moves before running tests.
-# OR I can update imports later.
-# Let's import from cerberus.entrypoints for now (where it is), and then I will update imports in step 4.
-# Actually, the plan is to move instantiate_model to module.py.
-# So I should import from there?
-# Let's import from cerberus.module assuming I WILL move it there.
+from cerberus.module import instantiate_model
 from cerberus.output import (
     ModelOutput, 
     unbatch_modeloutput, 
