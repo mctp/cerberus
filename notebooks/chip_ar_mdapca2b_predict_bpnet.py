@@ -310,6 +310,8 @@ axes[1].legend()
 
 plt.xlabel("Base Pairs")
 plt.tight_layout()
-plt.savefig(project_root / "notebooks/plots/chip_ar_mdapca2b_predict_bpnet.png")
+plots_dir = project_root / "notebooks/plots"
+plots_dir.mkdir(exist_ok=True, parents=True)
+plt.savefig(plots_dir / "chip_ar_mdapca2b_predict_bpnet.png")
 
 # %%

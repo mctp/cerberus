@@ -189,8 +189,10 @@ if pred_block:
         plt.ylabel("Logits")
         
         # Save figure if running as script
-        plt.savefig("prediction_plot.png")
-        print("Plot saved to prediction_plot.png")
+        plots_dir = Path("notebooks/plots")
+        plots_dir.mkdir(exist_ok=True, parents=True)
+        plt.savefig(plots_dir / "prediction_plot.png")
+        print(f"Plot saved to {plots_dir / 'prediction_plot.png'}")
     else:
         print("No logits found in prediction.")
 else:

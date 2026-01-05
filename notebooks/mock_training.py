@@ -341,7 +341,9 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid(True, alpha=0.3)
     
-    plot_path = project_root / "notebooks/plots/mock_training_scatter.png"
+    plots_dir = project_root / "notebooks/plots"
+    plots_dir.mkdir(exist_ok=True, parents=True)
+    plot_path = plots_dir / "mock_training_scatter.png"
     plt.savefig(plot_path)
     print(f"\nScatter plot saved to: {plot_path}")
     

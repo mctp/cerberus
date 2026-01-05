@@ -1,20 +1,18 @@
 #!/usr/bin/env python
 """
-GemiNet training example for ChIP-seq data using Cerberus.
+Gopher (GlobalProfileCNN) training example for ChIP-seq data using Cerberus.
 
-This script implements a GemiNet training run using the MDA-PCA-2b AR dataset.
-GemiNet is a drop-in replacement for BPNet using Projected Gated Convolutions (PGC).
-
+This script implements a Gopher/GlobalProfileCNN training run using the MDA-PCA-2b AR dataset.
 It follows the standard configuration:
-- Input: 2114bp DNA sequence
-- Output: 1000bp base-resolution profile
-- Model: GemiNet (8 dilated PGC layers)
-- Loss: BPNetLoss (Multinomial NLL + MSE log counts)
+- Input: 2048bp DNA sequence
+- Output: 1024bp profile (at 4bp resolution -> 256 bins)
+- Model: GlobalProfileCNN (ResidualBind-like architecture)
+- Loss: ProfilePoissonNLLLoss (Poisson NLL)
 - Training: Based on peak intervals (narrowPeak)
 
 Usage:
-    python examples/chip_ar_mdapca2b_geminet.py --batch-size 32 --max-epochs 50
-    python examples/chip_ar_mdapca2b_geminet.py --multi --batch-size 32
+    python examples/chip_ar_mdapca2b_gopher.py --batch-size 32 --max-epochs 50
+    python examples/chip_ar_mdapca2b_gopher.py --multi --batch-size 32
 """
 
 import argparse
@@ -29,22 +27,20 @@ from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Train a GemiNet model with Cerberus")
+    parser = argparse.ArgumentParser(description="Train a Gopher/GlobalProfileCNN model with Cerberus")
     
     # Script arguments
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data")
-    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_geminet", help="Root directory for logs and checkpoints")
+    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_gopher", help="Root directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
-    parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
+    parser.add_argument("--max-epochs", type=int, default=25, help="Maximum number of epochs")
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
 
     # Hyperparameters
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
-    parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
-    parser.add_argument("--expansion", type=int, default=1, help="GemiNet expansion factor (default: 1)")
 
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
@@ -91,23 +87,23 @@ def main():
         }
     )
 
-    # Data Config for GemiNet
-    # Input: 2048bp DNA (Cleaner power-of-2 length, possible due to GemiNet's flexibility)
-    # Output: 1024bp at base resolution
+    # Data Config for Gopher
+    # Input: 2048bp DNA
+    # Output: 1024bp coverage (at 4bp resolution)
     input_len = 2048
     output_len = 1024
-    output_bin_size = 1
+    output_bin_size = 4
     max_jitter = args.jitter
 
     data_config: DataConfig = {
-        "inputs": {}, 
+        "inputs": {}, # No additional input tracks, just DNA
         "targets": {"signal": dataset_files["bigwig"]},
         "input_len": input_len,
         "output_len": output_len, 
         "max_jitter": max_jitter,
         "output_bin_size": output_bin_size,
         "encoding": "ACGT",
-        "log_transform": False, # Uses raw counts for multinomial loss
+        "log_transform": True, # Gopher often trains on log(x+1) data
         "reverse_complement": True, # Augmentation
         "use_sequence": True,
     }
@@ -141,23 +137,23 @@ def main():
         }
     }
 
-    # Model Config for GemiNet
-    print("Using GemiNet Model...")
+    # Model Config for Gopher/GlobalProfileCNN
+    print("Using Gopher (GlobalProfileCNN) Model...")
     model_config: ModelConfig = {
-        "name": "GemiNet",
-        "model_cls": "cerberus.models.geminet.GemiNet",
-        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
+        "name": "GlobalProfileCNN",
+        "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
+        "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
         "loss_args": {
-            "alpha": args.alpha,
+            "log_input": True, # Expects log-transformed input in loss if data is log transformed? 
+                               # Wait, if data is log_transform=True, model output is likely log counts?
+                               # Let's check the previous file config.
+                               # Old file: "loss_args": {"log_input": True, "full": False}
         },
-        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
+        "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
         "metrics_args": {},
         "model_args": {
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
-            "filters": 64,
-            "n_dilated_layers": 8,
-            "expansion": args.expansion # GemiNet specific argument
         }
     }
 
