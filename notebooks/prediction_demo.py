@@ -119,7 +119,10 @@ class SimpleModel(nn.Module):
 # %%
 # Create a fake checkpoint
 model = SimpleModel(OUTPUT_LEN, BIN_SIZE)
-ckpt_path = Path("dummy_model.ckpt")
+# ModelEnsemble expects a directory
+ckpt_dir = Path("dummy_model_dir")
+ckpt_dir.mkdir(exist_ok=True)
+ckpt_path = ckpt_dir / "dummy_model.ckpt"
 torch.save({"state_dict": model.state_dict()}, ckpt_path)
 
 model_config: ModelConfig = {
@@ -151,7 +154,7 @@ with patch("cerberus.model_ensemble._ModelManager") as MockLoader:
     loader_instance.load_models_and_folds.return_value = ({"single": model}, [])
     
     ensemble = ModelEnsemble(
-        ckpt_path,
+        ckpt_dir,
         model_config,
         data_config,
         genome_config,
@@ -161,6 +164,8 @@ with patch("cerberus.model_ensemble._ModelManager") as MockLoader:
 # Cleanup checkpoint
 if ckpt_path.exists():
     ckpt_path.unlink()
+if ckpt_dir.exists():
+    ckpt_dir.rmdir()
 
 # %% [markdown]
 # ## 4. Run Prediction

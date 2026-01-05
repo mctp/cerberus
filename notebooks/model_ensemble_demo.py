@@ -8,6 +8,7 @@
 import os
 from pathlib import Path
 import torch
+from typing import cast
 
 from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
@@ -15,7 +16,7 @@ from cerberus.dataset import CerberusDataset
 from cerberus.config import GenomeConfig, DataConfig, ModelConfig
 from cerberus.models.bpnet import BPNet, BPNetLoss, BPNetMetricCollection
 from cerberus.genome import create_genome_config
-from cerberus.output import ProfileCountOutput
+from cerberus.output import ProfileCountOutput, ModelOutput
 from cerberus.samplers import IntervalSampler
 
 # %% [markdown]
@@ -27,7 +28,7 @@ from cerberus.samplers import IntervalSampler
 # Define paths (relative to project root)
 os.chdir(Path(__file__).parent.parent)
 DATA_DIR = Path("tests/data")
-MODEL_DIR = Path("tests/data/models/chip_ar_mdapca2b_bpnet")
+MODEL_DIR = Path("tests/data/models/chip_ar_mdapca2b_bpnet/multi-fold") 
 
 # 1. Genome Config
 # We use the same genome config as training
@@ -62,10 +63,10 @@ data_config: DataConfig = {
 # Matches training architecture
 model_config: ModelConfig = {
     "name": "BPNet",
-    "model_cls": BPNet,
-    "loss_cls": BPNetLoss,
+    "model_cls": "cerberus.models.bpnet.BPNet",
+    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
     "loss_args": {"alpha": 1.0},
-    "metrics_cls": BPNetMetricCollection,
+    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
     "metrics_args": {},
     "model_args": {
         "input_channels": ["A", "C", "G", "T"],
@@ -135,15 +136,17 @@ for iv in test_intervals:
 # ## 4. Single Interval Prediction
 
 # %%
-pred_iv0 : ProfileCountOutput = ensemble.predict_intervals(
+pred_iv0 = cast(ProfileCountOutput, ensemble.predict_intervals(
     intervals=[test_intervals[0]],
     dataset=dataset,
     use_folds=["test"],
-    aggregation="interval+model")
+    aggregation="interval+model"))
 
 print(f"Predicted output for interval {test_intervals[0]}:")
 print(f"pred_iv0.out_interval: {pred_iv0.out_interval}")
-print(f"pred_iv0.logits.shape: {pred_iv0.logits[:,(100,200,300,400,500,600,700,800,900)]}")
+print(f"pred_iv0.logits.shape: {pred_iv0.logits.shape}")
+# Slicing on the last dimension (length)
+# print(f"Sample logits: {pred_iv0.logits[..., [100, 200, 300, 400, 500]]}")
 print(f"pred_iv0.log_counts.mean().item(): {pred_iv0.log_counts.mean().item()}")
 
 # %% [markdown]
@@ -151,12 +154,12 @@ print(f"pred_iv0.log_counts.mean().item(): {pred_iv0.log_counts.mean().item()}")
 
 # %%
 iv_block = Interval(chrom="chr8", start=24_000_000, end=24_010_000)
-pred_block: list[ProfileCountOutput] = ensemble.predict_output_intervals(
+pred_block = cast(list[ProfileCountOutput], ensemble.predict_output_intervals(
     intervals=[iv_block],
     dataset=dataset,
     stride=100,
     use_folds=["test"],
-    aggregation="interval+model")
+    aggregation="interval+model"))
 
 # %% [markdown]
 # ## 6. Visualize Predictions
