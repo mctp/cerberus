@@ -1,6 +1,5 @@
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from typing import cast, Any
 from pathlib import Path
 
@@ -13,57 +12,7 @@ from .config import (
     SamplerConfig,
 )
 # Moved instantiation logic to module.py
-from .module import CerberusModule, instantiate, instantiate_model
-
-
-def _configure_callbacks(
-    train_config: TrainConfig,
-    existing_callbacks: list[pl.Callback] | None = None,
-    enable_checkpointing: bool = True,
-    use_logger: bool = True,
-) -> list[pl.Callback]:
-    """
-    Helper to configure default callbacks (LearningRateMonitor, ModelCheckpoint, EarlyStopping).
-
-    Args:
-        train_config: Training configuration.
-        existing_callbacks: List of user-provided callbacks.
-        enable_checkpointing: Whether to enable checkpointing.
-        use_logger: Whether to enable logging.
-
-    Returns:
-        List of configured callbacks.
-    """
-    current_callbacks = list(existing_callbacks) if existing_callbacks else []
-    existing_types = {type(c) for c in current_callbacks}
-
-    def add_if_missing(callback_cls, **kwargs):
-        if callback_cls not in existing_types:
-            current_callbacks.append(callback_cls(**kwargs))
-
-    # 1. LearningRateMonitor
-    if use_logger:
-        add_if_missing(LearningRateMonitor, logging_interval="step")
-
-    # 2. ModelCheckpoint
-    if enable_checkpointing:
-        add_if_missing(
-            ModelCheckpoint,
-            monitor="val_loss",
-            mode="min",
-            save_top_k=1,
-            filename="checkpoint-{epoch:02d}-{val_loss:.4f}",
-        )
-
-    # 3. EarlyStopping
-    add_if_missing(
-        EarlyStopping,
-        monitor="val_loss",
-        patience=train_config["patience"],
-        mode="min",
-    )
-    
-    return current_callbacks
+from .module import CerberusModule, instantiate, instantiate_model, _configure_callbacks
 
 
 def train(

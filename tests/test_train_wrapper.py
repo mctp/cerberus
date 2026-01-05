@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 from typing import cast
-from cerberus.entrypoints import train
+from cerberus.train import train
 from cerberus.config import TrainConfig
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor

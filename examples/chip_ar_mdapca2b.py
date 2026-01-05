@@ -27,7 +27,7 @@ from cerberus.models.gopher import GlobalProfileCNN
 from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.metrics import DefaultMetricCollection
 from cerberus.loss import ProfilePoissonNLLLoss
-from cerberus.entrypoints import train_single, train_multi
+from cerberus.train import train_single, train_multi
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train a CNN model with Cerberus")

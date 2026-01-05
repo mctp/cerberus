@@ -7,7 +7,7 @@ Cerberus leverages [PyTorch Lightning](https://lightning.ai/docs/pytorch/stable/
 Cerberus does not implement its own distributed training logic. Instead, it relies on the underlying PyTorch Lightning infrastructure:
 
 *   **`CerberusModule`**: Inherits from `pl.LightningModule`. It is designed to be strategy-agnostic, using standard hooks (like `training_step`) and logging methods (`self.log`) that automatically handle synchronization across devices.
-*   **`train()` Entrypoint**: The `cerberus.entrypoints.train` function acts as a wrapper around `pl.Trainer`. It accepts arbitrary keyword arguments (`**trainer_kwargs`) that are passed directly to the `pl.Trainer` constructor, allowing full access to Lightning's distributed training configuration.
+*   **`train()` Entrypoint**: The `cerberus.train.train` function acts as a wrapper around `pl.Trainer`. It accepts arbitrary keyword arguments (`**trainer_kwargs`) that are passed directly to the `pl.Trainer` constructor, allowing full access to Lightning's distributed training configuration.
 
 ## Training Strategy
 
@@ -30,7 +30,7 @@ Multi-GPU settings are **not** defined in the `TrainConfig` dictionary (which ha
 ### Example: Training on 4 GPUs with DDP
 
 ```python
-from cerberus.entrypoints import train
+from cerberus.train import train
 
 # ... (initialize module and datamodule) ...
 

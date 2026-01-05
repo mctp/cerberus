@@ -76,7 +76,9 @@ data_module = CerberusDataModule(
     genome_config=genome_config,
     data_config=data_config,
     sampler_config=sampler_config,
-    pin_memory=True
+    pin_memory=True,            # Auto-disabled on MPS
+    persistent_workers=True,    # Faster worker initialization
+    multiprocessing_context=None # e.g. 'spawn' for MPS stability
 )
 
 # Setup datasets (split into train/val/test)
@@ -86,11 +88,11 @@ data_module.setup(batch_size=256, num_workers=8)
 
 ## 3. Train with PyTorch Lightning
 
-You can use the `cerberus.entrypoints` module to instantiate the model and start training easily.
+You can use the `cerberus.train` module to instantiate the model and start training easily.
 
 ```python
 import torch.nn as nn
-from cerberus.entrypoints import instantiate, train, train_multi
+from cerberus.train import instantiate, train, train_multi
 from cerberus.loss import BPNetLoss
 from torchmetrics import MetricCollection, PearsonCorrCoef, MeanSquaredError
 

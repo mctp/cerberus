@@ -19,7 +19,7 @@ from cerberus.models.gopher import GlobalProfileCNN
 from cerberus.metrics import DefaultMetricCollection
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.module import CerberusModule
-from cerberus.entrypoints import train
+from cerberus.train import train
 
 # Mock imports
 try:

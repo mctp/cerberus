@@ -1,6 +1,6 @@
 from typing import cast
 from unittest.mock import MagicMock, patch
-from cerberus.entrypoints import train_multi
+from cerberus.train import train_multi
 from cerberus.config import TrainConfig, GenomeConfig, ModelConfig
 
 def test_train_multi_loop():
@@ -40,8 +40,8 @@ def test_train_multi_loop():
     })
 
     # Patches
-    with patch("cerberus.entrypoints.CerberusDataModule") as mock_dm_cls, \
-         patch("cerberus.entrypoints.instantiate") as mock_instantiate, \
+    with patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
+         patch("cerberus.train.instantiate") as mock_instantiate, \
          patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
          patch("pathlib.Path.mkdir") as mock_mkdir:
         

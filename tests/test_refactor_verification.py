@@ -7,7 +7,7 @@ from cerberus.config import (
     import_class,
     ModelConfig
 )
-from cerberus.entrypoints import instantiate_model
+from cerberus.module import instantiate_model
 from cerberus.model_ensemble import ModelEnsemble
 import cerberus.model_ensemble
 import torch

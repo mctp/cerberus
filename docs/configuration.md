@@ -192,6 +192,22 @@ class ModelConfig(TypedDict):
     model_args: dict[str, Any]
 ```
 
+## DataModule Runtime Arguments
+
+Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
+
+- **pin_memory** (`bool`, default: `True`):
+  - Whether to pin memory in DataLoaders (recommended for GPU training).
+  - *Note: Automatically disabled on MPS devices.*
+
+- **persistent_workers** (`bool`, default: `True`):
+  - Whether to keep workers alive between epochs.
+  - Improves performance when `num_workers > 0`.
+
+- **multiprocessing_context** (`str | None`, default: `None`):
+  - Explicitly set the multiprocessing start method (e.g., `'spawn'`, `'fork'`, `'forkserver'`).
+  - Useful for MPS/macOS stability if default behaviors cause crashes.
+
 ### Sampler Arguments
 
 *   **Interval Sampler**:

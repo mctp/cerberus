@@ -30,7 +30,7 @@ from cerberus.genome import create_genome_config
 from cerberus.models.geminet import GemiNet
 # Import BPNet Loss/Metrics (since output heads are compatible)
 from cerberus.models.bpnet import BPNetMetricCollection, BPNetLoss
-from cerberus.entrypoints import train_single, train_multi
+from cerberus.train import train_single, train_multi
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train a GemiNet model with Cerberus")

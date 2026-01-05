@@ -305,8 +305,11 @@ The dataloader design adheres to PyTorch performance best practices while respec
 1.  **Parallel Loading & Workers**:
     -   **pybigtools Specifics**: `pybigtools` releases the GIL, allowing concurrent reads.
     -   **Recommendation**: Use `num_workers=2` to `4` to parallelize the Python-side **Transform** operations (OHE, Log, etc.) while allowing efficient I/O.
+    -   **Persistent Workers**: Use `persistent_workers=True` to keep worker processes alive between epochs, reducing startup overhead.
+    -   **Multiprocessing Context**: On macOS/MPS, explicitly set `multiprocessing_context='spawn'` if stability issues (crashes/hangs) arise.
 2.  **Memory Management**:
     -   **`pin_memory=True`**: Ensures data is allocated in pinned (page-locked) memory, allowing for non-blocking high-speed transfer to the GPU.
+    -   *Note*: Automatically disabled on MPS devices where pinned memory is currently unsupported.
 3.  **Reproducibility**:
     -   **`worker_init_fn`**: Global seeding must be managed carefully for random augmentations and NumPy.
 

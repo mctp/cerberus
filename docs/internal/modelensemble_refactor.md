@@ -48,7 +48,7 @@ An `ensemble_metadata.yaml` file is now mandatory at the Experiment Root.
 -   `_import_class(name)`: Helper to dynamically load a class from a dotted string.
 -   `update_ensemble_metadata(root, fold_id)`: Centralized logic to update the metadata file.
 
-### 2. Entrypoints (`src/cerberus/entrypoints.py`)
+### 2. Entrypoints (`src/cerberus.train.py`)
 
 #### Instantiation (`instantiate`)
 -   Now expects `ModelConfig` to contain strings for class names.
@@ -98,7 +98,7 @@ An `ensemble_metadata.yaml` file is now mandatory at the Experiment Root.
 -   **`tests/test_model_ensemble_hparams.py`**:
     -   Updated tests to initialize `ensemble_metadata.yaml` and proper fold structures, as `ModelEnsemble` now throws `FileNotFoundError` if metadata is missing.
 -   **`tests/test_train_multi.py`**:
-    -   Added mocking for `cerberus.entrypoints.update_ensemble_metadata` to prevent File I/O errors during tests where the filesystem is mocked.
+    -   Added mocking for `cerberus.train.update_ensemble_metadata` to prevent File I/O errors during tests where the filesystem is mocked.
 -   **`tests/test_config_validation.py` & `tests/test_predict.py`**:
     -   Updated to pass **string class names** (e.g., `"tests.test_predict.DummyModel"`) instead of class objects in `ModelConfig`, complying with the new strict validation.
 -   **`tests/test_hparams_parsing.py`**:
@@ -114,13 +114,13 @@ An `ensemble_metadata.yaml` file is now mandatory at the Experiment Root.
 -   **Architecture Simplified**: `_ModelManager` in `src/cerberus/model_ensemble.py` has been refactored to strictly follow `ensemble_metadata.yaml`. It no longer guesses directory structures (`_detect_multifold` removed). Single-fold models are treated identically to multi-fold (iterating over `folds` list).
 -   **Config Enhancements**:
     -   Added `import_class` utility in `src/cerberus/config.py`.
-    -   Updated `src/cerberus/entrypoints.py` to use `import_class` for dynamic class loading from string configs.
+    -   Updated `src/cerberus.train.py` to use `import_class` for dynamic class loading from string configs.
     -   Updated `validate_model_config` to strictly enforce string types for class names.
 -   **Example Updates**: Updated `examples/chip_ar_mdapca2b_bpnet.py` to use the new string-based configuration format.
 
 ### 5. Cohesion & Architecture Refactor (January 2026)
 -   **Aggregation Logic Moved**: Static aggregation methods (`_unbatch_modeloutput`, `_aggregate_tensor_track_values`, etc.) were moved from `src/cerberus/model_ensemble.py` to `src/cerberus/output.py` to improve cohesion (logic stays with data structures).
--   **Instantiation Logic Moved**: Factory functions `instantiate` and `instantiate_model` were moved from `src/cerberus/entrypoints.py` to `src/cerberus/module.py`. `entrypoints.py` now re-exports them but focuses on high-level training workflows.
+-   **Instantiation Logic Moved**: Factory functions `instantiate` and `instantiate_model` were moved from `src/cerberus.train.py` to `src/cerberus/module.py`. `entrypoints.py` now re-exports them but focuses on high-level training workflows.
 
 ## ⚠️ Important: Repository History Rewrite
 

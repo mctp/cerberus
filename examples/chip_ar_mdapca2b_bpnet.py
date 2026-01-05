@@ -24,7 +24,7 @@ from pprint import pprint
 from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
-from cerberus.entrypoints import train_single, train_multi
+from cerberus.train import train_single, train_multi
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train a BPNet model with Cerberus")
