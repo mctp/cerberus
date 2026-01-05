@@ -5,7 +5,7 @@ from cerberus.config import parse_hparams_config
 
 def test_parse_hparams_config_success():
     # Use existing hparams file
-    hparams_path = Path("tests/data/models/chip_ar_mdapca2b-geminet/multi-fold/fold_0/lightning_logs/version_0/hparams.yaml")
+    hparams_path = Path("tests/data/models/chip_ar_mdapca2b_bpnet/multi-fold/fold_0/lightning_logs/version_0/hparams.yaml")
     
     if not hparams_path.exists():
         pytest.skip(f"Test hparams file not found at {hparams_path}")
@@ -21,12 +21,12 @@ def test_parse_hparams_config_success():
     assert "model_config" in config
     
     # Check some values to ensure they are parsed correctly
-    assert config["data_config"]["input_len"] == 2048
+    assert config["data_config"]["input_len"] == 2114
     assert isinstance(config["genome_config"]["fasta_path"], Path)
     assert config["genome_config"]["name"] == "hg38"
-    assert config["model_config"]["name"] == "GemiNet"
+    assert config["model_config"]["name"] == "BPNet"
     # Check class string
-    assert config["model_config"]["model_cls"] == "cerberus.models.geminet.GeminiNet"
+    assert config["model_config"]["model_cls"] == "cerberus.models.bpnet.BPNet"
     
 def test_parse_hparams_config_not_found():
     with pytest.raises(FileNotFoundError):
