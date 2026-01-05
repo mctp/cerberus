@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import os
 import torch
 from pathlib import Path
 from pprint import pprint
@@ -42,6 +43,7 @@ def get_args():
     # Hyperparameters
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
     parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
+    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson"], help="Loss function to use")
 
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
@@ -140,13 +142,21 @@ def main():
 
     # Model Config for BPNet
     print("Using BPNet Model...")
+
+    if args.loss == "poisson":
+        loss_cls = "cerberus.loss.PoissonMultinomialLoss"
+        loss_args = {"count_weight": args.alpha}
+        print(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
+    else:
+        loss_cls = "cerberus.models.bpnet.BPNetLoss"
+        loss_args = {"alpha": args.alpha}
+        print(f"Using BPNetLoss (alpha={args.alpha})...")
+
     model_config: ModelConfig = {
         "name": "BPNet",
         "model_cls": "cerberus.models.bpnet.BPNet",
-        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-        "loss_args": {
-            "alpha": args.alpha,
-        },
+        "loss_cls": loss_cls,
+        "loss_args": loss_args,
         "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "metrics_args": {},
         "model_args": {
@@ -238,7 +248,8 @@ def main():
             **precision_args
         )
 
-    print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
+    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+        print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
 
 if __name__ == "__main__":
     main()

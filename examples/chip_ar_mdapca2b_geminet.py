@@ -6,8 +6,8 @@ This script implements a GemiNet training run using the MDA-PCA-2b AR dataset.
 GemiNet is a drop-in replacement for BPNet using Projected Gated Convolutions (PGC).
 
 It follows the standard configuration:
-- Input: 2114bp DNA sequence
-- Output: 1000bp base-resolution profile
+- Input: 2048bp DNA sequence
+- Output: 1024bp base-resolution profile
 - Model: GemiNet (8 dilated PGC layers)
 - Loss: BPNetLoss (Multinomial NLL + MSE log counts)
 - Training: Based on peak intervals (narrowPeak)
@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import os
 import torch
 from pathlib import Path
 from pprint import pprint
@@ -44,6 +45,7 @@ def get_args():
     # Hyperparameters
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
     parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
+    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson"], help="Loss function to use")
     parser.add_argument("--expansion", type=int, default=1, help="GemiNet expansion factor (default: 1)")
 
     # Hardware arguments
@@ -143,13 +145,21 @@ def main():
 
     # Model Config for GemiNet
     print("Using GemiNet Model...")
+
+    if args.loss == "poisson":
+        loss_cls = "cerberus.loss.PoissonMultinomialLoss"
+        loss_args = {"count_weight": args.alpha}
+        print(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
+    else:
+        loss_cls = "cerberus.models.bpnet.BPNetLoss"
+        loss_args = {"alpha": args.alpha}
+        print(f"Using BPNetLoss (alpha={args.alpha})...")
+
     model_config: ModelConfig = {
         "name": "GemiNet",
         "model_cls": "cerberus.models.geminet.GemiNet",
-        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-        "loss_args": {
-            "alpha": args.alpha,
-        },
+        "loss_cls": loss_cls,
+        "loss_args": loss_args,
         "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "metrics_args": {},
         "model_args": {
@@ -242,7 +252,8 @@ def main():
             **precision_args
         )
 
-    print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
+    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+        print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
 
 if __name__ == "__main__":
     main()

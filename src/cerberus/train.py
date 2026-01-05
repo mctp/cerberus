@@ -1,3 +1,4 @@
+import os
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
@@ -156,7 +157,8 @@ def train_single(
         The fitted PyTorch Lightning Trainer object.
     """
     # 0. Update Metadata and Prepare Directory
-    update_ensemble_metadata(root_dir, test_fold)
+    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+        update_ensemble_metadata(root_dir, test_fold)
 
     root_path = Path(root_dir)
     fold_dir = root_path / f"fold_{test_fold}"
@@ -245,7 +247,6 @@ def train_multi(
     """
     k = genome_config["fold_args"]["k"]
     trainers = []
-    root_path = Path(root_dir)
 
     for i in range(k):
         test_fold = i
