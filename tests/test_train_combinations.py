@@ -3,7 +3,7 @@ import pytest
 import torch
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint
-from cerberus.train import train
+from cerberus.train import _train as train
 from cerberus.config import TrainConfig
 
 class MockDataModule(LightningDataModule):

@@ -493,3 +493,28 @@ class _ModelManager:
         
         self.cache[key] = model
         return model
+
+
+def update_ensemble_metadata(root_dir: Path | str, fold: int):
+    """
+    Updates or creates ensemble_metadata.yaml in the root directory
+    to include the specified fold.
+    """
+    path = Path(root_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    meta_path = path / "ensemble_metadata.yaml"
+    
+    existing_folds = set()
+    if meta_path.exists():
+        with open(meta_path, "r") as f:
+            try:
+                meta = yaml.safe_load(f)
+                if meta and "folds" in meta:
+                     existing_folds = set(meta["folds"])
+            except yaml.YAMLError:
+                pass
+    
+    existing_folds.add(fold)
+    
+    with open(meta_path, "w") as f:
+        yaml.dump({"folds": sorted(list(existing_folds))}, f)

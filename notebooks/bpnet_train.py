@@ -20,7 +20,7 @@ from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
 from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.module import CerberusModule
-from cerberus.train import train
+from cerberus.train import _train as train
 
 # %% [markdown]
 # ## 1. Setup Directories and Download Data

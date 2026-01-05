@@ -43,7 +43,8 @@ def test_train_multi_loop():
     with patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
          patch("cerberus.train.instantiate") as mock_instantiate, \
          patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
-         patch("pathlib.Path.mkdir") as mock_mkdir:
+         patch("pathlib.Path.mkdir") as mock_mkdir, \
+         patch("cerberus.train.update_ensemble_metadata") as mock_metadata:
         
         mock_trainer_instance = mock_trainer_cls.return_value
         

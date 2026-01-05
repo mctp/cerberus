@@ -13,9 +13,10 @@ from .config import (
 )
 # Moved instantiation logic to module.py
 from .module import CerberusModule, instantiate, instantiate_model, _configure_callbacks
+from .model_ensemble import update_ensemble_metadata
 
 
-def train(
+def _train(
     module: pl.LightningModule,
     datamodule: CerberusDataModule,
     train_config: TrainConfig,
@@ -122,8 +123,8 @@ def train_single(
     sampler_config: SamplerConfig,
     model_config: ModelConfig,
     train_config: TrainConfig,
-    test_fold: int | None = None,
-    val_fold: int | None = None,
+    test_fold: int = 0,
+    val_fold: int = 1,
     compile: bool = False,
     num_workers: int = 0,
     in_memory: bool = False,
@@ -158,6 +159,13 @@ def train_single(
     Returns:
         The fitted PyTorch Lightning Trainer object.
     """
+    # 0. Update Metadata and Prepare Directory
+    update_ensemble_metadata(root_dir, test_fold)
+
+    root_path = Path(root_dir)
+    fold_dir = root_path / f"fold_{test_fold}"
+    fold_dir.mkdir(parents=True, exist_ok=True)
+
     # 1. Instantiate DataModule for this fold
     datamodule = CerberusDataModule(
         genome_config=genome_config,
@@ -166,6 +174,14 @@ def train_single(
         test_fold=test_fold,
         val_fold=val_fold,
     )
+
+    # Update genome_config to reflect the actual folds used
+    # This ensures hparams.yaml logged by Lightning matches the directory structure
+    if "fold_args" in genome_config:
+        genome_config = genome_config.copy()
+        genome_config["fold_args"] = genome_config["fold_args"].copy()
+        genome_config["fold_args"]["test_fold"] = test_fold
+        genome_config["fold_args"]["val_fold"] = val_fold
 
     # 2. Instantiate new Model
     module = instantiate(
@@ -178,7 +194,7 @@ def train_single(
     )
 
     # 3. Train
-    return train(
+    return _train(
         module=module,
         datamodule=datamodule,
         train_config=train_config,
@@ -186,7 +202,7 @@ def train_single(
         in_memory=in_memory,
         matmul_precision=matmul_precision,
         precision=precision,
-        root_dir=root_dir,
+        root_dir=fold_dir,
         val_batch_size=val_batch_size,
         **trainer_kwargs,
     )
@@ -239,10 +255,6 @@ def train_multi(
         test_fold = i
         val_fold = (i + 1) % k
 
-        # Setup directory for this fold
-        fold_dir = root_path / f"fold_{test_fold}"
-        fold_dir.mkdir(parents=True, exist_ok=True)
-
         print(f"Starting training for Fold {test_fold} (Val: {val_fold})...")
 
         trainer = train_single(
@@ -258,7 +270,7 @@ def train_multi(
             in_memory=in_memory,
             matmul_precision=matmul_precision,
             precision=precision,
-            root_dir=fold_dir,
+            root_dir=root_dir,
             val_batch_size=val_batch_size,
             **trainer_kwargs,
         )

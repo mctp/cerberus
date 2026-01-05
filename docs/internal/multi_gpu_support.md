@@ -30,7 +30,7 @@ Multi-GPU settings are **not** defined in the `TrainConfig` dictionary (which ha
 ### Example: Training on 4 GPUs with DDP
 
 ```python
-from cerberus.train import train
+from cerberus.train import _train as train
 
 # ... (initialize module and datamodule) ...
 

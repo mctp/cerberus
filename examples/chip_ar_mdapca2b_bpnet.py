@@ -238,7 +238,7 @@ def main():
             **precision_args
         )
 
-    print(f"Training finished. Logs and checkpoints are in {output_dir}")
+    print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
 
 if __name__ == "__main__":
     main()

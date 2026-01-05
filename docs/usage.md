@@ -92,7 +92,7 @@ You can use the `cerberus.train` module to instantiate the model and start train
 
 ```python
 import torch.nn as nn
-from cerberus.train import instantiate, train, train_multi
+from cerberus.train import train_single, train_multi
 from cerberus.loss import BPNetLoss
 from torchmetrics import MetricCollection, PearsonCorrCoef, MeanSquaredError
 
@@ -138,15 +138,15 @@ model_config = {
     }
 }
 
-# Instantiate CerberusModule (LightningModule wrapper)
-module = instantiate(model_config, data_config, train_config, compile=False)
-
 # Option A: Train a Single Model (Single Split)
-# Uses the splits defined in data_module (default test_fold=0, val_fold=1)
-trainer = train(
-    module, 
-    data_module, 
-    train_config, 
+# Uses the high-level API to handle instantiation and output structure (creates fold_0)
+# (test_fold defaults to 0, val_fold defaults to 1)
+trainer = train_single(
+    genome_config=genome_config,
+    data_config=data_config,
+    sampler_config=sampler_config,
+    model_config=model_config,
+    train_config=train_config,
     num_workers=8, 
     in_memory=False, 
     precision="16-mixed",      # Enable Mixed Precision
