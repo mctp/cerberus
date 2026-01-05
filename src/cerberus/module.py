@@ -3,7 +3,7 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from torchmetrics import MetricCollection
-from typing import Callable, Any, cast
+from typing import Callable
 from pathlib import Path
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
@@ -248,9 +248,9 @@ def instantiate_model(
     )
 
     if compile:
-        model = cast(torch.nn.Module, torch.compile(model))
+        model = torch.compile(model)
         
-    return model
+    return model # type: ignore
 
 
 def instantiate(
