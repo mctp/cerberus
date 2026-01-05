@@ -1,6 +1,7 @@
 import torch
 import pytorch_lightning as pl
-from typing import cast, Any
+from pytorch_lightning import loggers as pl_loggers
+from typing import Any
 from pathlib import Path
 
 from .datamodule import CerberusDataModule
@@ -12,7 +13,7 @@ from .config import (
     SamplerConfig,
 )
 # Moved instantiation logic to module.py
-from .module import CerberusModule, instantiate, instantiate_model, _configure_callbacks
+from .module import instantiate, _configure_callbacks
 from .model_ensemble import update_ensemble_metadata
 
 
@@ -85,14 +86,10 @@ def _train(
 
     # Explicitly use CSVLogger if none provided.
     if trainer_kwargs.get("logger") is True or trainer_kwargs.get("logger") is None:
-        # Import inside function to allow patching in tests (e.g. test_entrypoint_logger.py)
-        # where the logger class is mocked after module import.
-        from pytorch_lightning.loggers import CSVLogger
-
         save_dir = trainer_kwargs.get("default_root_dir", ".")
         if save_dir is None:
             save_dir = "."
-        trainer_kwargs["logger"] = CSVLogger(save_dir=str(save_dir))
+        trainer_kwargs["logger"] = pl_loggers.CSVLogger(save_dir=str(save_dir))
 
     # Initialize Trainer
     trainer = pl.Trainer(
