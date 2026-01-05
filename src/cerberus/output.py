@@ -88,6 +88,15 @@ def aggregate_tensor_track_values(
     """
     Aggregates a list of tensors into a single merged array.
     
+    This function handles the spatial alignment of multiple (potentially overlapping)
+    prediction tracks into a single contiguous track. It computes the average value
+    for bins where multiple predictions overlap.
+    
+    Note on Alignment (Snap-to-Grid):
+    When output_bin_size > 1, the function snaps interval starts to the nearest bin
+    (flooring behavior). Sub-bin shifts (e.g. from Jitter) are effectively Aliased/Quantized
+    to the bin grid defined by merged_interval.start.
+    
     Args:
         outputs: List of tensors to aggregate.
         intervals: List of intervals corresponding to the tensors.
@@ -168,6 +177,10 @@ def aggregate_intervals(
 ) -> ModelOutput:
     """
     Aggregates overlapping predictions into a single merged output.
+    
+    This high-level function unifies predictions from multiple genomic intervals (e.g. tiles)
+    into a single ModelOutput object covering the union of all input intervals.
+    It delegates to `aggregate_tensor_track_values` for spatial merging of profile tracks.
     
     Args:
         outputs: List of unbatched output dictionaries.

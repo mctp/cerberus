@@ -20,10 +20,12 @@ class GenomeConfig(TypedDict):
     # Dictionary mapping chromosome names to exclusion intervals (InterLap objects or paths)
     exclude_intervals: dict[str, InterLap] | dict[str, Path]
     
-    # Cross-validation strategy
+    # Cross-validation strategy. Currently only "chrom_partition" is supported.
     fold_type: str  # e.g., "chrom_partition"
     
-    # Arguments for the fold strategy
+    # Arguments for the fold strategy.
+    # For 'chrom_partition', required keys: 'k' (int).
+    # Optional keys: 'test_fold' (int), 'val_fold' (int).
     fold_args: dict[str, Any]
     
     # Optional list of allowed chromosomes

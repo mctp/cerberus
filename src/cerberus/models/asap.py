@@ -6,9 +6,13 @@ import torch.nn.functional as F
 from cerberus.output import ProfileLogRates
 
 class _GRN1d(nn.Module):
-    """ ConvNeXt v2 GRN (Global Response Normalization) layer, adapted for 1d
-
-    via facebookresearch/ConvNeXt-V2
+    """ 
+    ConvNeXt v2 GRN (Global Response Normalization) layer, adapted for 1d.
+    
+    This layer computes the L2 norm across the temporal dimension and divides
+    by the mean norm to normalize channel responses globally.
+    
+    Reference: facebookresearch/ConvNeXt-V2
     """
     def __init__(self, dim):
         super().__init__()
@@ -21,7 +25,18 @@ class _GRN1d(nn.Module):
         return self.gamma * (x * Nx) + self.beta + x
 
 class _ConvNeXtV2Block(nn.Module):
-    """Adapted from ConvNeXt"""
+    """
+    ConvNeXt V2 Block adapted for 1D genomic data.
+    
+    Structure:
+    - Depthwise Conv1d (Spatial mixing)
+    - LayerNorm
+    - Pointwise Conv1d (Channel expansion)
+    - GELU
+    - GRN (Global Response Normalization)
+    - Pointwise Conv1d (Channel compression)
+    - Residual connection
+    """
     def __init__(
         self,
         channels_in,
@@ -74,6 +89,9 @@ class _ConvNeXtV2Block(nn.Module):
         return x
 
 class _ConvBlock(nn.Module):
+    """
+    Standard Conv1d block: GELU -> Conv1d -> BatchNorm.
+    """
     def __init__(self, channels_in, channels_out:int=1 , kernel_size:int=1 , dilation_rate:int=1, bn_gamma=None) -> None:
         super().__init__()
         self.activation = nn.GELU()
@@ -102,6 +120,17 @@ class _ConvBlock(nn.Module):
         return x
 
 class _BasenjiCoreBlock(nn.Module):
+    """
+    Basenji/BBPnet-style Dilated Residual Tower.
+    
+    Consists of multiple blocks, each with:
+    - Dilated Conv (increasing dilation)
+    - Pointwise Conv
+    - Dropout
+    - Residual Connection
+    
+    Followed by a final projection and optional pooling.
+    """
     def __init__(self, nr_tracks: int, window: int, filters_in,
                   nr_res_blocks: int = 11, rate_mult: float = 1.5, bin_size: int = 100, filters1: int = 128,
                   filters3: int | None = None, kernel1: int = 3, kernel2: int = 1, dropout: float = 0.3,

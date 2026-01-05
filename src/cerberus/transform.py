@@ -41,9 +41,12 @@ class Compose:
 class Jitter:
     """
     Randomly crops input/target tensors to input_len.
-    Updates the interval coordinates to reflect the crop.
     
     This augmentation simulates random shifting of the genomic window.
+    
+    IMPORTANT: This transform updates the `interval.start` and `interval.end` 
+    attributes of the passed Interval object to reflect the new cropped region.
+    Downstream components should use these updated coordinates.
     """
 
     def __init__(self, input_len: int, max_jitter: int | None = None):

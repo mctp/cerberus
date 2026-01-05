@@ -30,8 +30,10 @@ class GenomeConfig(TypedDict):
         exclude_intervals: Dictionary mapping names to BED files of regions to exclude.
         allowed_chroms: List of chromosome names to include.
         chrom_sizes: Dictionary mapping chromosome names to their lengths.
-        fold_type: Strategy for creating folds (e.g., 'chrom_partition').
-        fold_args: Arguments for the folding strategy (e.g., {'k': 5}).
+        fold_type: Strategy for creating folds. Currently only 'chrom_partition' is supported.
+        fold_args: Arguments for the folding strategy.
+                   For 'chrom_partition', required keys: 'k' (int).
+                   Optional keys: 'test_fold' (int), 'val_fold' (int).
     """
 
     name: str
@@ -581,11 +583,7 @@ def validate_model_config(config: ModelConfig) -> ModelConfig:
     if not isinstance(config["metrics_cls"], str):
         raise TypeError("metrics_cls must be a string (fully qualified class name)")
 
-    # Check for required args in model_args (now optional/convention, but we should validate if present)
-    # The requirement is moving them to model_args, so we should assume they might be there.
-    # We can validate them if they exist, or check if specific keys are required by policy.
-    # Given the previous validation was strict, let's strictly validate them INSIDE model_args.
-    
+    # Validate optional arguments in model_args if present
     model_args = config["model_args"]
     if not isinstance(model_args, dict):
         raise TypeError("model_args must be a dictionary")

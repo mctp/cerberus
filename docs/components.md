@@ -18,8 +18,8 @@ Systematically scans the genome with a fixed stride.
 A meta-sampler that combines multiple samplers.
 *   **Use Case**: Balancing positive (peaks) and negative (background) examples.
 *   **Behavior**: Mixes samples from sub-samplers based on `scaling_factors`.
-    *   `scaling < 1.0`: Subsamples (uses a random subset each epoch).
-    *   `scaling > 1.0`: Oversamples (duplicates samples).
+    *   `scaling < 1.0`: Subsamples (uses a random subset each epoch **without replacement**).
+    *   `scaling > 1.0`: Oversamples (duplicates samples via random sampling **with replacement**).
 
 ## Extractors
 

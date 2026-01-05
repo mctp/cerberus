@@ -399,7 +399,9 @@ class MultiSampler(BaseSampler):
             scaling_factors: List of floats, one per sampler.
                              - 1.0: Use all samples.
                              - < 1.0: Subsample (e.g., 0.5 uses 50%).
+                                    Implemented as random sampling WITHOUT replacement.
                              - > 1.0: Oversample (e.g., 2.0 duplicates samples).
+                                    Implemented as random sampling WITH replacement.
         """
         self.samplers = samplers
         self.chrom_sizes = chrom_sizes

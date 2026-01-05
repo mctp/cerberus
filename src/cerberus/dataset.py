@@ -228,6 +228,19 @@ class CerberusDataset(Dataset):
     def _get_interval(self, interval: Interval) -> dict[str, Any]:
         """
         Internal method to extract data for a resolved interval.
+        
+        This method performs the core logic of fetching data from extractors
+        and applying transformations.
+        
+        Note: The 'interval' object is passed to transforms, which may modify it in-place
+        (e.g., Jitter updates the start/end coordinates). The returned dictionary contains
+        the string representation of this potentially modified interval.
+        
+        Args:
+            interval: The genomic interval to retrieve.
+            
+        Returns:
+            dict: Containing 'inputs', 'targets', and 'intervals' string.
         """
         # Extract inputs
         input_tensors = []
@@ -280,6 +293,8 @@ class CerberusDataset(Dataset):
                             and optional input signals.
                 - 'targets': Tensor of shape (Target_Channels, Output_Length).
                 - 'intervals': String representation of the genomic interval.
+                               Note: If random transforms (like Jitter) are active, this string
+                               reflects the transformed coordinates, not the original sampler coordinates.
         """
         interval = self.sampler[idx]
         return self._get_interval(interval)
@@ -292,7 +307,17 @@ class CerberusDataset(Dataset):
     def _subset(self, sampler: Sampler, is_train: bool = True) -> "CerberusDataset":
         """
         Internal method to create a new dataset instance using the provided sampler.
-        Shares the sequence extractor, configuration, and exclude intervals with the current instance.
+        
+        This is used by split_folds to create train/val/test datasets that share
+        underlying resources (extractors, caches) with the parent dataset but
+        iterate over different subsets of intervals.
+        
+        Args:
+            sampler: The subset sampler to use.
+            is_train: Whether the subset is for training.
+            
+        Returns:
+            CerberusDataset: A new dataset instance sharing resources.
         """
         return CerberusDataset(
             genome_config=self.genome_config,

@@ -12,6 +12,10 @@ class _Reshape(nn.Module):
     for the subsequent convolutional layers.
     """
     def __init__(self, *shape):
+        """
+        Args:
+            *shape: Target shape dimensions (excluding batch dimension).
+        """
         super().__init__()
         self.shape = shape
 

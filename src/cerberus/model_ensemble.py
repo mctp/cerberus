@@ -188,6 +188,13 @@ class ModelEnsemble(nn.ModuleDict):
                         target_partitions.add(fold_idx)
 
             # Determine which models to load based on use_folds            
+            # The rotation logic assumes:
+            # - Model 'i' treats Partition 'i' as TEST.
+            # - Model 'i' treats Partition '(i+1)%k' as VAL.
+            # Therefore:
+            # - To get TEST predictions for Partition 'p', we need Model 'p'.
+            # - To get VAL predictions for Partition 'p', we need Model 'p-1' (mod k).
+            
             models_to_load = set()
             if len(self.folds) > 0 and target_partitions:
                 for p_idx in target_partitions:

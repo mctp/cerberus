@@ -7,13 +7,18 @@ Prediction in Cerberus involves applying a trained model (or ensemble of models)
 ### ModelEnsemble
 The `ModelEnsemble` class is the central entry point for prediction. It:
 1.  **Loads Models**: Automatically detects single-fold or multi-fold checkpoints and loads the appropriate model weights.
-2.  **Manages Folds**: Identifies which model to run for a given genomic interval based on cross-validation fold definitions (e.g., using the "test" model for intervals in the test fold).
+2.  **Manages Folds**: Identifies which model to run for a given genomic interval based on cross-validation fold definitions.
+    *   **Rotation Logic**: Cerberus assumes a standard rotation where Model `i` uses Partition `i` as Test and Partition `(i+1)%k` as Validation.
+    *   If you request `use_folds=["test"]`, the ensemble selects Model `i` for intervals falling in Partition `i`.
 3.  **Aggregates**: Combines outputs from multiple models or overlapping intervals.
 
 ### Aggregation Strategies
 When multiple models predict on the same interval, or when tiling produces overlapping predictions, Cerberus needs to merge them.
 *   **"model"**: Aggregates outputs across models (e.g., averaging predictions from all folds). Returns batched `ModelOutput` objects.
 *   **"interval+model"**: Aggregates across models AND merges overlapping interval predictions into a single contiguous track. Returns unbatched `ModelOutput` objects.
+
+    **Note on Alignment**: When merging overlapping predictions (e.g. from tiling), if `output_bin_size > 1`, Cerberus performs a **"snap-to-grid"** alignment. 
+    Prediction starts are floored to the nearest bin relative to the merged interval start. This ensures consistent binning but means sub-bin shifts (e.g. from jitter) are quantized.
 
 ## Setup for Prediction
 
