@@ -21,7 +21,6 @@ src/cerberus/
 ├── model_ensemble.py   # Model loading and ensemble prediction logic
 ├── module.py           # PyTorch Lightning Module wrapper (CerberusModule)
 ├── output.py           # Model output dataclasses (ProfileLogits, etc.)
-├── predict.py          # Deprecated prediction wrappers
 ├── predict_bigwig.py   # Genome-wide BigWig generation
 ├── samplers.py         # Sampling logic (Interval, SlidingWindow, MultiSampler)
 ├── sequence.py         # Sequence extraction (FASTA handling)

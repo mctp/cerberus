@@ -27,7 +27,6 @@ from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
 from unittest.mock import patch
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.predict import predict_intervals
 from cerberus.output import ProfileCountOutput
 
 # %% [markdown]
@@ -125,10 +124,10 @@ torch.save({"state_dict": model.state_dict()}, ckpt_path)
 
 model_config: ModelConfig = {
     "name": "simple",
-    "model_cls": SimpleModel,
-    "loss_cls": nn.MSELoss,
+    "model_cls": "__main__.SimpleModel",
+    "loss_cls": "torch.nn.MSELoss",
     "loss_args": {},
-    "metrics_cls": MetricCollection,
+    "metrics_cls": "torchmetrics.MetricCollection",
     "metrics_args": {},
     "model_args": {"output_len": OUTPUT_LEN, "bin_size": BIN_SIZE}
 }
@@ -179,10 +178,9 @@ intervals = [
 
 # Run prediction
 # We use a small batch size to demonstrate batching
-output = predict_intervals(
+output = ensemble.predict_intervals(
     intervals,
     dataset,
-    ensemble,
     use_folds=["test"], # Or whatever fold the chroms fall into, ModelManager handles this
     aggregation="model",
     batch_size=2

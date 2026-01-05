@@ -30,7 +30,6 @@ from cerberus.genome import create_genome_config
 from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.dataset import CerberusDataset
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.predict import predict_intervals
 
 # %% [markdown]
 # ## 1. Setup Directories and Data
@@ -131,13 +130,13 @@ train_config: TrainConfig = {
 # Model Config for BPNet
 model_config: ModelConfig = {
     "name": "BPNet",
-    "model_cls": BPNet,
-    "loss_cls": BPNetLoss,
+    "model_cls": "cerberus.models.bpnet.BPNet",
+    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
     "loss_args": {
         "alpha": 1.0, 
         "implicit_log_targets": log_transform
     },
-    "metrics_cls": BPNetMetricCollection,
+    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
     "metrics_args": {"num_channels": 1},
     "model_args": {
         "input_channels": ["A", "C", "G", "T"],
@@ -208,10 +207,9 @@ intervals_to_predict = [target_interval]
 
 print(f"Predicting on interval: {target_interval}")
 
-output = predict_intervals(
+output = model_ensemble.predict_intervals(
     intervals=intervals_to_predict,
     dataset=dataset, 
-    model_ensemble=model_ensemble,
     use_folds=["test"],
     aggregation="model",
     batch_size=64
@@ -236,6 +234,9 @@ print(f"Merged Interval: {merged_interval}")
 # Extract Ground Truth
 if dataset.target_signal_extractor is None:
     raise ValueError("Target signal extractor is missing.")
+
+if merged_interval is None:
+    raise ValueError("Merged interval is None")
 
 gt_targets = dataset.target_signal_extractor.extract(merged_interval)
 print(f"Ground Truth Shape: {gt_targets.shape}")

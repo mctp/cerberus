@@ -31,7 +31,6 @@ from cerberus.metrics import DefaultMetricCollection
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.dataset import CerberusDataset
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.predict import predict_intervals
 
 # %% [markdown]
 # ## 1. Setup Directories and Data
@@ -42,7 +41,7 @@ from cerberus.predict import predict_intervals
 # %%
 project_root = get_project_root()
 data_dir = project_root / "tests/data"
-checkpoint_dir = project_root / "tests/data/models/chip_ar_mdapca2b/peaks-single"
+checkpoint_dir = project_root / "tests/data/models/chip_ar_mdapca2b_bpnet/single-fold"
 
 print(f"Data Directory: {data_dir}")
 print(f"Checkpoint Directory: {checkpoint_dir}")
@@ -123,10 +122,10 @@ train_config: TrainConfig = {
 
 model_config: ModelConfig = {
     "name": "GlobalProfileCNN",
-    "model_cls": GlobalProfileCNN,
-    "loss_cls": ProfilePoissonNLLLoss,
+    "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
+    "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
     "loss_args": {"log_input": True, "full": False},
-    "metrics_cls": DefaultMetricCollection,
+    "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
     "metrics_args": {"num_channels": 1},
     "model_args": {
         "input_channels": ["A", "C", "G", "T"],
@@ -193,10 +192,9 @@ intervals_to_predict = [target_interval]
 
 print(f"Predicting on interval: {target_interval}")
 
-output = predict_intervals(
+output = model_ensemble.predict_intervals(
     intervals=intervals_to_predict,
     dataset=dataset, # Use main dataset (has extractors)
-    model_ensemble=model_ensemble,
     use_folds=["test"], # Use the model corresponding to test fold
     aggregation="model",
     batch_size=64
@@ -219,6 +217,9 @@ print(f"Merged Interval: {merged_interval}")
 # Note: This ground truth will be raw signal over the huge merged interval.
 if dataset.target_signal_extractor is None:
     raise ValueError("Target signal extractor is missing.")
+
+if merged_interval is None:
+    raise ValueError("Merged interval is None")
 
 gt_targets = dataset.target_signal_extractor.extract(merged_interval)
 print(f"Ground Truth Shape: {gt_targets.shape}")
