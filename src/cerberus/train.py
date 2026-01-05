@@ -12,8 +12,7 @@ from .config import (
     GenomeConfig,
     SamplerConfig,
 )
-# Moved instantiation logic to module.py
-from .module import instantiate, _configure_callbacks
+from .module import instantiate, configure_callbacks
 from .model_ensemble import update_ensemble_metadata
 
 
@@ -73,7 +72,7 @@ def _train(
     enable_checkpointing = trainer_kwargs.get("enable_checkpointing", True)
 
     # Prepare callbacks
-    current_callbacks = _configure_callbacks(
+    current_callbacks = configure_callbacks(
         train_config,
         callbacks,
         enable_checkpointing=enable_checkpointing,

@@ -169,7 +169,7 @@ class CerberusModule(pl.LightningModule):
         self.val_metrics.reset()
 
 
-def _configure_callbacks(
+def configure_callbacks(
     train_config: TrainConfig,
     existing_callbacks: list[pl.Callback] | None = None,
     enable_checkpointing: bool = True,
