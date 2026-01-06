@@ -221,11 +221,12 @@ def main():
     
     # Precision settings
     precision_args = {
-        "precision": "16-mixed",
-        "matmul_precision": "high",
+        "precision": "bf16-mixed",
+        "matmul_precision": "medium",
         "accelerator": accelerator,
         "devices": devices,
-        "strategy": "ddp" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto"
+        "strategy": "ddp_find_unused_parameters_false" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto",
+        "benchmark": True
     }
 
     print("\nConfigurations:")
