@@ -37,12 +37,17 @@ class ProfilePearsonCorrCoef(PearsonCorrCoef):
         preds_flat = probs.detach().permute(0, 2, 1).reshape(-1, self.num_channels)
         target_flat = target.detach().permute(0, 2, 1).reshape(-1, self.num_channels)
         
+        # Cast to float64 to try to avoid precision issues with small variance
+        preds_flat = preds_flat.double()
+        target_flat = target_flat.double()
+        
         PearsonCorrCoef.update(self, preds_flat, target_flat)
 
     def compute(self):
         val = super().compute()
         if val.numel() > 1:
-            return val.mean()
+            # for multiple channels, skip NaNs when averaging
+            return torch.nanmean(val)
         return val
 
 

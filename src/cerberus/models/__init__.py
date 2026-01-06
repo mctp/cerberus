@@ -1,3 +1,3 @@
 from .gopher import GlobalProfileCNN
 from .bpnet import BPNet
-from .geminet import GemiNet, GeminetLarge, GeminetExtraLarge
+from .geminet import GemiNet, GemiNetMedium, GemiNetLarge, GemiNetExtraLarge

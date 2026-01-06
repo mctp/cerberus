@@ -131,11 +131,19 @@ def main():
     }
 
     # Train Config
+    # Use optimized parameters for Extra Large model to prevent overfitting
+    if args.model_size == "xl":
+        learning_rate = 5e-4
+        weight_decay = 0.1
+    else:
+        learning_rate = 1e-3
+        weight_decay = 0.01
+
     train_config: TrainConfig = {
         "batch_size": args.batch_size,
         "max_epochs": args.max_epochs,
-        "learning_rate": 1e-3,
-        "weight_decay": 0.01,
+        "learning_rate": learning_rate,
+        "weight_decay": weight_decay,
         "patience": 10,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
@@ -163,11 +171,14 @@ def main():
     if args.model_size == "small":
         model_cls = "cerberus.models.geminet.GemiNet"
         model_args = {}
+    elif args.model_size == "medium":
+        model_cls = "cerberus.models.geminet.GemiNetMedium"
+        model_args = {} 
     elif args.model_size == "large":
-        model_cls = "cerberus.models.geminet.GeminetLarge"
+        model_cls = "cerberus.models.geminet.GemiNetLarge"
         model_args = {} 
     elif args.model_size == "xl":
-        model_cls = "cerberus.models.geminet.GeminetExtraLarge"
+        model_cls = "cerberus.models.geminet.GemiNetExtraLarge"
         model_args = {}
     else:
         raise ValueError(f"Invalid model size: {args.model_size}")
