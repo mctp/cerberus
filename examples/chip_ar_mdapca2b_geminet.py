@@ -46,7 +46,7 @@ def get_args():
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
     parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
     parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson"], help="Loss function to use")
-    parser.add_argument("--expansion", type=int, default=1, help="GemiNet expansion factor (default: 1)")
+    parser.add_argument("--model-size", type=str, default="small", choices=["small", "large", "xl"], help="GemiNet model size (small, large, xl)")
 
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
@@ -68,6 +68,10 @@ def main():
         output_dir = output_dir / "single-fold"
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Update output directory with model size
+    output_dir = output_dir / args.model_size
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     print(f"Data Directory: {data_dir}")
     print(f"Output Directory: {output_dir}")
 
@@ -144,7 +148,7 @@ def main():
     }
 
     # Model Config for GemiNet
-    print("Using GemiNet Model...")
+    print(f"Using GemiNet Model ({args.model_size})...")
 
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
@@ -155,20 +159,31 @@ def main():
         loss_args = {"alpha": args.alpha}
         print(f"Using BPNetLoss (alpha={args.alpha})...")
 
+    # Select Model Class based on size
+    if args.model_size == "small":
+        model_cls = "cerberus.models.geminet.GemiNet"
+        model_args = {}
+    elif args.model_size == "large":
+        model_cls = "cerberus.models.geminet.GeminetLarge"
+        model_args = {} 
+    elif args.model_size == "xl":
+        model_cls = "cerberus.models.geminet.GeminetExtraLarge"
+        model_args = {}
+    else:
+        raise ValueError(f"Invalid model size: {args.model_size}")
+    
+    # Common args
+    model_args["input_channels"] = ["A", "C", "G", "T"]
+    model_args["output_channels"] = ["signal"]
+
     model_config: ModelConfig = {
-        "name": "GemiNet",
-        "model_cls": "cerberus.models.geminet.GemiNet",
+        "name": f"GemiNet-{args.model_size}",
+        "model_cls": model_cls,
         "loss_cls": loss_cls,
         "loss_args": loss_args,
         "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "metrics_args": {},
-        "model_args": {
-            "input_channels": ["A", "C", "G", "T"],
-            "output_channels": ["signal"],
-            "filters": 64,
-            "n_dilated_layers": 8,
-            "expansion": args.expansion # GemiNet specific argument
-        }
+        "model_args": model_args
     }
 
     # 3. Training

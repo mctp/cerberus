@@ -219,6 +219,89 @@ class GemiNet(nn.Module):
         
         return ProfileCountOutput(logits=profile_logits, log_counts=log_counts)
 
+class GeminetLarge(GemiNet):
+    """
+    Larger version of GemiNet (~600k params).
+    
+    Changes from GemiNet:
+    - Filters: 64 -> 128
+    - Layers: 8 -> 11
+    - Dropout: 0.1 -> 0.15
+    """
+    def __init__(
+        self,
+        input_len: int,
+        output_len: int,
+        output_bin_size: int = 1,
+        input_channels: list[str] = ["A", "C", "G", "T"],
+        output_channels: list[str] = ["signal"],
+        filters: int = 128,
+        n_dilated_layers: int = 11,
+        conv_kernel_size: int = 21,
+        dil_kernel_size: int = 3,
+        profile_kernel_size: int = 75,
+        expansion: int = 1,
+        dropout: float = 0.15,
+        predict_total_count: bool = True,
+    ):
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            output_bin_size=output_bin_size,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            filters=filters,
+            n_dilated_layers=n_dilated_layers,
+            conv_kernel_size=conv_kernel_size,
+            dil_kernel_size=dil_kernel_size,
+            profile_kernel_size=profile_kernel_size,
+            expansion=expansion,
+            dropout=dropout,
+            predict_total_count=predict_total_count,
+        )
+
+class GeminetExtraLarge(GemiNet):
+    """
+    Extra Large version of GemiNet (~2.2M params).
+    
+    Changes from GemiNet:
+    - Filters: 64 -> 128
+    - Expansion: 1 -> 4
+    - Layers: 8 -> 11
+    - Dropout: 0.1 -> 0.2
+    """
+    def __init__(
+        self,
+        input_len: int,
+        output_len: int,
+        output_bin_size: int = 1,
+        input_channels: list[str] = ["A", "C", "G", "T"],
+        output_channels: list[str] = ["signal"],
+        filters: int = 128,
+        n_dilated_layers: int = 11,
+        conv_kernel_size: int = 21,
+        dil_kernel_size: int = 3,
+        profile_kernel_size: int = 75,
+        expansion: int = 4,
+        dropout: float = 0.2,
+        predict_total_count: bool = True,
+    ):
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            output_bin_size=output_bin_size,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            filters=filters,
+            n_dilated_layers=n_dilated_layers,
+            conv_kernel_size=conv_kernel_size,
+            dil_kernel_size=dil_kernel_size,
+            profile_kernel_size=profile_kernel_size,
+            expansion=expansion,
+            dropout=dropout,
+            predict_total_count=predict_total_count,
+        )
+
 
 class GemiNetMetricCollection(MetricCollection):
     """
