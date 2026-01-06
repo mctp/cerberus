@@ -5,6 +5,7 @@ import torch.nn as nn
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 from typing import cast
+from pathlib import Path
 
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.config import ModelConfig, DataConfig, GenomeConfig
@@ -31,7 +32,11 @@ class MockModelWithCounts(nn.Module):
 
 # Helper to create ensemble (simplified version of one in test_model_ensemble.py)
 def create_ensemble(models, folds, output_len=100, output_bin_size=1):
-    with patch("cerberus.model_ensemble._ModelManager") as mock_cls:
+    with patch("cerberus.model_ensemble._ModelManager") as mock_cls, \
+         patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value={
+             "model_config": {}, "data_config": {}, "genome_config": {}
+         }):
         loader = mock_cls.return_value
         loader.load_models_and_folds.return_value = (models, folds)
         

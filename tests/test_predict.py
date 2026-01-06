@@ -6,6 +6,7 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 from dataclasses import dataclass, asdict
 from torchmetrics import MetricCollection
+from pathlib import Path
 
 from cerberus.interval import parse_intervals, merge_intervals, Interval
 from cerberus.model_ensemble import ModelEnsemble
@@ -108,9 +109,11 @@ def integration_setup(tmp_path):
     with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
         yaml.dump({"folds": [0]}, f)
         
-    ensemble = ModelEnsemble(
-        tmp_path, model_config, data_config, genome_config, torch.device("cpu")
-    )
+    with patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
+        ensemble = ModelEnsemble(
+            tmp_path, model_config, data_config, genome_config, torch.device("cpu")
+        )
     
     return dataset, ensemble
 
@@ -184,7 +187,11 @@ def mock_dataset():
     return dataset
 
 def create_mock_ensemble(models, output_len=60, output_bin_size=1):
-    with patch("cerberus.model_ensemble._ModelManager") as mock_loader_cls:
+    with patch("cerberus.model_ensemble._ModelManager") as mock_loader_cls, \
+         patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value={
+             "model_config": {}, "data_config": {}, "genome_config": {}
+         }):
         loader_instance = mock_loader_cls.return_value
         # folds is []
         loader_instance.load_models_and_folds.return_value = (models, [])

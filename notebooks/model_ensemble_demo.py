@@ -14,9 +14,8 @@ from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.config import GenomeConfig, DataConfig, ModelConfig
-from cerberus.models.bpnet import BPNet, BPNetLoss, BPNetMetricCollection
 from cerberus.genome import create_genome_config
-from cerberus.output import ProfileCountOutput, ModelOutput
+from cerberus.output import ProfileCountOutput
 from cerberus.samplers import IntervalSampler
 
 # %% [markdown]

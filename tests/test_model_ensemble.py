@@ -63,8 +63,14 @@ def create_mock_folds(intervals_per_fold):
         folds.append(fold_map)
     return folds
 
+from pathlib import Path
+
 def create_ensemble(models, folds, output_len=100, output_bin_size=1):
-    with patch("cerberus.model_ensemble._ModelManager") as mock_cls:
+    with patch("cerberus.model_ensemble._ModelManager") as mock_cls, \
+         patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value={
+             "model_config": {}, "data_config": {}, "genome_config": {}
+         }):
         loader = mock_cls.return_value
         loader.load_models_and_folds.return_value = (models, folds)
         
@@ -87,6 +93,8 @@ def test_initialization():
     assert len(ensemble) == 2
     assert "0" in ensemble
     assert "1" in ensemble
+    assert ensemble.cerberus_config is not None
+    assert ensemble.cerberus_config["data_config"]["output_len"] == 100
 
 def test_forward_no_folds():
     # k=0 case (single model behavior)

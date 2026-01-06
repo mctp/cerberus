@@ -179,19 +179,22 @@ def test_model_ensemble_init_missing_metadata(tmp_path):
     # but verify it fails at metadata loading
     
     with pytest.raises(FileNotFoundError, match="ensemble_metadata.yaml"):
-        # We need to provide configs to avoid it searching for hparams.yaml first
-        ModelEnsemble(
-            checkpoint_path=empty_dir,
-            model_config={}, # type: ignore
-            data_config={"output_len": 100, "output_bin_size": 1}, # type: ignore
-            genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}}, # type: ignore
-        )
+        with patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
+             patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
+            ModelEnsemble(
+                checkpoint_path=empty_dir,
+                model_config={}, # type: ignore
+                data_config={"output_len": 100, "output_bin_size": 1}, # type: ignore
+                genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}}, # type: ignore
+            )
 
 def test_model_ensemble_init_success(mock_checkpoint_dir):
     """Test successful initialization with mocked models."""
     
     # Mock _load_model to avoid actual checkpoint loading
-    with patch("cerberus.model_ensemble._ModelManager._load_model") as mock_load:
+    with patch("cerberus.model_ensemble._ModelManager._load_model") as mock_load, \
+         patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
         mock_load.return_value = torch.nn.Linear(1, 1)
         
         # Mock create_genome_folds to avoid complex logic
@@ -216,7 +219,9 @@ def test_model_ensemble_predict_empty_intervals(mock_checkpoint_dir):
     """Test predict_intervals with empty input."""
     # Initialize ensemble (mocked)
     with patch("cerberus.model_ensemble._ModelManager._load_model") as mock_load, \
-         patch("cerberus.model_ensemble.create_genome_folds") as mock_folds:
+         patch("cerberus.model_ensemble.create_genome_folds") as mock_folds, \
+         patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
         mock_load.return_value = torch.nn.Linear(1, 1)
         mock_folds.return_value = [{}, {}]
         
@@ -237,7 +242,9 @@ def test_model_ensemble_predict_output_intervals_empty(mock_checkpoint_dir):
     """Test predict_output_intervals with empty input."""
     # Initialize ensemble (mocked)
     with patch("cerberus.model_ensemble._ModelManager._load_model") as mock_load, \
-         patch("cerberus.model_ensemble.create_genome_folds") as mock_folds:
+         patch("cerberus.model_ensemble.create_genome_folds") as mock_folds, \
+         patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
         mock_load.return_value = torch.nn.Linear(1, 1)
         mock_folds.return_value = [{}, {}]
         

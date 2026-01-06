@@ -10,6 +10,7 @@ from collections import defaultdict
 import yaml
 
 from cerberus.config import (
+    CerberusConfig,
     GenomeConfig,
     DataConfig,
     ModelConfig,
@@ -49,17 +50,20 @@ class ModelEnsemble(nn.ModuleDict):
         if not path.is_dir():
             raise ValueError(f"checkpoint_path must be a directory: {path}")
 
-        # Resolve configuration if any is missing
-        if model_config is None or data_config is None or genome_config is None:
-            hparams_path = self._find_hparams(path)
-            parsed_config = parse_hparams_config(hparams_path)
-            
-            if model_config is None:
-                model_config = parsed_config["model_config"]
-            if data_config is None:
-                data_config = parsed_config["data_config"]
-            if genome_config is None:
-                genome_config = parsed_config["genome_config"]
+        # Resolve configuration
+        hparams_path = self._find_hparams(path)
+        self.cerberus_config : CerberusConfig = parse_hparams_config(hparams_path)
+
+        if model_config is not None:
+            self.cerberus_config["model_config"] = model_config
+        if data_config is not None:
+            self.cerberus_config["data_config"] = data_config
+        if genome_config is not None:
+            self.cerberus_config["genome_config"] = genome_config
+
+        model_config = self.cerberus_config["model_config"]
+        data_config = self.cerberus_config["data_config"]
+        genome_config = self.cerberus_config["genome_config"]
 
         loader = _ModelManager(
             path, model_config, data_config, genome_config, device
@@ -69,8 +73,6 @@ class ModelEnsemble(nn.ModuleDict):
         super().__init__(models)
         self.folds = folds
         self.device = device
-        self.output_len = data_config["output_len"]
-        self.output_bin_size = data_config["output_bin_size"]
 
     def _find_hparams(self, checkpoint_dir: Path) -> Path:
         """
@@ -135,7 +137,10 @@ class ModelEnsemble(nn.ModuleDict):
                 raise ValueError("Intervals are required for interval aggregation.")
 
             # Center intervals to output length
-            centered_intervals = [i.center(self.output_len) for i in intervals]
+            centered_intervals = [
+                i.center(self.cerberus_config["data_config"]["output_len"])
+                for i in intervals
+            ]
 
             # Aggregate over models
             aggregated_batch = aggregate_models(batch_outputs, method="mean")
@@ -143,14 +148,14 @@ class ModelEnsemble(nn.ModuleDict):
             
             # Unbatch
             unbatched = unbatch_modeloutput(aggregated_batch, len(centered_intervals))
-            
+
             # Merge over intervals
             merged = aggregate_intervals(
-                unbatched, 
-                centered_intervals, 
-                output_len=self.output_len,
-                output_bin_size=self.output_bin_size,
-                output_cls=output_cls
+                unbatched,
+                centered_intervals,
+                output_len=self.cerberus_config["data_config"]["output_len"],
+                output_bin_size=self.cerberus_config["data_config"]["output_bin_size"],
+                output_cls=output_cls,
             )
             return merged
 
@@ -268,8 +273,8 @@ class ModelEnsemble(nn.ModuleDict):
         Raises:
             RuntimeError: If no results are generated (e.g., input `intervals` was empty).
         """
-        input_len = dataset.data_config["input_len"]
         output_len = dataset.data_config["output_len"]
+        input_len = dataset.data_config["input_len"]
 
         if aggregation not in ["model", "interval+model"]:
             raise ValueError(
@@ -282,7 +287,15 @@ class ModelEnsemble(nn.ModuleDict):
         for batch_intervals_tuple in itertools.batched(intervals, batch_size):
             batch_intervals = list(batch_intervals_tuple)
 
-            # 1. Prepare Batch Data
+            # 1. Validate Interval Lengths
+            for interval in batch_intervals:
+                if len(interval) != input_len:
+                    raise ValueError(
+                        f"Interval length {len(interval)} does not match model input length {input_len}. "
+                        f"Interval: {interval}"
+                    )
+
+            # 2. Prepare Batch Data
             inputs_list = []
             for interval in batch_intervals:
                 data = dataset.get_interval(interval)
@@ -291,7 +304,7 @@ class ModelEnsemble(nn.ModuleDict):
             # Stack into (Batch, Channels, Length)
             batch_inputs = torch.stack(inputs_list).to(self.device)
 
-            # 2. Run Models (returns single ModelOutput)
+            # 3. Run Models (returns single ModelOutput)
             batched_output = self.forward(
                 batch_inputs,
                 intervals=batch_intervals,
@@ -321,11 +334,11 @@ class ModelEnsemble(nn.ModuleDict):
         intervals_list = [r[1] for r in results]
         
         merged = aggregate_intervals(
-            outputs_list, 
-            intervals_list, 
+            outputs_list,
+            intervals_list,
             output_len=output_len,
-            output_bin_size=self.output_bin_size,
-            output_cls=output_cls
+            output_bin_size=self.cerberus_config["data_config"]["output_bin_size"],
+            output_cls=output_cls,
         )
         return merged
 

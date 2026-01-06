@@ -113,7 +113,13 @@ class CerberusDataset(Dataset):
             self.sampler = sampler
         else:
             if self.sampler_config is None:
-                raise ValueError("sampler_config must be provided if sampler is not provided.")
+                # Provide a dummy sampler config if none is provided.
+                padded_size = self.data_config["input_len"] + 2 * self.data_config["max_jitter"]
+                self.sampler_config = {
+                    "sampler_type": "dummy",
+                    "padded_size": padded_size,
+                    "sampler_args": {},
+                }
             self.sampler = self._initialize_sampler()
 
         # Initialize Sequence Extractor

@@ -277,8 +277,20 @@ def mock_ensemble():
             # Types are ignored since __init__ is patched
             ens = ModelEnsemble(None, None, None, None, None) # type: ignore
             ens.device = torch.device("cpu")
-            ens.output_len = 10
-            ens.output_bin_size = 1
+            ens.cerberus_config = { # type: ignore
+                "data_config": {
+                    "inputs": {},
+                    "targets": {},
+                    "input_len": 1000,
+                    "output_len": 10,
+                    "output_bin_size": 1,
+                    "max_jitter": 0,
+                    "encoding": "onehot",
+                    "log_transform": False,
+                    "reverse_complement": False,
+                    "use_sequence": True
+                }
+            }
             ens.folds = []
             return ens
 
@@ -287,7 +299,7 @@ def test_predict_intervals_basic(mock_ensemble, mock_dataset, mock_intervals):
     
     # Mock forward to return a batched SimpleOutput
     # We increase output_len to 100 to match input length so intervals are contiguous
-    mock_ensemble.output_len = 100
+    mock_ensemble.cerberus_config["data_config"]["output_len"] = 100
     # Also update dataset config so predict_intervals uses the correct length
     mock_dataset.data_config["output_len"] = 100
     

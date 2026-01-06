@@ -2,6 +2,7 @@ import pytest
 import torch
 import torch.nn as nn
 from pathlib import Path
+from unittest.mock import patch
 import yaml
 from typing import cast
 from cerberus.model_ensemble import ModelEnsemble
@@ -109,13 +110,15 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
     module.import_class = mock_import
     
     try:
-        ensemble = ModelEnsemble(
-            mock_ensemble_dir,
-            model_config=cast(ModelConfig, model_config),
-            data_config=cast(DataConfig, data_config),
-            genome_config=cast(GenomeConfig, genome_config),
-            device="cpu"
-        )
+        with patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
+             patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
+            ensemble = ModelEnsemble(
+                mock_ensemble_dir,
+                model_config=cast(ModelConfig, model_config),
+                data_config=cast(DataConfig, data_config),
+                genome_config=cast(GenomeConfig, genome_config),
+                device="cpu"
+            )
         
         # Verify model loaded
         assert "0" in ensemble

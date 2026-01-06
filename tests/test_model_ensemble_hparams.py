@@ -34,7 +34,8 @@ def test_find_hparams(tmp_path):
     p2.touch()
     
     # Helper to access method by creating instance with dummy configs
-    with patch("cerberus.model_ensemble._ModelManager") as mock_mgr:
+    with patch("cerberus.model_ensemble._ModelManager") as mock_mgr, \
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
         instance = mock_mgr.return_value
         instance.load_models_and_folds.return_value = ({}, [])
         
