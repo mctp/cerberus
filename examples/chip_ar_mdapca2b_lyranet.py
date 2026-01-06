@@ -1,21 +1,24 @@
 #!/usr/bin/env python
 """
-Gopher (GlobalProfileCNN) training example for ChIP-seq data using Cerberus.
+LyraNet training example for ChIP-seq data using Cerberus.
 
-This script implements a Gopher/GlobalProfileCNN training run using the MDA-PCA-2b AR dataset.
+This script implements a LyraNet training run using the MDA-PCA-2b AR dataset.
+LyraNet uses a hybrid body of PGC (local) and S4D (global) layers.
+
 It follows the standard configuration:
 - Input: 2048bp DNA sequence
-- Output: 1024bp profile (at 4bp resolution -> 256 bins)
-- Model: GlobalProfileCNN (ResidualBind-like architecture)
-- Loss: ProfilePoissonNLLLoss (Poisson NLL)
+- Output: 1024bp base-resolution profile
+- Model: LyraNet (configured for ~100k params)
+- Loss: BPNetLoss (Multinomial NLL + MSE log counts)
 - Training: Based on peak intervals (narrowPeak)
 
 Usage:
-    python examples/chip_ar_mdapca2b_gopher.py --batch-size 32 --max-epochs 50
-    python examples/chip_ar_mdapca2b_gopher.py --multi --batch-size 32
+    python examples/chip_ar_mdapca2b_lyranet.py --batch-size 32 --max-epochs 50
+    python examples/chip_ar_mdapca2b_lyranet.py --multi --batch-size 32
 """
 
 import argparse
+import os
 import torch
 from pathlib import Path
 from pprint import pprint
@@ -27,21 +30,23 @@ from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Train a Gopher/GlobalProfileCNN model with Cerberus")
+    parser = argparse.ArgumentParser(description="Train a LyraNet model with Cerberus")
     
     # Script arguments
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data")
-    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_gopher", help="Root directory for logs and checkpoints")
+    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_lyranet", help="Root directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
-    parser.add_argument("--max-epochs", type=int, default=25, help="Maximum number of epochs")
+    parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
 
     # Hyperparameters
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
-
+    parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
+    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson"], help="Loss function to use")
+    
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
     parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
@@ -87,23 +92,23 @@ def main():
         }
     )
 
-    # Data Config for Gopher
+    # Data Config
     # Input: 2048bp DNA
-    # Output: 1024bp coverage (at 4bp resolution)
+    # Output: 1024bp at base resolution
     input_len = 2048
     output_len = 1024
-    output_bin_size = 4
+    output_bin_size = 1
     max_jitter = args.jitter
 
     data_config: DataConfig = {
-        "inputs": {}, # No additional input tracks, just DNA
+        "inputs": {}, 
         "targets": {"signal": dataset_files["bigwig"]},
         "input_len": input_len,
         "output_len": output_len, 
         "max_jitter": max_jitter,
         "output_bin_size": output_bin_size,
         "encoding": "ACGT",
-        "log_transform": True, # Gopher often trains on log(x+1) data
+        "log_transform": False, # Uses raw counts for multinomial loss
         "reverse_complement": True, # Augmentation
         "use_sequence": True,
     }
@@ -137,24 +142,40 @@ def main():
         }
     }
 
-    # Model Config for Gopher/GlobalProfileCNN
-    print("Using Gopher (GlobalProfileCNN) Model...")
+    # Model Config for LyraNet
+    print(f"Using LyraNet Model (~100k params)...")
+
+    if args.loss == "poisson":
+        loss_cls = "cerberus.loss.PoissonMultinomialLoss"
+        loss_args = {"count_weight": args.alpha}
+        print(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
+    else:
+        loss_cls = "cerberus.models.bpnet.BPNetLoss"
+        loss_args = {"alpha": args.alpha}
+        print(f"Using BPNetLoss (alpha={args.alpha})...")
+
+    # LyraNet Configuration
+    # Tuned for ~100k parameters
+    model_args = {
+        "input_channels": ["A", "C", "G", "T"],
+        "output_channels": ["signal"],
+        "filters": 64,
+        "pgc_layers": 4,
+        "s4_layers": 2,          # Reduced from 4
+        "pgc_expansion": 1.0,    # Reduced from 2.0
+        "dropout": 0.1,          # Reduced from 0.2
+        "s4_lr": 0.001,
+        "conv_kernel_size": 21,
+    }
+
     model_config: ModelConfig = {
-        "name": "GlobalProfileCNN",
-        "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
-        "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
-        "loss_args": {
-            "log_input": True, # Expects log-transformed input in loss if data is log transformed? 
-                               # Wait, if data is log_transform=True, model output is likely log counts?
-                               # Let's check the previous file config.
-                               # Old file: "loss_args": {"log_input": True, "full": False}
-        },
-        "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
+        "name": "LyraNet-100k",
+        "model_cls": "cerberus.models.lyra.LyraNet",
+        "loss_cls": loss_cls,
+        "loss_args": loss_args,
+        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "metrics_args": {},
-        "model_args": {
-            "input_channels": ["A", "C", "G", "T"],
-            "output_channels": ["signal"],
-        }
+        "model_args": model_args
     }
 
     # 3. Training
@@ -181,14 +202,16 @@ def main():
     
     # Precision settings
     if accelerator == "mps":
+        # MPS-optimized settings
         precision_args = {
             "precision": "16-mixed",
             "accelerator": accelerator,
             "devices": devices,
-            "strategy": "auto",
+            "strategy": "auto", 
             "compile": False
         }
     else:
+        # NVIDIA A100 / CUDA optimized settings
         precision_args = {
             "precision": "bf16-mixed",
             "matmul_precision": "medium",
@@ -249,7 +272,8 @@ def main():
             **precision_args
         )
 
-    print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
+    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+        print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
 
 if __name__ == "__main__":
     main()

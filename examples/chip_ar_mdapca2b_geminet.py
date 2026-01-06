@@ -220,14 +220,27 @@ def main():
             print(f"[WARN] num_workers={num_workers} may cause instability on MPS. Recommend setting --num-workers 0.")
     
     # Precision settings
-    precision_args = {
-        "precision": "bf16-mixed",
-        "matmul_precision": "medium",
-        "accelerator": accelerator,
-        "devices": devices,
-        "strategy": "ddp_find_unused_parameters_false" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto",
-        "benchmark": True
-    }
+    if accelerator == "mps":
+        # MPS-optimized settings
+        precision_args = {
+            "precision": "16-mixed",
+            "accelerator": accelerator,
+            "devices": devices,
+            # MPS currently has issues with torch.compile and DDP
+            "strategy": "auto", 
+            "compile": False
+        }
+    else:
+        # NVIDIA A100 / CUDA optimized settings
+        precision_args = {
+            "precision": "bf16-mixed",
+            "matmul_precision": "medium",
+            "accelerator": accelerator,
+            "devices": devices,
+            "strategy": "ddp_find_unused_parameters_false" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto",
+            "benchmark": True,
+            "compile": True
+        }
 
     print("\nConfigurations:")
     print("-" * 20)
