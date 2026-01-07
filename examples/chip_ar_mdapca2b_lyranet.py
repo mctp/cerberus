@@ -161,8 +161,8 @@ def main():
         "output_channels": ["signal"],
         "filters": 64,
         "pgc_layers": 4,
-        "s4_layers": 2,          # Reduced from 4
-        "pgc_expansion": 1.0,    # Reduced from 2.0
+        "s4_layers": 3,          # Reduced from 4
+        "pgc_expansion": 1.5,    # Reduced from 2.0
         "dropout": 0.1,          # Reduced from 0.2
         "s4_lr": 0.001,
         "conv_kernel_size": 21,

@@ -152,7 +152,8 @@ class PGC(nn.Module):
         # u: (B, L, d_model)
         
         # 1. Expand and Normalize
-        xv = self.in_norm(self.in_proj(u)) # (B, L, 2 * hidden_dim)
+        x_proj = self.in_proj(u)
+        xv = self.in_norm(x_proj.float()).type_as(x_proj) # (B, L, 2 * hidden_dim)
         
         # 2. Split into two paths
         x, v = xv.chunk(2, dim=-1) # x, v: (B, L, hidden_dim)
@@ -164,7 +165,8 @@ class PGC(nn.Module):
         gate = x_conv * v
         
         # 5. Projection back
-        out = self.norm(self.out_proj(gate))
+        out_proj = self.out_proj(gate)
+        out = self.norm(out_proj.float()).type_as(out_proj)
         out = self.dropout(out)
         
         return out
@@ -210,8 +212,8 @@ class LyraNet(nn.Module):
         output_channels: list[str] = ["signal"],
         filters: int = 64,
         pgc_layers: int = 4,
-        s4_layers: int = 2,
-        pgc_expansion: float = 2.0,
+        s4_layers: int = 3,
+        pgc_expansion: float = 1.5,
         output_bin_size: int = 1,
         conv_kernel_size: int = 21,
         profile_kernel_size: int = 75,
@@ -292,7 +294,8 @@ class LyraNet(nn.Module):
             
             if self.prenorm:
                 # Norm expects (..., D), so transpose
-                z = norm(z.transpose(-1, -2)).transpose(-1, -2)
+                z_in = z.transpose(-1, -2)
+                z = norm(z_in.float()).type_as(z_in).transpose(-1, -2)
                 
             # Apply S4D
             z = layer(z)
@@ -302,7 +305,8 @@ class LyraNet(nn.Module):
             x = z + residual
             
             if not self.prenorm:
-                 x = norm(x.transpose(-1, -2)).transpose(-1, -2)
+                 x_in = x.transpose(-1, -2)
+                 x = norm(x_in.float()).type_as(x_in).transpose(-1, -2)
 
         # --- Profile Head ---
         # x is (B, Filters, L)
