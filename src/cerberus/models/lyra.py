@@ -3,8 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.fft
+from torchmetrics import MetricCollection
 
 from cerberus.output import ProfileCountOutput
+from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
 
 # -------------------------------------------------------------------------
 # Core Components: S4D and PGC
@@ -180,6 +182,8 @@ class LyraNet(nn.Module):
     """
     LyraNet: A profile+counts model using the Lyra architecture (PGC + S4D).
     
+    Parameters: ~140k
+
     Architecture:
     - Input: Sequence (Batch, Channels, Length)
     - Stem: Conv1d (captures motifs)
@@ -339,3 +343,154 @@ class LyraNet(nn.Module):
         log_counts = self.count_dense(x_pooled) # (B, Out_Channels)
         
         return ProfileCountOutput(logits=profile_logits, log_counts=log_counts)
+
+
+class LyraNetMedium(LyraNet):
+    """
+    Medium version of LyraNet (~670k params).
+    
+    Changes from LyraNet:
+    - Filters: 64 -> 128
+    - PGC Layers: 4 -> 6
+    - S4D Layers: 3 -> 4
+    - Expansion: 1.5 -> 1.5 (same)
+    - Dropout: 0.1 -> 0.15
+    """
+    def __init__(
+        self,
+        input_len: int,
+        output_len: int,
+        input_channels: list[str] = ["A", "C", "G", "T"],
+        output_channels: list[str] = ["signal"],
+        filters: int = 128,
+        pgc_layers: int = 6,
+        s4_layers: int = 4,
+        pgc_expansion: float = 1.5,
+        output_bin_size: int = 1,
+        conv_kernel_size: int = 21,
+        profile_kernel_size: int = 75,
+        predict_total_count: bool = True,
+        dropout: float = 0.15,
+        s4_lr: float = 0.001,
+    ):
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            filters=filters,
+            pgc_layers=pgc_layers,
+            s4_layers=s4_layers,
+            pgc_expansion=pgc_expansion,
+            output_bin_size=output_bin_size,
+            conv_kernel_size=conv_kernel_size,
+            profile_kernel_size=profile_kernel_size,
+            predict_total_count=predict_total_count,
+            dropout=dropout,
+            s4_lr=s4_lr,
+        )
+
+
+class LyraNetLarge(LyraNet):
+    """
+    Large version of LyraNet (~2.3M params).
+    
+    Changes from LyraNet:
+    - Filters: 64 -> 192
+    - PGC Layers: 4 -> 6
+    - S4D Layers: 3 -> 6
+    - Expansion: 1.5 -> 2.5
+    - Dropout: 0.1 -> 0.2
+    """
+    def __init__(
+        self,
+        input_len: int,
+        output_len: int,
+        input_channels: list[str] = ["A", "C", "G", "T"],
+        output_channels: list[str] = ["signal"],
+        filters: int = 192,
+        pgc_layers: int = 6,
+        s4_layers: int = 6,
+        pgc_expansion: float = 2.5,
+        output_bin_size: int = 1,
+        conv_kernel_size: int = 21,
+        profile_kernel_size: int = 75,
+        predict_total_count: bool = True,
+        dropout: float = 0.2,
+        s4_lr: float = 0.001,
+    ):
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            filters=filters,
+            pgc_layers=pgc_layers,
+            s4_layers=s4_layers,
+            pgc_expansion=pgc_expansion,
+            output_bin_size=output_bin_size,
+            conv_kernel_size=conv_kernel_size,
+            profile_kernel_size=profile_kernel_size,
+            predict_total_count=predict_total_count,
+            dropout=dropout,
+            s4_lr=s4_lr,
+        )
+
+
+class LyraNetExtraLarge(LyraNet):
+    """
+    Extra Large version of LyraNet (~5.4M params).
+    
+    Changes from LyraNet:
+    - Filters: 64 -> 256
+    - PGC Layers: 4 -> 7
+    - S4D Layers: 3 -> 7
+    - Expansion: 1.5 -> 3.0
+    - Dropout: 0.1 -> 0.35
+    """
+    def __init__(
+        self,
+        input_len: int,
+        output_len: int,
+        input_channels: list[str] = ["A", "C", "G", "T"],
+        output_channels: list[str] = ["signal"],
+        filters: int = 256,
+        pgc_layers: int = 7,
+        s4_layers: int = 7,
+        pgc_expansion: float = 3,
+        output_bin_size: int = 1,
+        conv_kernel_size: int = 21,
+        profile_kernel_size: int = 75,
+        predict_total_count: bool = True,
+        dropout: float = 0.35,
+        s4_lr: float = 0.001,
+    ):
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            filters=filters,
+            pgc_layers=pgc_layers,
+            s4_layers=s4_layers,
+            pgc_expansion=pgc_expansion,
+            output_bin_size=output_bin_size,
+            conv_kernel_size=conv_kernel_size,
+            profile_kernel_size=profile_kernel_size,
+            predict_total_count=predict_total_count,
+            dropout=dropout,
+            s4_lr=s4_lr,
+        )
+
+
+class LyraNetMetricCollection(MetricCollection):
+    """
+    MetricCollection for LyraNet models.
+    Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
+    """
+    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
+        super().__init__({
+            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
+            "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
+            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
+        })
