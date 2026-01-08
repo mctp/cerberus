@@ -5,15 +5,15 @@ from torchmetrics import MetricCollection
 
 from cerberus.output import ProfileCountOutput
 from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
-from cerberus.layers import PGCBlock
+from cerberus.layers import PGCBlock, ConvNeXtV2Block
 
-class GemiNet(nn.Module):
+class GemiNet2(nn.Module):
     """
-    GemiNet: A modern replacement for BPNet using Projected Gated Convolutions.
+    GemiNet2: A variant of GemiNet using ConvNeXtV2 for the stem.
     
     Architecture:
     - Input: One-hot sequence (Batch, 4, Length)
-    - Stem: Standard Conv1d (captures motifs)
+    - Stem: ConvNeXtV2Block (captures motifs and local features)
     - Body: Stack of Dilated PGC Blocks
     - Head 1 (Profile): Conv1D -> Logits
     - Head 2 (Counts): Global Avg Pool -> Dense -> Log(Total Counts)
@@ -59,15 +59,11 @@ class GemiNet(nn.Module):
         self.predict_total_count = predict_total_count
         
         # 1. Stem
-        # We use 'same' padding to maintain length, unlike BPNet which uses 'valid'.
-        # This simplifies length handling.
-        self.stem = nn.Sequential(
-            nn.Conv1d(
-                self.n_input_channels, filters, 
-                kernel_size=conv_kernel_size, 
-                padding='same'
-            ),
-            nn.ReLU()
+        # Use ConvNeXtV2Block instead of standard Conv1d
+        self.stem = ConvNeXtV2Block(
+            channels_in=self.n_input_channels, 
+            channels_out=filters, 
+            kernel_size=conv_kernel_size
         )
         
         # 2. Dilated PGC Tower
@@ -143,11 +139,11 @@ class GemiNet(nn.Module):
         
         return ProfileCountOutput(logits=profile_logits, log_counts=log_counts)
 
-class GemiNetMedium(GemiNet):
+class GemiNet2Medium(GemiNet2):
     """
-    Medium version of GemiNet (~600k params).
+    Medium version of GemiNet2 (~600k params).
     
-    Changes from GemiNet:
+    Changes from GemiNet2:
     - Filters: 64 -> 128
     - Layers: 8 -> 11
     - Dropout: 0.1 -> 0.15
@@ -184,11 +180,11 @@ class GemiNetMedium(GemiNet):
             predict_total_count=predict_total_count,
         )
 
-class GemiNetLarge(GemiNet):
+class GemiNet2Large(GemiNet2):
     """
-    Large version of GemiNet (~2.2M params).
+    Large version of GemiNet2 (~2.2M params).
     
-    Changes from GemiNet:
+    Changes from GemiNet2:
     - Filters: 64 -> 128
     - Expansion: 1 -> 4
     - Layers: 8 -> 11
@@ -226,11 +222,11 @@ class GemiNetLarge(GemiNet):
             predict_total_count=predict_total_count,
         )
 
-class GemiNetExtraLarge(GemiNet):
+class GemiNet2ExtraLarge(GemiNet2):
     """
-    Extra Large version of GemiNet (~5.0M params).
+    Extra Large version of GemiNet2 (~5.0M params).
     
-    Changes from GemiNet:
+    Changes from GemiNet2:
     - Filters: 64 -> 224
     - Expansion: 1 -> 3
     - Layers: 8 -> 11
@@ -269,9 +265,9 @@ class GemiNetExtraLarge(GemiNet):
         )
 
 
-class GemiNetMetricCollection(MetricCollection):
+class GemiNet2MetricCollection(MetricCollection):
     """
-    MetricCollection for GemiNet models.
+    MetricCollection for GemiNet2 models.
     Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
     """
     def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):

@@ -320,6 +320,9 @@ class LyraNet(nn.Module):
         current_len = profile_logits.shape[-1]
         target_len = self.output_len
         
+        crop_l = 0
+        crop_r = 0
+        
         if current_len > target_len:
             diff = current_len - target_len
             crop_l = diff // 2
@@ -336,9 +339,15 @@ class LyraNet(nn.Module):
             )
 
         # --- Counts Head ---
-        # Global Average Pooling over the full sequence
-        # x is (B, Filters, L)
-        x_pooled = x.mean(dim=-1) # (B, Filters)
+        # Global Average Pooling
+        # We crop the feature map to the target output length before pooling to ensure
+        # the counts prediction corresponds to the target region.
+        if current_len > target_len:
+            x_for_counts = x[..., crop_l:-crop_r]
+        else:
+            x_for_counts = x
+            
+        x_pooled = x_for_counts.mean(dim=-1) # (B, Filters)
         
         log_counts = self.count_dense(x_pooled) # (B, Out_Channels)
         
