@@ -47,8 +47,8 @@ class ProfilePearsonCorrCoef(PearsonCorrCoef):
         val = super().compute()
         if val.numel() > 1:
             # for multiple channels, skip NaNs when averaging
-            return torch.nanmean(val)
-        return val
+            val = torch.nanmean(val)
+        return val.float()
 
 
 class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef):
