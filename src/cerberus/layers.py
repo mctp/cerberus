@@ -43,6 +43,7 @@ class ConvNeXtV2Block(nn.Module):
         inv_bottleneckscale=4,
         grn=True,
         dilation_rate=1,
+        padding="same",
     ):
         super().__init__()
         self.res_early = channels_in == channels_out
@@ -51,7 +52,7 @@ class ConvNeXtV2Block(nn.Module):
             channels_in,
             channels_out,
             kernel_size=kernel_size,
-            padding="same",
+            padding=padding,
             groups=channels_in if groups else 1,
             dilation=dilation_rate,
         )  # depthwise conv
@@ -82,6 +83,17 @@ class ConvNeXtV2Block(nn.Module):
         x = self.pwconv2(x)
 
         x = x.permute(0, 2, 1)
+        
+        # If residual is active but shapes differ (due to valid padding), crop the residual
+        if self.res_early and x_.shape[-1] != x.shape[-1]:
+            diff = x_.shape[-1] - x.shape[-1]
+            if diff > 0:
+                crop_l = diff // 2
+                crop_r = diff - crop_l
+                x_ = x_[..., crop_l:-crop_r]
+            elif diff < 0:
+                raise ValueError(f"Output larger than input in Block? In: {x_.shape}, Out: {x.shape}")
+
         x = x_ + x
         return x
 
@@ -106,8 +118,9 @@ class PGCBlock(nn.Module):
         dilation (int): Dilation rate.
         expansion (int): Expansion factor. Internal dimension = dim * expansion.
         dropout (float): Dropout rate.
+        padding (str): Padding mode. Default: 'same'.
     """
-    def __init__(self, dim: int, kernel_size: int, dilation: int, expansion: int = 2, dropout: float = 0.1):
+    def __init__(self, dim: int, kernel_size: int, dilation: int, expansion: int = 2, dropout: float = 0.1, padding: str = 'same'):
         super().__init__()
         
         self.dim = dim
@@ -127,7 +140,7 @@ class PGCBlock(nn.Module):
             kernel_size=kernel_size, 
             dilation=dilation, 
             groups=self.hidden_dim, # Depthwise
-            padding='same'
+            padding=padding
         )
         
         # 4. Output Projection
@@ -155,6 +168,16 @@ class PGCBlock(nn.Module):
         # 4. Depthwise Conv on X
         x = self.conv(x)
         
+        # If valid padding reduced x size, crop v to match
+        if x.shape[-1] != v.shape[-1]:
+            diff = v.shape[-1] - x.shape[-1]
+            if diff > 0:
+                crop_l = diff // 2
+                crop_r = diff - crop_l
+                v = v[..., crop_l:-crop_r]
+            elif diff < 0:
+                 raise ValueError(f"Conv output larger than input? {x.shape} vs {v.shape}")
+        
         # 5. Gating
         x = x * v
         
@@ -169,4 +192,47 @@ class PGCBlock(nn.Module):
         x = self.dropout(x)
         
         # 8. Residual
+        # If valid padding reduced x size, crop residual to match
+        if x.shape[-1] != residual.shape[-1]:
+            diff = residual.shape[-1] - x.shape[-1]
+            if diff > 0:
+                crop_l = diff // 2
+                crop_r = diff - crop_l
+                residual = residual[..., crop_l:-crop_r]
+            elif diff < 0:
+                 raise ValueError(f"Output larger than residual? {x.shape} vs {residual.shape}")
+
         return residual + x
+
+class DilatedResidualBlock(nn.Module):
+    """
+    Dilated Residual Block for BPNet.
+    Structure: Input -> Dilated Conv -> ReLU -> Add to Input
+    """
+    def __init__(self, filters, kernel_size, dilation):
+        super().__init__()
+        self.conv = nn.Conv1d(
+            filters, filters, 
+            kernel_size=kernel_size, 
+            dilation=dilation, 
+            padding='valid'
+        )
+        
+    def forward(self, x):
+        # Post-Activation Residual Block
+        # 1. Dilated Conv
+        out = self.conv(x)
+        # 2. ReLU
+        out = F.relu(out)
+        # 3. Residual Connection
+        # Center crop x to match out
+        diff = x.shape[-1] - out.shape[-1]
+        if diff > 0:
+            # Crop the input to match the output size because the convolution
+            # used 'valid' padding, shrinking the sequence. We crop from the
+            # center to maintain alignment.
+            crop_l = diff // 2
+            crop_r = diff - crop_l
+            x = x[..., crop_l:-crop_r]
+                
+        return x + out

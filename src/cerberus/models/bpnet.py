@@ -5,39 +5,7 @@ from torchmetrics import MetricCollection
 from cerberus.loss import MSEMultinomialLoss
 from cerberus.output import ProfileCountOutput
 from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
-
-class _ResidualBlock(nn.Module):
-    """
-    Dilated Residual Block for BPNet.
-    Structure: Input -> Dilated Conv -> ReLU -> Add to Input
-    """
-    def __init__(self, filters, kernel_size, dilation):
-        super().__init__()
-        self.conv = nn.Conv1d(
-            filters, filters, 
-            kernel_size=kernel_size, 
-            dilation=dilation, 
-            padding='valid'
-        )
-        
-    def forward(self, x):
-        # Post-Activation Residual Block
-        # 1. Dilated Conv
-        out = self.conv(x)
-        # 2. ReLU
-        out = F.relu(out)
-        # 3. Residual Connection
-        # Center crop x to match out
-        diff = x.shape[-1] - out.shape[-1]
-        if diff > 0:
-            # Crop the input to match the output size because the convolution
-            # used 'valid' padding, shrinking the sequence. We crop from the
-            # center to maintain alignment.
-            crop_l = diff // 2
-            crop_r = diff - crop_l
-            x = x[..., crop_l:-crop_r]
-                
-        return x + out
+from cerberus.layers import DilatedResidualBlock
 
 
 class BPNet(nn.Module):
@@ -102,7 +70,7 @@ class BPNet(nn.Module):
             # Dilation increases exponentially: 2^1, 2^2, ...
             dilation = 2**i
             self.res_layers.append(
-                _ResidualBlock(filters, dil_kernel_size, dilation)
+                DilatedResidualBlock(filters, dil_kernel_size, dilation)
             )
             
         # 3. Profile Head

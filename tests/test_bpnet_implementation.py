@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import pytest
-from cerberus.models.bpnet import BPNet, _ResidualBlock, BPNetMetricCollection, BPNetLoss
+from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
+from cerberus.layers import DilatedResidualBlock
 from cerberus.loss import PoissonMultinomialLoss, MSEMultinomialLoss, CoupledMSEMultinomialLoss, CoupledPoissonMultinomialLoss
 from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
 from cerberus.output import ProfileCountOutput, ProfileLogRates
@@ -10,7 +11,7 @@ def test_bpnet_residual_block_cropping():
     filters = 16
     kernel_size = 3
     dilation = 2 
-    block = _ResidualBlock(filters, kernel_size, dilation)
+    block = DilatedResidualBlock(filters, kernel_size, dilation)
     length = 20
     x = torch.randn(1, filters, length)
     out = block(x)

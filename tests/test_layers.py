@@ -2,7 +2,19 @@
 import torch
 import torch.nn as nn
 import pytest
-from cerberus.layers import GRN1d, ConvNeXtV2Block, PGCBlock
+from cerberus.layers import GRN1d, ConvNeXtV2Block, PGCBlock, DilatedResidualBlock
+
+def test_dilated_residual_block_shape():
+    filters = 16
+    kernel_size = 3
+    dilation = 2
+    block = DilatedResidualBlock(filters, kernel_size, dilation)
+    length = 20
+    x = torch.randn(1, filters, length)
+    out = block(x)
+    # Output length: L_in - dilation * (kernel_size - 1)
+    # 20 - 2 * (3-1) = 20 - 4 = 16
+    assert out.shape == (1, filters, 16)
 
 def test_grn1d():
     dim = 32
