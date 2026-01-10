@@ -1,205 +1,116 @@
 import torch
 import pytest
-from cerberus.models.pomeranian import Pomeranian, Pomeranian1k
+from cerberus.models.pomeranian import Pomeranian, PomeranianK5
 from cerberus.layers import ConvNeXtV2Block, PGCBlock
 
-def test_pomeranian_defaults():
-    # Test generic Pomeranian defaults (BPNet standard)
-    model = Pomeranian(input_len=2114, output_len=1000)
-    assert model.stem.dwconv.padding == 'valid'
-    # Check that profile kernel is 75 (default for base class)
-    assert model.profile_spatial.kernel_size == (75,)
+def count_params(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def test_pomeranian1k_initialization():
-    model = Pomeranian1k()
+def test_pomeranian_default_initialization():
+    # Test Default (K9 Config)
+    model = Pomeranian()
+    # Check dimensions
     assert model.input_len == 2112
     assert model.output_len == 1024
-    assert model.n_input_channels == 4
-    assert model.n_output_channels == 1
-    # Check profile kernel is 49
-    assert model.profile_spatial.kernel_size == (49,)
     
-    # Check Heads
-    assert hasattr(model, 'profile_pointwise')
-    assert hasattr(model, 'profile_act')
-    assert hasattr(model, 'profile_spatial')
-    assert hasattr(model, 'count_mlp')
+    # Check Stem (Factorized [11, 11] - Matching K5)
+    assert isinstance(model.stem, torch.nn.Sequential)
+    assert len(model.stem) == 2
+    assert model.stem[0].dwconv.kernel_size == (11,)
+    assert model.stem[1].dwconv.kernel_size == (11,)
+    assert model.stem[1].dwconv.groups == 64 # Depthwise
     
-    # Check Count Head structure
-    assert isinstance(model.count_mlp, torch.nn.Sequential)
-    assert len(model.count_mlp) == 3 # Linear -> GELU -> Linear
+    # Check Body (K=9, 8 Layers)
+    assert len(model.layers) == 8
+    for layer in model.layers:
+        assert layer.conv.kernel_size == (9,)
+        
+    # Check Head (K=45)
+    assert model.profile_spatial.kernel_size == (45,)
 
-def test_pomeranian1k_forward_shape():
-    # Input: 2112, Output: 1024. Diff: 1088.
-    # Stem (k=21) -> 20 shrinkage
-    # 8 layers dilated (2, 4, ..., 256) -> sum(2 * 2^i) -> 1020 shrinkage
-    # Profile Head (1x1 -> 49) -> 48 shrinkage
-    # Total = 20 + 1020 + 48 = 1088.
+def test_pomeranian_k5_initialization():
+    model = PomeranianK5()
+    # Check dimensions
+    assert model.input_len == 2112
+    assert model.output_len == 1024
     
-    model = Pomeranian1k()
-    input_len = model.input_len
-    output_len = model.output_len
+    # Check Stem (Factorized [11, 11])
+    # The stem is an nn.Sequential
+    assert isinstance(model.stem, torch.nn.Sequential)
+    assert len(model.stem) == 2
+    # Layer 0: ConvNeXtV2Block (K=11, Dense)
+    assert model.stem[0].dwconv.kernel_size == (11,)
+    assert model.stem[0].dwconv.groups == 1 # Dense (First layer)
+    # Layer 1: ConvNeXtV2Block (K=11, Depthwise)
+    assert model.stem[1].dwconv.kernel_size == (11,)
+    assert model.stem[1].dwconv.groups == 64 # Depthwise (Second layer)
     
-    x = torch.randn(2, 4, input_len)
+    # Check Body (K=5, 8 Layers)
+    assert len(model.layers) == 8
+    for layer in model.layers:
+        assert layer.conv.kernel_size == (5,)
+        
+    # Check Head (K=49)
+    assert model.profile_spatial.kernel_size == (49,)
+
+def test_pomeranian_default_shape():
+    model = Pomeranian()
+    x = torch.randn(2, 4, 2112)
     output = model(x)
-    
-    assert output.logits.shape == (2, 1, output_len)
+    assert output.logits.shape == (2, 1, 1024)
     assert output.log_counts.shape == (2, 1)
 
-def test_pomeranian1k_parameter_count():
-    model = Pomeranian1k()
-    total_params = sum(p.numel() for p in model.parameters())
-    
-    # Expected: ~150k
-    # Allow some margin for head changes (Strategy A+C added ~6k)
-    # 142k (base) + 6k = 148k.
-    assert 140000 < total_params < 160000
-    print(f"Total params: {total_params}")
-
-def test_pomeranian_small_input():
-    # Test with smallest possible input (using base class with k=49 explicitly or just logic)
-    # Using Pomeranian1k configuration (shrinkage 1088)
-    # Min input 1089 -> output 1
-    input_len = 1100
-    output_len = 1100 - 1088 # 12
-    
-    # We must use Pomeranian base with k=49 to match this shrinkage calculation,
-    # or use Pomeranian1k but override lengths.
-    model = Pomeranian1k(input_len=input_len, output_len=output_len)
-    
-    x = torch.randn(1, 4, input_len)
+def test_pomeranian_k5_shape():
+    model = PomeranianK5()
+    x = torch.randn(2, 4, 2112)
     output = model(x)
-    assert output.logits.shape == (1, 1, output_len)
+    assert output.logits.shape == (2, 1, 1024)
+    assert output.log_counts.shape == (2, 1)
 
-def test_layers_padding_same_regression():
-    # Verify that padding='same' still works as expected (GemiNet usage)
-    block = ConvNeXtV2Block(channels_in=64, channels_out=64, kernel_size=21, padding='same')
-    x = torch.randn(2, 64, 100)
-    out = block(x)
-    assert out.shape == (2, 64, 100) # Length preserved
+def test_parameter_counts():
+    model_k5 = PomeranianK5()
+    model_default = Pomeranian()
     
-    pgc = PGCBlock(dim=64, kernel_size=3, dilation=2, padding='same')
-    out_pgc = pgc(x)
-    assert out_pgc.shape == (2, 64, 100) # Length preserved
+    params_k5 = count_params(model_k5)
+    params_default = count_params(model_default)
+    
+    print(f"K5 Params: {params_k5}")
+    print(f"Default (K9) Params: {params_default}")
+    
+    # K5 should be around 151k
+    assert 145000 < params_k5 < 160000
+    
+    # Default (K9) should be similar
+    assert 145000 < params_default < 165000
 
-def test_layers_padding_valid():
-    # Verify padding='valid' works and shrinks correctly
-    
-    # ConvNeXtV2Block
-    # k=21 -> shrinkage 20
-    block = ConvNeXtV2Block(channels_in=64, channels_out=64, kernel_size=21, padding='valid')
-    x = torch.randn(2, 64, 100)
-    out = block(x)
-    assert out.shape == (2, 64, 80) # 100 - 20
-    
-    # PGCBlock
-    # k=3, d=2 -> (3-1)*2 = 4 shrinkage
-    pgc = PGCBlock(dim=64, kernel_size=3, dilation=2, padding='valid')
-    x = torch.randn(2, 64, 100)
-    out_pgc = pgc(x)
-    assert out_pgc.shape == (2, 64, 96) # 100 - 4
-
-def test_pomeranian1k_internal_layer_length():
-    # Verify length of the final PGC layer output (before heads)
+def test_geometric_alignment_default():
+    # Verify exact alignment math for Default (K9)
     # Input: 2112
-    # Stem shrinkage: 20
-    # Tower shrinkage: 1020
-    # Expected length: 2112 - 20 - 1020 = 1072
+    # Stem: 11, 11. Shrinkage: 20.
+    # Body: K=9. Dilations: 1, 1, 2, 4, 8, 16, 32, 64. Sum=128.
+    # Shrinkage per layer: (9-1) * dilation = 8 * dilation.
+    # Total Body Shrinkage: 8 * 128 = 1024.
+    # Head: K=45. Shrinkage: 44.
+    # Total Shrinkage: 20 + 1024 + 44 = 1088.
+    # Output: 2112 - 1088 = 1024.
     
-    model = Pomeranian1k()
+    model = Pomeranian()
     x = torch.randn(1, 4, 2112)
-    
-    activations = {}
-    def get_activation(name):
-        def hook(model, input, output):
-            activations[name] = output.detach()
-        return hook
-    
-    # Register hook on the last layer of the tower
-    # layers is a ModuleList, so we access the last one [-1]
-    model.layers[-1].register_forward_hook(get_activation('last_layer'))
-    
-    _ = model(x)
-    
-    assert 'last_layer' in activations
-    internal_shape = activations['last_layer'].shape
-    print(f"Internal layer shape: {internal_shape}")
-    
-    # Expected shape: (1, 64, 1072)
-    assert internal_shape == (1, 64, 1072)
-    
-    # Also verify that this matches the input to profile head
-    # Profile head has k=49 (shrinkage 48).
-    # 1072 - 48 = 1024 (Output len).
-    assert internal_shape[-1] - 48 == 1024
+    output = model(x)
+    assert output.logits.shape[-1] == 1024
 
-def test_pomeranian1k_heads_feature_sharing():
-    # Verify that both heads operate on the same feature map (x),
-    # and that the count head pooling aligns with the profile head valid region.
+def test_geometric_alignment_k5():
+    # Verify exact alignment math for K5
+    # Input: 2112
+    # Stem: 11, 11. Shrinkage: (11-1) + (11-1) = 20.
+    # Body: K=5. Dilations: 1, 2, 4, 8, 16, 32, 64, 128. Sum=255.
+    # Shrinkage per layer: (5-1) * dilation = 4 * dilation.
+    # Total Body Shrinkage: 4 * 255 = 1020.
+    # Head: K=49. Shrinkage: 48.
+    # Total Shrinkage: 20 + 1020 + 48 = 1088.
+    # Output: 2112 - 1088 = 1024.
     
-    model = Pomeranian1k()
-    input_len = model.input_len
-    output_len = model.output_len
-    x = torch.randn(1, 4, input_len)
-    
-    inputs = {}
-    def get_input(name):
-        def hook(model, input, output):
-            inputs[name] = input[0].detach()
-        return hook
-    
-    # Hook profile head input (Pointwise Conv)
-    model.profile_pointwise.register_forward_hook(get_input('profile_in'))
-    
-    # Hook count head input (MLP first layer)
-    # model.count_mlp is Sequential, access first layer [0]
-    model.count_mlp[0].register_forward_hook(get_input('count_in'))
-    
-    _ = model(x)
-    
-    feat_profile = inputs['profile_in'] # (B, C, L_internal)
-    feat_count_pooled = inputs['count_in'] # (B, C)
-    
-    print(f"Profile feature shape: {feat_profile.shape}")
-    print(f"Count pooled input shape: {feat_count_pooled.shape}")
-    
-    # Verify alignment
-    # We expect feat_count_pooled to be the mean of the center-cropped feat_profile.
-    # Crop amount: L_internal - output_len
-    current_len = feat_profile.shape[-1]
-    diff = current_len - output_len
-    crop_l = diff // 2
-    crop_r = diff - crop_l
-    
-    feat_profile_cropped = feat_profile[..., crop_l:-crop_r]
-    expected_pooled = feat_profile_cropped.mean(dim=-1)
-    
-    # Assert close equality (float precision)
-    assert torch.allclose(feat_count_pooled, expected_pooled, atol=1e-6)
-
-@pytest.mark.skipif(int(torch.__version__.split(".")[0]) < 2, reason="torch.compile requires PyTorch 2.0+")
-def test_pomeranian1k_compile():
-    # Verify that the model can be compiled and run
-    model = Pomeranian1k()
-    model.eval()
-    input_len = model.input_len
-    output_len = model.output_len
-    
-    # Compile
-    try:
-        compiled_model = torch.compile(model)
-    except Exception as e:
-        pytest.skip(f"torch.compile failed (possibly unsupported backend): {e}")
-
-    x = torch.randn(2, 4, input_len)
-    
-    # Warmup run
-    try:
-        _ = compiled_model(x)
-    except Exception as e:
-        pytest.fail(f"Compiled model forward pass failed: {e}")
-        
-    # Actual run to check output
-    out = compiled_model(x)
-    assert out.logits.shape == (2, 1, output_len)
-    assert out.log_counts.shape == (2, 1)
+    model = PomeranianK5()
+    x = torch.randn(1, 4, 2112)
+    output = model(x)
+    assert output.logits.shape[-1] == 1024

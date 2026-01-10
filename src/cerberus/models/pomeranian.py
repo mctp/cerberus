@@ -9,7 +9,14 @@ from cerberus.layers import ConvNeXtV2Block, PGCBlock
 
 class Pomeranian(nn.Module):
     """
-    Pomeranian: A lightweight model mirroring BPNet (valid padding) but using GemiNet components.
+    Pomeranian: A lightweight model mirroring BPNet (valid padding) but using modern components.
+    
+    Default Configuration (aka PomeranianK9):
+    - Input: 2112 bp
+    - Output: 1024 bp
+    - Stem: Factorized [11, 11] (Expansion 2)
+    - Body: 8 Layers, Kernel 9, Dilations [1, 1, 2, 4, 8, 16, 32, 64]
+    - Head: Kernel 45
     
     Structure:
     - Input: One-hot sequence (Batch, 4, Length)
@@ -22,46 +29,41 @@ class Pomeranian(nn.Module):
     - Kernel sizes should be ODD numbers to ensure symmetric padding/cropping and perfect alignment.
     - Output Length Formula:
       Output = Input - (Stem_Shrinkage + Tower_Shrinkage + Head_Shrinkage)
-      
-      Where:
-      - Stem_Shrinkage = conv_kernel_size - 1
-      - Tower_Shrinkage = Sum((dil_kernel_size - 1) * dilation) for all layers
-      - Head_Shrinkage = profile_kernel_size - 1
-      
-      For defaults (8 layers, dilations 2^1..2^8, k=3):
-      - Tower_Shrinkage = Sum(2 * 2^i) = 2 * (2^9 - 2) = 1020
-      - Total Shrinkage = (21-1) + 1020 + (49-1) = 20 + 1020 + 48 = 1088
     
     Args:
-        input_len (int): Length of input sequence.
-        output_len (int): Length of output sequence.
+        input_len (int): Length of input sequence. Default: 2112.
+        output_len (int): Length of output sequence. Default: 1024.
         output_bin_size (int): Output resolution bin size.
         input_channels (list[str]): List of input channel names.
         output_channels (list[str]): List of output channel names.
         filters (int): Model dimension. Default: 64.
         n_dilated_layers (int): Number of dilated PGC blocks. Default: 8.
-        conv_kernel_size (int): Kernel size for initial convolution (stem). Default: 21.
-        dil_kernel_size (int): Kernel size for dilated convolutions. Default: 3.
-        profile_kernel_size (int): Kernel size for profile head convolution. Default: 75.
+        conv_kernel_size (int | list[int]): Kernel size for initial convolution (stem). Default: [11, 11].
+        dil_kernel_size (int | list[int]): Kernel size for dilated convolutions. Default: 9.
+        profile_kernel_size (int): Kernel size for profile head convolution. Default: 45.
         expansion (int): Expansion factor for PGC blocks. Default: 1.
         dropout (float): Dropout rate. Default: 0.1.
         predict_total_count (bool): If True, predicts a single total count scalar. Default: True.
+        stem_expansion (int): Expansion factor for Stem blocks. Default: 2.
+        dilations (list[int] | None): Dilation schedule. Default: [1, 1, 2, 4, 8, 16, 32, 64].
     """
     def __init__(
         self,
-        input_len: int,
-        output_len: int,
+        input_len: int = 2112,
+        output_len: int = 1024,
         output_bin_size: int = 1,
         input_channels: list[str] = ["A", "C", "G", "T"],
         output_channels: list[str] = ["signal"],
         filters: int = 64,
         n_dilated_layers: int = 8,
-        conv_kernel_size: int = 21,
-        dil_kernel_size: int = 3,
-        profile_kernel_size: int = 75,
+        conv_kernel_size: int | list[int] = [11, 11],
+        dil_kernel_size: int | list[int] = 9,
+        profile_kernel_size: int = 45,
         expansion: int = 1,
         dropout: float = 0.1,
         predict_total_count: bool = True,
+        stem_expansion: int = 2,
+        dilations: list[int] | None = [1, 1, 2, 4, 8, 16, 32, 64],
     ):
         super().__init__()
         
@@ -74,21 +76,53 @@ class Pomeranian(nn.Module):
         
         # 1. Stem
         # Use ConvNeXtV2Block with valid padding
-        self.stem = ConvNeXtV2Block(
-            channels_in=self.n_input_channels, 
-            channels_out=filters, 
-            kernel_size=conv_kernel_size,
-            padding='valid'
-        )
+        if isinstance(conv_kernel_size, int):
+            self.stem = ConvNeXtV2Block(
+                channels_in=self.n_input_channels, 
+                channels_out=filters, 
+                kernel_size=conv_kernel_size,
+                padding='valid',
+                inv_bottleneckscale=stem_expansion
+            )
+        else:
+            # Multi-layer stem
+            layers = []
+            for i, k_size in enumerate(conv_kernel_size):
+                # First layer takes input channels, subsequent layers take filters
+                c_in = self.n_input_channels if i == 0 else filters
+                # First layer is dense (Stem), subsequent layers are depthwise (Block)
+                use_groups = (i > 0)
+                layers.append(
+                    ConvNeXtV2Block(
+                        channels_in=c_in,
+                        channels_out=filters,
+                        kernel_size=k_size,
+                        padding='valid',
+                        groups=use_groups,
+                        inv_bottleneckscale=stem_expansion
+                    )
+                )
+            self.stem = nn.Sequential(*layers)
         
         # 2. Dilated PGC Tower
         self.layers = nn.ModuleList()
-        for i in range(1, n_dilated_layers + 1):
-            dilation = 2**i
+        if dilations is not None:
+            dilation_schedule = dilations
+        else:
+            dilation_schedule = [2**i for i in range(1, n_dilated_layers + 1)]
+            
+        if isinstance(dil_kernel_size, int):
+            kernel_schedule = [dil_kernel_size] * len(dilation_schedule)
+        else:
+            kernel_schedule = dil_kernel_size
+            if len(kernel_schedule) != len(dilation_schedule):
+                raise ValueError(f"Kernel schedule length {len(kernel_schedule)} != Dilation schedule length {len(dilation_schedule)}")
+
+        for dilation, k_size in zip(dilation_schedule, kernel_schedule):
             self.layers.append(
                 PGCBlock(
                     dim=filters,
-                    kernel_size=dil_kernel_size,
+                    kernel_size=k_size,
                     dilation=dilation,
                     expansion=expansion,
                     dropout=dropout,
@@ -101,8 +135,6 @@ class Pomeranian(nn.Module):
         # 1. Pointwise Conv (1x1): Mixes channels to refine features per position without spatial smoothing.
         # 2. GELU: Adds non-linearity to the head (standard BPNet head is linear).
         # 3. Spatial Conv (Valid): Performs the final spatial smoothing/aggregation over the profile window.
-        # This separation allows the model to learn complex feature interactions before committing to a specific shape,
-        # improving expressivity with minimal parameter cost compared to a single large kernel.
         self.profile_pointwise = nn.Conv1d(filters, filters, kernel_size=1)
         self.profile_act = nn.GELU()
         self.profile_spatial = nn.Conv1d(
@@ -154,17 +186,6 @@ class Pomeranian(nn.Module):
             )
 
         # --- Counts Head ---
-        # Global Average Pooling over the VALID latent representation x (before profile spatial conv)
-        # Note: 'x' here has length equal to Input - (Stem + Tower Shrinkage).
-        # Profile logits have length x - Profile Shrinkage.
-        # BPNet typically pools over the latent representation that feeds into the profile head.
-        # However, to be perfectly aligned with the output region, we might want to crop 'x'
-        # to correspond to the output region (center) before pooling.
-        # The profile head shrinkage is 74 bp.
-        # If we pool 'x' directly, we include 37bp on each side that don't contribute to the valid profile output.
-        # Standard BPNet usually pools the input to the profile head directly (GlobalAvgPool).
-        # GemiNet also pools x directly.
-        
         # Crop x to match the target output length to ensure we pool features
         # corresponding to the predicted region.
         current_len_x = x.shape[-1]
@@ -182,9 +203,16 @@ class Pomeranian(nn.Module):
         
         return ProfileCountOutput(logits=profile_logits, log_counts=log_counts)
 
-class Pomeranian1k(Pomeranian):
+
+class PomeranianK5(Pomeranian):
     """
-    Pomeranian1k: A 1024bp output version of Pomeranian aligned to powers of 2.
+    PomeranianK5 (Medium Kernel): K5 body with a 2-layer factorized stem.
+    
+    Structure:
+    - Stem: [11, 11] (Shrinkage 20)
+    - Body: K=5, Dilations [1..128]
+    - Head: K=49
+    
     Input: 2112 bp. Output: 1024 bp.
     """
     def __init__(
@@ -196,12 +224,14 @@ class Pomeranian1k(Pomeranian):
         output_channels: list[str] = ["signal"],
         filters: int = 64,
         n_dilated_layers: int = 8,
-        conv_kernel_size: int = 21,
-        dil_kernel_size: int = 3,
+        conv_kernel_size: list[int] = [11, 11],
+        dil_kernel_size: int = 5,
         profile_kernel_size: int = 49,
         expansion: int = 1,
         dropout: float = 0.1,
         predict_total_count: bool = True,
+        stem_expansion: int = 2,
+        dilations: list[int] | None = [1, 2, 4, 8, 16, 32, 64, 128],
     ):
         super().__init__(
             input_len=input_len,
@@ -217,6 +247,8 @@ class Pomeranian1k(Pomeranian):
             expansion=expansion,
             dropout=dropout,
             predict_total_count=predict_total_count,
+            stem_expansion=stem_expansion,
+            dilations=dilations,
         )
 
 
@@ -230,3 +262,4 @@ class PomeranianMetricCollection(MetricCollection):
             "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
             "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
         })
+        

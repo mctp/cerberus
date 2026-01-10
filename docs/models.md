@@ -2,6 +2,21 @@
 
 Cerberus provides implementations of standard deep learning architectures for genomic sequence modeling.
 
+## Pomeranian
+
+**Implementation**: `cerberus.models.Pomeranian` (Default) / `PomeranianK5`  
+**Source**: `src/cerberus/models/pomeranian.py`
+
+A lightweight, efficient model (~150k params) mirroring BPNet's valid-padding paradigm but utilizing modern components (ConvNeXtV2 Stem, PGC Body).
+
+### Key Features
+*   **Valid Padding**: Ensures no zero-padding artifacts; strictly maps input to output geometrically (2112bp -> 1024bp).
+*   **Factorized Stem**: Uses a 2-layer stem (`[11, 11]`) with dense and depthwise convolutions for efficient initial feature extraction.
+*   **PGC Body**: Stack of 8 Pointwise-Gated Convolution (PGC) blocks.
+*   **Variants**:
+    *   **Pomeranian** (Default): Uses Kernel=9 and Dilation=64 (max). Best for hardware efficiency and modeling large motifs.
+    *   **PomeranianK5**: Uses Kernel=5 and Dilation=128 (max). Traditional small-kernel approach.
+
 ## BPNet
 
 **Implementation**: `cerberus.models.BPNet`  

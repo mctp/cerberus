@@ -1,20 +1,16 @@
 #!/usr/bin/env python
 """
-Pomeranian1K training example for ChIP-seq data using Cerberus.
+Pomeranian Training Example.
 
-This script implements a Pomeranian1K training run using the MDA-PCA-2b AR dataset.
-Pomeranian is a lightweight model mirroring BPNet (valid padding) but using GemiNet components.
+This script implements training for Pomeranian models on the MDA-PCA-2b AR dataset.
 
-It follows the standard configuration:
-- Input: 2112bp DNA sequence
-- Output: 1024bp base-resolution profile
-- Model: Pomeranian1K
-- Loss: BPNetLoss (Multinomial NLL + MSE log counts)
-- Training: Based on peak intervals (narrowPeak)
+Models:
+- Pomeranian (Default): Large Kernel (9), Factorized Stem. Input 2112bp.
+- PomeranianK5 (--k5): Medium Kernel (5), Factorized Stem. Input 2112bp.
 
 Usage:
-    python examples/chip_ar_mdapca2b_pomeranian.py --batch-size 32 --max-epochs 50
-    python examples/chip_ar_mdapca2b_pomeranian.py --multi --batch-size 32
+    python examples/chip_ar_mdapca2b_pomeranian.py --batch-size 32         # Uses Default (K9)
+    python examples/chip_ar_mdapca2b_pomeranian.py --k5 --batch-size 32    # Uses K5
 """
 
 import argparse
@@ -30,7 +26,7 @@ from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Train a Pomeranian1K model with Cerberus")
+    parser = argparse.ArgumentParser(description="Train Pomeranian models with Cerberus")
     
     # Script arguments
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data")
@@ -41,6 +37,9 @@ def get_args():
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
+    
+    # Model variants
+    parser.add_argument("--k5", action="store_true", help="Use PomeranianK5 (Medium Kernel Variant)")
 
     # Hyperparameters
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
@@ -93,8 +92,7 @@ def main():
     )
 
     # Data Config
-    # Input: 2112bp DNA (Pomeranian1K)
-    # Output: 1024bp at base resolution
+    # Both use 2112bp input
     input_len = 2112
     output_len = 1024
     output_bin_size = 1
@@ -142,8 +140,44 @@ def main():
         }
     }
 
-    # Model Config for Pomeranian
-    print(f"Using Pomeranian1K Model...")
+    # Model Config
+    if args.k5:
+        print(f"Using PomeranianK5 (Medium Kernel) Model...")
+        model_args = {
+            "input_channels": ["A", "C", "G", "T"],
+            "output_channels": ["signal"],
+            "filters": 64,
+            "n_dilated_layers": 8,
+            "conv_kernel_size": [11, 11],
+            "dil_kernel_size": 5,
+            "profile_kernel_size": 49,
+            "expansion": 1,
+            "dropout": 0.1,
+            "predict_total_count": True,
+            "stem_expansion": 2,
+            "dilations": [1, 2, 4, 8, 16, 32, 64, 128],
+        }
+        model_cls_name = "cerberus.models.pomeranian.PomeranianK5"
+        model_name = "PomeranianK5"
+    else:
+        # Default to Pomeranian (K9 Config)
+        print(f"Using Pomeranian (Default) Model...")
+        model_args = {
+            "input_channels": ["A", "C", "G", "T"],
+            "output_channels": ["signal"],
+            "filters": 64,
+            "n_dilated_layers": 8,
+            "conv_kernel_size": [11, 11],
+            "dil_kernel_size": 9,
+            "profile_kernel_size": 45,
+            "expansion": 1,
+            "dropout": 0.1,
+            "predict_total_count": True,
+            "stem_expansion": 2,
+            "dilations": [1, 1, 2, 4, 8, 16, 32, 64],
+        }
+        model_cls_name = "cerberus.models.pomeranian.Pomeranian"
+        model_name = "Pomeranian"
 
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
@@ -154,23 +188,9 @@ def main():
         loss_args = {"alpha": args.alpha}
         print(f"Using BPNetLoss (alpha={args.alpha})...")
 
-    # Pomeranian1K Configuration
-    model_args = {
-        "input_channels": ["A", "C", "G", "T"],
-        "output_channels": ["signal"],
-        "filters": 64,
-        "n_dilated_layers": 8,
-        "conv_kernel_size": 21,
-        "dil_kernel_size": 3,
-        "profile_kernel_size": 49,
-        "expansion": 1,
-        "dropout": 0.1,
-        "predict_total_count": True,
-    }
-
     model_config: ModelConfig = {
-        "name": "Pomeranian1K",
-        "model_cls": "cerberus.models.pomeranian.Pomeranian1k",
+        "name": model_name,
+        "model_cls": model_cls_name,
         "loss_cls": loss_cls,
         "loss_args": loss_args,
         "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",

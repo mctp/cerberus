@@ -206,7 +206,7 @@ def main():
             "devices": devices,
             "strategy": "ddp_find_unused_parameters_false" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto",
             "benchmark": True,
-            "compile": True
+            "compile": False
         }
 
     print("\nConfigurations:")
