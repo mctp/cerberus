@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torchmetrics import MetricCollection
 
 from cerberus.output import ProfileCountOutput
-from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
+from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, LogCountsPearsonCorrCoef
 from cerberus.layers import ConvNeXtV2Block, PGCBlock
 
 class Pomeranian(nn.Module):
@@ -261,5 +261,5 @@ class PomeranianMetricCollection(MetricCollection):
             "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
             "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
             "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
         })
-        

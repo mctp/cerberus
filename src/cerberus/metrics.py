@@ -203,6 +203,52 @@ class LogCountsMeanSquaredError(MeanSquaredError):
         super().update(pred_log_counts, target_log_counts)
 
 
+class LogCountsPearsonCorrCoef(PearsonCorrCoef):
+    """
+    Pearson Correlation on Log Counts.
+    
+    Computes Correlation between:
+    1. Predicted Log Counts (from log_counts or logsumexp of log_rates)
+    2. Target Log Counts (log1p of sum of targets)
+    """
+    def __init__(self, count_per_channel=False, implicit_log_targets=False, **kwargs):
+        super().__init__(**kwargs)
+        self.count_per_channel = count_per_channel
+        self.implicit_log_targets = implicit_log_targets
+
+    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
+        if isinstance(preds, ProfileCountOutput):
+            pred_log_counts = preds.log_counts
+            # If we want global count but have per-channel counts, aggregate them
+            if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
+                pred_log_counts = torch.logsumexp(pred_log_counts, dim=1)
+                
+        elif isinstance(preds, ProfileLogRates):
+            if self.count_per_channel:
+                pred_log_counts = torch.logsumexp(preds.log_rates, dim=2)
+            else:
+                pred_log_counts = torch.logsumexp(preds.log_rates.flatten(start_dim=1), dim=-1)
+        else:
+             raise TypeError("LogCountsPearsonCorrCoef requires ProfileCountOutput or ProfileLogRates")
+        
+        if self.implicit_log_targets:
+            target = torch.expm1(target)
+            
+        if self.count_per_channel:
+            target_counts = target.sum(dim=2)
+            target_log_counts = torch.log1p(target_counts)
+        else:
+            target_global_count = target.sum(dim=(1, 2))
+            target_log_counts = torch.log1p(target_global_count)
+            
+        # Ensure dimensions match (flatten to 1D if global)
+        if not self.count_per_channel:
+            pred_log_counts = pred_log_counts.flatten()
+            target_log_counts = target_log_counts.flatten()
+            
+        super().update(pred_log_counts, target_log_counts)
+
+
 class DefaultMetricCollection(MetricCollection):
     """
     Default MetricCollection used for training/validation.
@@ -215,4 +261,5 @@ class DefaultMetricCollection(MetricCollection):
             # (assuming equal number of elements per channel). Thus no custom flattening is needed.
             "mse_profile": ProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
             "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
         })

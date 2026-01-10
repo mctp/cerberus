@@ -4,7 +4,7 @@ from torchmetrics import MetricCollection
 
 from cerberus.loss import MSEMultinomialLoss
 from cerberus.output import ProfileCountOutput
-from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
+from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, LogCountsPearsonCorrCoef
 from cerberus.layers import DilatedResidualBlock
 
 
@@ -144,6 +144,50 @@ class BPNet(nn.Module):
         return ProfileCountOutput(logits=profile_logits, log_counts=log_counts)
 
 
+class BPNet1024(BPNet):
+    """
+    BPNet1024: A configuration of BPNet optimized for 2112 -> 1024 prediction without cropping.
+    
+    Key Features:
+    - Input: 2112 bp
+    - Output: 1024 bp
+    - Receptive Field Shrinkage: Exactly 1088 bp (2112 - 1024), achieved via tuned kernels.
+      - Initial Conv Reduction: 20 (Kernel 21)
+      - Tower Reduction: 1020 (8 layers, K=3, Dilations 2^1..2^8)
+      - Profile Head Reduction: 48 (Kernel 49)
+      - Total: 20 + 1020 + 48 = 1088.
+    - Parameter Count: ~152k (roughly 50% increase over standard BPNet).
+      - Achieved by increasing filters to 77.
+    """
+    def __init__(
+        self,
+        input_len: int = 2112,
+        output_len: int = 1024,
+        output_bin_size: int = 1,
+        input_channels: list[str] = ["A", "C", "G", "T"],
+        output_channels: list[str] = ["signal"],
+        filters: int = 77,
+        n_dilated_layers: int = 8,
+        conv_kernel_size: int = 21,
+        dil_kernel_size: int = 3,
+        profile_kernel_size: int = 49,
+        predict_total_count: bool = True,
+    ):
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            output_bin_size=output_bin_size,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            filters=filters,
+            n_dilated_layers=n_dilated_layers,
+            conv_kernel_size=conv_kernel_size,
+            dil_kernel_size=dil_kernel_size,
+            profile_kernel_size=profile_kernel_size,
+            predict_total_count=predict_total_count,
+        )
+
+
 class BPNetLoss(MSEMultinomialLoss):
     """
     BPNet Loss with parameters fixed to match chrombpnet-pytorch implementation.
@@ -216,4 +260,5 @@ class BPNetMetricCollection(MetricCollection):
             "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
             "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
             "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
         })
