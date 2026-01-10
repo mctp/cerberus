@@ -44,7 +44,8 @@ def get_args():
     # Hyperparameters
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
     parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
-    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson"], help="Loss function to use")
+    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson", "nb"], help="Loss function to use")
+    parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
     
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
@@ -127,7 +128,7 @@ def main():
     train_config: TrainConfig = {
         "batch_size": args.batch_size,
         "max_epochs": args.max_epochs,
-        "learning_rate": 1e-3,
+        "learning_rate": 5e-4,
         "weight_decay": 0.01,
         "patience": 10,
         "optimizer": "adamw",
@@ -136,7 +137,7 @@ def main():
         "scheduler_args": {
             "num_epochs": args.max_epochs,
             "warmup_epochs": 10,
-            "min_lr": 1e-5
+            "min_lr": 5e-6
         }
     }
 
@@ -183,6 +184,10 @@ def main():
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
         loss_args = {"count_weight": args.alpha}
         print(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
+    elif args.loss == "nb":
+        loss_cls = "cerberus.loss.NegativeBinomialMultinomialLoss"
+        loss_args = {"count_weight": args.alpha, "total_count": args.total_count}
+        print(f"Using NegativeBinomialMultinomialLoss (count_weight={args.alpha}, total_count={args.total_count})...")
     else:
         loss_cls = "cerberus.models.bpnet.BPNetLoss"
         loss_args = {"alpha": args.alpha}

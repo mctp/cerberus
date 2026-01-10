@@ -294,3 +294,97 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
         loss_shape = self._compute_profile_loss(logits, targets)
 
         return self.count_weight * loss_count + self.profile_weight * loss_shape
+
+
+class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
+    """
+    Negative Binomial Multinomial Loss.
+    
+    Objective:
+      1. Profile Loss: Cross Entropy (Multinomial NLL form).
+      2. Count Loss: Negative Binomial NLL on Global Count.
+      
+    Args:
+        total_count (float): The 'r' dispersion parameter for Negative Binomial.
+                             Fixed hyperparameter. Controls saturation of gradients.
+                             Smaller 'total_count' implies higher dispersion (variance >> mean).
+                             NB Variance = mu + mu^2 / total_count.
+    """
+    def __init__(self, total_count=10.0, **kwargs):
+        super().__init__(**kwargs)
+        self.total_count = float(total_count)
+        
+    def forward(self, predictions, targets):
+        if self.implicit_log_targets:
+            targets = torch.expm1(targets)
+
+        if not isinstance(predictions, ProfileCountOutput):
+             raise TypeError("NegativeBinomialMultinomialLoss requires ProfileCountOutput")
+
+        logits = predictions.logits
+        pred_log_counts = predictions.log_counts
+        
+        # Determine target counts
+        if self.count_per_channel:
+            target_counts = targets.sum(dim=2) # (B, C)
+        else:
+            target_counts = targets.sum(dim=(1, 2)) # (B,)
+            if pred_log_counts.ndim > 1:
+                pred_log_counts = pred_log_counts.flatten()
+        
+        # --- Count Loss (Negative Binomial) ---
+        # pred_log_counts is log(mu)
+        # We need to construct NB distribution
+        # PyTorch NB parameterization: total_count (r), logits (log-odds)
+        # logits = pred_log_counts - log(r)
+        
+        r_tensor = torch.tensor(self.total_count, device=pred_log_counts.device, dtype=pred_log_counts.dtype)
+        nb_logits = pred_log_counts - torch.log(r_tensor)
+        
+        nb_dist = torch.distributions.NegativeBinomial(total_count=r_tensor, logits=nb_logits)
+        loss_count = -nb_dist.log_prob(target_counts).mean()
+
+        # --- Profile Loss ---
+        loss_shape = self._compute_profile_loss(logits, targets)
+
+        return self.count_weight * loss_count + self.profile_weight * loss_shape
+
+
+class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
+    """
+    Negative Binomial Multinomial Loss (Coupled).
+    Mathematically equivalent to NegativeBinomialMultinomialLoss but derives counts from log_rates.
+    """
+    def forward(self, predictions, targets):
+        if self.implicit_log_targets:
+            targets = torch.expm1(targets)
+
+        if isinstance(predictions, ProfileCountOutput):
+            raise TypeError("CoupledNegativeBinomialMultinomialLoss does not accept ProfileCountOutput. Use NegativeBinomialMultinomialLoss instead.")
+
+        if not isinstance(predictions, ProfileLogRates):
+             raise TypeError("CoupledNegativeBinomialMultinomialLoss requires ProfileLogRates")
+
+        logits = predictions.log_rates
+
+        if self.count_per_channel:
+            # Simulate log_counts per channel
+            pred_log_counts = torch.logsumexp(logits, dim=2) # (B, C)
+            target_counts = targets.sum(dim=2) # (B, C)
+        else:
+            # Simulate log_counts from logits (Global Sum)
+            logits_flat = logits.flatten(start_dim=1)
+            pred_log_counts = torch.logsumexp(logits_flat, dim=-1) # (B,)
+            target_counts = targets.sum(dim=(1, 2)) # (B,)
+
+        # --- Count Loss (Negative Binomial) ---
+        r_tensor = torch.tensor(self.total_count, device=pred_log_counts.device, dtype=pred_log_counts.dtype)
+        nb_logits = pred_log_counts - torch.log(r_tensor)
+        
+        nb_dist = torch.distributions.NegativeBinomial(total_count=r_tensor, logits=nb_logits)
+        loss_count = -nb_dist.log_prob(target_counts).mean()
+
+        # --- Profile Loss ---
+        loss_shape = self._compute_profile_loss(logits, targets)
+
+        return self.count_weight * loss_count + self.profile_weight * loss_shape
