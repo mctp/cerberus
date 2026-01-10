@@ -56,7 +56,8 @@ class ConvNeXtV2Block(nn.Module):
             groups=channels_in if groups else 1,
             dilation=dilation_rate,
         )  # depthwise conv
-        self.norm = nn.LayerNorm(channels_out, eps=1e-6)
+        ## shift from original LayerNorm to more recent RMSNorm
+        self.norm = nn.RMSNorm(channels_out, eps=1e-6)
         self.pwconv1 = nn.Linear(
             channels_out, self.inv_bottleneckwidth
         )  # pointwise/1x1 convs, implemented with linear layers
@@ -76,7 +77,7 @@ class ConvNeXtV2Block(nn.Module):
             x_ = x
 
         x = x.permute(0, 2, 1)
-        x = self.norm(x)
+        x = self.norm(x.float()).type_as(x)
         x = self.pwconv1(x)
         x = self.act(x)
         x = self.grn(x)
