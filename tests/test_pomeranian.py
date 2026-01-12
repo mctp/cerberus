@@ -16,17 +16,17 @@ def test_pomeranian_default_initialization():
     # Check Stem (Factorized [11, 11] - Matching K5)
     assert isinstance(model.stem, torch.nn.Sequential)
     assert len(model.stem) == 2
-    assert model.stem[0].dwconv.kernel_size == (11,)
-    assert model.stem[1].dwconv.kernel_size == (11,)
-    assert model.stem[1].dwconv.groups == 64 # Depthwise
+    assert model.stem[0].dwconv.kernel_size == (11,) # type: ignore
+    assert model.stem[1].dwconv.kernel_size == (11,) # type: ignore
+    assert model.stem[1].dwconv.groups == 64 # Depthwise # type: ignore
     
     # Check Body (K=9, 8 Layers)
     assert len(model.layers) == 8
     for layer in model.layers:
-        assert layer.conv.kernel_size == (9,)
+        assert layer.conv.kernel_size == (9,) # type: ignore
         
     # Check Head (K=45)
-    assert model.profile_spatial.kernel_size == (45,)
+    assert model.profile_spatial.kernel_size == (45,) # type: ignore
 
 def test_pomeranian_k5_initialization():
     model = PomeranianK5()
@@ -39,19 +39,19 @@ def test_pomeranian_k5_initialization():
     assert isinstance(model.stem, torch.nn.Sequential)
     assert len(model.stem) == 2
     # Layer 0: ConvNeXtV2Block (K=11, Dense)
-    assert model.stem[0].dwconv.kernel_size == (11,)
-    assert model.stem[0].dwconv.groups == 1 # Dense (First layer)
+    assert model.stem[0].dwconv.kernel_size == (11,) # type: ignore
+    assert model.stem[0].dwconv.groups == 1 # Dense (First layer) # type: ignore
     # Layer 1: ConvNeXtV2Block (K=11, Depthwise)
-    assert model.stem[1].dwconv.kernel_size == (11,)
-    assert model.stem[1].dwconv.groups == 64 # Depthwise (Second layer)
+    assert model.stem[1].dwconv.kernel_size == (11,) # type: ignore
+    assert model.stem[1].dwconv.groups == 64 # Depthwise (Second layer) # type: ignore
     
     # Check Body (K=5, 8 Layers)
     assert len(model.layers) == 8
     for layer in model.layers:
-        assert layer.conv.kernel_size == (5,)
+        assert layer.conv.kernel_size == (5,) # type: ignore
         
     # Check Head (K=49)
-    assert model.profile_spatial.kernel_size == (49,)
+    assert model.profile_spatial.kernel_size == (49,) # type: ignore
 
 def test_pomeranian_default_shape():
     model = Pomeranian()

@@ -11,7 +11,7 @@ import gzip
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.samplers import IntervalSampler
-from cerberus.output import ProfileCountOutput
+from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
 
 def main():
     parser = argparse.ArgumentParser(description="Export predicted vs observed log-counts to TSV.")
@@ -95,7 +95,7 @@ def main():
     for batch_output, batch_intervals in batch_gen:
         # 4a. Get Predicted Log Counts
         preds_batch = None
-        if hasattr(batch_output, "log_counts"):
+        if isinstance(batch_output, ProfileCountOutput):
             log_counts = batch_output.log_counts
             if log_counts.ndim == 2 and log_counts.shape[1] > 1:
                 pred_log_total = torch.logsumexp(log_counts, dim=1)
@@ -103,7 +103,7 @@ def main():
                 pred_log_total = log_counts.flatten()
             preds_batch = pred_log_total.cpu().numpy()
             
-        elif hasattr(batch_output, "log_rates"):
+        elif isinstance(batch_output, ProfileLogRates):
              log_rates = batch_output.log_rates
              if log_rates.shape[1] > 1:
                  pred_log_total = torch.logsumexp(log_rates.flatten(start_dim=1), dim=-1)

@@ -46,9 +46,10 @@ class S4DKernel(nn.Module):
         Returns: (d_model, L)
         """
         # Materialize parameters
-        dt = torch.exp(self.log_dt) # (H,)
-        C = torch.view_as_complex(self.C) # (H, N//2)
-        A = torch.complex(-torch.exp(self.log_A_real), self.A_imag) # (H, N//2)
+        # Pyright infers these as Tensor | Module, but they are registered Parameters (Tensors).
+        dt = torch.exp(self.log_dt) # type: ignore
+        C = torch.view_as_complex(self.C) # type: ignore
+        A = torch.complex(-torch.exp(self.log_A_real), self.A_imag) # type: ignore
         
         # Discretization
         dtA = A * dt.unsqueeze(-1) # (H, N//2)

@@ -68,6 +68,7 @@ def test_nb_gradients_saturation():
     dummy_targets[0, 0, 0] = 10000.0
     
     loss.backward()
+    assert log_pred.grad is not None
     grad_nb = log_pred.grad.item()
     
     # Compare with Poisson gradient (approx)
@@ -117,11 +118,13 @@ def test_nb_convergence_to_poisson():
     log_counts.requires_grad_(True)
     val_nb = loss_nb(ProfileCountOutput(logits=logits, log_counts=log_counts), targets)
     val_nb.backward()
+    assert log_counts.grad is not None
     grad_nb = log_counts.grad.item()
     log_counts.grad = None
     
     val_poisson = F.poisson_nll_loss(log_counts, targets.sum().view(1), log_input=True, full=False)
     val_poisson.backward()
+    assert log_counts.grad is not None
     grad_poisson = log_counts.grad.item()
     
     # NB Gradient with r->inf should approach Poisson Gradient

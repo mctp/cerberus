@@ -124,8 +124,8 @@ def test_lyranet_custom_kernel_size():
     
     # Check if the kernel sizes were applied
     # Stem is Sequential -> Conv1d
-    assert model.stem[0].kernel_size[0] == conv_k
-    assert model.profile_conv.kernel_size[0] == profile_k
+    assert model.stem[0].kernel_size[0] == conv_k # type: ignore
+    assert model.profile_conv.kernel_size[0] == profile_k # type: ignore
     
     x = torch.randn(2, 1, 100)
     out = model(x)
@@ -140,5 +140,5 @@ def test_lyranet_s4_lr():
     )
     # Check if the LR was registered in the _optim dict of the kernel parameters
     # The kernel is inside S4D -> kernel
-    kernel = model.s4_layers[0].kernel
-    assert kernel.log_dt._optim["lr"] == lr
+    kernel = model.s4_layers[0].kernel # type: ignore
+    assert kernel.log_dt._optim["lr"] == lr # type: ignore

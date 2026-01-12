@@ -112,6 +112,7 @@ def test_predict_intervals_consistency():
     
     merged_interval = output.out_interval
     # Union of 40-60 and 240-260 -> 40-260
+    assert merged_interval is not None
     assert merged_interval.start == 40
     assert merged_interval.end == 260
     

@@ -7,13 +7,8 @@ import torch
 import torch.nn as nn
 from dataclasses import is_dataclass
 
-# Try to import cerberus.models to inspect available models
-try:
-    import cerberus.models
-except ImportError:
-    # If running from source without install, might need to adjust path
-    # But assuming the environment is set up correctly as per prompt context
-    pass
+# Import cerberus.models to inspect available models
+import cerberus.models
 
 def find_model_class(model_name):
     """
