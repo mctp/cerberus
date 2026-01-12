@@ -38,7 +38,7 @@ We will implement `Pomeranian`, a new model in `src/cerberus/models/pomeranian.p
     - (Estimate: ~142k params, as calculated).
 
 4.  **Tests**:
-    - Create `tests/test_pomeranian.py` mirroring `tests/test_geminet2.py` and `tests/test_bpnet_implementation.py`.
+    - Create `tests/test_pomeranian.py` mirroring `tests/test_geminet.py` and `tests/test_bpnet_implementation.py`.
     - Verify output shapes and parameter counts.
 
 ## Technical Considerations
