@@ -36,8 +36,8 @@ class BPNet(nn.Module):
     """
     def __init__(
         self,
-        input_len: int,
-        output_len: int,
+        input_len: int = 2114,
+        output_len: int = 1000,
         output_bin_size: int = 1,
         input_channels: list[str] = ["A", "C", "G", "T"],
         output_channels: list[str] = ["signal"],
