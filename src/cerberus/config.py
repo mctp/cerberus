@@ -162,17 +162,62 @@ class CerberusConfig(TypedDict):
 # --- Validation Logic ---
 
 
+def _resolve_path(path: Path, search_paths: list[Path] | None = None) -> Path:
+    """
+    Attempts to resolve a path that might be relative to a different root.
+    
+    If the path exists, it is returned as is.
+    If not, and search_paths are provided, it checks if the path (or its suffixes)
+    exist relative to any of the search paths.
+    """
+    if path.exists():
+        return path
+        
+    if search_paths:
+        for base in search_paths:
+            # 1. Check if path is relative to base
+            candidate = base / path
+            if candidate.exists():
+                return candidate.resolve()
+            
+            # 2. If path is absolute, try to match suffixes
+            if path.is_absolute():
+                parts = path.parts
+                # Try progressively shorter suffixes of the original path
+                # e.g. /a/b/c/d/file.txt -> d/file.txt, c/d/file.txt, etc.
+                for i in range(len(parts)-1, 0, -1):
+                    suffix = Path(*parts[i:])
+                    candidate = base / suffix
+                    if candidate.exists():
+                        return candidate.resolve()
+    return path
+
 def _validate_path(
-    path: str | Path, description: str, check_exists: bool = True
+    path: str | Path, 
+    description: str, 
+    check_exists: bool = True,
+    search_paths: list[Path] | None = None,
 ) -> Path:
     """Validates that a path exists (optional) and returns it as a Path object."""
     p = Path(path)
-    if check_exists and not p.exists():
-        raise FileNotFoundError(f"{description} not found at: {p}")
+    
+    if check_exists:
+        if not p.exists():
+            # Attempt resolution
+            resolved = _resolve_path(p, search_paths)
+            if resolved.exists():
+                return resolved
+            # If still not found
+            raise FileNotFoundError(f"{description} not found at: {p} (and could not be resolved in search paths)")
+    
     return p
 
 
-def _validate_file_dict(data: dict, description: str) -> dict[str, Path]:
+def _validate_file_dict(
+    data: dict, 
+    description: str,
+    search_paths: list[Path] | None = None
+) -> dict[str, Path]:
     """Validates a dictionary of name -> filepath mappings."""
     if not isinstance(data, dict):
         raise TypeError(f"{description} must be a dictionary")
@@ -181,11 +226,14 @@ def _validate_file_dict(data: dict, description: str) -> dict[str, Path]:
     for k, v in data.items():
         if not isinstance(k, str):
             raise TypeError(f"{description} keys must be strings")
-        validated[k] = _validate_path(v, f"{description} file '{k}'")
+        validated[k] = _validate_path(v, f"{description} file '{k}'", search_paths=search_paths)
     return validated
 
 
-def validate_genome_config(config: GenomeConfig) -> GenomeConfig:
+def validate_genome_config(
+    config: GenomeConfig,
+    search_paths: list[Path] | None = None
+) -> GenomeConfig:
     """
     Validates the genome configuration and returns a GenomeConfig object.
     
@@ -237,10 +285,10 @@ def validate_genome_config(config: GenomeConfig) -> GenomeConfig:
     if not isinstance(path_val, (str, Path)):
         raise TypeError("fasta_path must be a string or Path")
 
-    p = _validate_path(path_val, "Genome file")
+    p = _validate_path(path_val, "Genome file", search_paths=search_paths)
 
     exclude_intervals = _validate_file_dict(
-        config["exclude_intervals"], "exclude_intervals"
+        config["exclude_intervals"], "exclude_intervals", search_paths=search_paths
     )
 
     if not isinstance(config["allowed_chroms"], list):
@@ -280,7 +328,10 @@ def validate_genome_config(config: GenomeConfig) -> GenomeConfig:
     }
 
 
-def validate_data_config(config: DataConfig) -> DataConfig:
+def validate_data_config(
+    config: DataConfig,
+    search_paths: list[Path] | None = None
+) -> DataConfig:
     """
     Validates the data configuration dictionary.
     
@@ -319,8 +370,8 @@ def validate_data_config(config: DataConfig) -> DataConfig:
         missing = required_keys - config.keys()
         raise ValueError(f"Data config missing required keys: {missing}")
 
-    inputs = _validate_file_dict(config["inputs"], "inputs")
-    targets = _validate_file_dict(config["targets"], "targets")
+    inputs = _validate_file_dict(config["inputs"], "inputs", search_paths=search_paths)
+    targets = _validate_file_dict(config["targets"], "targets", search_paths=search_paths)
 
     # Type and Value checks
     if not isinstance(config["input_len"], int) or config["input_len"] <= 0:
@@ -361,7 +412,10 @@ def validate_data_config(config: DataConfig) -> DataConfig:
     }
 
 
-def validate_sampler_config(config: SamplerConfig) -> SamplerConfig:
+def validate_sampler_config(
+    config: SamplerConfig,
+    search_paths: list[Path] | None = None
+) -> SamplerConfig:
     """
     Validates the sampler configuration dictionary.
     
@@ -666,12 +720,16 @@ def validate_data_and_model_compatibility(
             raise ValueError(f"Data inputs {missing} are not in model input channels")
 
 
-def parse_hparams_config(path: str | Path) -> CerberusConfig:
+def parse_hparams_config(
+    path: str | Path, 
+    search_paths: list[Path] | None = None
+) -> CerberusConfig:
     """
     Parses a hparams.yaml file and returns validated configuration objects.
     
     Args:
         path: Path to the hparams.yaml file.
+        search_paths: List of directories to search for referenced files if not found at original paths.
         
     Returns:
         CerberusConfig: Dictionary containing all validated configurations.
@@ -683,6 +741,12 @@ def parse_hparams_config(path: str | Path) -> CerberusConfig:
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"hparams file not found at: {p}")
+        
+    # Add hparams directory to search paths by default
+    if search_paths is None:
+        search_paths = []
+    if p.parent not in search_paths:
+        search_paths.append(p.parent)
         
     with open(p, 'r') as f:
         data = yaml.safe_load(f)
@@ -707,9 +771,9 @@ def parse_hparams_config(path: str | Path) -> CerberusConfig:
         
     # Validate each section
     train_conf = validate_train_config(data["train_config"])
-    genome_conf = validate_genome_config(data["genome_config"])
-    data_conf = validate_data_config(data["data_config"])
-    sampler_conf = validate_sampler_config(data["sampler_config"])
+    genome_conf = validate_genome_config(data["genome_config"], search_paths=search_paths)
+    data_conf = validate_data_config(data["data_config"], search_paths=search_paths)
+    sampler_conf = validate_sampler_config(data["sampler_config"], search_paths=search_paths)
     model_conf = validate_model_config(data["model_config"])
     
     # Cross-validation

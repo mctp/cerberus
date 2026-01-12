@@ -1,12 +1,10 @@
 from pathlib import Path
 import torch
 from torch import nn
-import numpy as np
 import re
 import dataclasses
-from typing import Any, Iterable, Sequence
+from typing import Iterable, Iterator
 import itertools
-from collections import defaultdict
 import yaml
 
 from cerberus.config import (
@@ -40,6 +38,7 @@ class ModelEnsemble(nn.ModuleDict):
         data_config: DataConfig | None = None,
         genome_config: GenomeConfig | None = None,
         device: torch.device | str | None = None,
+        search_paths: list[Path] | None = None,
     ):
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -52,7 +51,9 @@ class ModelEnsemble(nn.ModuleDict):
 
         # Resolve configuration
         hparams_path = self._find_hparams(path)
-        self.cerberus_config : CerberusConfig = parse_hparams_config(hparams_path)
+        self.cerberus_config : CerberusConfig = parse_hparams_config(
+            hparams_path, search_paths=search_paths
+        )
 
         if model_config is not None:
             self.cerberus_config["model_config"] = model_config
@@ -239,6 +240,71 @@ class ModelEnsemble(nn.ModuleDict):
                 batch_outputs.append(out)
         return batch_outputs
 
+    def predict_intervals_batched(
+        self,
+        intervals: Iterable[Interval],
+        dataset: CerberusDataset,
+        use_folds: list[str] = ["test", "val"],
+        aggregation: str = "model",
+        batch_size: int = 64,
+    ) -> Iterator[tuple[ModelOutput, list[Interval]]]:
+        """
+        Runs prediction for a sequence of intervals in batches, yielding results as they are computed.
+        
+        This method is a generator that duplicates the batch processing logic of `predict_intervals`
+        but returns each batch immediately instead of aggregating everything at the end.
+        
+        Args:
+            intervals: Iterable of genomic intervals.
+            dataset: Dataset for input retrieval.
+            use_folds: List of folds to use.
+            aggregation: Aggregation mode ("model" or "interval+model").
+            batch_size: Batch size.
+            
+        Yields:
+            tuple[ModelOutput, list[Interval]]: A tuple containing the batch output and the list of
+            intervals in that batch.
+            
+            If aggregation="model", ModelOutput is batched.
+            If aggregation="interval+model", ModelOutput is merged/unbatched for that batch's spatial extent.
+        """
+        input_len = dataset.data_config["input_len"]
+        
+        if aggregation not in ["model", "interval+model"]:
+            raise ValueError(
+                f"aggregation must be 'model' or 'interval+model', got '{aggregation}'"
+            )
+
+        for batch_intervals_tuple in itertools.batched(intervals, batch_size):
+            batch_intervals = list(batch_intervals_tuple)
+
+            # 1. Validate Interval Lengths
+            for interval in batch_intervals:
+                if len(interval) != input_len:
+                    raise ValueError(
+                        f"Interval length {len(interval)} does not match model input length {input_len}. "
+                        f"Interval: {interval}"
+                    )
+
+            # 2. Prepare Batch Data
+            inputs_list = []
+            for interval in batch_intervals:
+                data = dataset.get_interval(interval)
+                inputs_list.append(data["inputs"])
+
+            # Stack into (Batch, Channels, Length)
+            batch_inputs = torch.stack(inputs_list).to(self.device)
+
+            # 3. Run Models
+            batched_output = self.forward(
+                batch_inputs,
+                intervals=batch_intervals,
+                use_folds=use_folds,
+                aggregation=aggregation,
+            )
+            
+            yield batched_output, batch_intervals
+
     def predict_intervals(
         self,
         intervals: Iterable[Interval],
@@ -274,44 +340,13 @@ class ModelEnsemble(nn.ModuleDict):
             RuntimeError: If no results are generated (e.g., input `intervals` was empty).
         """
         output_len = dataset.data_config["output_len"]
-        input_len = dataset.data_config["input_len"]
-
-        if aggregation not in ["model", "interval+model"]:
-            raise ValueError(
-                f"aggregation must be 'model' or 'interval+model', got '{aggregation}'"
-            )
 
         results = []
         output_cls = None
 
-        for batch_intervals_tuple in itertools.batched(intervals, batch_size):
-            batch_intervals = list(batch_intervals_tuple)
-
-            # 1. Validate Interval Lengths
-            for interval in batch_intervals:
-                if len(interval) != input_len:
-                    raise ValueError(
-                        f"Interval length {len(interval)} does not match model input length {input_len}. "
-                        f"Interval: {interval}"
-                    )
-
-            # 2. Prepare Batch Data
-            inputs_list = []
-            for interval in batch_intervals:
-                data = dataset.get_interval(interval)
-                inputs_list.append(data["inputs"])
-
-            # Stack into (Batch, Channels, Length)
-            batch_inputs = torch.stack(inputs_list).to(self.device)
-
-            # 3. Run Models (returns single ModelOutput)
-            batched_output = self.forward(
-                batch_inputs,
-                intervals=batch_intervals,
-                use_folds=use_folds,
-                aggregation=aggregation,
-            )
-            
+        for batched_output, batch_intervals in self.predict_intervals_batched(
+            intervals, dataset, use_folds, aggregation, batch_size
+        ):
             output_cls = type(batched_output)
 
             if aggregation == "interval+model":
@@ -505,7 +540,13 @@ class _ModelManager:
         new_state_dict = {}
         for k, v in state_dict.items():
             if k.startswith("model."):
-                new_state_dict[k[6:]] = v
+                key = k[6:]
+                # Handle torch.compile prefix:
+                # If the model was compiled during training, keys will have "_orig_mod." prefix.
+                # Since we are loading into an uncompiled model here, we must strip this prefix.
+                if key.startswith("_orig_mod."):
+                    key = key[10:]
+                new_state_dict[key] = v
         
         model.load_state_dict(new_state_dict)
         model.to(self.device)
