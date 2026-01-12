@@ -52,6 +52,7 @@ For a detailed guide, see [**Prediction**](prediction.md).
 *   **Deterministic Transforms**: When performing inference, we want reproducible results without random augmentations (like jitter or reverse complement). Cerberus handles this automatically when `is_train=False` in the Dataset.
 *   **Model Ensemble**: The `ModelEnsemble` class is the main entry point. It automatically manages loading single or multiple fold models from checkpoints.
 *   **Aggregation**: Models can be aggregated (e.g., averaged across folds) and overlapping predictions can be merged automatically.
+*   **Tools**: Dedicated CLI tools (e.g., `tools/export_predictions.py`) simplify common tasks like exporting predictions for peak sets.
 
 ### The Process
 
@@ -96,6 +97,6 @@ Models return standardized output objects (see [**Components: Model Outputs**](c
 | **GenomeConfig** | Defines genome & exclusions | Same (ensures consistent coordinates) |
 | **DataConfig** | Defines I/O shapes & Augmentations | Defines I/O shapes (Augmentations auto-disabled) |
 | **SamplerConfig** | Defines training batches (w/ jitter) | Not strictly used if providing explicit intervals |
-| **ModelManager** | *Not used (created via Entrypoint)* | **Loads checkpoint & reinstantiates model** |
+| **ModelEnsemble** | *Not used (created via Entrypoint)* | **Loads checkpoint & reinstantiates model** |
 | **CerberusDataset** | Feeds DataLoader (`is_train=True`) | Feeds `predict_intervals` (`is_train=False`) |
 | **predict_intervals** | *N/A* | Executes forward pass & aggregation |

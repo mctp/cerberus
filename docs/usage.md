@@ -208,3 +208,8 @@ The `notebooks/` directory contains complete examples:
 
 *   `notebooks/cerberus_basics.py`: A step-by-step walkthrough of the library components (Configuration, Samplers, Datasets, Transforms).
 *   `notebooks/baseline_cnn_train.py`: A complete training example using the `GlobalProfileCNN` model to predict BigWig tracks from DNA sequence.
+
+## Next Steps
+
+Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.
+See [Prediction (Inference)](prediction.md) for details on `ModelEnsemble`, `predict_intervals_batched`, and CLI tools like `tools/export_predictions.py`.
