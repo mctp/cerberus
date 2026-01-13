@@ -88,11 +88,26 @@ class ModelEnsemble(nn.ModuleDict):
         candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         return candidates[0]
 
+    def _resolve_use_folds(self, use_folds: list[str] | None) -> list[str]:
+        """
+        Resolves the default folds to use if not provided.
+        Default logic:
+        - If single-fold model (1 loaded model): use ["train", "test", "val"] (all)
+        - If multi-fold model: use ["test", "val"]
+        """
+        if use_folds is not None:
+            return use_folds
+        
+        if len(self) == 1:
+            return ["train", "test", "val"]
+        else:
+            return ["test", "val"]
+
     def forward(
         self, 
         x: torch.Tensor, 
         intervals: list[Interval] | None = None, 
-        use_folds: list[str] = ["test", "val"],
+        use_folds: list[str] | None = None,
         aggregation: str = "model" # "model", "interval+model"
     ) -> ModelOutput:
         """
@@ -109,8 +124,8 @@ class ModelEnsemble(nn.ModuleDict):
                 the inputs in `x`. Used to determine which fold-specific models to execute.
                 If provided, must have the same length as the batch dimension of `x`.
                 If None, all models matching `use_folds` are executed.
-            use_folds (list[str]): List of fold roles to include in the ensemble. Allowed values
-                are 'train', 'test', 'val'. Defaults to ["test", "val"].
+            use_folds (list[str] | None): List of fold roles to include in the ensemble. Allowed values
+                are 'train', 'test', 'val'. Defaults to None (resolves based on ensemble size).
             aggregation (str): Strategy for aggregating model outputs.
                 - "model": Aggregates outputs across models for the same input (returns batched output).
                 - "interval+model": Aggregates across models AND merges overlapping intervals (returns single unbatched output).
@@ -123,6 +138,8 @@ class ModelEnsemble(nn.ModuleDict):
             RuntimeError: If no models are selected for execution.
             ValueError: If `aggregation` is invalid or if `intervals` are missing when required.
         """
+        use_folds = self._resolve_use_folds(use_folds)
+
         # 1. Run models -> list[ModelOutput] (one per model, batched)
         batch_outputs = self._forward_models(x, intervals, use_folds)
         
@@ -166,7 +183,7 @@ class ModelEnsemble(nn.ModuleDict):
         self, 
         x: torch.Tensor, 
         intervals: list[Interval] | None = None, 
-        use_folds: list[str] = ["test", "val"]
+        use_folds: list[str] | None = None
     ) -> list[ModelOutput]:
         """
         Runs the forward pass for selected models.
@@ -179,6 +196,8 @@ class ModelEnsemble(nn.ModuleDict):
         Returns:
             list[ModelOutput]: A list of outputs from the selected models.
         """
+        use_folds = self._resolve_use_folds(use_folds)
+        
         if not intervals:
             # Fallback: run all models if no intervals provided (or for single model)
             models_to_run = self.values()
@@ -244,7 +263,7 @@ class ModelEnsemble(nn.ModuleDict):
         self,
         intervals: Iterable[Interval],
         dataset: CerberusDataset,
-        use_folds: list[str] = ["test", "val"],
+        use_folds: list[str] | None = None,
         aggregation: str = "model",
         batch_size: int = 64,
     ) -> Iterator[tuple[ModelOutput, list[Interval]]]:
@@ -257,7 +276,7 @@ class ModelEnsemble(nn.ModuleDict):
         Args:
             intervals: Iterable of genomic intervals.
             dataset: Dataset for input retrieval.
-            use_folds: List of folds to use.
+            use_folds: List of folds to use. Defaults to None (resolves based on ensemble size).
             aggregation: Aggregation mode ("model" or "interval+model").
             batch_size: Batch size.
             
@@ -268,6 +287,7 @@ class ModelEnsemble(nn.ModuleDict):
             If aggregation="model", ModelOutput is batched.
             If aggregation="interval+model", ModelOutput is merged/unbatched for that batch's spatial extent.
         """
+        use_folds = self._resolve_use_folds(use_folds)
         input_len = dataset.data_config["input_len"]
         
         if aggregation not in ["model", "interval+model"]:
@@ -309,7 +329,7 @@ class ModelEnsemble(nn.ModuleDict):
         self,
         intervals: Iterable[Interval],
         dataset: CerberusDataset,
-        use_folds: list[str] = ["test", "val"],
+        use_folds: list[str] | None = None,
         aggregation: str = "model",
         batch_size: int = 64,
     ) -> ModelOutput:
@@ -328,7 +348,7 @@ class ModelEnsemble(nn.ModuleDict):
                 Each interval must match the model's input length.
             dataset (CerberusDataset): The dataset used to retrieve input sequences/signals
                 for the intervals.
-            use_folds (list[str]): Folds to use (e.g., ["test"]). Defaults to ["test", "val"].
+            use_folds (list[str] | None): Folds to use (e.g., ["test"]). Defaults to None (resolves based on ensemble size).
             aggregation (str): Aggregation mode ("model" or "interval+model"). Defaults to "model".
             batch_size (int): Number of intervals to process in a single batch. Defaults to 64.
 
@@ -339,6 +359,7 @@ class ModelEnsemble(nn.ModuleDict):
         Raises:
             RuntimeError: If no results are generated (e.g., input `intervals` was empty).
         """
+        use_folds = self._resolve_use_folds(use_folds)
         output_len = dataset.data_config["output_len"]
 
         results = []
@@ -382,7 +403,7 @@ class ModelEnsemble(nn.ModuleDict):
         intervals: Iterable[Interval],
         dataset: CerberusDataset,
         stride: int | None = None,
-        use_folds: list[str] = ["test", "val"],
+        use_folds: list[str] | None = None,
         aggregation: str = "model",
         batch_size: int = 64,
     ) -> list[ModelOutput]:
@@ -400,13 +421,14 @@ class ModelEnsemble(nn.ModuleDict):
                 and `output_len` in `data_config`.
             stride (int | None): The stride/step size for tiling input intervals.
                 If None, defaults to output_len // 2.
-            use_folds (list[str]): Folds to use. Defaults to ["test", "val"].
+            use_folds (list[str] | None): Folds to use. Defaults to None (resolves based on ensemble size).
             aggregation (str): Aggregation mode. Defaults to "model".
             batch_size (int): Batch size for processing tiles. Defaults to 64.
 
         Returns:
             list[ModelOutput]: A list of ModelOutput objects, one for each interval in `intervals`.
         """
+        use_folds = self._resolve_use_folds(use_folds)
         input_len = dataset.data_config["input_len"]
         output_len = dataset.data_config["output_len"]
 

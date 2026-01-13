@@ -4,6 +4,7 @@ from pathlib import Path
 import torch
 import csv
 import gzip
+import re
 
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
@@ -18,6 +19,8 @@ def main():
     parser.add_argument("--output", type=str, default="predictions.tsv", help="Output filename (TSV).")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size for prediction.")
     parser.add_argument("--device", type=str, default=None, help="Device to use (cuda/mps/cpu).")
+    parser.add_argument("--max_batches", type=int, default=None, help="Maximum number of batches to process (default: all).")
+    parser.add_argument("--use_folds", type=str, default=None, help="Folds to use (e.g. 'test', 'test+val'). Default depends on model type.")
 
     args = parser.parse_args()
     
@@ -44,6 +47,23 @@ def main():
     search_paths = [tests_data, project_root, Path.cwd()]
     ensemble = ModelEnsemble(args.model_path, device=device, search_paths=search_paths)
     
+    # Configure use_folds
+    use_folds = None
+    if args.use_folds:
+        use_folds = []
+        parts = re.split(r"[+,]", args.use_folds)
+        for p in parts:
+            p = p.strip()
+            if not p:
+                continue
+            if p == "all":
+                use_folds.extend(["train", "test", "val"])
+            else:
+                use_folds.append(p)
+        use_folds = list(set(use_folds))
+        
+    print(f"Using folds configuration: {use_folds if use_folds else 'Default'}")
+
     # 2. Configure Dataset
     print("Configuring dataset...")
     cerberus_config = ensemble.cerberus_config
@@ -92,16 +112,24 @@ def main():
     
     results = [] # List of tuples (chrom, start, end, strand, pred, obs)
     
-    # Use all folds to ensure coverage
+    # Use selected folds
     batch_gen = ensemble.predict_intervals_batched(
         peak_sampler,
         dataset,
-        use_folds=["test", "val", "train"],
+        use_folds=use_folds,
         aggregation="model",
         batch_size=args.batch_size
     )
     
+    batch_count = 0
+    output_len = data_config["output_len"]
+
     for batch_output, batch_intervals in batch_gen:
+        if args.max_batches is not None and batch_count >= args.max_batches:
+            print(f"Reached max_batches ({args.max_batches}). Stopping.")
+            break
+        batch_count += 1
+
         # 4a. Get Predicted Log Counts
         preds_batch = None
         if isinstance(batch_output, ProfileCountOutput):
@@ -137,15 +165,16 @@ def main():
         # 4c. Collect Metadata
         for i, interval in enumerate(batch_intervals):
             # Interval here is the input interval (padded/centered)
-            # Should we output the original peak interval?
-            # The IntervalSampler stores centered intervals.
-            # But the 'interval' object has the coordinates used for prediction.
-            # Let's use that.
+            # We also calculate the output interval (prediction window)
+            output_int = interval.center(output_len)
+            pred_str = f"{output_int.chrom}:{output_int.start}-{output_int.end}"
+
             results.append((
                 interval.chrom,
                 interval.start,
                 interval.end,
                 interval.strand,
+                pred_str,
                 preds_batch[i],
                 obs_batch[i]
             ))
@@ -166,7 +195,7 @@ def main():
     try:
         writer = csv.writer(f, delimiter="\t")
         # Header
-        writer.writerow(["chrom", "start", "end", "strand", "predicted_log_count", "observed_log_count"])
+        writer.writerow(["chrom", "start", "end", "strand", "pred_interval", "predicted_log_count", "observed_log_count"])
         # Rows
         writer.writerows(results)
     finally:
