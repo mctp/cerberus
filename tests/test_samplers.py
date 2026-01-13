@@ -264,3 +264,26 @@ def test_create_folds():
     
     assert fold0 == {"chr1", "chr4"}
     assert fold1 == {"chr2", "chr3"}
+
+def test_interval_sampler_optional_args(tmp_path):
+    f = tmp_path / "test.bed"
+    f.write_text("chr1\t100\t200")
+    
+    chrom_sizes = {"chr1": 1000}
+    # Initialize without exclude_intervals and folds
+    sampler = IntervalSampler(f, chrom_sizes=chrom_sizes, padded_size=100)
+    
+    intervals = list(sampler)
+    assert len(intervals) == 1
+    assert sampler.exclude_intervals == {}
+    assert sampler.folds == []
+
+def test_sliding_window_sampler_optional_args():
+    chrom_sizes = {"chr1": 100}
+    # Initialize without exclude_intervals and folds
+    sampler = SlidingWindowSampler(chrom_sizes, padded_size=20, stride=20)
+    
+    intervals = list(sampler)
+    assert len(intervals) == 5
+    assert sampler.exclude_intervals == {}
+    assert sampler.folds == []

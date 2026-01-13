@@ -1,10 +1,7 @@
 #!/usr/bin/env python
 import argparse
-import sys
 from pathlib import Path
 import torch
-import numpy as np
-import dataclasses
 import csv
 import gzip
 
@@ -20,17 +17,31 @@ def main():
     parser.add_argument("bigwig", type=str, help="Path to the bigwig file for observed counts.")
     parser.add_argument("--output", type=str, default="predictions.tsv", help="Output filename (TSV).")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size for prediction.")
-    parser.add_argument("--device", type=str, default=None, help="Device to use (cuda/cpu).")
+    parser.add_argument("--device", type=str, default=None, help="Device to use (cuda/mps/cpu).")
 
     args = parser.parse_args()
     
     # 1. Load Model Ensemble
     print(f"Loading model from {args.model_path}...")
-    device = torch.device(args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu"))
+    
+    if args.device:
+        device_name = args.device
+    elif torch.cuda.is_available():
+        device_name = "cuda"
+    elif torch.backends.mps.is_available():
+        device_name = "mps"
+    else:
+        device_name = "cpu"
+        
+    device = torch.device(device_name)
+    print(f"Using device: {device}")
     
     # Provide search paths for resolving files (e.g. genome fasta) from other environments
     # We include tests/data as a likely location for test resources relative to project root
-    search_paths = [Path("tests/data"), Path.cwd()]
+    script_dir = Path(__file__).resolve().parent
+    project_root = script_dir.parent
+    tests_data = project_root / "tests/data"  
+    search_paths = [tests_data, project_root, Path.cwd()]
     ensemble = ModelEnsemble(args.model_path, device=device, search_paths=search_paths)
     
     # 2. Configure Dataset
@@ -41,12 +52,15 @@ def main():
     
     # Override targets with provided bigwig
     if not data_config["targets"]:
-        print("Warning: Model data_config has no targets. Adding 'default' target.")
-        data_config["targets"] = {"default": Path(args.bigwig)}
-    else:
-        for key in data_config["targets"]:
-            data_config["targets"][key] = Path(args.bigwig)
-            print(f"Overriding target '{key}' with {args.bigwig}")
+        raise ValueError("Model configuration has no targets defined.")
+
+    if len(data_config["targets"]) > 1:
+        raise ValueError(f"Model has multiple targets ({list(data_config['targets'].keys())}), which is not supported by this script.")
+
+    # Override the single target
+    key = list(data_config["targets"].keys())[0]
+    data_config["targets"][key] = Path(args.bigwig)
+    print(f"Overriding target '{key}' with {args.bigwig}")
             
     # Create Dataset
     dataset = CerberusDataset(
@@ -62,15 +76,10 @@ def main():
     padded_size = data_config["input_len"]
     
     # Create a minimal IntervalSampler
-    dummy_folds = [{} for _ in range(5)]
-    dummy_exclude = {}
-    
     peak_sampler = IntervalSampler(
         file_path=Path(args.peaks),
         chrom_sizes=genome_config["chrom_sizes"],
-        padded_size=padded_size,
-        exclude_intervals=dummy_exclude,
-        folds=dummy_folds
+        padded_size=padded_size
     )
     
     print(f"Loaded {len(peak_sampler)} intervals.")

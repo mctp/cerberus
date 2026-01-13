@@ -196,8 +196,8 @@ class IntervalSampler(BaseSampler):
         file_path: Path,
         chrom_sizes: dict[str, int],
         padded_size: int,
-        exclude_intervals: dict[str, InterLap],
-        folds: list[dict[str, InterLap]],
+        exclude_intervals: dict[str, InterLap] | None = None,
+        folds: list[dict[str, InterLap]] | None = None,
     ):
         """
         Args:
@@ -210,8 +210,8 @@ class IntervalSampler(BaseSampler):
         self.file_path = Path(file_path)
         self.padded_size = padded_size
         self.chrom_sizes = chrom_sizes
-        self.exclude_intervals = exclude_intervals
-        self.folds = folds
+        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
+        self.folds = folds if folds is not None else []
         self._intervals: list[Interval] = []
         self._load()
         self._filter_excludes()
@@ -349,8 +349,8 @@ class SlidingWindowSampler(BaseSampler):
         chrom_sizes: dict[str, int],
         padded_size: int,
         stride: int,
-        exclude_intervals: dict[str, InterLap],
-        folds: list[dict[str, InterLap]],
+        exclude_intervals: dict[str, InterLap] | None = None,
+        folds: list[dict[str, InterLap]] | None = None,
     ):
         """
         Args:
@@ -363,8 +363,8 @@ class SlidingWindowSampler(BaseSampler):
         self.chrom_sizes = chrom_sizes
         self.padded_size = padded_size
         self.stride = stride
-        self.exclude_intervals = exclude_intervals
-        self.folds = folds
+        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
+        self.folds = folds if folds is not None else []
         self._intervals: list[Interval] = []
         self._generate_intervals()
 
