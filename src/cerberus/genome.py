@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Any
 import heapq
 
 from interlap import InterLap
@@ -32,8 +32,6 @@ _SPECIES_CONFIG = {
     "mouse": {"standard_chroms": _MOUSE_CHROMS, "sort_key": _mouse_sort_key},
 }
 
-
-from typing import Any
 
 def create_genome_config(
     name: str,
@@ -142,7 +140,7 @@ def create_genome_folds(
 
     Returns:
         list[dict[str, InterLap]]: A list of k dictionaries. Each dictionary maps chromosome names
-        to InterLap objects representing the intervals included in that fold.
+        to InterLap objects representing the included intervals for that fold.
 
     Raises:
         ValueError: If `fold_type` is unknown.
@@ -198,7 +196,6 @@ def _create_folds_chrom_partition(
 
 
 
-
 def create_human_genome_config(
     genome_dir: Path | str,
     fold_type: str = "chrom_partition",
@@ -243,6 +240,57 @@ def create_human_genome_config(
         name=d.name,
         fasta_path=fasta,
         species="human",
+        fold_type=fold_type,
+        fold_args=fold_args,
+        allowed_chroms=allowed_chroms,
+        exclude_intervals=exclude_intervals,
+    )
+
+
+def create_mouse_genome_config(
+    genome_dir: Path | str,
+    fold_type: str = "chrom_partition",
+    fold_args: dict[str, Any] | None = None,
+    allowed_chroms: list[str] | None = None,
+) -> GenomeConfig:
+    """
+    Creates GenomeConfig from a downloaded bundle (specifically for mouse mm10).
+
+    This helper function assumes the directory structure created by `cerberus.download.download_reference_genome(..., genome='mm10')`.
+    It automatically locates 'mm10.fa', 'blacklist.bed', and 'gaps.bed'.
+
+    Args:
+        genome_dir: Directory containing the downloaded resources.
+        fold_type: Strategy for creating folds (default: 'chrom_partition').
+        fold_args: Arguments for the folding strategy (default: {'k': 5}).
+        allowed_chroms: Optional list of chromosomes to include.
+
+    Returns:
+        GenomeConfig: Config object populated with FASTA path, exclude intervals, and other settings.
+
+    Raises:
+        FileNotFoundError: If the FASTA file is not found in the directory.
+    """
+    d = Path(genome_dir)
+    fasta = d / "mm10.fa"
+    blacklist = d / "blacklist.bed"
+    gaps = d / "gaps.bed"
+
+    if not fasta.exists():
+        raise FileNotFoundError(
+            f"FASTA not found at {fasta}. Please run cerberus.download.download_reference_genome(..., genome='mm10') first."
+        )
+
+    exclude_intervals = {}
+    if blacklist.exists():
+        exclude_intervals["blacklist"] = blacklist
+    if gaps.exists():
+        exclude_intervals["unmappable"] = gaps
+
+    return create_genome_config(
+        name=d.name,
+        fasta_path=fasta,
+        species="mouse",
         fold_type=fold_type,
         fold_args=fold_args,
         allowed_chroms=allowed_chroms,

@@ -57,49 +57,57 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
         
     return results
 
-def download_human_reference(output_dir: Path | str, name: str = "hg38") -> dict[str, Path]:
+GENOME_RESOURCES = {
+    "hg38": {
+        "fasta_url": "http://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz",
+        "blacklist_url": "https://github.com/Boyle-Lab/Blacklist/raw/master/lists/hg38-blacklist.v2.bed.gz",
+        "gaps_url": "http://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/gap.txt.gz",
+        "mappability_url": "https://hgdownload.soe.ucsc.edu/gbdb/hg38/hoffmanMappability/k100.Umap.MultiTrackMappability.bw",
+        "ccre_url": "https://hgdownload.soe.ucsc.edu/gbdb/hg38/encode3/ccre/encodeCcreCombined.bb",
+    },
+    "mm10": {
+        "fasta_url": "http://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.fa.gz",
+        "blacklist_url": "https://github.com/Boyle-Lab/Blacklist/raw/master/lists/mm10-blacklist.v2.bed.gz",
+        "gaps_url": "http://hgdownload.soe.ucsc.edu/goldenPath/mm10/database/gap.txt.gz",
+        "mappability_url": None,
+        "ccre_url": "https://hgdownload.soe.ucsc.edu/gbdb/mm10/encode3/ccre/encodeCcreCombined.bb",
+    },
+}
+
+
+def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> dict[str, Path]:
     """
-    Downloads and prepares human reference genome resources (hg38).
+    Downloads and prepares reference genome resources.
 
-    Downloads:
-    1. hg38 FASTA
+    Downloads (depending on genome):
+    1. FASTA
     2. ENCODE Blacklist v2
-    3. Gap locations (telomeres, centromeres, etc.)
-
-    Generates:
-    - hg38.fa
-    - blacklist.bed
-    - gaps.bed (all assembly gaps, suitable for 'unmappable' exclusion)
-    - mappability.bw (mappability track)
-    - encode_cre.bb (ENCODE cCREs)
+    3. Gap locations
+    4. Mappability track
+    5. ENCODE cCREs
 
     Args:
         output_dir: Directory to save the resources.
-        name: Name of the genome directory (default: 'hg38').
+        genome: Name of the genome (e.g., 'hg38', 'mm10').
 
     Returns:
         Dictionary mapping resource names to their file paths.
     """
-    out_dir = Path(output_dir) / name
+    if genome not in GENOME_RESOURCES:
+        raise ValueError(f"Unknown genome: {genome}. Supported: {list(GENOME_RESOURCES.keys())}")
+
+    resources = GENOME_RESOURCES[genome]
+    out_dir = Path(output_dir) / genome
     out_dir.mkdir(parents=True, exist_ok=True)
 
     results = {}
 
-    # URLs
-    HG38_FASTA_URL = (
-        "http://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz"
-    )
-    HG38_BLACKLIST_URL = "https://github.com/Boyle-Lab/Blacklist/raw/master/lists/hg38-blacklist.v2.bed.gz"
-    HG38_GAP_URL = (
-        "http://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/gap.txt.gz"
-    )
-
     # 1. FASTA
-    fasta_gz = out_dir / "hg38.fa.gz"
-    fasta_final = out_dir / "hg38.fa"
+    fasta_gz = out_dir / f"{genome}.fa.gz"
+    fasta_final = out_dir / f"{genome}.fa"
     if not fasta_final.exists():
-        print(f"Downloading FASTA from {HG38_FASTA_URL}...")
-        _download_file(HG38_FASTA_URL, fasta_gz)
+        print(f"Downloading FASTA from {resources['fasta_url']}...")
+        _download_file(resources["fasta_url"], fasta_gz)
         print("Decompressing FASTA...")
         with gzip.open(fasta_gz, "rb") as f_in, open(fasta_final, "wb") as f_out:
             shutil.copyfileobj(f_in, f_out)
@@ -107,10 +115,9 @@ def download_human_reference(output_dir: Path | str, name: str = "hg38") -> dict
     results["fasta"] = fasta_final
 
     # 1b. FASTA Index
-    fai_final = out_dir / "hg38.fa.fai"
+    fai_final = out_dir / f"{genome}.fa.fai"
     if not fai_final.exists():
         print("Generating FASTA Index using pyfaidx...")
-        # Accessing the Fasta object triggers index generation
         _ = pyfaidx.Fasta(str(fasta_final))
     results["fai"] = fai_final
 
@@ -118,8 +125,8 @@ def download_human_reference(output_dir: Path | str, name: str = "hg38") -> dict
     blacklist_gz = out_dir / "blacklist.bed.gz"
     blacklist_final = out_dir / "blacklist.bed"
     if not blacklist_final.exists():
-        print(f"Downloading Blacklist from {HG38_BLACKLIST_URL}...")
-        _download_file(HG38_BLACKLIST_URL, blacklist_gz)
+        print(f"Downloading Blacklist from {resources['blacklist_url']}...")
+        _download_file(resources["blacklist_url"], blacklist_gz)
         print("Decompressing Blacklist...")
         with gzip.open(blacklist_gz, "rb") as f_in, open(blacklist_final, "wb") as f_out:
             shutil.copyfileobj(f_in, f_out)
@@ -132,8 +139,8 @@ def download_human_reference(output_dir: Path | str, name: str = "hg38") -> dict
 
     if not gaps_path.exists():
         if not gap_gz.exists():
-            print(f"Downloading Gap tracks from {HG38_GAP_URL}...")
-            _download_file(HG38_GAP_URL, gap_gz)
+            print(f"Downloading Gap tracks from {resources['gaps_url']}...")
+            _download_file(resources["gaps_url"], gap_gz)
 
         print("Processing gap tracks...")
         with gzip.open(gap_gz, "rt") as f, open(gaps_path, "w") as f_gaps:
@@ -158,24 +165,27 @@ def download_human_reference(output_dir: Path | str, name: str = "hg38") -> dict
 
     results["gaps"] = gaps_path
 
-    # 4. Mappability
-    mappability_url = "https://hgdownload.soe.ucsc.edu/gbdb/hg38/hoffmanMappability/k100.Umap.MultiTrackMappability.bw"
-    mappability_path = out_dir / "mappability.bw"
-
-    if not mappability_path.exists():
-        print(f"Downloading Mappability from {mappability_url}...")
-        _download_file(mappability_url, mappability_path)
-
-    results["mappability"] = mappability_path
+    # 4. Mappability (Optional)
+    if resources["mappability_url"]:
+        mappability_path = out_dir / "mappability.bw"
+        if not mappability_path.exists():
+            print(f"Downloading Mappability from {resources['mappability_url']}...")
+            _download_file(resources["mappability_url"], mappability_path)
+        results["mappability"] = mappability_path
 
     # 5. ENCODE cCREs
-    encode_cre_url = "https://hgdownload.soe.ucsc.edu/gbdb/hg38/encode3/ccre/encodeCcreCombined.bb"
-    encode_cre_path = out_dir / "encode_cre.bb"
-
-    if not encode_cre_path.exists():
-        print(f"Downloading ENCODE cCREs from {encode_cre_url}...")
-        _download_file(encode_cre_url, encode_cre_path)
-    
-    results["encode_cre"] = encode_cre_path
+    if resources["ccre_url"]:
+        encode_cre_path = out_dir / "encode_cre.bb"
+        if not encode_cre_path.exists():
+            print(f"Downloading ENCODE cCREs from {resources['ccre_url']}...")
+            _download_file(resources["ccre_url"], encode_cre_path)
+        results["encode_cre"] = encode_cre_path
 
     return results
+
+
+def download_human_reference(output_dir: Path | str, name: str = "hg38") -> dict[str, Path]:
+    """
+    Wrapper for download_reference_genome to maintain backward compatibility.
+    """
+    return download_reference_genome(output_dir, genome=name)

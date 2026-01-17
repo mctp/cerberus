@@ -2,7 +2,7 @@ import pytest
 import os
 import shutil
 from pathlib import Path
-from cerberus.download import download_dataset, download_human_reference
+from cerberus.download import download_dataset, download_reference_genome
 
 def pytest_sessionfinish(session, exitstatus):
     if os.environ.get("CERBERUS_PRUNE_DOWNLOADS"):
@@ -29,7 +29,20 @@ def human_genome():
 
     base_dir = get_base_dir()
     genome_dir = base_dir / "genome"
-    return download_human_reference(genome_dir, name="hg38")
+    return download_reference_genome(genome_dir, genome="hg38")
+
+@pytest.fixture(scope="session")
+def mouse_genome():
+    """
+    Downloads the mm10 genome if not present.
+    Returns the dictionary of file paths.
+    """
+    if os.environ.get("RUN_SLOW_TESTS") is None:
+        pytest.skip("Skipping slow tests (RUN_SLOW_TESTS not set)")
+
+    base_dir = get_base_dir()
+    genome_dir = base_dir / "genome"
+    return download_reference_genome(genome_dir, genome="mm10")
 
 @pytest.fixture(scope="session")
 def mdapca2b_ar_dataset():
