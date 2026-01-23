@@ -17,9 +17,24 @@ Systematically scans the genome with a fixed stride.
 ### MultiSampler
 A meta-sampler that combines multiple samplers.
 *   **Use Case**: Balancing positive (peaks) and negative (background) examples.
-*   **Behavior**: Mixes samples from sub-samplers based on `scaling_factors`.
-    *   `scaling < 1.0`: Subsamples (uses a random subset each epoch **without replacement**).
-    *   `scaling > 1.0`: Oversamples (duplicates samples via random sampling **with replacement**).
+*   **Behavior**: Mixes samples from sub-samplers based on `scaling_factors` (configured via `scaling` in config).
+    *   `scaling` (float): Direct ratio.
+        *   `< 1.0`: Subsamples (uses a random subset each epoch **without replacement**).
+        *   `> 1.0`: Oversamples (duplicates samples via random sampling **with replacement**).
+    *   `scaling` (str): Dynamic scaling strategies.
+        *   `"min"`: Matches the size of the smallest sampler in the group (e.g., match background to peaks).
+        *   `"max"`: Matches the size of the largest sampler.
+        *   `"count:<N>"`: Forces a fixed number of samples.
+
+### RandomSampler
+Samples random intervals from the genome, respecting exclusions.
+*   **Use Case**: Generating unbiased background/negative sets.
+*   **Behavior**: Generates `num_intervals` random intervals that do not overlap with `exclude_intervals`.
+
+### GCMatchedSampler
+Selects candidates from a `candidate_sampler` (e.g., RandomSampler) that match the GC content distribution of a `target_sampler` (e.g., IntervalSampler of peaks).
+*   **Use Case**: Creating balanced datasets where negatives match positives in GC content, removing GC bias.
+*   **Behavior**: Pre-computes GC content for all intervals. Bins targets. Samples candidates from corresponding bins to match the target distribution.
 
 ## Extractors
 

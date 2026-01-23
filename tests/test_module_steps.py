@@ -70,10 +70,10 @@ def test_on_validation_epoch_end(base_config):
     module.log_dict = MagicMock()
     
     # Simulate some updates
-    # Use (Batch, Channels=1, Length=2) shape to ensure non-zero variance after Softmax(dim=-1)
-    # If Length=1, Softmax always returns 1.0, which has 0 variance.
-    preds = torch.randn(2, 1, 2)
-    targets = torch.randn(2, 1, 2)
+    # Use larger batch and length to avoid zero variance in Pearson calculations
+    # Small batch size causes instability in LogCountsPearsonCorrCoef (vector length = batch size)
+    preds = torch.randn(10, 1, 10)
+    targets = torch.abs(torch.randn(10, 1, 10))
     # Use ProfileLogRates as DummyModel produces them, and metrics now support them
     module.val_metrics.update(ProfileLogRates(log_rates=preds), targets)
     

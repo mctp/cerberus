@@ -231,6 +231,29 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
     }
     ```
 
+*   **Random Sampler**:
+    ```python
+    {
+        "num_intervals": 10000 # Number of random intervals to generate
+    }
+    ```
+
+*   **GC Matched Sampler**:
+    ```python
+    {
+        "target_sampler": {
+            "type": "interval",
+            "args": {"intervals_path": "peaks.bed"}
+        },
+        "candidate_sampler": {
+            "type": "random",
+            "args": {"num_intervals": 100000}
+        },
+        "bins": 100,       # Number of GC bins (default: 100)
+        "match_ratio": 1.0 # Ratio of candidates to targets (default: 1.0)
+    }
+    ```
+
 *   **Multi Sampler**:
     ```python
     {
@@ -243,10 +266,16 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
             {
                 "type": "sliding_window",
                 "args": {"stride": 1000},
-                "scaling": 1.0
+                "scaling": "min" # Automatically match size of the smallest sampler (e.g. peaks)
             }
         ]
     }
     ```
+
+    **Scaling Options:**
+    - `float`: Direct ratio (1.0 = 100%, 0.5 = 50%, 2.0 = 200%).
+    - `"min"`: Matches the number of samples in the smallest sampler in the list. Useful for balancing background with peaks.
+    - `"max"`: Matches the number of samples in the largest sampler in the list.
+    - `"count:<N>"`: Sets a fixed number of samples (e.g., `"count:10000"`).
 
     *Note: Samplers can be nested recursively! A `MultiSampler` can contain other `MultiSampler` definitions.*

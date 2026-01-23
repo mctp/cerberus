@@ -63,7 +63,7 @@ Responsible for taking an **Interval** and extracting raw tensors from `DataSour
 Determines *which* intervals are fed to the model.
 -   **`IntervalSampler`**: Iterates through a given BED file. Supports sequential, random, or **weighted** sampling (e.g., based on signal strength).
 -   **`SlidingWindowSampler`**: Iterates across the genome with a stride (ASAP WGDataset style).
--   **`StratifiedSampler`**: Mixes samples from multiple sources (e.g., 50% Peaks, 50% GC-matched Negatives) per batch or epoch (BPNet style). Supports weighted sampling within strata.
+-   **`MultiSampler`**: Mixes samples from multiple sources (e.g., 50% Peaks, 50% Background) per epoch (BPNet style). Supports dynamic scaling strategies (e.g., matching background count to peaks) to handle class imbalance.
 
 #### D. `Transform` (The "Changes")
 Applied to the extracted data on-the-fly.
@@ -125,8 +125,8 @@ To support **ASAP** (4bp bins) and **BPNet** (1bp resolution), `SignalExtractor`
 
 ### 4.4. Negative Sampling (BPNet/ChromBPNet)
 BPNet requires training on a mix of Peaks and Non-Peaks (Negatives).
--   The `StratifiedSampler` will accept two lists of indices: `positives` and `negatives`.
--   Configurable `negative_ratio` (e.g., 0.5).
+-   The `MultiSampler` accepts a list of sub-samplers (e.g., one for peaks, one for negatives).
+-   Configurable `scaling` per sub-sampler (e.g., `"min"`, `"max"`, or float ratio) allows easy balancing of classes.
 -   In each epoch, it yields a mix of positive and negative samples.
     -   **GC-Matching**: If "negatives" are not provided, an optional pre-processing step can generate GC-matched negative regions from the genome background.
 

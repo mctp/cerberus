@@ -1,11 +1,15 @@
 from typing import Iterator, Protocol
 from pathlib import Path
 import gzip
+import random
+from collections import defaultdict
 import numpy as np
+import pyfaidx
 from interlap import InterLap
 from .interval import Interval
 from .config import SamplerConfig
 from .exclude import is_excluded
+from .sequence import calculate_gc_content
 
 
 class Sampler(Protocol):
@@ -183,6 +187,205 @@ class SubsetSampler(BaseSampler):
         self._intervals = intervals
         self.folds = folds
         self.exclude_intervals = exclude_intervals
+
+
+class RandomSampler(BaseSampler):
+    """
+    Samples random intervals from the genome, respecting exclusions.
+    """
+
+    def __init__(
+        self,
+        chrom_sizes: dict[str, int],
+        padded_size: int,
+        num_intervals: int,
+        exclude_intervals: dict[str, InterLap] | None = None,
+        folds: list[dict[str, InterLap]] | None = None,
+        seed: int | None = None,
+    ):
+        self.chrom_sizes = chrom_sizes
+        self.padded_size = padded_size
+        self.num_intervals = num_intervals
+        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
+        self.folds = folds if folds is not None else []
+        self._intervals: list[Interval] = []
+        self.rng = random.Random(seed)
+        self._generate_intervals()
+
+    def _generate_intervals(self):
+        chroms = list(self.chrom_sizes.keys())
+        weights = [self.chrom_sizes[c] for c in chroms]
+
+        count = 0
+        max_attempts = self.num_intervals * 100  # Safety break
+        attempts = 0
+
+        while count < self.num_intervals and attempts < max_attempts:
+            attempts += 1
+            # Weighted choice
+            chrom = self.rng.choices(chroms, weights=weights, k=1)[0]
+            size = self.chrom_sizes[chrom]
+
+            if size < self.padded_size:
+                continue
+
+            start = self.rng.randint(0, size - self.padded_size)
+            end = start + self.padded_size
+
+            if not self.is_excluded(chrom, start, end):
+                self._intervals.append(Interval(chrom, start, end, "+"))
+                count += 1
+
+        if count < self.num_intervals:
+            print(
+                f"Warning: RandomSampler could only generate {count}/{self.num_intervals} "
+                f"intervals after {attempts} attempts."
+            )
+
+
+class GCMatchedSampler(BaseSampler):
+    """
+    Selects candidates from a candidate_sampler that match the GC content distribution
+    of a target_sampler.
+    """
+
+    def __init__(
+        self,
+        target_sampler: Sampler,
+        candidate_sampler: Sampler,
+        fasta_path: Path | str,
+        chrom_sizes: dict[str, int],
+        exclude_intervals: dict[str, InterLap],
+        folds: list[dict[str, InterLap]] | None = None,
+        bins: int = 100,
+        match_ratio: float = 1.0,
+        seed: int | None = None,
+    ):
+        self.target_sampler = target_sampler
+        self.candidate_sampler = candidate_sampler
+        self.fasta_path = Path(fasta_path)
+        self.chrom_sizes = chrom_sizes
+        self.exclude_intervals = exclude_intervals
+        self.folds = folds if folds is not None else []
+        self.bins = bins
+        self.match_ratio = match_ratio
+        self.rng = random.Random(seed)
+
+        # Pre-compute GC content
+        self.target_gc = self._compute_gc(self.target_sampler)
+        self.candidate_gc = self._compute_gc(self.candidate_sampler)
+
+        self._indices: list[int] = []  # Indices into candidate_sampler
+        self.resample()
+
+    def _compute_gc(self, sampler: Sampler) -> list[float]:
+        gc_values = []
+        fasta = pyfaidx.Fasta(str(self.fasta_path))
+
+        for interval in sampler:
+            try:
+                # pyfaidx expects 0-based [start:end]
+                # interval.start is 0-based, interval.end is exclusive 0-based?
+                # Interval class uses 0-based start, 1-based end (BED style)
+                # pyfaidx slicing [start:end] is also 0-based half-open.
+                seq_obj = fasta[interval.chrom][interval.start : interval.end]
+                seq = str(seq_obj)
+                gc_values.append(calculate_gc_content(seq))
+            except Exception:
+                gc_values.append(0.0)
+
+        return gc_values
+
+    def resample(self, seed: int | None = None):
+        if seed is not None:
+            self.rng.seed(seed)
+
+        # 1. Bin target GC
+        target_hist = defaultdict(int)
+        for gc in self.target_gc:
+            bin_idx = min(int(gc * self.bins), self.bins - 1)
+            target_hist[bin_idx] += 1
+
+        # 2. Group candidate indices by bin
+        candidate_bins = defaultdict(list)
+        for idx, gc in enumerate(self.candidate_gc):
+            bin_idx = min(int(gc * self.bins), self.bins - 1)
+            candidate_bins[bin_idx].append(idx)
+
+        self._indices = []
+
+        # 3. Match
+        for bin_idx, count in target_hist.items():
+            needed = int(count * self.match_ratio)
+            candidates = candidate_bins[bin_idx]
+
+            if not candidates:
+                continue
+
+            if len(candidates) >= needed:
+                # Sample without replacement
+                selected = self.rng.sample(candidates, needed)
+            else:
+                # Sample with replacement
+                selected = self.rng.choices(candidates, k=needed)
+
+            self._indices.extend(selected)
+
+        self.rng.shuffle(self._indices)
+
+    def __iter__(self) -> Iterator[Interval]:
+        for idx in self._indices:
+            yield self.candidate_sampler[idx]
+
+    def __len__(self) -> int:
+        return len(self._indices)
+
+    def __getitem__(self, idx: int) -> Interval:
+        real_idx = self._indices[idx]
+        return self.candidate_sampler[real_idx]
+
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple["GCMatchedSampler", "GCMatchedSampler", "GCMatchedSampler"]:
+        
+        target_splits = self.target_sampler.split_folds(test_fold, val_fold)
+        candidate_splits = self.candidate_sampler.split_folds(test_fold, val_fold)
+
+        return (
+            GCMatchedSampler(
+                target_splits[0],
+                candidate_splits[0],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.exclude_intervals,
+                self.folds,
+                self.bins,
+                self.match_ratio,
+                self.rng.randint(0, 10000),
+            ),
+            GCMatchedSampler(
+                target_splits[1],
+                candidate_splits[1],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.exclude_intervals,
+                self.folds,
+                self.bins,
+                self.match_ratio,
+                self.rng.randint(0, 10000),
+            ),
+            GCMatchedSampler(
+                target_splits[2],
+                candidate_splits[2],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.exclude_intervals,
+                self.folds,
+                self.bins,
+                self.match_ratio,
+                self.rng.randint(0, 10000),
+            ),
+        )
 
 
 class IntervalSampler(BaseSampler):
@@ -502,6 +705,7 @@ def create_sampler(
     chrom_sizes: dict[str, int],
     exclude_intervals: dict[str, InterLap],
     folds: list[dict[str, InterLap]],
+    fasta_path: Path | str | None = None,
 ) -> Sampler:
     """
     Factory function to create a Sampler from a config.
@@ -511,6 +715,14 @@ def create_sampler(
         chrom_sizes: Chromosome sizes dictionary.
         exclude_intervals: Dictionary of excluded regions.
         folds: List of fold definitions.
+        fasta_path: Path to the genome FASTA file (required for GCMatchedSampler).
+
+    Scaling Config (for MultiSampler):
+        The `scaling` parameter in sub-sampler config supports:
+        - float: Direct ratio (e.g., 1.0, 0.5).
+        - "min": Matches the count of the smallest sampler.
+        - "max": Matches the count of the largest sampler.
+        - "count:<int>": Sets a fixed number of samples.
         
     Returns:
         Sampler: An instantiated sampler object.
@@ -542,18 +754,65 @@ def create_sampler(
             folds=folds,
         )
 
+    elif sampler_type == "random":
+        num_intervals = sampler_args["num_intervals"]
+        return RandomSampler(
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            num_intervals=num_intervals,
+            exclude_intervals=exclude_intervals,
+            folds=folds,
+        )
+
     elif sampler_type == "dummy":
         return DummySampler(chrom_sizes=chrom_sizes)
 
+    elif sampler_type == "gc_matched":
+        if fasta_path is None:
+            raise ValueError("GCMatchedSampler requires 'fasta_path' to be provided.")
+
+        target_conf = sampler_args["target_sampler"]
+        candidate_conf = sampler_args["candidate_sampler"]
+
+        # Recursive creation
+        target_full_conf = {
+            "sampler_type": target_conf["type"],
+            "sampler_args": target_conf["args"],
+            "padded_size": padded_size,
+        }
+        candidate_full_conf = {
+            "sampler_type": candidate_conf["type"],
+            "sampler_args": candidate_conf["args"],
+            "padded_size": padded_size,
+        }
+
+        target_sampler = create_sampler(
+            target_full_conf, chrom_sizes, exclude_intervals, folds, fasta_path
+        )
+        candidate_sampler = create_sampler(
+            candidate_full_conf, chrom_sizes, exclude_intervals, folds, fasta_path
+        )
+
+        return GCMatchedSampler(
+            target_sampler=target_sampler,
+            candidate_sampler=candidate_sampler,
+            fasta_path=fasta_path,
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+            folds=folds,
+            bins=sampler_args.get("bins", 100),
+            match_ratio=sampler_args.get("match_ratio", 1.0),
+        )
+
     elif sampler_type == "multi":
         samplers = []
-        scaling_factors = []
+        raw_scalings = []
 
         for sub_config in sampler_args["samplers"]:
             # Construct sub-config inheriting top-level values
             sub_sampler_type = sub_config["type"]
             sub_sampler_args = sub_config["args"]
-            scaling = sub_config["scaling"]
+            scaling = sub_config.get("scaling", 1.0)
 
             child_config = {
                 "sampler_type": sub_sampler_type,
@@ -562,10 +821,44 @@ def create_sampler(
             }
 
             sub_sampler = create_sampler(
-                child_config, chrom_sizes, exclude_intervals, folds=folds
+                child_config, chrom_sizes, exclude_intervals, folds=folds, fasta_path=fasta_path
             )
             samplers.append(sub_sampler)
-            scaling_factors.append(scaling)
+            raw_scalings.append(scaling)
+
+        # Resolve scaling factors
+        scaling_factors = []
+        sampler_lengths = [len(s) for s in samplers]
+        
+        # Calculate reference lengths
+        non_zero_lengths = [l for l in sampler_lengths if l > 0]
+        min_len = min(non_zero_lengths) if non_zero_lengths else 0
+        max_len = max(sampler_lengths) if sampler_lengths else 0
+
+        for i, scaling in enumerate(raw_scalings):
+            current_len = sampler_lengths[i]
+            
+            if isinstance(scaling, (int, float)):
+                scaling_factors.append(float(scaling))
+            elif isinstance(scaling, str):
+                if current_len == 0:
+                    scaling_factors.append(0.0)
+                    continue
+
+                if scaling == "min":
+                    scaling_factors.append(min_len / current_len)
+                elif scaling == "max":
+                    scaling_factors.append(max_len / current_len)
+                elif scaling.startswith("count:"):
+                    try:
+                        target = int(scaling.split(":")[1])
+                        scaling_factors.append(target / current_len)
+                    except ValueError:
+                        raise ValueError(f"Invalid scaling format '{scaling}'. Expected 'count:<int>'.")
+                else:
+                    raise ValueError(f"Unsupported scaling string '{scaling}'. Supported: 'min', 'max', 'count:<int>'.")
+            else:
+                raise ValueError(f"Unsupported scaling type {type(scaling)}. Expected int, float, or str.")
 
         return MultiSampler(
             samplers=samplers,

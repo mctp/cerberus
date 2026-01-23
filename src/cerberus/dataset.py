@@ -203,6 +203,7 @@ class CerberusDataset(Dataset):
             self.genome_config["chrom_sizes"],
             self.exclude_intervals,
             folds=self.folds,
+            fasta_path=self.genome_config["fasta_path"],
         )
 
     def __len__(self) -> int:

@@ -60,6 +60,10 @@ def test_reloading_dataloaders_integration():
     """
     Verify that reloading dataloaders triggers resampling in train_dataloader.
     """
+    import warnings
+    warnings.filterwarnings("ignore", ".*GPU available but not used.*")
+    warnings.filterwarnings("ignore", ".*does not have many workers.*")
+
     dm = MockDataModule()
     model = MockModel()
     

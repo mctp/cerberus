@@ -79,6 +79,14 @@ Base class providing common splitting functionality.
     *   Generates sliding windows across the genome.
     *   Initializes `self.folds` for cross-validation.
 
+### `class MultiSampler(BaseSampler)`
+*   **`__init__(self, samplers: List[Sampler], scaling_factors: List[float], ...)`**
+    *   Combines multiple samplers (e.g., Peaks and Background).
+    *   **Scaling**:
+        *   Accepts `scaling_factors` to balance or over/under-sample components.
+        *   `create_sampler` factory supports dynamic scaling strings in config: `"min"` (match smallest), `"max"` (match largest), `"count:<N>"` (fixed size).
+    *   **Resampling**: Supports epoch-based resampling of subsets.
+
 ## 3. PyTorch Lightning Integration
 **Location**: `src/cerberus/datamodule.py`
 

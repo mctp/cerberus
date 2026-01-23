@@ -480,6 +480,24 @@ def validate_sampler_config(
             raise ValueError(
                 f"SlidingWindowSampler args missing required keys: {missing}"
             )
+
+    elif config["sampler_type"] == "random":
+        required_args = {"num_intervals"}
+        if not all(k in config["sampler_args"] for k in required_args):
+            missing = required_args - config["sampler_args"].keys()
+            raise ValueError(f"RandomSampler args missing required keys: {missing}")
+
+    elif config["sampler_type"] == "gc_matched":
+        for key in ["target_sampler", "candidate_sampler"]:
+            if key not in config["sampler_args"]:
+                raise ValueError(f"GCMatchedSampler requires '{key}' in sampler_args")
+            sub = config["sampler_args"][key]
+            if not isinstance(sub, dict):
+                raise TypeError(f"GCMatchedSampler '{key}' config must be a dictionary")
+            if "type" not in sub or "args" not in sub:
+                raise ValueError(
+                    f"GCMatchedSampler '{key}' config must contain 'type' and 'args'"
+                )
             
     elif config["sampler_type"] == "dummy":
         pass
