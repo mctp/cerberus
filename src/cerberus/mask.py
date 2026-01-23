@@ -3,6 +3,8 @@ from typing import Protocol
 import numpy as np
 import pybigtools
 import torch
+import gzip
+from interlap import InterLap
 from cerberus.interval import Interval
 
 
@@ -16,7 +18,7 @@ class BaseMaskExtractor(Protocol):
     def extract(self, interval: Interval) -> torch.Tensor: ...
 
 
-class MaskExtractor(BaseMaskExtractor):
+class BigBedMaskExtractor(BaseMaskExtractor):
     """
     Extracts binary masks from BigBed files on-the-fly.
     
@@ -101,7 +103,7 @@ class MaskExtractor(BaseMaskExtractor):
         return torch.from_numpy(np.stack(extracted_values))
 
 
-class InMemoryMaskExtractor(BaseMaskExtractor):
+class InMemoryBigBedMaskExtractor(BaseMaskExtractor):
     """
     Extracts binary masks from BigBed files loaded into memory.
     
@@ -110,7 +112,7 @@ class InMemoryMaskExtractor(BaseMaskExtractor):
     """
     def __init__(self, bigbed_paths: dict[str, Path]):
         """
-        In-memory version of MaskExtractor. Pre-loads entire chromosomes.
+        In-memory version of BigBedMaskExtractor. Pre-loads entire chromosomes.
 
         Args:
             bigbed_paths: Dictionary mapping channel names to BigBed file paths.
@@ -166,3 +168,108 @@ class InMemoryMaskExtractor(BaseMaskExtractor):
             extracted_values.append(vals)
 
         return torch.stack(extracted_values)
+
+
+class BedMaskExtractor(BaseMaskExtractor):
+    """
+    Extracts binary masks from text-based BED files.
+    
+    Loads the entire BED file into memory using InterLap for efficient range queries.
+    Suitable for sparse interval data like peaks.
+    """
+    def __init__(self, bed_paths: dict[str, Path]):
+        """
+        Args:
+            bed_paths: Dictionary mapping channel names to BED file paths.
+        """
+        self.bed_paths = bed_paths
+        self.channels = sorted(bed_paths.keys())
+        self._interlaps = {} # channel -> chrom -> InterLap
+
+        for name in self.channels:
+            path = Path(self.bed_paths[name])
+            self._interlaps[name] = self._load_bed(path)
+
+    def _load_bed(self, path: Path) -> dict[str, InterLap]:
+        """Loads BED file into a dictionary of InterLaps (one per chromosome)."""
+        intervals_by_chrom = {}
+        
+        try:
+            if path.suffix == ".gz":
+                f = gzip.open(path, "rt")
+            else:
+                f = open(path, "r")
+                
+            with f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith(("#", "track", "browser")):
+                        continue
+                    
+                    parts = line.split()
+                    if len(parts) < 3:
+                        continue
+                        
+                    chrom = parts[0]
+                    start = int(parts[1])
+                    end = int(parts[2])
+                    
+                    if chrom not in intervals_by_chrom:
+                        intervals_by_chrom[chrom] = []
+                    
+                    # InterLap expects closed intervals. BED is [start, end).
+                    # Store as [start, end-1].
+                    if end > start:
+                        intervals_by_chrom[chrom].append((start, end - 1))
+                    
+        except Exception as e:
+            raise RuntimeError(f"Failed to load BED file {path}: {e}")
+            
+        # Build InterLap objects
+        interlaps = {}
+        for chrom, intervals in intervals_by_chrom.items():
+            interlaps[chrom] = InterLap()
+            interlaps[chrom].update(intervals)
+            
+        return interlaps
+
+    def extract(self, interval: Interval) -> torch.Tensor:
+        """
+        Extracts binary mask for the given interval.
+
+        Args:
+            interval: Genomic interval.
+
+        Returns:
+            torch.Tensor: Float32 tensor of shape (Channels, Length).
+        """
+        start = interval.start
+        end = interval.end
+        length = end - start
+        
+        extracted_values = []
+        for name in self.channels:
+            vals = np.zeros(length, dtype=np.float32)
+            
+            chrom_interlap = self._interlaps[name].get(interval.chrom)
+            
+            if chrom_interlap is not None:
+                # Query with closed interval [start, end-1]
+                # If interval is empty (start >= end), skip
+                if end > start:
+                    overlaps = chrom_interlap.find((start, end - 1))
+                    
+                    for o in overlaps:
+                        h_start, h_end_inclusive = o[0], o[1]
+                        h_end = h_end_inclusive + 1
+                        
+                        # Clip to query interval
+                        s = max(0, h_start - start)
+                        e = min(length, h_end - start)
+                        
+                        if s < e:
+                            vals[s:e] = 1.0
+            
+            extracted_values.append(vals)
+            
+        return torch.from_numpy(np.stack(extracted_values))

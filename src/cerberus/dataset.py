@@ -15,7 +15,7 @@ from .exclude import get_exclude_intervals
 from .samplers import Sampler, create_sampler
 from .genome import GenomeConfig, create_genome_folds
 from .sequence import SequenceExtractor, InMemorySequenceExtractor, BaseSequenceExtractor
-from .signal import SignalExtractor, InMemorySignalExtractor, BaseSignalExtractor
+from .signal import BaseSignalExtractor, UniversalExtractor
 from .transform import DataTransform, Compose, create_default_transforms
 from .interval import Interval
 
@@ -144,14 +144,10 @@ class CerberusDataset(Dataset):
         if input_signal_extractor is not None:
             self.input_signal_extractor = input_signal_extractor
         elif self.data_config["inputs"]:
-            if self.in_memory:
-                self.input_signal_extractor = InMemorySignalExtractor(
-                    bigwig_paths=self.data_config["inputs"]
-                )
-            else:
-                self.input_signal_extractor = SignalExtractor(
-                    bigwig_paths=self.data_config["inputs"]
-                )
+            self.input_signal_extractor = UniversalExtractor(
+                paths=self.data_config["inputs"],
+                in_memory=self.in_memory
+            )
         else:
             self.input_signal_extractor = None
 
@@ -159,14 +155,10 @@ class CerberusDataset(Dataset):
         if target_signal_extractor is not None:
             self.target_signal_extractor = target_signal_extractor
         elif self.data_config["targets"]:
-            if self.in_memory:
-                self.target_signal_extractor = InMemorySignalExtractor(
-                    bigwig_paths=self.data_config["targets"]
-                )
-            else:
-                self.target_signal_extractor = SignalExtractor(
-                    bigwig_paths=self.data_config["targets"]
-                )
+            self.target_signal_extractor = UniversalExtractor(
+                paths=self.data_config["targets"],
+                in_memory=self.in_memory
+            )
         else:
             self.target_signal_extractor = None
             

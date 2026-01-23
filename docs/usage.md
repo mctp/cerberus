@@ -30,8 +30,8 @@ genome_config = create_genome_config(
 
 # 2. Data Configuration
 data_config = {
-    "inputs": {},  # Only sequence input
-    "targets": {"AR": signal_path},
+    "inputs": {},  # Only sequence input. Can add {"Track": "path.bw" or "path.bed"}
+    "targets": {"AR": signal_path}, # BigWig signal
     "input_len": 2114,
     "output_len": 1000,
     "output_bin_size": 1,

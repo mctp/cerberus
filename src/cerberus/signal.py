@@ -4,6 +4,7 @@ import numpy as np
 import pybigtools
 import torch
 from cerberus.interval import Interval
+from cerberus.mask import BigBedMaskExtractor, InMemoryBigBedMaskExtractor, BedMaskExtractor
 
 
 class BaseSignalExtractor(Protocol):
@@ -97,6 +98,89 @@ class SignalExtractor(BaseSignalExtractor):
         # Stack: (Channels, Length)
         signal_tensor = np.stack(extracted_values)
         return torch.from_numpy(signal_tensor)
+
+
+class UniversalExtractor(BaseSignalExtractor):
+    """
+    Intelligently routes input channels to the appropriate extractor based on file extension.
+    Supports BigWig (.bw), BigBed (.bb), and BED (.bed) files.
+    """
+    def __init__(self, paths: dict[str, Path], in_memory: bool = False):
+        self.paths = paths
+        self.channels = sorted(paths.keys())
+        self.in_memory = in_memory
+        
+        # Group channels by type
+        self.bw_paths = {}
+        self.bb_paths = {}
+        self.bed_paths = {}
+        
+        for name in self.channels:
+            path = Path(paths[name])
+            suffix = path.suffix.lower()
+            name_str = str(name)
+            
+            if suffix in ('.bw', '.bigwig'):
+                self.bw_paths[name_str] = path
+            elif suffix in ('.bb', '.bigbed'):
+                self.bb_paths[name_str] = path
+            elif suffix in ('.bed', '.bed.gz', '.gz'): 
+                self.bed_paths[name_str] = path
+            else:
+                # Default to BigWig if unknown
+                self.bw_paths[name_str] = path
+
+        self.extractors = {}
+        
+        if self.bw_paths:
+            if self.in_memory:
+                self.extractors['bw'] = InMemorySignalExtractor(self.bw_paths)
+            else:
+                self.extractors['bw'] = SignalExtractor(self.bw_paths)
+                
+        if self.bb_paths:
+            if self.in_memory:
+                self.extractors['bb'] = InMemoryBigBedMaskExtractor(self.bb_paths)
+            else:
+                self.extractors['bb'] = BigBedMaskExtractor(self.bb_paths)
+                
+        if self.bed_paths:
+            # BedMaskExtractor is always in-memory (InterLap)
+            self.extractors['bed'] = BedMaskExtractor(self.bed_paths)
+
+    def extract(self, interval: Interval) -> torch.Tensor:
+        # We need to return channels in sorted order of self.channels
+        
+        # Collect results from all extractors
+        results = {}
+        if 'bw' in self.extractors:
+            results['bw'] = self.extractors['bw'].extract(interval) # (N_bw, L)
+            
+        if 'bb' in self.extractors:
+            results['bb'] = self.extractors['bb'].extract(interval)
+            
+        if 'bed' in self.extractors:
+            results['bed'] = self.extractors['bed'].extract(interval)
+            
+        # Helper to map channel name back to result tensor index
+        bw_keys = sorted(self.bw_paths.keys())
+        bb_keys = sorted(self.bb_paths.keys())
+        bed_keys = sorted(self.bed_paths.keys())
+        
+        final_tensors = []
+        
+        for name in self.channels:
+            if name in self.bw_paths:
+                idx = bw_keys.index(name)
+                final_tensors.append(results['bw'][idx])
+            elif name in self.bb_paths:
+                idx = bb_keys.index(name)
+                final_tensors.append(results['bb'][idx])
+            elif name in self.bed_paths:
+                idx = bed_keys.index(name)
+                final_tensors.append(results['bed'][idx])
+                
+        return torch.stack(final_tensors)
 
 
 class InMemorySignalExtractor(BaseSignalExtractor):

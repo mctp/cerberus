@@ -1,6 +1,6 @@
 import pytest
 import torch
-from cerberus.mask import MaskExtractor, InMemoryMaskExtractor
+from cerberus.mask import BigBedMaskExtractor, InMemoryBigBedMaskExtractor
 import pybigtools
 from cerberus.interval import Interval
 
@@ -21,7 +21,7 @@ def bigbed_file(tmp_path):
     return path
 
 def test_mask_extractor_basic(bigbed_file):
-    extractor = MaskExtractor({"test": bigbed_file})
+    extractor = BigBedMaskExtractor({"test": bigbed_file})
     
     # Case 1: Overlap with first interval 100-200
     # Query: 150-250.
@@ -45,7 +45,7 @@ def test_mask_extractor_basic(bigbed_file):
 
 def test_mask_extractor_multi_channel(bigbed_file):
     # Use same file for 2 channels
-    extractor = MaskExtractor({"A": bigbed_file, "B": bigbed_file})
+    extractor = BigBedMaskExtractor({"A": bigbed_file, "B": bigbed_file})
     interval = Interval("chr1", 150, 250, "+")
     mask = extractor.extract(interval)
     
@@ -54,7 +54,7 @@ def test_mask_extractor_multi_channel(bigbed_file):
     assert torch.all(mask[0, 0:50] == 1.0)
 
 def test_in_memory_mask_extractor(bigbed_file):
-    extractor = InMemoryMaskExtractor({"test": bigbed_file})
+    extractor = InMemoryBigBedMaskExtractor({"test": bigbed_file})
     
     # Check cache population
     assert "test" in extractor._cache
@@ -77,7 +77,7 @@ def test_in_memory_mask_extractor(bigbed_file):
 
 def test_mask_extractor_pickle(bigbed_file):
     import pickle
-    extractor = MaskExtractor({"test": bigbed_file})
+    extractor = BigBedMaskExtractor({"test": bigbed_file})
     extractor.extract(Interval("chr1", 0, 10, "+")) # Trigger load
     
     assert extractor._bigbed_files is not None

@@ -38,10 +38,15 @@ Defines the input and output data characteristics.
 
 ```python
 class DataConfig(TypedDict):
-    # Paths to input BigWig files (e.g., conservation scores)
+    # Paths to input track files (BigWig, BigBed, BED)
+    # Supported formats:
+    # - BigWig (.bw, .bigwig): Continuous signal (coverage, fold-change).
+    # - BigBed (.bb, .bigbed): Binary intervals (peaks, regions).
+    # - BED (.bed, .bed.gz): Binary intervals (peaks, regions).
     inputs: dict[str, Path]
     
-    # Paths to target BigWig files (e.g., CAGE, ChIP-seq)
+    # Paths to target track files (e.g., CAGE, ChIP-seq)
+    # Supports same formats as inputs.
     targets: dict[str, Path]
     
     # Length of the input sequence
