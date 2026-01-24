@@ -61,6 +61,7 @@ class CerberusDataset(Dataset):
         deterministic_transforms: list[DataTransform] | None = None,
         in_memory: bool = False,
         is_train: bool = True,
+        seed: int | None = None,
     ):
         """
         Initializes the CerberusDataset.
@@ -79,6 +80,7 @@ class CerberusDataset(Dataset):
                                       Must be provided if transforms is provided.
             in_memory: Whether to load data into memory (default: False).
             is_train: Whether this dataset is used for training (enables random transforms).
+            seed: Optional random seed for sampler initialization.
         
         Raises:
             ValueError: If configurations are invalid.
@@ -88,6 +90,7 @@ class CerberusDataset(Dataset):
         self.data_config = validate_data_config(data_config)
         self.in_memory = in_memory
         self.is_train = is_train
+        self.seed = seed
         
         if sampler_config is not None:
             self.sampler_config = validate_sampler_config(sampler_config)
@@ -204,6 +207,7 @@ class CerberusDataset(Dataset):
             self.exclude_intervals,
             folds=self.folds,
             fasta_path=self.genome_config["fasta_path"],
+            seed=self.seed,
         )
 
     def __len__(self) -> int:
@@ -333,6 +337,7 @@ class CerberusDataset(Dataset):
                 self.deterministic_transforms.transforms if self.deterministic_transforms else None),
             in_memory=self.in_memory,
             is_train=is_train,
+            seed=self.seed,
         )
 
     def split_folds(

@@ -50,7 +50,8 @@ def test_datamodule_setup(
         genome_config=genome_config,
         data_config=data_config,
         sampler_config=sampler_config,
-        in_memory=False
+        in_memory=False,
+        seed=None
     )
     
     # Verify validation was called

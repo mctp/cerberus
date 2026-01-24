@@ -3,13 +3,11 @@ from pathlib import Path
 import gzip
 import random
 from collections import defaultdict
-import numpy as np
-import pyfaidx
 from interlap import InterLap
 from .interval import Interval
 from .config import SamplerConfig
 from .exclude import is_excluded
-from .sequence import calculate_gc_content
+from .sequence import compute_intervals_gc
 
 
 class Sampler(Protocol):
@@ -20,7 +18,7 @@ class Sampler(Protocol):
     - Iteration over intervals.
     - Indexed access.
     - Length reporting.
-    - K-fold splitting.
+    - K-fold splitting into train/val/test samplers.
     - Resampling (e.g., for epoch-based randomization).
     """
     def __iter__(self) -> Iterator[Interval]:
@@ -272,29 +270,11 @@ class GCMatchedSampler(BaseSampler):
         self.rng = random.Random(seed)
 
         # Pre-compute GC content
-        self.target_gc = self._compute_gc(self.target_sampler)
-        self.candidate_gc = self._compute_gc(self.candidate_sampler)
+        self.target_gc = compute_intervals_gc(self.target_sampler, self.fasta_path)
+        self.candidate_gc = compute_intervals_gc(self.candidate_sampler, self.fasta_path)
 
         self._indices: list[int] = []  # Indices into candidate_sampler
         self.resample()
-
-    def _compute_gc(self, sampler: Sampler) -> list[float]:
-        gc_values = []
-        fasta = pyfaidx.Fasta(str(self.fasta_path))
-
-        for interval in sampler:
-            try:
-                # pyfaidx expects 0-based [start:end]
-                # interval.start is 0-based, interval.end is exclusive 0-based?
-                # Interval class uses 0-based start, 1-based end (BED style)
-                # pyfaidx slicing [start:end] is also 0-based half-open.
-                seq_obj = fasta[interval.chrom][interval.start : interval.end]
-                seq = str(seq_obj)
-                gc_values.append(calculate_gc_content(seq))
-            except Exception:
-                gc_values.append(0.0)
-
-        return gc_values
 
     def resample(self, seed: int | None = None):
         if seed is not None:
@@ -593,6 +573,7 @@ class MultiSampler(BaseSampler):
         chrom_sizes: dict[str, int],
         exclude_intervals: dict[str, InterLap],
         scaling_factors: list[float] | None = None,
+        seed: int | None = None,
     ):
         """
         Args:
@@ -605,6 +586,7 @@ class MultiSampler(BaseSampler):
                                     Implemented as random sampling WITHOUT replacement.
                              - > 1.0: Oversample (e.g., 2.0 duplicates samples).
                                     Implemented as random sampling WITH replacement.
+            seed: Optional random seed for initialization.
         """
         self.samplers = samplers
         self.chrom_sizes = chrom_sizes
@@ -617,7 +599,7 @@ class MultiSampler(BaseSampler):
             raise ValueError("Number of samplers must match number of scaling factors")
 
         self._indices: list[tuple[int, int]] = []  # List of (sampler_idx, interval_idx)
-        self.resample()
+        self.resample(seed=seed)
 
     def resample(self, seed: int | None = None):
         """
@@ -626,10 +608,7 @@ class MultiSampler(BaseSampler):
         Args:
             seed: Optional random seed for reproducible or rank-specific sampling.
         """
-        if seed is not None:
-            rng = np.random.RandomState(seed)
-        else:
-            rng = np.random
+        rng = random.Random(seed)
 
         self._indices = []
         for i, sampler in enumerate(self.samplers):
@@ -642,13 +621,13 @@ class MultiSampler(BaseSampler):
 
             if scaling <= 1.0:
                 # Subsample without replacement
-                indices = rng.choice(n_total, n_sample, replace=False)
+                indices = rng.sample(range(n_total), k=n_sample)
             else:
                 # Oversample with replacement
-                indices = rng.choice(n_total, n_sample, replace=True)
+                indices = rng.choices(range(n_total), k=n_sample)
 
             for idx in indices:
-                self._indices.append((i, int(idx)))
+                self._indices.append((i, idx))
 
         # Shuffle the mixed indices
         rng.shuffle(self._indices)
@@ -706,6 +685,7 @@ def create_sampler(
     exclude_intervals: dict[str, InterLap],
     folds: list[dict[str, InterLap]],
     fasta_path: Path | str | None = None,
+    seed: int | None = None,
 ) -> Sampler:
     """
     Factory function to create a Sampler from a config.
@@ -762,6 +742,7 @@ def create_sampler(
             num_intervals=num_intervals,
             exclude_intervals=exclude_intervals,
             folds=folds,
+            seed=seed,
         )
 
     elif sampler_type == "dummy":
@@ -786,11 +767,18 @@ def create_sampler(
             "padded_size": padded_size,
         }
 
+        # Propagate seed to children
+        target_seed = None
+        candidate_seed = None
+        if seed is not None:
+            target_seed = seed + 1
+            candidate_seed = seed + 2
+
         target_sampler = create_sampler(
-            target_full_conf, chrom_sizes, exclude_intervals, folds, fasta_path
+            target_full_conf, chrom_sizes, exclude_intervals, folds, fasta_path, seed=target_seed
         )
         candidate_sampler = create_sampler(
-            candidate_full_conf, chrom_sizes, exclude_intervals, folds, fasta_path
+            candidate_full_conf, chrom_sizes, exclude_intervals, folds, fasta_path, seed=candidate_seed
         )
 
         return GCMatchedSampler(
@@ -802,13 +790,14 @@ def create_sampler(
             folds=folds,
             bins=sampler_args.get("bins", 100),
             match_ratio=sampler_args.get("match_ratio", 1.0),
+            seed=seed,
         )
 
     elif sampler_type == "multi":
         samplers = []
         raw_scalings = []
 
-        for sub_config in sampler_args["samplers"]:
+        for i, sub_config in enumerate(sampler_args["samplers"]):
             # Construct sub-config inheriting top-level values
             sub_sampler_type = sub_config["type"]
             sub_sampler_args = sub_config["args"]
@@ -820,8 +809,13 @@ def create_sampler(
                 "padded_size": padded_size,
             }
 
+            # Propagate seed to children
+            child_seed = None
+            if seed is not None:
+                child_seed = seed + i + 1
+
             sub_sampler = create_sampler(
-                child_config, chrom_sizes, exclude_intervals, folds=folds, fasta_path=fasta_path
+                child_config, chrom_sizes, exclude_intervals, folds=folds, fasta_path=fasta_path, seed=child_seed
             )
             samplers.append(sub_sampler)
             raw_scalings.append(scaling)
@@ -865,6 +859,7 @@ def create_sampler(
             chrom_sizes=chrom_sizes,
             exclude_intervals=exclude_intervals,
             scaling_factors=scaling_factors,
+            seed=seed,
         )
 
     else:

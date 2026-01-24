@@ -78,7 +78,8 @@ data_module = CerberusDataModule(
     sampler_config=sampler_config,
     pin_memory=True,            # Auto-disabled on MPS
     persistent_workers=True,    # Faster worker initialization
-    multiprocessing_context=None # e.g. 'spawn' for MPS stability
+    multiprocessing_context=None, # e.g. 'spawn' for MPS stability
+    seed=42                     # Optional seed for deterministic sampler initialization
 )
 
 # Setup datasets (split into train/val/test)
@@ -190,7 +191,8 @@ from torch.utils.data import DataLoader
 dataset = CerberusDataset(
     genome_config=genome_config,
     data_config=data_config,
-    sampler_config=sampler_config
+    sampler_config=sampler_config,
+    seed=42  # Optional seed for deterministic interval selection
 )
 
 # Access a single item
@@ -201,6 +203,31 @@ print(item['targets'].shape) # (1, 1000) -> Signal
 # Create DataLoader
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
 ```
+
+## Reproducibility and Seeding
+
+Ensuring reproducibility in training runs involves two levels of randomness control:
+
+1.  **Global Randomness (Model & Shuffling)**:
+    Use `pl.seed_everything(seed)` at the start of your script. This sets the seed for:
+    -   Model weight initialization (`torch`).
+    -   Data shuffling order in DataLoaders (`random`, `numpy`).
+    -   Transformations in workers (`CerberusDataModule` handles worker seeding).
+
+    ```python
+    import pytorch_lightning as pl
+    pl.seed_everything(42)
+    ```
+
+2.  **Dataset Composition (Samplers)**:
+    Some samplers, specifically `RandomSampler` and `GCMatchedSampler`, perform random selection logic (e.g., choosing 10,000 random intervals from the whole genome). To ensure that the **same set of intervals** is selected across different runs, you must provide a seed to the `CerberusDataModule` or `CerberusDataset` at run-time.
+
+    ```python
+    # Ensure the sampler picks the same random intervals every time
+    data_module = CerberusDataModule(..., seed=42)
+    ```
+
+    This seed is passed down to `create_sampler`, which initializes the samplers deterministically. For complex samplers like `MultiSampler`, the seed is propagated to all sub-samplers (e.g., seed, seed+1, seed+2) to ensure the entire sampling tree is deterministic.
 
 ## Examples
 

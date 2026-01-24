@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, Iterable
 import numpy as np
 import pyfaidx
 import torch
@@ -100,6 +100,32 @@ def calculate_gc_content(sequence: str | torch.Tensor) -> float:
         return (gc / total).item() if total > 0 else 0.0
     
     raise TypeError("Input must be a string or torch.Tensor")
+
+
+def compute_intervals_gc(intervals: Iterable[Interval], fasta_path: Path | str) -> list[float]:
+    """
+    Computes GC content for a collection of intervals using a FASTA file.
+
+    Args:
+        intervals: Iterable of Interval objects.
+        fasta_path: Path to the genome FASTA file.
+
+    Returns:
+        List of GC content values (floats).
+    """
+    gc_values = []
+    fasta = pyfaidx.Fasta(str(fasta_path))
+
+    for interval in intervals:
+        try:
+            # pyfaidx expects 0-based [start:end]
+            seq_obj = fasta[interval.chrom][interval.start : interval.end]
+            seq = str(seq_obj)
+            gc_values.append(calculate_gc_content(seq))
+        except Exception:
+            gc_values.append(0.0)
+
+    return gc_values
 
 
 class BaseSequenceExtractor(Protocol):

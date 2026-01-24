@@ -1,3 +1,4 @@
+import random
 import pytorch_lightning as pl
 import torch
 import numpy as np
@@ -31,6 +32,7 @@ class CerberusDataModule(pl.LightningDataModule):
         pin_memory: bool = True,
         persistent_workers: bool = True,
         multiprocessing_context: str | None = None,
+        seed: int | None = None,
     ):
         """
         Args:
@@ -42,6 +44,7 @@ class CerberusDataModule(pl.LightningDataModule):
             pin_memory: Whether to pin memory in DataLoaders (recommended for GPU training).
             persistent_workers: Whether to use persistent workers in DataLoaders.
             multiprocessing_context: Context name for multiprocessing (e.g., 'spawn', 'fork').
+            seed: Optional random seed for sampler initialization.
         """
         super().__init__()
         self.genome_config = validate_genome_config(genome_config)
@@ -70,6 +73,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
         self.multiprocessing_context = multiprocessing_context
+        self.seed = seed
 
         self.train_dataset: CerberusDataset | None = None
         self.val_dataset: CerberusDataset | None = None
@@ -90,6 +94,7 @@ class CerberusDataModule(pl.LightningDataModule):
         # Seed numpy/random based on torch seed
         worker_seed = torch.initial_seed() % 2**32
         np.random.seed(worker_seed)
+        random.seed(worker_seed)
 
     def setup(
         self, 
@@ -134,6 +139,7 @@ class CerberusDataModule(pl.LightningDataModule):
             data_config=self.data_config,
             sampler_config=self.sampler_config,
             in_memory=self.in_memory,
+            seed=self.seed,
         )
 
         # Split into folds
