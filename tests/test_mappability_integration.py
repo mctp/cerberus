@@ -9,7 +9,7 @@ from cerberus.sequence import SequenceExtractor
 from cerberus.interval import Interval
 from cerberus.transform import Bin, Jitter
 from cerberus.dataset import CerberusDataset
-from cerberus.samplers import BaseSampler
+from cerberus.samplers import BaseSampler, ListSampler
 from cerberus.genome import create_human_genome_config
 
 @pytest.fixture
@@ -65,8 +65,8 @@ def test_sequence_and_signal_extraction(human_genome, mappability_file, fasta_fi
         "sampler_args": {"stride": 100}
     })
     
-    # Create BaseSampler with our interval
-    sampler = BaseSampler(
+    # Create ListSampler with our interval
+    sampler = ListSampler(
         intervals=[interval],
         folds=[], 
         exclude_intervals={} 

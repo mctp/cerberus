@@ -1,7 +1,7 @@
 
 import pytest
 from pathlib import Path
-from cerberus.samplers import create_sampler, MultiSampler
+from cerberus.samplers import create_sampler, MultiSampler, IntervalSampler, ScaledSampler
 
 @pytest.fixture
 def mock_intervals(tmp_path):
@@ -53,14 +53,16 @@ def test_scaling_min(mock_intervals):
     
     assert isinstance(sampler, MultiSampler)
     # A: 10, B: 100. Min: 10.
-    # B scaling: 10/100 = 0.1
-    # Expected factors: [1.0, 0.1]
     
-    factors = sampler.scaling_factors
-    assert factors[0] == 1.0
-    assert abs(factors[1] - 0.1) < 1e-6
+    # 0 (A): 1.0 -> 10 samples (IntervalSampler)
+    assert isinstance(sampler.samplers[0], IntervalSampler)
+    assert len(sampler.samplers[0]) == 10
+
+    # 1 (B): "min" -> 10 samples (ScaledSampler)
+    assert isinstance(sampler.samplers[1], ScaledSampler)
+    assert len(sampler.samplers[1]) == 10
     
-    # Total length: 10 * 1 + 100 * 0.1 = 10 + 10 = 20
+    # Total length: 10 + 10 = 20
     assert len(sampler) == 20
 
 def test_scaling_max(mock_intervals):
@@ -92,14 +94,16 @@ def test_scaling_max(mock_intervals):
     assert isinstance(sampler, MultiSampler)
     
     # A: 10, B: 100. Max: 100.
-    # A scaling: 100/10 = 10.0
-    # Expected factors: [10.0, 1.0]
     
-    factors = sampler.scaling_factors
-    assert abs(factors[0] - 10.0) < 1e-6
-    assert factors[1] == 1.0
+    # 0 (A): "max" -> 100 samples (ScaledSampler)
+    assert isinstance(sampler.samplers[0], ScaledSampler)
+    assert len(sampler.samplers[0]) == 100
     
-    # Total length: 10 * 10 + 100 * 1 = 100 + 100 = 200
+    # 1 (B): 1.0 -> 100 samples (IntervalSampler)
+    assert isinstance(sampler.samplers[1], IntervalSampler)
+    assert len(sampler.samplers[1]) == 100
+    
+    # Total length: 100 + 100 = 200
     assert len(sampler) == 200
 
 def test_scaling_count(mock_intervals):
@@ -130,12 +134,13 @@ def test_scaling_count(mock_intervals):
     sampler = create_sampler(config, chrom_sizes, exclude_intervals, folds)
     assert isinstance(sampler, MultiSampler)
     
-    # A: 10 -> 5. Scaling 0.5
-    # B: 100 -> 50. Scaling 0.5
+    # A: 10 -> 5 (ScaledSampler)
+    assert isinstance(sampler.samplers[0], ScaledSampler)
+    assert len(sampler.samplers[0]) == 5
     
-    factors = sampler.scaling_factors
-    assert abs(factors[0] - 0.5) < 1e-6
-    assert abs(factors[1] - 0.5) < 1e-6
+    # B: 100 -> 50 (ScaledSampler)
+    assert isinstance(sampler.samplers[1], ScaledSampler)
+    assert len(sampler.samplers[1]) == 50
     
     # Total length: 5 + 50 = 55
     assert len(sampler) == 55
@@ -180,14 +185,17 @@ def test_scaling_mixed(mock_intervals):
     # Lengths: [10, 100, 10]
     # Min: 10. Max: 100.
     
-    # 0 (A): 1.0 -> 10 samples
-    # 1 (B): "min" -> 10 samples. Scaling: 10/100 = 0.1
-    # 2 (C): "max" -> 100 samples. Scaling: 100/10 = 10.0
+    # 0 (A): 1.0 -> 10 samples (IntervalSampler)
+    assert isinstance(sampler.samplers[0], IntervalSampler)
+    assert len(sampler.samplers[0]) == 10
     
-    factors = sampler.scaling_factors
-    assert factors[0] == 1.0
-    assert abs(factors[1] - 0.1) < 1e-6
-    assert abs(factors[2] - 10.0) < 1e-6
+    # 1 (B): "min" -> 10 samples (ScaledSampler)
+    assert isinstance(sampler.samplers[1], ScaledSampler)
+    assert len(sampler.samplers[1]) == 10
+    
+    # 2 (C): "max" -> 100 samples (ScaledSampler)
+    assert isinstance(sampler.samplers[2], ScaledSampler)
+    assert len(sampler.samplers[2]) == 100
     
     # Total length: 10 + 10 + 100 = 120
     assert len(sampler) == 120

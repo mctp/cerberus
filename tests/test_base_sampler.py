@@ -1,34 +1,34 @@
 import pytest
-from cerberus.samplers import BaseSampler
+from cerberus.samplers import BaseSampler, ListSampler
 from cerberus.interval import Interval
 from interlap import InterLap
 
-def test_base_sampler_init_iteration():
+def test_list_sampler_init_iteration():
     intervals = [
         Interval("chr1", 100, 200, "+"),
         Interval("chr2", 300, 400, "-")
     ]
-    sampler = BaseSampler(intervals=intervals)
+    sampler = ListSampler(intervals=intervals)
     
     assert len(sampler) == 2
     assert sampler[0] == intervals[0]
     assert list(sampler) == intervals
 
-def test_base_sampler_subset():
+def test_list_sampler_subset():
     intervals = [
         Interval("chr1", 100, 200, "+"),
         Interval("chr2", 300, 400, "-"),
         Interval("chr3", 500, 600, "+")
     ]
-    sampler = BaseSampler(intervals=intervals)
+    sampler = ListSampler(intervals=intervals)
     
     subset = sampler._subset([0, 2])
-    assert isinstance(subset, BaseSampler)
+    assert isinstance(subset, ListSampler)
     assert len(subset) == 2
     assert subset[0] == intervals[0]
     assert subset[1] == intervals[2]
 
-def test_base_sampler_split_folds():
+def test_list_sampler_split_folds():
     intervals = [
         Interval("chr1", 100, 200),
         Interval("chr2", 100, 200),
@@ -46,7 +46,7 @@ def test_base_sampler_split_folds():
         {"chr3": InterLap([(0, 1000)])}  # Fold 2
     ]
     
-    sampler = BaseSampler(intervals=intervals, folds=folds)
+    sampler = ListSampler(intervals=intervals, folds=folds)
     
     # Test fold 0, Val fold 1
     # Train: chr3 (not in 0 or 1)
@@ -63,16 +63,12 @@ def test_base_sampler_split_folds():
     assert train[0].chrom == "chr3"
 
 def test_base_sampler_exclude():
-    intervals = [
-        Interval("chr1", 100, 200),
-        Interval("chr1", 300, 400)
-    ]
-    
+    # BaseSampler logic doesn't depend on intervals list, only on exclude_intervals dict
     exclude_intervals = {"chr1": InterLap([(150, 250)])}
     
-    sampler = BaseSampler(intervals=intervals, exclude_intervals=exclude_intervals)
+    sampler = BaseSampler(exclude_intervals=exclude_intervals)
     
-    # BaseSampler doesn't auto-filter in init (IntervalSampler does), but provides is_excluded
+    # BaseSampler provides is_excluded
     assert sampler.is_excluded("chr1", 100, 200) # Overlaps 150
     assert not sampler.is_excluded("chr1", 300, 400)
     

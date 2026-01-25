@@ -2,6 +2,7 @@ from typing import Iterator, Protocol
 from pathlib import Path
 import gzip
 import random
+import copy
 from collections import defaultdict
 from interlap import InterLap
 from .interval import Interval
@@ -48,10 +49,46 @@ class Sampler(Protocol):
 
 class BaseSampler(Sampler):
     """
-    Base class for samplers providing common functionality.
-    
-    Handles subsetting and basic iteration/access methods.
-    Also serves as a concrete implementation for holding a fixed list of intervals.
+    Base class for samplers providing common configuration and exclusion logic.
+    """
+    def __init__(
+        self,
+        chrom_sizes: dict[str, int] | None = None,
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+    ):
+        self.chrom_sizes = chrom_sizes if chrom_sizes is not None else {}
+        self.folds = folds if folds is not None else []
+        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
+
+    def is_excluded(self, chrom: str, start: int, end: int) -> bool:
+        """Checks if a region overlaps with the exclusion intervals."""
+        return is_excluded(self.exclude_intervals, chrom, start, end)
+
+    def resample(self, seed: int | None = None) -> None:
+        """
+        No-op by default.
+        """
+        pass
+
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple[Sampler, Sampler, Sampler]:
+        raise NotImplementedError
+
+    def __iter__(self) -> Iterator[Interval]:
+        raise NotImplementedError
+
+    def __len__(self) -> int:
+        raise NotImplementedError
+
+    def __getitem__(self, idx: int) -> Interval:
+        raise NotImplementedError
+
+
+class ListSampler(BaseSampler):
+    """
+    Base class for samplers that store a concrete list of intervals.
     """
     def __init__(
         self,
@@ -60,10 +97,12 @@ class BaseSampler(Sampler):
         folds: list[dict[str, InterLap]] | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
     ):
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=exclude_intervals
+        )
         self._intervals = intervals if intervals is not None else []
-        self.chrom_sizes = chrom_sizes if chrom_sizes is not None else {}
-        self.folds = folds if folds is not None else []
-        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
 
     def __iter__(self) -> Iterator[Interval]:
         for interval in self._intervals:
@@ -75,26 +114,13 @@ class BaseSampler(Sampler):
     def __getitem__(self, idx: int) -> Interval:
         return self._intervals[idx]
 
-    def _subset(self, indices: list[int]) -> "BaseSampler":
-        return BaseSampler(
+    def _subset(self, indices: list[int]) -> "ListSampler":
+        return ListSampler(
             intervals=[self._intervals[i] for i in indices],
             chrom_sizes=self.chrom_sizes,
             folds=self.folds,
             exclude_intervals=self.exclude_intervals,
         )
-
-    def is_excluded(self, chrom: str, start: int, end: int) -> bool:
-        """Checks if a region overlaps with the exclusion intervals."""
-        return is_excluded(self.exclude_intervals, chrom, start, end)
-
-    def resample(self, seed: int | None = None) -> None:
-        """
-        No-op by default.
-
-        Most static samplers (IntervalSampler, SlidingWindowSampler) do not need
-        to change their intervals between epochs.
-        """
-        pass
 
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
@@ -102,13 +128,6 @@ class BaseSampler(Sampler):
         """
         Split the sampler into train, validation, and test sets using K-fold strategy.
         Uses pre-computed fold intervals.
-        
-        Args:
-            test_fold: Index of the fold to use for testing.
-            val_fold: Index of the fold to use for validation.
-            
-        Returns:
-            Tuple of (train_sampler, val_sampler, test_sampler).
         """
         folds = self.folds
 
@@ -146,11 +165,45 @@ class BaseSampler(Sampler):
         )
 
 
+class ProxySampler(BaseSampler):
+    """
+    Base class for samplers that wrap another sampler and provide index-based access.
+    """
+    def __init__(
+        self,
+        chrom_sizes: dict[str, int] | None = None,
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+    ):
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=exclude_intervals
+        )
+        self._source_sampler: Sampler | None = None
+        self._indices: list[int] = []
 
-class RandomSampler(BaseSampler):
+    def __iter__(self) -> Iterator[Interval]:
+        if self._source_sampler is None:
+            return
+        for idx in self._indices:
+            yield self._source_sampler[idx]
+
+    def __len__(self) -> int:
+        return len(self._indices)
+
+    def __getitem__(self, idx: int) -> Interval:
+        if self._source_sampler is None:
+            raise IndexError("Source sampler not initialized")
+        real_idx = self._indices[idx]
+        return self._source_sampler[real_idx]
+
+
+class RandomSampler(ListSampler):
     """
     Samples random intervals from the genome, respecting exclusions.
     """
+    MAX_ATTEMPT_MULTIPLIER = 100
 
     def __init__(
         self,
@@ -176,7 +229,7 @@ class RandomSampler(BaseSampler):
         weights = [self.chrom_sizes[c] for c in chroms]
 
         count = 0
-        max_attempts = self.num_intervals * 100  # Safety break
+        max_attempts = self.num_intervals * self.MAX_ATTEMPT_MULTIPLIER  # Safety break
         attempts = 0
 
         while count < self.num_intervals and attempts < max_attempts:
@@ -202,7 +255,7 @@ class RandomSampler(BaseSampler):
             )
 
 
-class IntervalSampler(BaseSampler):
+class IntervalSampler(ListSampler):
     """
     Samples from a list of genomic intervals provided in a file.
     
@@ -356,7 +409,7 @@ class IntervalSampler(BaseSampler):
             ]
 
 
-class SlidingWindowSampler(BaseSampler):
+class SlidingWindowSampler(ListSampler):
     """
     Generates samples by sliding a window across the genome.
     
@@ -397,10 +450,88 @@ class SlidingWindowSampler(BaseSampler):
                     self._intervals.append(Interval(chrom, start, end, "+"))
 
 
+class ScaledSampler(ProxySampler):
+    """
+    Wraps a sampler to resize it (subsample or oversample).
+    """
+    def __init__(
+        self,
+        sampler: Sampler,
+        num_samples: int,
+        seed: int | None = None,
+    ):
+        """
+        Args:
+            sampler: The underlying sampler to wrap.
+            num_samples: The desired number of samples per epoch.
+            seed: Random seed.
+        """
+        super().__init__(
+            chrom_sizes=getattr(sampler, "chrom_sizes", {}),
+            exclude_intervals=getattr(sampler, "exclude_intervals", {}),
+            folds=getattr(sampler, "folds", []),
+        )
+        self.sampler = sampler
+        self.num_samples = int(num_samples)
+        self._indices: list[int] = []
+        self.resample(seed=seed)
+
+    def resample(self, seed: int | None = None) -> None:
+        self.sampler.resample(seed)
+        
+        rng = random.Random(seed)
+        n_total = len(self.sampler)
+        
+        if n_total == 0:
+            self._indices = []
+            return
+
+        if self.num_samples > n_total:
+            # Oversample with replacement
+            self._indices = rng.choices(range(n_total), k=self.num_samples)
+        else:
+            # Subsample without replacement (if possible)
+            self._indices = rng.sample(range(n_total), k=self.num_samples)
+    
+    def __iter__(self) -> Iterator[Interval]:
+        for idx in self._indices:
+            yield self.sampler[idx]
+            
+    def __len__(self) -> int:
+        return len(self._indices)
+        
+    def __getitem__(self, idx: int) -> Interval:
+        real_idx = self._indices[idx]
+        return self.sampler[real_idx]
+        
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple["ScaledSampler", "ScaledSampler", "ScaledSampler"]:
+        
+        train, val, test = self.sampler.split_folds(test_fold, val_fold)
+        
+        total_len = len(self.sampler)
+        if total_len == 0:
+            ratio = 1.0
+        else:
+            ratio = self.num_samples / total_len
+            
+        train_size = int(len(train) * ratio)
+        val_size = int(len(val) * ratio)
+        test_size = int(len(test) * ratio)
+        
+        rng = random.Random() 
+        
+        return (
+            ScaledSampler(train, train_size, rng.randint(0, 10000)),
+            ScaledSampler(val, val_size, rng.randint(0, 10000)),
+            ScaledSampler(test, test_size, rng.randint(0, 10000)),
+        )
+
+
 class MultiSampler(BaseSampler):
     """
-    Combines multiple samplers with optional scaling factors.
-    Allows for mixing peaks and negatives with specific ratios.
+    Combines multiple samplers into a single stream.
     """
 
     def __init__(
@@ -408,7 +539,6 @@ class MultiSampler(BaseSampler):
         samplers: list[Sampler],
         chrom_sizes: dict[str, int],
         exclude_intervals: dict[str, InterLap],
-        scaling_factors: list[float] | None = None,
         seed: int | None = None,
     ):
         """
@@ -416,12 +546,6 @@ class MultiSampler(BaseSampler):
             samplers: List of Sampler instances.
             chrom_sizes: Dictionary of chromosome sizes.
             exclude_intervals: Dictionary of excluded regions.
-            scaling_factors: List of floats, one per sampler.
-                             - 1.0: Use all samples.
-                             - < 1.0: Subsample (e.g., 0.5 uses 50%).
-                                    Implemented as random sampling WITHOUT replacement.
-                             - > 1.0: Oversample (e.g., 2.0 duplicates samples).
-                                    Implemented as random sampling WITH replacement.
             seed: Optional random seed for initialization.
         """
         super().__init__(
@@ -429,42 +553,23 @@ class MultiSampler(BaseSampler):
             exclude_intervals=exclude_intervals,
         )
         self.samplers = samplers
-        self.scaling_factors = (
-            scaling_factors if scaling_factors is not None else [1.0] * len(samplers)
-        )
-
-        if len(self.samplers) != len(self.scaling_factors):
-            raise ValueError("Number of samplers must match number of scaling factors")
-
         self._indices: list[tuple[int, int]] = []  # List of (sampler_idx, interval_idx)
         self.resample(seed=seed)
 
     def resample(self, seed: int | None = None) -> None:
         """
-        Regenerates the list of indices based on scaling factors.
-        Call this at the start of each epoch to get a fresh random subset for subsampled inputs.
-        Args:
-            seed: Optional random seed for reproducible or rank-specific sampling.
+        Regenerates the list of indices.
         """
+        # Propagate resample to sub-samplers (e.g. GCMatchedSampler needs to pick new candidates)
+        for sampler in self.samplers:
+            sampler.resample(seed)
+
         rng = random.Random(seed)
 
         self._indices = []
         for i, sampler in enumerate(self.samplers):
             n_total = len(sampler)
-            scaling = self.scaling_factors[i]
-            n_sample = int(n_total * scaling)
-
-            if n_sample == 0:
-                continue
-
-            if scaling <= 1.0:
-                # Subsample without replacement
-                indices = rng.sample(range(n_total), k=n_sample)
-            else:
-                # Oversample with replacement
-                indices = rng.choices(range(n_total), k=n_sample)
-
-            for idx in indices:
+            for idx in range(n_total):
                 self._indices.append((i, idx))
 
         # Shuffle the mixed indices
@@ -500,24 +605,21 @@ class MultiSampler(BaseSampler):
                 train_samplers,
                 self.chrom_sizes,
                 self.exclude_intervals,
-                self.scaling_factors,
             ),
             MultiSampler(
                 val_samplers,
                 self.chrom_sizes,
                 self.exclude_intervals,
-                self.scaling_factors,
             ),
             MultiSampler(
                 test_samplers,
                 self.chrom_sizes,
                 self.exclude_intervals,
-                self.scaling_factors,
             ),
         )
 
 
-class GCMatchedSampler(BaseSampler):
+class GCMatchedSampler(ProxySampler):
     """
     Selects candidates from a candidate_sampler that match the GC content distribution
     of a target_sampler.
@@ -678,6 +780,104 @@ class GCMatchedSampler(BaseSampler):
         )
 
 
+class PeakSampler(MultiSampler):
+    """
+    A specialized MultiSampler that combines a set of positive intervals (peaks)
+    with a GC-matched negative set.
+    
+    This class simplifies the creation of a balanced training set by:
+    1. Loading the peaks once.
+    2. Automatically excluding peaks from the background candidates.
+    3. Generating a GC-matched negative set with a specified ratio.
+    4. Mixing the positives and negatives with a default 1:1 ratio.
+    """
+    MIN_CANDIDATES = 10000
+    CANDIDATE_OVERSAMPLE_FACTOR = 10
+
+    def __init__(
+        self,
+        intervals_path: Path | str,
+        fasta_path: Path | str,
+        chrom_sizes: dict[str, int],
+        padded_size: int,
+        exclude_intervals: dict[str, InterLap],
+        folds: list[dict[str, InterLap]] | None = None,
+        background_ratio: float = 1.0,
+        seed: int | None = None,
+    ):
+        """
+        Args:
+            intervals_path: Path to peaks.
+            fasta_path: Path to genome FASTA.
+            chrom_sizes: Chromosome sizes.
+            padded_size: Interval size.
+            exclude_intervals: Excluded regions.
+            folds: Fold definitions.
+            background_ratio: Ratio of background intervals to peaks. 
+                              e.g. 1.0 = 1:1, 2.0 = 2 backgrounds per peak.
+            seed: Random seed.
+        """
+        self.intervals_path = Path(intervals_path)
+        self.background_ratio = background_ratio
+        
+        # 1. Positives (Peaks)
+        self.positives = IntervalSampler(
+            file_path=self.intervals_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            exclude_intervals=exclude_intervals,
+            folds=folds,
+        )
+
+        # 2. Exclusions for Negatives (Original Excludes + Peaks)
+        # Deep copy the exclusions to avoid modifying the global state
+        neg_excludes = copy.deepcopy(exclude_intervals)
+        for interval in self.positives:
+            if interval.chrom not in neg_excludes:
+                neg_excludes[interval.chrom] = InterLap()
+            neg_excludes[interval.chrom].add((interval.start, interval.end))
+
+        # 3. Candidates (Random background, excluding peaks)
+        # Auto-calculate candidate pool size. 
+        # We need enough candidates to find matches. 10x is usually safe.
+        # But ensure a minimum floor (e.g. 10,000) if peaks are few.
+        n_peaks = len(self.positives)
+        n_candidates = max(
+            self.MIN_CANDIDATES, 
+            int(n_peaks * background_ratio * self.CANDIDATE_OVERSAMPLE_FACTOR)
+        )
+             
+        self.candidates = RandomSampler(
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            num_intervals=n_candidates,
+            exclude_intervals=neg_excludes,
+            folds=folds,
+            seed=seed,
+        )
+
+        # 4. Negatives (GC Matched to Positives)
+        self.negatives = GCMatchedSampler(
+            target_sampler=self.positives,
+            candidate_sampler=self.candidates,
+            fasta_path=fasta_path,
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=neg_excludes, # Use the augmented excludes
+            folds=folds,
+            match_ratio=background_ratio,
+            seed=seed,
+        )
+
+        # 5. Initialize MultiSampler
+        super().__init__(
+            samplers=[self.positives, self.negatives],
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals, # Base exclusions for validity
+            seed=seed,
+        )
+
+
+
 def create_sampler(
     config: dict | SamplerConfig,
     chrom_sizes: dict[str, int],
@@ -789,15 +989,34 @@ def create_sampler(
             seed=seed,
         )
 
+    elif sampler_type == "peak":
+        if fasta_path is None:
+            raise ValueError("PeakSampler requires 'fasta_path' to be provided.")
+
+        return PeakSampler(
+            intervals_path=sampler_args["intervals_path"],
+            fasta_path=fasta_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            exclude_intervals=exclude_intervals,
+            folds=folds,
+            background_ratio=sampler_args.get("background_ratio", 1.0),
+            seed=seed,
+        )
+
     elif sampler_type == "multi":
         samplers = []
         raw_scalings = []
+        has_scaling = False
 
         for i, sub_config in enumerate(sampler_args["samplers"]):
             # Construct sub-config inheriting top-level values
             sub_sampler_type = sub_config["type"]
             sub_sampler_args = sub_config["args"]
             scaling = sub_config.get("scaling", 1.0)
+            
+            if scaling != 1.0:
+                has_scaling = True
 
             child_config = {
                 "sampler_type": sub_sampler_type,
@@ -816,45 +1035,52 @@ def create_sampler(
             samplers.append(sub_sampler)
             raw_scalings.append(scaling)
 
-        # Resolve scaling factors
-        scaling_factors = []
-        sampler_lengths = [len(s) for s in samplers]
-        
-        # Calculate reference lengths
-        non_zero_lengths = [l for l in sampler_lengths if l > 0]
-        min_len = min(non_zero_lengths) if non_zero_lengths else 0
-        max_len = max(sampler_lengths) if sampler_lengths else 0
-
-        for i, scaling in enumerate(raw_scalings):
-            current_len = sampler_lengths[i]
+        # Handle scaling logic via ScaledSampler wrappers
+        final_samplers = []
+        if has_scaling:
+            sampler_lengths = [len(s) for s in samplers]
             
-            if isinstance(scaling, (int, float)):
-                scaling_factors.append(float(scaling))
-            elif isinstance(scaling, str):
-                if current_len == 0:
-                    scaling_factors.append(0.0)
-                    continue
+            non_zero_lengths = [l for l in sampler_lengths if l > 0]
+            min_len = min(non_zero_lengths) if non_zero_lengths else 0
+            max_len = max(sampler_lengths) if sampler_lengths else 0
 
-                if scaling == "min":
-                    scaling_factors.append(min_len / current_len)
-                elif scaling == "max":
-                    scaling_factors.append(max_len / current_len)
-                elif scaling.startswith("count:"):
-                    try:
-                        target = int(scaling.split(":")[1])
-                        scaling_factors.append(target / current_len)
-                    except ValueError:
-                        raise ValueError(f"Invalid scaling format '{scaling}'. Expected 'count:<int>'.")
+            for i, sampler in enumerate(samplers):
+                scaling = raw_scalings[i]
+                target_size = len(sampler)
+
+                if isinstance(scaling, (int, float)):
+                    target_size = int(len(sampler) * float(scaling))
+                elif isinstance(scaling, str):
+                    if len(sampler) == 0:
+                        target_size = 0
+                    elif scaling == "min":
+                        target_size = min_len
+                    elif scaling == "max":
+                        target_size = max_len
+                    elif scaling.startswith("count:"):
+                        try:
+                            target_size = int(scaling.split(":")[1])
+                        except ValueError:
+                            raise ValueError(f"Invalid scaling format '{scaling}'. Expected 'count:<int>'.")
+                    else:
+                        raise ValueError(f"Unsupported scaling string '{scaling}'. Supported: 'min', 'max', 'count:<int>'.")
+                elif scaling is None:
+                    target_size = len(sampler)
                 else:
-                    raise ValueError(f"Unsupported scaling string '{scaling}'. Supported: 'min', 'max', 'count:<int>'.")
-            else:
-                raise ValueError(f"Unsupported scaling type {type(scaling)}. Expected int, float, or str.")
+                    raise ValueError(f"Unsupported scaling type {type(scaling)}.")
+                
+                if target_size != len(sampler):
+                     sampler_seed = seed + 100 + i if seed is not None else None
+                     sampler = ScaledSampler(sampler, num_samples=target_size, seed=sampler_seed)
+                
+                final_samplers.append(sampler)
+        else:
+            final_samplers = samplers
 
         return MultiSampler(
-            samplers=samplers,
+            samplers=final_samplers,
             chrom_sizes=chrom_sizes,
             exclude_intervals=exclude_intervals,
-            scaling_factors=scaling_factors,
             seed=seed,
         )
 

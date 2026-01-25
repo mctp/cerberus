@@ -2,7 +2,7 @@ from typing import Protocol
 import numpy as np
 import torch
 from cerberus.interval import Interval
-from cerberus.samplers import BaseSampler
+from cerberus.samplers import BaseSampler, ListSampler
 from cerberus.sequence import BaseSequenceExtractor, SequenceExtractor
 from cerberus.signal import BaseSignalExtractor
 
@@ -14,7 +14,7 @@ class SignalGenerator(Protocol):
     """Protocol for generating signal from a sequence tensor."""
     def __call__(self, sequence: torch.Tensor) -> torch.Tensor: ...
 
-class MockSampler(BaseSampler):
+class MockSampler(ListSampler):
     """
     Generates synthetic intervals for testing.
     """
@@ -54,7 +54,7 @@ class MockSampler(BaseSampler):
 
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
-    ) -> tuple["BaseSampler", "BaseSampler", "BaseSampler"]:
+    ) -> tuple["ListSampler", "ListSampler", "ListSampler"]:
         """
         Randomly splits the mock samples into train/val/test.
         Ignores fold arguments and does a simple 80/10/10 split for simplicity,

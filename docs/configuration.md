@@ -254,6 +254,15 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
     }
     ```
 
+*   **Peak Sampler**:
+    ```python
+    {
+        "intervals_path": "peaks.bed",
+        "background_ratio": 1.0  # Ratio of GC-matched negatives to peaks (default: 1.0)
+    }
+    ```
+    *Note: PeakSampler automatically creates a GC-matched background set using a RandomSampler as the candidate pool, excluding the peaks themselves.*
+
 *   **Multi Sampler**:
     ```python
     {
@@ -274,7 +283,7 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
 
     **Scaling Options:**
     - `float`: Direct ratio (1.0 = 100%, 0.5 = 50%, 2.0 = 200%).
-    - `"min"`: Matches the number of samples in the smallest sampler in the list. Useful for balancing background with peaks.
+    - `"min"`: Matches the number of samples in the smallest *non-empty* sampler in the list. Useful for balancing background with peaks without collapsing to zero if one sampler is empty.
     - `"max"`: Matches the number of samples in the largest sampler in the list.
     - `"count:<N>"`: Sets a fixed number of samples (e.g., `"count:10000"`).
 

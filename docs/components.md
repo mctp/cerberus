@@ -17,14 +17,15 @@ Systematically scans the genome with a fixed stride.
 ### MultiSampler
 A meta-sampler that combines multiple samplers.
 *   **Use Case**: Balancing positive (peaks) and negative (background) examples.
-*   **Behavior**: Mixes samples from sub-samplers based on `scaling_factors` (configured via `scaling` in config).
-    *   `scaling` (float): Direct ratio.
-        *   `< 1.0`: Subsamples (uses a random subset each epoch **without replacement**).
-        *   `> 1.0`: Oversamples (duplicates samples via random sampling **with replacement**).
-    *   `scaling` (str): Dynamic scaling strategies.
-        *   `"min"`: Matches the size of the smallest sampler in the group (e.g., match background to peaks).
-        *   `"max"`: Matches the size of the largest sampler.
-        *   `"count:<N>"`: Forces a fixed number of samples.
+*   **Behavior**: Mixes samples from sub-samplers. Resizing/balancing is handled by wrapping sub-samplers in `ScaledSampler`.
+    *   **Note**: Configuration via `create_sampler` still supports the `scaling` parameter for backward compatibility (including "min", "max", "count:N"), which automatically wraps the sampler in `ScaledSampler`. "min" scaling ignores empty samplers.
+
+### ScaledSampler
+Wraps a sampler to resize it (subsample or oversample) to a target number of samples.
+*   **Use Case**: Controlling the epoch size or balancing datasets.
+*   **Behavior**: Resamples the underlying sampler to exactly `num_samples`.
+    *   **Subsampling**: Randomly selects intervals without replacement (if possible).
+    *   **Oversampling**: Randomly selects intervals with replacement.
 
 ### RandomSampler
 Samples random intervals from the genome, respecting exclusions.
@@ -39,6 +40,17 @@ Selects candidates from a `candidate_sampler` (e.g., RandomSampler) that match t
         *   `1.0`: Selects an equal number of candidates as targets (1:1 balanced).
         *   `> 1.0`: Selects more candidates (e.g., `2.0` for 2:1 negatives to positives).
         *   `< 1.0`: Selects fewer candidates.
+
+### PeakSampler
+A specialized sampler for training on peaks with a GC-matched background.
+*   **Use Case**: Standard ChIP-seq/ATAC-seq peak training where you want a balanced set of peaks (positives) and GC-matched non-peak genomic regions (negatives).
+*   **Behavior**:
+    *   Loads peaks from a file.
+    *   Automatically creates a background set that excludes the peaks.
+    *   Selects background intervals that match the GC content of the peaks.
+    *   Combines them into a single stream.
+    *   **Arguments**: `intervals_path`, `background_ratio` (default 1.0).
+    *   **Defaults**: `background_ratio=1.0` ensures a 1:1 ratio between positives (peaks) and negatives (GC-matched background). `background_ratio=2.0` yields 2 backgrounds per peak.
 
 ### Resampling
 
