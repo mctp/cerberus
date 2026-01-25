@@ -38,29 +38,6 @@ def test_validate_sampler_config_sliding_window():
     validated = validate_sampler_config(config)
     assert validated["sampler_type"] == "sliding_window"
 
-def test_validate_sampler_config_multi():
-    config = cast(SamplerConfig, {
-        "sampler_type": "multi",
-        "padded_size": 1000,
-        "sampler_args": {
-            "samplers": [
-                {
-                    "type": "interval",
-                    "args": {"intervals_path": "a"},
-                    "scaling": 0.5
-                },
-                {
-                    "type": "sliding_window",
-                    "args": {"stride": 50},
-                    "scaling": 0.5
-                }
-            ]
-        }
-    })
-    validated = validate_sampler_config(config)
-    assert validated["sampler_type"] == "multi"
-    assert len(validated["sampler_args"]["samplers"]) == 2
-
 def test_validate_sampler_config_invalid_type():
     config = cast(SamplerConfig, {
         "sampler_type": "unknown",
@@ -79,17 +56,6 @@ def test_validate_sampler_config_missing_args():
         "sampler_args": {} # Missing intervals_path
     })
     with pytest.raises(ValueError, match="IntervalSampler args missing required keys"):
-        validate_sampler_config(config)
-
-def test_validate_sampler_config_invalid_multi_structure():
-    config = cast(SamplerConfig, {
-        "sampler_type": "multi",
-        "padded_size": 1000,
-        "sampler_args": {
-            "samplers": "not_a_list"
-        }
-    })
-    with pytest.raises(TypeError, match="must be a list"):
         validate_sampler_config(config)
 
 # --- Model Config Tests ---

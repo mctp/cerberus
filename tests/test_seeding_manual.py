@@ -34,51 +34,45 @@ def test_random_sampler_seeding():
     assert intervals1 != intervals3
 
 def test_multi_sampler_seeding(tmp_path):
+    # Manual instantiation of MultiSampler
+    from cerberus.samplers import IntervalSampler, RandomSampler, ScaledSampler
+    from interlap import InterLap
+    
     chrom_sizes = {"chr1": 10000}
-    # Mock intervals file
     p = tmp_path / "peaks.bed"
     p.write_text("chr1\t100\t200\nchr1\t300\t400\n")
     
-    config = {
-        "sampler_type": "multi",
-        "padded_size": 100,
-        "sampler_args": {
-            "samplers": [
-                {
-                    "type": "interval",
-                    "args": {"intervals_path": str(p)},
-                    "scaling": 0.5 # Subsample
-                },
-                {
-                    "type": "random",
-                    "args": {"num_intervals": 10},
-                    "scaling": 1.0
-                }
-            ]
-        }
-    }
+    # Function to create MS with a seed
+    def create_ms(seed):
+        # We need to replicate the seeding logic that create_sampler used to do for children
+        # s1: Interval (no seed needed really, but ScaledSampler wrapper needs it)
+        s1 = IntervalSampler(p, chrom_sizes, 100, {}, [])
+        # Scaling 0.5 (2 items -> 1 item)
+        seed1 = seed + 1 if seed is not None else None
+        s1_scaled = ScaledSampler(s1, num_samples=1, seed=seed1)
+        
+        # s2: Random
+        seed2 = seed + 2 if seed is not None else None
+        s2 = RandomSampler(chrom_sizes, 100, num_intervals=10, exclude_intervals={}, folds=[], seed=seed2)
+        
+        return MultiSampler([s1_scaled, s2], chrom_sizes, {}, seed=seed)
+
+    ms1 = create_ms(42)
+    ms2 = create_ms(42)
     
-    # With seed 42
-    ms1 = create_sampler(config, chrom_sizes, {}, [], seed=42)
-    ms1 = cast(MultiSampler, ms1)
-
-    # With seed 42 again
-    ms2 = create_sampler(config, chrom_sizes, {}, [], seed=42)
-    ms2 = cast(MultiSampler, ms2)
-
     # Check internal RandomSampler determinism
-    # ms1.samplers[1] is RandomSampler
     rs1 = ms1.samplers[1]
     rs2 = ms2.samplers[1]
-    
-    # Check generated intervals
     assert list(rs1) == list(rs2)
     
-    # Check MultiSampler mixing (resample calls rng)
-    # MultiSampler calls resample(seed) in init. 
-    # With seed passed to create_sampler, it is passed to init.
+    # Check ScaledSampler determinism
+    ss1 = ms1.samplers[0]
+    ss2 = ms2.samplers[0]
+    assert list(ss1) == list(ss2)
     
-    indices1 = ms1._indices
-    indices2 = ms2._indices
+    # Check MultiSampler mixing
+    assert ms1._indices == ms2._indices
     
-    assert indices1 == indices2
+    # Check difference
+    ms3 = create_ms(43)
+    assert ms1._indices != ms3._indices

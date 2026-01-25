@@ -11,6 +11,9 @@ from .exclude import is_excluded
 from .sequence import compute_intervals_gc
 
 
+#### Sampler Protocol and Base Classes ####
+
+
 class Sampler(Protocol):
     """
     Protocol for data samplers.
@@ -84,6 +87,133 @@ class BaseSampler(Sampler):
 
     def __getitem__(self, idx: int) -> Interval:
         raise NotImplementedError
+
+
+class ProxySampler(BaseSampler):
+    """
+    Base class for samplers that wrap another sampler and provide index-based access.
+    """
+    def __init__(
+        self,
+        chrom_sizes: dict[str, int] | None = None,
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+    ):
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=exclude_intervals
+        )
+        self._source_sampler: Sampler | None = None
+        self._indices: list[int] = []
+
+    def __iter__(self) -> Iterator[Interval]:
+        if self._source_sampler is None:
+            return
+        for idx in self._indices:
+            yield self._source_sampler[idx]
+
+    def __len__(self) -> int:
+        return len(self._indices)
+
+    def __getitem__(self, idx: int) -> Interval:
+        if self._source_sampler is None:
+            raise IndexError("Source sampler not initialized")
+        real_idx = self._indices[idx]
+        return self._source_sampler[real_idx]
+
+
+class MultiSampler(BaseSampler):
+    """
+    Combines multiple samplers into a single stream.
+    """
+
+    def __init__(
+        self,
+        samplers: list[Sampler],
+        chrom_sizes: dict[str, int],
+        exclude_intervals: dict[str, InterLap],
+        seed: int | None = None,
+    ):
+        """
+        Args:
+            samplers: List of Sampler instances.
+            chrom_sizes: Dictionary of chromosome sizes.
+            exclude_intervals: Dictionary of excluded regions.
+            seed: Optional random seed for initialization.
+        """
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+        )
+        self.samplers = samplers
+        self._indices: list[tuple[int, int]] = []  # List of (sampler_idx, interval_idx)
+        self.resample(seed=seed)
+
+    def resample(self, seed: int | None = None) -> None:
+        """
+        Regenerates the list of indices.
+        """
+        # Propagate resample to sub-samplers (e.g. GCMatchedSampler needs to pick new candidates)
+        for sampler in self.samplers:
+            sampler.resample(seed)
+
+        rng = random.Random(seed)
+
+        self._indices = []
+        for i, sampler in enumerate(self.samplers):
+            n_total = len(sampler)
+            for idx in range(n_total):
+                self._indices.append((i, idx))
+
+        # Shuffle the mixed indices
+        rng.shuffle(self._indices)
+
+    def __iter__(self) -> Iterator[Interval]:
+        for sampler_idx, interval_idx in self._indices:
+            yield self.samplers[sampler_idx][interval_idx]
+
+    def __len__(self) -> int:
+        return len(self._indices)
+
+    def __getitem__(self, idx: int) -> Interval:
+        sampler_idx, interval_idx = self._indices[idx]
+        return self.samplers[sampler_idx][interval_idx]
+
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple["MultiSampler", "MultiSampler", "MultiSampler"]:
+        """
+        Splits each sub-sampler and returns new MultiSamplers composed of the splits.
+        """
+        train_samplers, val_samplers, test_samplers = [], [], []
+
+        for sampler in self.samplers:
+            train, val, test = sampler.split_folds(test_fold, val_fold)
+            train_samplers.append(train)
+            val_samplers.append(val)
+            test_samplers.append(test)
+
+        return (
+            MultiSampler(
+                train_samplers,
+                self.chrom_sizes,
+                self.exclude_intervals,
+            ),
+            MultiSampler(
+                val_samplers,
+                self.chrom_sizes,
+                self.exclude_intervals,
+            ),
+            MultiSampler(
+                test_samplers,
+                self.chrom_sizes,
+                self.exclude_intervals,
+            ),
+        )
+
+
+#### Concrete ListSamplers ####
 
 
 class ListSampler(BaseSampler):
@@ -163,40 +293,6 @@ class ListSampler(BaseSampler):
             self._subset(val_indices),
             self._subset(test_indices),
         )
-
-
-class ProxySampler(BaseSampler):
-    """
-    Base class for samplers that wrap another sampler and provide index-based access.
-    """
-    def __init__(
-        self,
-        chrom_sizes: dict[str, int] | None = None,
-        folds: list[dict[str, InterLap]] | None = None,
-        exclude_intervals: dict[str, InterLap] | None = None,
-    ):
-        super().__init__(
-            chrom_sizes=chrom_sizes,
-            folds=folds,
-            exclude_intervals=exclude_intervals
-        )
-        self._source_sampler: Sampler | None = None
-        self._indices: list[int] = []
-
-    def __iter__(self) -> Iterator[Interval]:
-        if self._source_sampler is None:
-            return
-        for idx in self._indices:
-            yield self._source_sampler[idx]
-
-    def __len__(self) -> int:
-        return len(self._indices)
-
-    def __getitem__(self, idx: int) -> Interval:
-        if self._source_sampler is None:
-            raise IndexError("Source sampler not initialized")
-        real_idx = self._indices[idx]
-        return self._source_sampler[real_idx]
 
 
 class RandomSampler(ListSampler):
@@ -450,6 +546,9 @@ class SlidingWindowSampler(ListSampler):
                     self._intervals.append(Interval(chrom, start, end, "+"))
 
 
+#### Concrete ProxySamplers ####
+
+
 class ScaledSampler(ProxySampler):
     """
     Wraps a sampler to resize it (subsample or oversample).
@@ -526,96 +625,6 @@ class ScaledSampler(ProxySampler):
             ScaledSampler(train, train_size, rng.randint(0, 10000)),
             ScaledSampler(val, val_size, rng.randint(0, 10000)),
             ScaledSampler(test, test_size, rng.randint(0, 10000)),
-        )
-
-
-class MultiSampler(BaseSampler):
-    """
-    Combines multiple samplers into a single stream.
-    """
-
-    def __init__(
-        self,
-        samplers: list[Sampler],
-        chrom_sizes: dict[str, int],
-        exclude_intervals: dict[str, InterLap],
-        seed: int | None = None,
-    ):
-        """
-        Args:
-            samplers: List of Sampler instances.
-            chrom_sizes: Dictionary of chromosome sizes.
-            exclude_intervals: Dictionary of excluded regions.
-            seed: Optional random seed for initialization.
-        """
-        super().__init__(
-            chrom_sizes=chrom_sizes,
-            exclude_intervals=exclude_intervals,
-        )
-        self.samplers = samplers
-        self._indices: list[tuple[int, int]] = []  # List of (sampler_idx, interval_idx)
-        self.resample(seed=seed)
-
-    def resample(self, seed: int | None = None) -> None:
-        """
-        Regenerates the list of indices.
-        """
-        # Propagate resample to sub-samplers (e.g. GCMatchedSampler needs to pick new candidates)
-        for sampler in self.samplers:
-            sampler.resample(seed)
-
-        rng = random.Random(seed)
-
-        self._indices = []
-        for i, sampler in enumerate(self.samplers):
-            n_total = len(sampler)
-            for idx in range(n_total):
-                self._indices.append((i, idx))
-
-        # Shuffle the mixed indices
-        rng.shuffle(self._indices)
-
-    def __iter__(self) -> Iterator[Interval]:
-        for sampler_idx, interval_idx in self._indices:
-            yield self.samplers[sampler_idx][interval_idx]
-
-    def __len__(self) -> int:
-        return len(self._indices)
-
-    def __getitem__(self, idx: int) -> Interval:
-        sampler_idx, interval_idx = self._indices[idx]
-        return self.samplers[sampler_idx][interval_idx]
-
-    def split_folds(
-        self, test_fold: int | None = None, val_fold: int | None = None
-    ) -> tuple["MultiSampler", "MultiSampler", "MultiSampler"]:
-        """
-        Splits each sub-sampler and returns new MultiSamplers composed of the splits.
-        """
-        train_samplers, val_samplers, test_samplers = [], [], []
-
-        for sampler in self.samplers:
-            train, val, test = sampler.split_folds(test_fold, val_fold)
-            train_samplers.append(train)
-            val_samplers.append(val)
-            test_samplers.append(test)
-
-        return (
-            MultiSampler(
-                train_samplers,
-                self.chrom_sizes,
-                self.exclude_intervals,
-            ),
-            MultiSampler(
-                val_samplers,
-                self.chrom_sizes,
-                self.exclude_intervals,
-            ),
-            MultiSampler(
-                test_samplers,
-                self.chrom_sizes,
-                self.exclude_intervals,
-            ),
         )
 
 
@@ -780,6 +789,9 @@ class GCMatchedSampler(ProxySampler):
         )
 
 
+#### Concrete MultiSamplers ####
+
+
 class PeakSampler(MultiSampler):
     """
     A specialized MultiSampler that combines a set of positive intervals (peaks)
@@ -895,13 +907,6 @@ def create_sampler(
         exclude_intervals: Dictionary of excluded regions.
         folds: List of fold definitions.
         fasta_path: Path to the genome FASTA file (required for GCMatchedSampler).
-
-    Scaling Config (for MultiSampler):
-        The `scaling` parameter in sub-sampler config supports:
-        - float: Direct ratio (e.g., 1.0, 0.5).
-        - "min": Matches the count of the smallest sampler.
-        - "max": Matches the count of the largest sampler.
-        - "count:<int>": Sets a fixed number of samples.
         
     Returns:
         Sampler: An instantiated sampler object.
@@ -1001,86 +1006,6 @@ def create_sampler(
             exclude_intervals=exclude_intervals,
             folds=folds,
             background_ratio=sampler_args.get("background_ratio", 1.0),
-            seed=seed,
-        )
-
-    elif sampler_type == "multi":
-        samplers = []
-        raw_scalings = []
-        has_scaling = False
-
-        for i, sub_config in enumerate(sampler_args["samplers"]):
-            # Construct sub-config inheriting top-level values
-            sub_sampler_type = sub_config["type"]
-            sub_sampler_args = sub_config["args"]
-            scaling = sub_config.get("scaling", 1.0)
-            
-            if scaling != 1.0:
-                has_scaling = True
-
-            child_config = {
-                "sampler_type": sub_sampler_type,
-                "sampler_args": sub_sampler_args,
-                "padded_size": padded_size,
-            }
-
-            # Propagate seed to children
-            child_seed = None
-            if seed is not None:
-                child_seed = seed + i + 1
-
-            sub_sampler = create_sampler(
-                child_config, chrom_sizes, exclude_intervals, folds=folds, fasta_path=fasta_path, seed=child_seed
-            )
-            samplers.append(sub_sampler)
-            raw_scalings.append(scaling)
-
-        # Handle scaling logic via ScaledSampler wrappers
-        final_samplers = []
-        if has_scaling:
-            sampler_lengths = [len(s) for s in samplers]
-            
-            non_zero_lengths = [l for l in sampler_lengths if l > 0]
-            min_len = min(non_zero_lengths) if non_zero_lengths else 0
-            max_len = max(sampler_lengths) if sampler_lengths else 0
-
-            for i, sampler in enumerate(samplers):
-                scaling = raw_scalings[i]
-                target_size = len(sampler)
-
-                if isinstance(scaling, (int, float)):
-                    target_size = int(len(sampler) * float(scaling))
-                elif isinstance(scaling, str):
-                    if len(sampler) == 0:
-                        target_size = 0
-                    elif scaling == "min":
-                        target_size = min_len
-                    elif scaling == "max":
-                        target_size = max_len
-                    elif scaling.startswith("count:"):
-                        try:
-                            target_size = int(scaling.split(":")[1])
-                        except ValueError:
-                            raise ValueError(f"Invalid scaling format '{scaling}'. Expected 'count:<int>'.")
-                    else:
-                        raise ValueError(f"Unsupported scaling string '{scaling}'. Supported: 'min', 'max', 'count:<int>'.")
-                elif scaling is None:
-                    target_size = len(sampler)
-                else:
-                    raise ValueError(f"Unsupported scaling type {type(scaling)}.")
-                
-                if target_size != len(sampler):
-                     sampler_seed = seed + 100 + i if seed is not None else None
-                     sampler = ScaledSampler(sampler, num_samples=target_size, seed=sampler_seed)
-                
-                final_samplers.append(sampler)
-        else:
-            final_samplers = samplers
-
-        return MultiSampler(
-            samplers=final_samplers,
-            chrom_sizes=chrom_sizes,
-            exclude_intervals=exclude_intervals,
             seed=seed,
         )
 

@@ -143,70 +143,6 @@ def test_nested_multi_sampler(peaks_bed, chrom_sizes, folds):
     # We verify that total items are conserved across splits.
     assert len(train) + len(val) + len(test) == 15
 
-def test_scaling_edge_cases(chrom_sizes, folds, peaks_bed):
-    """
-    Test scaling modes with empty samplers.
-    """
-    # Empty sampler
-    empty_bed = peaks_bed.parent / "empty.bed"
-    empty_bed.write_text("")
-    
-    s_empty = IntervalSampler(empty_bed, chrom_sizes, 100, folds=folds) # 0 items
-    s_full = IntervalSampler(peaks_bed, chrom_sizes, 100, folds=folds) # 5 items
-    
-    # 1. Scale "min"
-    # Logic ignores 0-length samplers for min calculation.
-    # non_zero_lengths = [5]. min_len = 5.
-    # Empty sampler stays 0. Full sampler scaled to 5.
-    # Total = 5.
-    config_min = {
-        "sampler_type": "multi",
-        "padded_size": 100,
-        "sampler_args": {
-            "samplers": [
-                {"type": "interval", "args": {"intervals_path": str(empty_bed)}, "scaling": "min"},
-                {"type": "interval", "args": {"intervals_path": str(peaks_bed)}, "scaling": "min"}
-            ]
-        }
-    }
-    sampler_min = create_sampler(config_min, chrom_sizes, {}, folds)
-    assert len(sampler_min) == 5
-    
-    # 2. Scale "max" -> Should be 5 (max of 0 and 5)
-    config_max = {
-        "sampler_type": "multi",
-        "padded_size": 100,
-        "sampler_args": {
-            "samplers": [
-                {"type": "interval", "args": {"intervals_path": str(empty_bed)}, "scaling": "max"},
-                {"type": "interval", "args": {"intervals_path": str(peaks_bed)}, "scaling": "max"}
-            ]
-        }
-    }
-    sampler_max = create_sampler(config_max, chrom_sizes, {}, folds)
-    # Empty becomes 5 (oversampled from empty? -> Wait, can't oversample from empty!)
-    # ScaledSampler should handle empty source gracefully (remain empty or raise?)
-    # Let's check ScaledSampler implementation:
-    # if n_total == 0: self._indices = []; return
-    
-    # So if source is empty, it stays empty regardless of requested num_samples.
-    # But the other one (s_full) should be scaled to 5.
-    # So total = 0 + 5 = 5.
-    assert len(sampler_max) == 5
-    
-    # 3. Scale "count:2"
-    config_count = {
-        "sampler_type": "multi",
-        "padded_size": 100,
-        "sampler_args": {
-            "samplers": [
-                {"type": "interval", "args": {"intervals_path": str(peaks_bed)}, "scaling": "count:2"}
-            ]
-        }
-    }
-    sampler_count = create_sampler(config_count, chrom_sizes, {}, folds)
-    assert len(sampler_count) == 2
-
 def test_resampling_determinism(chrom_sizes, folds, peaks_bed):
     """
     Test that resampling is deterministic with seeds.
@@ -273,16 +209,14 @@ def test_create_sampler_errors(chrom_sizes, folds):
     with pytest.raises(ValueError, match="requires 'fasta_path'"):
         create_sampler(config, chrom_sizes, {}, folds, fasta_path=None)
         
-    # Invalid scaling
-    config_scale = {
+    # MultiSampler unsupported
+    config_multi = {
         "sampler_type": "multi",
         "padded_size": 100,
         "sampler_args": {
-            "samplers": [
-                {"type": "random", "args": {"num_intervals": 10}, "scaling": "invalid"}
-            ]
+            "samplers": []
         }
     }
-    with pytest.raises(ValueError, match="Unsupported scaling"):
-        create_sampler(config_scale, chrom_sizes, {}, folds)
+    with pytest.raises(ValueError, match="Unsupported sampler type: multi"):
+        create_sampler(config_multi, chrom_sizes, {}, folds)
 

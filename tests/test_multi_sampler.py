@@ -49,42 +49,18 @@ def test_scaled_sampler(peaks_bed, chrom_sizes):
     assert len(ss2) == 5
     assert len(list(ss2)) == 5
     
-def test_create_sampler_scaling(peaks_bed, negatives_bed, chrom_sizes):
+def test_create_sampler_scaling_unsupported(peaks_bed, negatives_bed, chrom_sizes):
+    # MultiSampler is no longer supported in create_sampler
     config = {
         "sampler_type": "multi",
         "padded_size": 100,
-        "exclude_intervals": {},
         "sampler_args": {
-            "samplers": [
-                {
-                    "type": "interval",
-                    "args": {"intervals_path": str(peaks_bed)},
-                    "scaling": 1.0
-                },
-                {
-                    "type": "interval",
-                    "args": {"intervals_path": str(negatives_bed)},
-                    "scaling": 0.5
-                }
-            ]
+            "samplers": []
         }
     }
-    
     folds = create_genome_folds(chrom_sizes, fold_type="chrom_partition", fold_args={"k": 5})
-    sampler = create_sampler(config, chrom_sizes, exclude_intervals={}, folds=folds)
-    assert isinstance(sampler, MultiSampler)
-    # s1: 3 * 1.0 = 3
-    # s2: 4 * 0.5 = 2
-    # Total = 5
-    assert len(sampler) == 5
-    
-    # Check wrappers
-    # s1: 1.0 -> IntervalSampler (no wrapper needed logic)
-    assert isinstance(sampler.samplers[0], IntervalSampler)
-    
-    # s2: 0.5 -> ScaledSampler wrapper
-    assert isinstance(sampler.samplers[1], ScaledSampler)
-    assert sampler.samplers[1].num_samples == 2
+    with pytest.raises(ValueError, match="Unsupported sampler type: multi"):
+        create_sampler(config, chrom_sizes, exclude_intervals={}, folds=folds)
 
 def test_scaled_sampler_resample(peaks_bed, chrom_sizes):
     folds = create_genome_folds(chrom_sizes, fold_type="chrom_partition", fold_args={"k": 5})

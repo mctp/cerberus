@@ -50,7 +50,7 @@ class SamplerConfig(TypedDict):
     Configuration for data samplers.
 
     Attributes:
-        sampler_type: Type of sampler to use ('interval', 'sliding_window', 'multi').
+        sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random', 'gc_matched', 'peak').
         padded_size: Length of the intervals yielded by the sampler (after padding/centering).
         sampler_args: Dictionary of arguments specific to the sampler type.
 
@@ -59,11 +59,16 @@ class SamplerConfig(TypedDict):
         - intervals_path: Path to BED/narrowPeak file containing regions of interest.
     - 'sliding_window':
         - stride: Step size for generating sliding windows across the genome.
-    - 'multi':
-        - samplers: List of sub-sampler configurations. Each item must be a dict with:
-            - type: Sampler type string ('interval', 'sliding_window').
-            - args: Dictionary of arguments for that sub-sampler.
-            - scaling: Float scaling factor for sampling frequency (ratio of total samples).
+    - 'random':
+        - num_intervals: Number of random intervals to generate.
+    - 'gc_matched':
+        - target_sampler: Configuration for the target sampler (dict with 'type' and 'args').
+        - candidate_sampler: Configuration for the candidate sampler (dict with 'type' and 'args').
+        - bins: Number of bins for GC content histogram (default: 100).
+        - match_ratio: Ratio of candidate samples to target samples per GC bin (default: 1.0).
+    - 'peak':
+        - intervals_path: Path to peaks file.
+        - background_ratio: Ratio of background intervals to peaks (default: 1.0).
     """
 
     sampler_type: str
@@ -453,21 +458,7 @@ def validate_sampler_config(
         raise TypeError("sampler_args must be a dictionary")
 
     # Specialized validation based on sampler_type
-    if config["sampler_type"] == "multi":
-        if "samplers" not in config["sampler_args"]:
-            raise ValueError("MultiSampler requires 'samplers' list in sampler_args")
-        if not isinstance(config["sampler_args"]["samplers"], list):
-            raise TypeError("MultiSampler 'samplers' must be a list")
-
-        for sub in config["sampler_args"]["samplers"]:
-            if not isinstance(sub, dict):
-                raise TypeError("MultiSampler sub-sampler config must be a dictionary")
-            required_sub = {"type", "args", "scaling"}
-            if not all(k in sub for k in required_sub):
-                missing = required_sub - sub.keys()
-                raise ValueError(f"MultiSampler sub-sampler missing keys: {missing}")
-
-    elif config["sampler_type"] == "interval":
+    if config["sampler_type"] == "interval":
         required_args = {"intervals_path"}
         if not all(k in config["sampler_args"] for k in required_args):
             missing = required_args - config["sampler_args"].keys()
@@ -498,6 +489,12 @@ def validate_sampler_config(
                 raise ValueError(
                     f"GCMatchedSampler '{key}' config must contain 'type' and 'args'"
                 )
+
+    elif config["sampler_type"] == "peak":
+        required_args = {"intervals_path"}
+        if not all(k in config["sampler_args"] for k in required_args):
+            missing = required_args - config["sampler_args"].keys()
+            raise ValueError(f"PeakSampler args missing required keys: {missing}")
 
     return {
         "sampler_type": config["sampler_type"],

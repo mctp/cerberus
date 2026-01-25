@@ -103,14 +103,11 @@ Defines how data samples are selected from the genome.
 
 ```python
 class SamplerConfig(TypedDict):
-    # Type of sampler: "interval", "sliding_window", or "multi"
+    # Type of sampler: "interval", "sliding_window", "random", "gc_matched", "peak"
     sampler_type: str
     
     # Length of the window to sample (usually input_len)
     padded_size: int
-    
-    # Paths to exclusion regions (optional override)
-    exclude_intervals: dict[str, Path] | None
     
     # Arguments specific to the chosen sampler type
     sampler_args: dict[str, Any]
@@ -264,27 +261,4 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
     *Note: PeakSampler automatically creates a GC-matched background set using a RandomSampler as the candidate pool, excluding the peaks themselves.*
 
 *   **Multi Sampler**:
-    ```python
-    {
-        "samplers": [
-            {
-                "type": "interval",
-                "args": {"intervals_path": "peaks.bed"},
-                "scaling": 0.5  # Subsample to 50%
-            },
-            {
-                "type": "sliding_window",
-                "args": {"stride": 1000},
-                "scaling": "min" # Automatically match size of the smallest sampler (e.g. peaks)
-            }
-        ]
-    }
-    ```
-
-    **Scaling Options:**
-    - `float`: Direct ratio (1.0 = 100%, 0.5 = 50%, 2.0 = 200%).
-    - `"min"`: Matches the number of samples in the smallest *non-empty* sampler in the list. Useful for balancing background with peaks without collapsing to zero if one sampler is empty.
-    - `"max"`: Matches the number of samples in the largest sampler in the list.
-    - `"count:<N>"`: Sets a fixed number of samples (e.g., `"count:10000"`).
-
-    *Note: Samplers can be nested recursively! A `MultiSampler` can contain other `MultiSampler` definitions.*
+    *   *Deprecated in configuration.* Advanced users can instantiate `MultiSampler` classes directly in Python code for complex sampling strategies.
