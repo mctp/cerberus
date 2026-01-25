@@ -30,6 +30,7 @@ Wraps a sampler to resize it (subsample or oversample) to a target number of sam
 Samples random intervals from the genome, respecting exclusions.
 *   **Use Case**: Generating unbiased background/negative sets.
 *   **Behavior**: Generates `num_intervals` random intervals that do not overlap with `exclude_intervals`.
+*   **Dynamic**: Supports `resample(seed)` to generate a fresh set of random intervals for each epoch.
 
 ### GCMatchedSampler
 Selects candidates from a `candidate_sampler` (e.g., RandomSampler) that match the GC content distribution of a `target_sampler` (e.g., IntervalSampler of peaks).
@@ -55,11 +56,12 @@ A specialized sampler for training on peaks with a GC-matched background.
 
 The `resample(seed)` method allows dynamic samplers to regenerate their internal list of intervals. This is typically called at the start of each training epoch.
 
-*   **MultiSampler**: Resamples the indices from its sub-samplers based on scaling factors. This allows for:
+*   **MultiSampler**: Propagates new seeds to sub-samplers and resamples the indices based on scaling factors. This allows for:
     *   **Dynamic Subsampling**: Randomly selecting a new subset of negatives each epoch.
     *   **Oversampling**: Re-drawing samples with replacement.
     *   **Shuffling**: Ensuring a new random order of mixed samples.
-*   **GCMatchedSampler**: Re-selects candidate intervals from the `candidate_sampler` to maintain the GC match with the target. This ensures that the model sees different negative examples that still match the GC profile of the positives.
+*   **GCMatchedSampler**: Re-selects candidate intervals from the `candidate_sampler` to maintain the GC match with the target. Crucially, it also propagates resampling to the `candidate_sampler` (e.g., refreshing the pool of random background sites).
+*   **RandomSampler**: Regenerates its list of random intervals using the new seed.
 *   **Base Samplers**: Static samplers like `IntervalSampler` and `SlidingWindowSampler` generally have a no-op `resample` method, as their interval set is fixed.
 
 ## Extractors

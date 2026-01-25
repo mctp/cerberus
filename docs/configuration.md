@@ -234,6 +234,7 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
         "num_intervals": 10000 # Number of random intervals to generate
     }
     ```
+    *Note: Intervals are regenerated with a new random seed at the beginning of each epoch.*
 
 *   **GC Matched Sampler**:
     ```python
