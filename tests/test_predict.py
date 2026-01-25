@@ -65,13 +65,8 @@ def integration_setup(tmp_path):
         "use_sequence": True,
     })
     
-    sampler_config = cast(SamplerConfig, {
-        "sampler_type": "dummy",
-        "padded_size": 100,
-        "sampler_args": {}
-    })
-    
-    dataset = CerberusDataset(genome_config, data_config, sampler_config)
+    # No sampler needed for prediction integration test
+    dataset = CerberusDataset(genome_config, data_config, sampler_config=None)
     
     # Model
     model = DummyModel(input_len=100, output_len=50, output_bin_size=1)

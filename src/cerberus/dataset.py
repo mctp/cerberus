@@ -17,7 +17,7 @@ from .genome import GenomeConfig, create_genome_folds
 from .sequence import SequenceExtractor, InMemorySequenceExtractor, BaseSequenceExtractor
 from .signal import BaseSignalExtractor, UniversalExtractor
 from .transform import DataTransform, Compose, create_default_transforms
-from .interval import Interval
+from .interval import Interval, resolve_interval
 
 
 class CerberusDataset(Dataset):
@@ -38,7 +38,7 @@ class CerberusDataset(Dataset):
     sampler_config: SamplerConfig | None
     folds: list[dict[str, InterLap]]
     exclude_intervals: dict[str, InterLap]
-    sampler: Sampler
+    sampler: Sampler | None
     sequence_extractor: BaseSequenceExtractor | None
     input_signal_extractor: BaseSignalExtractor | None
     target_signal_extractor: BaseSignalExtractor | None
@@ -114,16 +114,10 @@ class CerberusDataset(Dataset):
         # Initialize Sampler
         if sampler is not None:
             self.sampler = sampler
-        else:
-            if self.sampler_config is None:
-                # Provide a dummy sampler config if none is provided.
-                padded_size = self.data_config["input_len"] + 2 * self.data_config["max_jitter"]
-                self.sampler_config = {
-                    "sampler_type": "dummy",
-                    "padded_size": padded_size,
-                    "sampler_args": {},
-                }
+        elif self.sampler_config is not None:
             self.sampler = self._initialize_sampler()
+        else:
+            self.sampler = None
 
         # Initialize Sequence Extractor
         if sequence_extractor is not None:
@@ -212,6 +206,8 @@ class CerberusDataset(Dataset):
 
     def __len__(self) -> int:
         """Returns the total number of samples available."""
+        if self.sampler is None:
+            return 0
         return len(self.sampler)
 
     def get_interval(self, query: Any) -> dict[str, Any]:
@@ -225,7 +221,7 @@ class CerberusDataset(Dataset):
         Returns:
             dict: Same structure as __getitem__.
         """
-        interval = self.sampler.resolve_interval(query)
+        interval = resolve_interval(query)
         return self._get_interval(interval)
 
     def _get_interval(self, interval: Interval) -> dict[str, Any]:
@@ -298,7 +294,12 @@ class CerberusDataset(Dataset):
                 - 'intervals': String representation of the genomic interval.
                                Note: If random transforms (like Jitter) are active, this string
                                reflects the transformed coordinates, not the original sampler coordinates.
+        
+        Raises:
+            TypeError: If no sampler is configured for this dataset.
         """
+        if self.sampler is None:
+            raise TypeError("Dataset has no sampler configured. Use get_interval() for specific queries.")
         interval = self.sampler[idx]
         return self._get_interval(interval)
 
@@ -307,7 +308,7 @@ class CerberusDataset(Dataset):
         # Batch optimization if needed, for now loop
         return [self.__getitem__(idx) for idx in indices]
 
-    def _subset(self, sampler: Sampler, is_train: bool = True) -> "CerberusDataset":
+    def _subset(self, sampler: Sampler | None, is_train: bool = True) -> "CerberusDataset":
         """
         Internal method to create a new dataset instance using the provided sampler.
         
@@ -356,6 +357,13 @@ class CerberusDataset(Dataset):
         Returns:
             tuple: (train_dataset, val_dataset, test_dataset)
         """
+        if self.sampler is None:
+            return (
+                self._subset(None, is_train=True),
+                self._subset(None, is_train=False),
+                self._subset(None, is_train=False),
+            )
+
         train_sampler, val_sampler, test_sampler = self.sampler.split_folds(
             test_fold=test_fold, val_fold=val_fold
         )
@@ -376,4 +384,5 @@ class CerberusDataset(Dataset):
         Args:
             seed: Random seed for reproducibility.
         """
-        self.sampler.resample(seed=seed)
+        if self.sampler is not None:
+            self.sampler.resample(seed=seed)

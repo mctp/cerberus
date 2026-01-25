@@ -498,9 +498,6 @@ def validate_sampler_config(
                 raise ValueError(
                     f"GCMatchedSampler '{key}' config must contain 'type' and 'args'"
                 )
-            
-    elif config["sampler_type"] == "dummy":
-        pass
 
     return {
         "sampler_type": config["sampler_type"],

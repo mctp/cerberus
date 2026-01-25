@@ -75,15 +75,9 @@ data_config: DataConfig = {
     "use_sequence": True,
 }
 
-# Sampler Config (needed for Dataset initialization, though predict uses intervals directly)
-sampler_config: SamplerConfig = {
-    "sampler_type": "dummy",
-    "padded_size": INPUT_LEN,
-    "sampler_args": {}
-}
-
 # Dataset
-dataset = CerberusDataset(genome_config, data_config, sampler_config)
+# We don't provide a sampler_config because we're doing inference on specific intervals
+dataset = CerberusDataset(genome_config, data_config, sampler_config=None)
 
 # %% [markdown]
 # ## 2. Define Model

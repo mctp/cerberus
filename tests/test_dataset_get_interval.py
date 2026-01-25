@@ -4,7 +4,6 @@ from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
 from cerberus.genome import create_genome_config
 from cerberus.config import DataConfig, SamplerConfig
-from cerberus.samplers import DummySampler
 from typing import cast
 
 def test_get_interval_with_arbitrary_interval(tmp_path):
@@ -108,15 +107,16 @@ def test_get_interval_equivalence_to_getitem(tmp_path):
     idx = 0
     item_from_getitem = ds[idx]
     
+    assert ds.sampler is not None
     interval_obj = ds.sampler[idx]
     # Pass Interval object directly
     item_from_get_interval = ds.get_interval(interval_obj)
     
     assert torch.equal(item_from_getitem["inputs"], item_from_get_interval["inputs"])
 
-def test_dummy_sampler_and_parsing(tmp_path):
+def test_no_sampler_and_parsing(tmp_path):
     """
-    Test dummy sampler usage and input parsing in get_interval.
+    Test no sampler usage and input parsing in get_interval.
     """
     genome = tmp_path / "genome.fa"
     genome.write_text(">chr1\n" + "T" * 1000 + "\n")
@@ -144,20 +144,14 @@ def test_dummy_sampler_and_parsing(tmp_path):
         "use_sequence": True,
     })
     
-    # Use Dummy Sampler
-    sampler_config = cast(SamplerConfig, {
-        "sampler_type": "dummy",
-        "padded_size": 10,
-        "sampler_args": {}
-    })
+    # Use No Sampler
+    ds = CerberusDataset(genome_config, data_config, sampler_config=None)
     
-    ds = CerberusDataset(genome_config, data_config, sampler_config)
-    
-    assert isinstance(ds.sampler, DummySampler)
+    assert ds.sampler is None
     assert len(ds) == 0
     
     # Test __getitem__ raises error
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError, match="Dataset has no sampler configured"):
         ds[0]
         
     # Test string parsing

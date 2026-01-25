@@ -47,6 +47,34 @@ class Interval:
         return Interval(self.chrom, new_start, new_end, self.strand)
 
 
+def resolve_interval(query: str | tuple | list | Interval) -> Interval:
+    """
+    Resolves a query into an Interval object.
+
+    Supported formats:
+    - Interval object: returned as is.
+    - string: "chrom:start-end" (e.g. "chr1:100-200")
+    - tuple: (chrom, start, end) (e.g. ("chr1", 100, 200))
+    """
+    if isinstance(query, Interval):
+        return query
+
+    if isinstance(query, str):
+        try:
+            chrom, coords = query.split(":")
+            start, end = map(int, coords.split("-"))
+            return Interval(chrom, start, end)
+        except ValueError:
+            raise ValueError(f"Invalid interval string format: {query}. Expected 'chrom:start-end'.")
+
+    if isinstance(query, (tuple, list)):
+        if len(query) < 3:
+            raise ValueError(f"Invalid interval tuple: {query}. Expected (chrom, start, end).")
+        return Interval(str(query[0]), int(query[1]), int(query[2]))
+
+    raise TypeError(f"Unsupported interval query type: {type(query)}")
+
+
 def parse_intervals(
     intervals: list[str], interval_paths: list[Path], genome_config: "GenomeConfig"
 ) -> list[Interval]:
