@@ -147,12 +147,12 @@ def test_resampling_determinism(chrom_sizes, folds, peaks_bed):
     """
     Test that resampling is deterministic with seeds.
     """
-    # RandomSampler generates intervals in init and does not regenerate on resample.
+    # RandomSampler generates intervals in init and now DOES regenerate on resample (Dynamic).
     sampler = RandomSampler(chrom_sizes, 100, num_intervals=10, folds=folds, seed=42)
     items1 = list(sampler)
     sampler.resample(seed=43)
     items2 = list(sampler)
-    assert items1 == items2 # Should NOT change
+    assert items1 != items2 # Should CHANGE
     
     # ScaledSampler DOES resample (subsampling/oversampling).
     base_sampler = IntervalSampler(peaks_bed, chrom_sizes, 100, folds=folds) # 5 items

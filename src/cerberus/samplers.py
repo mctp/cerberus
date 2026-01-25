@@ -11,6 +11,16 @@ from .exclude import is_excluded
 from .sequence import compute_intervals_gc
 
 
+def generate_sub_seeds(seed: int | None, n: int) -> list[int | None]:
+    """
+    Generates n independent seeds from a master seed.
+    """
+    if seed is None:
+        return [None] * n
+    rng = random.Random(seed)
+    return [rng.getrandbits(32) for _ in range(n)]
+
+
 #### Sampler Protocol and Base Classes ####
 
 
@@ -134,6 +144,7 @@ class MultiSampler(BaseSampler):
         chrom_sizes: dict[str, int],
         exclude_intervals: dict[str, InterLap],
         seed: int | None = None,
+        generate_on_init: bool = True,
     ):
         """
         Args:
@@ -141,6 +152,7 @@ class MultiSampler(BaseSampler):
             chrom_sizes: Dictionary of chromosome sizes.
             exclude_intervals: Dictionary of excluded regions.
             seed: Optional random seed for initialization.
+            generate_on_init: Whether to generate samples immediately (default: True).
         """
         super().__init__(
             chrom_sizes=chrom_sizes,
@@ -148,19 +160,32 @@ class MultiSampler(BaseSampler):
         )
         self.samplers = samplers
         self._indices: list[tuple[int, int]] = []  # List of (sampler_idx, interval_idx)
-        self.resample(seed=seed)
+        self.seed: int | None = seed
+        self.rng = random.Random(seed)
+        if generate_on_init:
+            self.resample(seed=seed)
 
     def resample(self, seed: int | None = None) -> None:
         """
         Regenerates the list of indices.
         """
-        # Propagate resample to sub-samplers (e.g. GCMatchedSampler needs to pick new candidates)
-        for i, sampler in enumerate(self.samplers):
-            # Ensure unique seed for each sub-sampler to avoid correlated randomness
-            sub_seed = seed + i if seed is not None else None
-            sampler.resample(sub_seed)
+        if seed is not None:
+            self.seed = seed
+            self.rng = random.Random(seed)
+        elif self.seed is not None:
+            # Advance seed to ensure next split is different
+            self.seed = self.rng.getrandbits(32)
+            self.rng = random.Random(self.seed)
+        else:
+            # Case where seed is None and self.seed is None (unseeded init).
+            # We must establish a seed to ensure sub-samplers are de-correlated.
+            self.seed = self.rng.getrandbits(32)
+            self.rng = random.Random(self.seed)
 
-        rng = random.Random(seed)
+        # Propagate resample to sub-samplers (e.g. GCMatchedSampler needs to pick new candidates)
+        sub_seeds = generate_sub_seeds(self.seed, len(self.samplers))
+        for sampler, sub_seed in zip(self.samplers, sub_seeds):
+            sampler.resample(sub_seed)
 
         self._indices = []
         for i, sampler in enumerate(self.samplers):
@@ -169,7 +194,7 @@ class MultiSampler(BaseSampler):
                 self._indices.append((i, idx))
 
         # Shuffle the mixed indices
-        rng.shuffle(self._indices)
+        self.rng.shuffle(self._indices)
 
     def __iter__(self) -> Iterator[Interval]:
         for sampler_idx, interval_idx in self._indices:
@@ -196,21 +221,26 @@ class MultiSampler(BaseSampler):
             val_samplers.append(val)
             test_samplers.append(test)
 
+        s1, s2, s3 = generate_sub_seeds(self.seed, 3)
+
         return (
             MultiSampler(
                 train_samplers,
                 self.chrom_sizes,
                 self.exclude_intervals,
+                seed=s1,
             ),
             MultiSampler(
                 val_samplers,
                 self.chrom_sizes,
                 self.exclude_intervals,
+                seed=s2,
             ),
             MultiSampler(
                 test_samplers,
                 self.chrom_sizes,
                 self.exclude_intervals,
+                seed=s3,
             ),
         )
 
@@ -297,7 +327,7 @@ class ListSampler(BaseSampler):
         )
 
 
-class RandomSampler(ListSampler):
+class RandomSampler(BaseSampler):
     """
     Samples random intervals from the genome, respecting exclusions.
     """
@@ -310,7 +340,9 @@ class RandomSampler(ListSampler):
         num_intervals: int,
         exclude_intervals: dict[str, InterLap] | None = None,
         folds: list[dict[str, InterLap]] | None = None,
+        regions: dict[str, InterLap] | None = None,
         seed: int | None = None,
+        generate_on_init: bool = True,
     ):
         super().__init__(
             chrom_sizes=chrom_sizes,
@@ -319,27 +351,84 @@ class RandomSampler(ListSampler):
         )
         self.padded_size = padded_size
         self.num_intervals = num_intervals
+        self.regions = regions
+        self.seed = seed
         self.rng = random.Random(seed)
+        self._intervals: list[Interval] = []
+        if generate_on_init:
+            self.resample(seed)
+
+    def __iter__(self) -> Iterator[Interval]:
+        for interval in self._intervals:
+            yield interval
+
+    def __len__(self) -> int:
+        return len(self._intervals)
+
+    def __getitem__(self, idx: int) -> Interval:
+        return self._intervals[idx]
+
+    def resample(self, seed: int | None = None) -> None:
+        if seed is not None:
+            self.seed = seed
+            self.rng = random.Random(self.seed)
+        else:
+            # Advance seed using current RNG state
+            self.seed = self.rng.getrandbits(32)
+            self.rng = random.Random(self.seed)
+
+        self._intervals = []
         self._generate_intervals()
 
+    def _chrom_sizes_to_regions(self) -> dict[str, InterLap]:
+        regions = {}
+        for chrom, size in self.chrom_sizes.items():
+            tree = InterLap()
+            tree.add((0, size))
+            regions[chrom] = tree
+        return regions
+
     def _generate_intervals(self):
-        chroms = list(self.chrom_sizes.keys())
-        weights = [self.chrom_sizes[c] for c in chroms]
+        regions_to_use = self.regions
+        
+        # If no regions specified, use full chromosomes
+        if regions_to_use is None:
+            regions_to_use = self._chrom_sizes_to_regions()
+
+        # Flatten regions into list of valid intervals (chrom, start, end)
+        flat_regions = []
+        weights = []
+        
+        for chrom, tree in regions_to_use.items():
+            if chrom not in self.chrom_sizes:
+                continue
+            for interval in tree:
+                start, end = interval
+                length = end - start
+                if length >= self.padded_size:
+                    flat_regions.append((chrom, start, end))
+                    weights.append(length)
+
+        if not flat_regions:
+            if self.num_intervals > 0:
+                print("Warning: No allowed regions large enough for sampling.")
+            return
 
         count = 0
-        max_attempts = self.num_intervals * self.MAX_ATTEMPT_MULTIPLIER  # Safety break
+        max_attempts = self.num_intervals * self.MAX_ATTEMPT_MULTIPLIER
         attempts = 0
 
         while count < self.num_intervals and attempts < max_attempts:
             attempts += 1
-            # Weighted choice
-            chrom = self.rng.choices(chroms, weights=weights, k=1)[0]
-            size = self.chrom_sizes[chrom]
+            # Pick a region weighted by size
+            region_idx = self.rng.choices(range(len(flat_regions)), weights=weights, k=1)[0]
+            chrom, r_start, r_end = flat_regions[region_idx]
 
-            if size < self.padded_size:
-                continue
-
-            start = self.rng.randint(0, size - self.padded_size)
+            # Sample within region
+            max_start = r_end - self.padded_size
+            
+            # Since we filtered flat_regions by size, max_start >= r_start should hold.
+            start = self.rng.randint(r_start, max_start)
             end = start + self.padded_size
 
             if not self.is_excluded(chrom, start, end):
@@ -351,6 +440,81 @@ class RandomSampler(ListSampler):
                 f"Warning: RandomSampler could only generate {count}/{self.num_intervals} "
                 f"intervals after {attempts} attempts."
             )
+
+    def _subset(self, indices: list[int]) -> "ListSampler":
+        # Kept for compatibility if needed, but split_folds won't use it
+        return ListSampler(
+            intervals=[self._intervals[i] for i in indices],
+            chrom_sizes=self.chrom_sizes,
+            folds=self.folds,
+            exclude_intervals=self.exclude_intervals,
+        )
+
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple["RandomSampler", "RandomSampler", "RandomSampler"]:
+        
+        if not self.folds:
+            raise ValueError("Cannot split folds without fold definitions.")
+
+        test_fold_intervals = self.folds[test_fold] if test_fold is not None else {}
+        val_fold_intervals = self.folds[val_fold] if val_fold is not None else {}
+
+        train_count = 0
+        val_count = 0
+        test_count = 0
+
+        def is_in_fold(fold_intervals: dict[str, InterLap], chrom: str, start: int, end: int) -> bool:
+            if chrom not in fold_intervals:
+                return False
+            return (start, end - 1) in fold_intervals[chrom]
+
+        for interval in self._intervals:
+            in_test = is_in_fold(test_fold_intervals, interval.chrom, interval.start, interval.end)
+            in_val = is_in_fold(val_fold_intervals, interval.chrom, interval.start, interval.end)
+
+            if in_test:
+                test_count += 1
+            elif in_val:
+                val_count += 1
+            else:
+                train_count += 1
+
+        # Define regions for each split
+        test_regions = test_fold_intervals
+        val_regions = val_fold_intervals
+        
+        train_regions = defaultdict(InterLap)
+        for i, fold in enumerate(self.folds):
+            if i == test_fold or i == val_fold:
+                continue
+            for chrom, tree in fold.items():
+                if chrom not in train_regions:
+                    train_regions[chrom] = InterLap()
+                for interval in tree:
+                    train_regions[chrom].add(interval)
+
+        # Generate a master seed for the split.
+        # Using self.seed ensures idempotency.
+        # Since self.seed changes on resample, splits will also change when parent advances.
+        s1, s2, s3 = generate_sub_seeds(self.seed, 3)
+
+        def make_sampler(count, regions, seed):
+            return RandomSampler(
+                chrom_sizes=self.chrom_sizes,
+                padded_size=self.padded_size,
+                num_intervals=count,
+                exclude_intervals=self.exclude_intervals,
+                folds=self.folds,
+                regions=regions,
+                seed=seed
+            )
+
+        return (
+            make_sampler(train_count, train_regions, s1),
+            make_sampler(val_count, val_regions, s2),
+            make_sampler(test_count, test_regions, s3),
+        )
 
 
 class IntervalSampler(ListSampler):
@@ -560,12 +724,14 @@ class ScaledSampler(ProxySampler):
         sampler: Sampler,
         num_samples: int,
         seed: int | None = None,
+        generate_on_init: bool = True,
     ):
         """
         Args:
             sampler: The underlying sampler to wrap.
             num_samples: The desired number of samples per epoch.
             seed: Random seed.
+            generate_on_init: Whether to generate samples immediately (default: True).
         """
         super().__init__(
             chrom_sizes=getattr(sampler, "chrom_sizes", {}),
@@ -576,15 +742,23 @@ class ScaledSampler(ProxySampler):
         self.num_samples = int(num_samples)
         self._indices: list[int] = []
         self.seed = seed
-        self.resample(seed=seed)
+        self.rng = random.Random(seed)
+        if generate_on_init:
+            self.resample(seed=seed)
 
     def resample(self, seed: int | None = None) -> None:
         if seed is not None:
             self.seed = seed
+            self.rng = random.Random(self.seed)
+        else:
+            # Advance seed using current RNG state
+            self.seed = self.rng.getrandbits(32)
+            self.rng = random.Random(self.seed)
             
-        self.sampler.resample(self.seed)
+        # Propagate derived seed to child to decouple RNG streams
+        child_seed = self.rng.getrandbits(32)
+        self.sampler.resample(child_seed)
         
-        rng = random.Random(self.seed)
         n_total = len(self.sampler)
         
         if n_total == 0:
@@ -593,10 +767,10 @@ class ScaledSampler(ProxySampler):
 
         if self.num_samples > n_total:
             # Oversample with replacement
-            self._indices = rng.choices(range(n_total), k=self.num_samples)
+            self._indices = self.rng.choices(range(n_total), k=self.num_samples)
         else:
             # Subsample without replacement (if possible)
-            self._indices = rng.sample(range(n_total), k=self.num_samples)
+            self._indices = self.rng.sample(range(n_total), k=self.num_samples)
     
     def __iter__(self) -> Iterator[Interval]:
         for idx in self._indices:
@@ -625,9 +799,7 @@ class ScaledSampler(ProxySampler):
         val_size = int(len(val) * ratio)
         test_size = int(len(test) * ratio)
         
-        s1 = self.seed + 1 if self.seed is not None else None
-        s2 = self.seed + 2 if self.seed is not None else None
-        s3 = self.seed + 3 if self.seed is not None else None
+        s1, s2, s3 = generate_sub_seeds(self.seed, 3)
 
         return (
             ScaledSampler(train, train_size, s1),
@@ -661,6 +833,7 @@ class GCMatchedSampler(ProxySampler):
         bins: int = 100,
         match_ratio: float = 1.0,
         seed: int | None = None,
+        generate_on_init: bool = True,
     ):
         """
         Args:
@@ -676,6 +849,7 @@ class GCMatchedSampler(ProxySampler):
                          - 2.0: 2:1 matching (twice as many negatives).
                          - 0.5: 0.5:1 matching (half as many negatives).
             seed: Random seed for sampling candidates.
+            generate_on_init: Whether to generate samples immediately (default: True).
         """
         super().__init__(
             chrom_sizes=chrom_sizes,
@@ -692,10 +866,11 @@ class GCMatchedSampler(ProxySampler):
 
         # Pre-compute GC content
         self.target_gc = compute_intervals_gc(self.target_sampler, self.fasta_path)
-        self.candidate_gc = compute_intervals_gc(self.candidate_sampler, self.fasta_path)
+        self.candidate_gc = []  # Computed in resample()
 
         self._indices: list[int] = []  # Indices into candidate_sampler
-        self.resample()
+        if generate_on_init:
+            self.resample()
 
     def resample(self, seed: int | None = None) -> None:
         """
@@ -709,7 +884,18 @@ class GCMatchedSampler(ProxySampler):
         """
         if seed is not None:
             self.seed = seed
-            self.rng.seed(seed)
+            self.rng = random.Random(self.seed)
+        else:
+            # Advance seed using current RNG state
+            self.seed = self.rng.getrandbits(32)
+            self.rng = random.Random(self.seed)
+
+        # Reset candidate sampler deterministically
+        cand_seed = self.rng.getrandbits(32)
+        self.candidate_sampler.resample(cand_seed)
+
+        # Re-compute GC content as candidate intervals have changed
+        self.candidate_gc = compute_intervals_gc(self.candidate_sampler, self.fasta_path)
 
         # 1. Bin target GC
         target_hist = defaultdict(int)
@@ -762,9 +948,7 @@ class GCMatchedSampler(ProxySampler):
         target_splits = self.target_sampler.split_folds(test_fold, val_fold)
         candidate_splits = self.candidate_sampler.split_folds(test_fold, val_fold)
 
-        s1 = self.seed + 1 if self.seed is not None else None
-        s2 = self.seed + 2 if self.seed is not None else None
-        s3 = self.seed + 3 if self.seed is not None else None
+        s1, s2, s3 = generate_sub_seeds(self.seed, 3)
 
         return (
             GCMatchedSampler(
@@ -885,7 +1069,8 @@ class PeakSampler(MultiSampler):
                 num_intervals=n_candidates,
                 exclude_intervals=neg_excludes,
                 folds=folds,
-                seed=seed,
+                seed=None,
+                generate_on_init=False,
             )
 
             # 4. Negatives (GC Matched to Positives)
@@ -897,7 +1082,8 @@ class PeakSampler(MultiSampler):
                 exclude_intervals=neg_excludes, # Use the augmented excludes
                 folds=folds,
                 match_ratio=background_ratio,
-                seed=seed,
+                seed=None,
+                generate_on_init=False,
             )
             samplers.append(self.negatives)
         else:
@@ -993,11 +1179,7 @@ def create_sampler(
         }
 
         # Propagate seed to children
-        target_seed = None
-        candidate_seed = None
-        if seed is not None:
-            target_seed = seed + 1
-            candidate_seed = seed + 2
+        target_seed, candidate_seed = generate_sub_seeds(seed, 2)
 
         target_sampler = create_sampler(
             target_full_conf, chrom_sizes, exclude_intervals, folds, fasta_path, seed=target_seed
@@ -1013,8 +1195,8 @@ def create_sampler(
             chrom_sizes=chrom_sizes,
             exclude_intervals=exclude_intervals,
             folds=folds,
-            bins=sampler_args.get("bins", 100),
-            match_ratio=sampler_args.get("match_ratio", 1.0),
+            bins=sampler_args["bins"],
+            match_ratio=sampler_args["match_ratio"],
             seed=seed,
         )
 

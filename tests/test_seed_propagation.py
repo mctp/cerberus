@@ -1,8 +1,9 @@
 
 import random
 import pytest
-from cerberus.samplers import ScaledSampler, MultiSampler, ListSampler
+from cerberus.samplers import ScaledSampler, MultiSampler, ListSampler, RandomSampler
 from cerberus.interval import Interval
+from interlap import InterLap
 
 def test_multisampler_seed_propagation():
     """
@@ -44,20 +45,20 @@ def test_scaled_sampler_determinism():
     s = ScaledSampler(base_sampler, num_samples=10, seed=42)
     indices_1 = s._indices.copy()
     
-    # 2. Resample with None (should use sticky seed 42)
+    # 2. Resample with None (should advance RNG)
     s.resample(None)
     indices_2 = s._indices.copy()
-    assert indices_1 == indices_2, "Resample(None) should respect sticky seed"
+    assert indices_1 != indices_2, "Resample(None) should advance RNG and produce new indices"
     
     # 3. Resample with new seed
     s.resample(43)
     indices_3 = s._indices.copy()
     assert indices_1 != indices_3, "Resample(new_seed) should change indices"
     
-    # 4. Resample with None again (should use sticky seed 43)
+    # 4. Resample with None again (should advance RNG)
     s.resample(None)
     indices_4 = s._indices.copy()
-    assert indices_3 == indices_4, "Resample(None) should respect updated sticky seed"
+    assert indices_3 != indices_4, "Resample(None) should advance RNG and produce new indices"
     
 def test_scaled_sampler_split_folds_determinism():
     """
@@ -96,6 +97,104 @@ def test_scaled_sampler_split_folds_determinism():
     # Let's force None by creating new sampler
     s_none = ScaledSampler(base_sampler, num_samples=10, seed=None)
     t1, v1, te1 = s_none.split_folds()
-    assert t1.seed is None
-    assert v1.seed is None
-    assert te1.seed is None
+    # Behavior Change: Samplers now self-seed on init if seed=None to ensure
+    # de-correlation and better state management.
+    assert t1.seed is not None
+    assert v1.seed is not None
+    assert te1.seed is not None
+
+def test_random_sampler_split_folds_idempotency():
+    """
+    Test if RandomSampler.split_folds returns the same seeds/samplers
+    when called multiple times on the same seeded object.
+    """
+    chrom_sizes = {"chr1": 10000}
+    padded_size = 100
+    num_intervals = 10
+    seed = 42
+    folds = [
+        {"chr1": InterLap([(0, 5000)])},
+        {"chr1": InterLap([(5000, 10000)])}
+    ]
+    
+    rs = RandomSampler(
+        chrom_sizes=chrom_sizes,
+        padded_size=padded_size,
+        num_intervals=num_intervals,
+        folds=folds,
+        seed=seed
+    )
+    
+    # First split
+    t1, v1, te1 = rs.split_folds(test_fold=0, val_fold=1)
+    
+    # Second split
+    t2, v2, te2 = rs.split_folds(test_fold=0, val_fold=1)
+    
+    # Check seeds
+    assert t1.seed == t2.seed, "RandomSampler split seeds should be idempotent given a fixed parent seed"
+    assert v1.seed == v2.seed
+    assert te1.seed == te2.seed
+
+def test_multisampler_split_folds_seed_propagation_consistency():
+    """
+    Test if MultiSampler propagates its seed to split instances
+    and if splitting is idempotent.
+    """
+    chrom_sizes = {"chr1": 10000}
+    padded_size = 100
+    num_intervals = 10
+    seed = 42
+    folds = [
+        {"chr1": InterLap([(0, 5000)])},
+        {"chr1": InterLap([(5000, 10000)])}
+    ]
+    
+    rs = RandomSampler(chrom_sizes, padded_size, num_intervals, folds=folds, seed=seed)
+    ms = MultiSampler([rs], chrom_sizes, {}, seed=seed)
+    
+    # Split 1
+    t1, v1, te1 = ms.split_folds(test_fold=0, val_fold=1)
+    
+    # Split 2
+    t2, v2, te2 = ms.split_folds(test_fold=0, val_fold=1)
+    
+    # Check if splits have seeds
+    assert t1.seed is not None, "MultiSampler split should have a seed derived from parent"
+    assert v1.seed is not None
+    assert te1.seed is not None
+    
+    # Check idempotency
+    assert t1.seed == t2.seed, "MultiSampler split seeds should be idempotent"
+    assert v1.seed == v2.seed
+    assert te1.seed == te2.seed
+
+def test_multisampler_resample_updates_seed():
+    """
+    Test if MultiSampler.resample(None) updates its seed,
+    leading to different splits for the next epoch.
+    """
+    chrom_sizes = {"chr1": 10000}
+    padded_size = 100
+    num_intervals = 10
+    seed = 42
+    folds = [
+        {"chr1": InterLap([(0, 5000)])},
+        {"chr1": InterLap([(5000, 10000)])}
+    ]
+    
+    rs = RandomSampler(chrom_sizes, padded_size, num_intervals, folds=folds, seed=seed)
+    ms = MultiSampler([rs], chrom_sizes, {}, seed=seed)
+    
+    # Split 1 (Epoch 0)
+    t1, _, _ = ms.split_folds(test_fold=0, val_fold=1)
+    seed1 = t1.seed
+    
+    # Resample (Epoch 1)
+    ms.resample(None)
+    
+    # Split 2 (Epoch 1)
+    t2, _, _ = ms.split_folds(test_fold=0, val_fold=1)
+    seed2 = t2.seed
+    
+    assert seed1 != seed2, "MultiSampler split seeds should change after resample(None)"
