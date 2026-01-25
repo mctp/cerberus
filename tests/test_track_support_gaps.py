@@ -19,7 +19,7 @@ def dummy_bigbed(tmp_path):
     path = tmp_path / "test.bb"
     chroms = {"chr1": 1000}
     entries = [("chr1", 100, 200, "."), ("chr1", 300, 400, ".")]
-    bb = pybigtools.open(str(path), "w")
+    bb = pybigtools.open(str(path), "w") # type: ignore
     bb.write(chroms, entries)
     return path
 
@@ -28,7 +28,7 @@ def dummy_bigwig(tmp_path):
     path = tmp_path / "test.bw"
     chroms = {"chr1": 1000}
     # Create a simple bigwig
-    bb = pybigtools.open(str(path), "w")
+    bb = pybigtools.open(str(path), "w") # type: ignore
     # Need to check pybigtools API for bigwig creation, but let's assume this works or skip if complex
     # Usually easier to just mock or assume it exists. 
     # For now, I'll trust existing tests know how to make bigwigs or just skip the BW part if it's hard.
@@ -88,8 +88,8 @@ def test_dataset_bed_support(dummy_bed, tmp_path):
     
     # This should succeed and use BedMaskExtractor internally
     ds = CerberusDataset(
-        genome_config=genome_config,
-        data_config=data_config,
+        genome_config=genome_config, # type: ignore
+        data_config=data_config, # type: ignore
         is_train=True
     )
     
@@ -135,8 +135,8 @@ def test_dataset_bigbed_support(dummy_bigbed, tmp_path):
     }
     
     ds = CerberusDataset(
-        genome_config=genome_config,
-        data_config=data_config,
+        genome_config=genome_config, # type: ignore
+        data_config=data_config, # type: ignore
         is_train=True
     )
     

@@ -151,6 +151,7 @@ def test_datamodule_resample_via_dataloader(
     dm.trainer = MagicMock()
     dm.trainer.global_rank = 0
     dm.trainer.current_epoch = 1
+    dm.trainer.world_size = 1
     
     # Calling train_dataloader should trigger resample
     dm.train_dataloader()
