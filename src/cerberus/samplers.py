@@ -147,7 +147,6 @@ class BaseSampler(Sampler):
 
 
 
-
 class RandomSampler(BaseSampler):
     """
     Samples random intervals from the genome, respecting exclusions.
@@ -201,144 +200,6 @@ class RandomSampler(BaseSampler):
                 f"Warning: RandomSampler could only generate {count}/{self.num_intervals} "
                 f"intervals after {attempts} attempts."
             )
-
-
-class GCMatchedSampler(BaseSampler):
-    """
-    Selects candidates from a candidate_sampler that match the GC content distribution
-    of a target_sampler.
-    """
-
-    def __init__(
-        self,
-        target_sampler: Sampler,
-        candidate_sampler: Sampler,
-        fasta_path: Path | str,
-        chrom_sizes: dict[str, int],
-        exclude_intervals: dict[str, InterLap],
-        folds: list[dict[str, InterLap]] | None = None,
-        bins: int = 100,
-        match_ratio: float = 1.0,
-        seed: int | None = None,
-    ):
-        super().__init__(
-            chrom_sizes=chrom_sizes,
-            exclude_intervals=exclude_intervals,
-            folds=folds,
-        )
-        self.target_sampler = target_sampler
-        self.candidate_sampler = candidate_sampler
-        self.fasta_path = Path(fasta_path)
-        self.bins = bins
-        self.match_ratio = match_ratio
-        self.rng = random.Random(seed)
-
-        # Pre-compute GC content
-        self.target_gc = compute_intervals_gc(self.target_sampler, self.fasta_path)
-        self.candidate_gc = compute_intervals_gc(self.candidate_sampler, self.fasta_path)
-
-        self._indices: list[int] = []  # Indices into candidate_sampler
-        self.resample()
-
-    def resample(self, seed: int | None = None) -> None:
-        """
-        Resamples candidate intervals to match the target GC distribution.
-
-        This re-draws candidates from the candidate_sampler to ensure that the
-        active set of intervals maintains the desired GC match ratio with the target.
-
-        Args:
-            seed: Seed for the random number generator used for sampling.
-        """
-        if seed is not None:
-            self.rng.seed(seed)
-
-        # 1. Bin target GC
-        target_hist = defaultdict(int)
-        for gc in self.target_gc:
-            bin_idx = min(int(gc * self.bins), self.bins - 1)
-            target_hist[bin_idx] += 1
-
-        # 2. Group candidate indices by bin
-        candidate_bins = defaultdict(list)
-        for idx, gc in enumerate(self.candidate_gc):
-            bin_idx = min(int(gc * self.bins), self.bins - 1)
-            candidate_bins[bin_idx].append(idx)
-
-        self._indices = []
-
-        # 3. Match
-        for bin_idx, count in target_hist.items():
-            needed = int(count * self.match_ratio)
-            candidates = candidate_bins[bin_idx]
-
-            if not candidates:
-                continue
-
-            if len(candidates) >= needed:
-                # Sample without replacement
-                selected = self.rng.sample(candidates, needed)
-            else:
-                # Sample with replacement
-                selected = self.rng.choices(candidates, k=needed)
-
-            self._indices.extend(selected)
-
-        self.rng.shuffle(self._indices)
-
-    def __iter__(self) -> Iterator[Interval]:
-        for idx in self._indices:
-            yield self.candidate_sampler[idx]
-
-    def __len__(self) -> int:
-        return len(self._indices)
-
-    def __getitem__(self, idx: int) -> Interval:
-        real_idx = self._indices[idx]
-        return self.candidate_sampler[real_idx]
-
-    def split_folds(
-        self, test_fold: int | None = None, val_fold: int | None = None
-    ) -> tuple["GCMatchedSampler", "GCMatchedSampler", "GCMatchedSampler"]:
-        
-        target_splits = self.target_sampler.split_folds(test_fold, val_fold)
-        candidate_splits = self.candidate_sampler.split_folds(test_fold, val_fold)
-
-        return (
-            GCMatchedSampler(
-                target_splits[0],
-                candidate_splits[0],
-                self.fasta_path,
-                self.chrom_sizes,
-                self.exclude_intervals,
-                self.folds,
-                self.bins,
-                self.match_ratio,
-                self.rng.randint(0, 10000),
-            ),
-            GCMatchedSampler(
-                target_splits[1],
-                candidate_splits[1],
-                self.fasta_path,
-                self.chrom_sizes,
-                self.exclude_intervals,
-                self.folds,
-                self.bins,
-                self.match_ratio,
-                self.rng.randint(0, 10000),
-            ),
-            GCMatchedSampler(
-                target_splits[2],
-                candidate_splits[2],
-                self.fasta_path,
-                self.chrom_sizes,
-                self.exclude_intervals,
-                self.folds,
-                self.bins,
-                self.match_ratio,
-                self.rng.randint(0, 10000),
-            ),
-        )
 
 
 class IntervalSampler(BaseSampler):
@@ -652,6 +513,144 @@ class MultiSampler(BaseSampler):
                 self.chrom_sizes,
                 self.exclude_intervals,
                 self.scaling_factors,
+            ),
+        )
+
+
+class GCMatchedSampler(BaseSampler):
+    """
+    Selects candidates from a candidate_sampler that match the GC content distribution
+    of a target_sampler.
+    """
+
+    def __init__(
+        self,
+        target_sampler: Sampler,
+        candidate_sampler: Sampler,
+        fasta_path: Path | str,
+        chrom_sizes: dict[str, int],
+        exclude_intervals: dict[str, InterLap],
+        folds: list[dict[str, InterLap]] | None = None,
+        bins: int = 100,
+        match_ratio: float = 1.0,
+        seed: int | None = None,
+    ):
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+            folds=folds,
+        )
+        self.target_sampler = target_sampler
+        self.candidate_sampler = candidate_sampler
+        self.fasta_path = Path(fasta_path)
+        self.bins = bins
+        self.match_ratio = match_ratio
+        self.rng = random.Random(seed)
+
+        # Pre-compute GC content
+        self.target_gc = compute_intervals_gc(self.target_sampler, self.fasta_path)
+        self.candidate_gc = compute_intervals_gc(self.candidate_sampler, self.fasta_path)
+
+        self._indices: list[int] = []  # Indices into candidate_sampler
+        self.resample()
+
+    def resample(self, seed: int | None = None) -> None:
+        """
+        Resamples candidate intervals to match the target GC distribution.
+
+        This re-draws candidates from the candidate_sampler to ensure that the
+        active set of intervals maintains the desired GC match ratio with the target.
+
+        Args:
+            seed: Seed for the random number generator used for sampling.
+        """
+        if seed is not None:
+            self.rng.seed(seed)
+
+        # 1. Bin target GC
+        target_hist = defaultdict(int)
+        for gc in self.target_gc:
+            bin_idx = min(int(gc * self.bins), self.bins - 1)
+            target_hist[bin_idx] += 1
+
+        # 2. Group candidate indices by bin
+        candidate_bins = defaultdict(list)
+        for idx, gc in enumerate(self.candidate_gc):
+            bin_idx = min(int(gc * self.bins), self.bins - 1)
+            candidate_bins[bin_idx].append(idx)
+
+        self._indices = []
+
+        # 3. Match
+        for bin_idx, count in target_hist.items():
+            needed = int(count * self.match_ratio)
+            candidates = candidate_bins[bin_idx]
+
+            if not candidates:
+                continue
+
+            if len(candidates) >= needed:
+                # Sample without replacement
+                selected = self.rng.sample(candidates, needed)
+            else:
+                # Sample with replacement
+                selected = self.rng.choices(candidates, k=needed)
+
+            self._indices.extend(selected)
+
+        self.rng.shuffle(self._indices)
+
+    def __iter__(self) -> Iterator[Interval]:
+        for idx in self._indices:
+            yield self.candidate_sampler[idx]
+
+    def __len__(self) -> int:
+        return len(self._indices)
+
+    def __getitem__(self, idx: int) -> Interval:
+        real_idx = self._indices[idx]
+        return self.candidate_sampler[real_idx]
+
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple["GCMatchedSampler", "GCMatchedSampler", "GCMatchedSampler"]:
+        
+        target_splits = self.target_sampler.split_folds(test_fold, val_fold)
+        candidate_splits = self.candidate_sampler.split_folds(test_fold, val_fold)
+
+        return (
+            GCMatchedSampler(
+                target_splits[0],
+                candidate_splits[0],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.exclude_intervals,
+                self.folds,
+                self.bins,
+                self.match_ratio,
+                self.rng.randint(0, 10000),
+            ),
+            GCMatchedSampler(
+                target_splits[1],
+                candidate_splits[1],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.exclude_intervals,
+                self.folds,
+                self.bins,
+                self.match_ratio,
+                self.rng.randint(0, 10000),
+            ),
+            GCMatchedSampler(
+                target_splits[2],
+                candidate_splits[2],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.exclude_intervals,
+                self.folds,
+                self.bins,
+                self.match_ratio,
+                self.rng.randint(0, 10000),
             ),
         )
 
