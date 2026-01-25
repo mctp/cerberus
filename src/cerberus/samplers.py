@@ -521,6 +521,14 @@ class GCMatchedSampler(BaseSampler):
     """
     Selects candidates from a candidate_sampler that match the GC content distribution
     of a target_sampler.
+
+    This sampler bins the target intervals by their GC content and then selects
+    intervals from the candidate sampler to match the count in each bin, scaled
+    by `match_ratio`.
+
+    For example, if a bin has 100 target intervals and `match_ratio` is 1.0,
+    the sampler will attempt to select 100 candidate intervals falling into that
+    same GC bin. If `match_ratio` is 2.0, it will attempt to select 200.
     """
 
     def __init__(
@@ -535,6 +543,21 @@ class GCMatchedSampler(BaseSampler):
         match_ratio: float = 1.0,
         seed: int | None = None,
     ):
+        """
+        Args:
+            target_sampler: Sampler defining the desired GC distribution (e.g., peaks).
+            candidate_sampler: Sampler to select from (e.g., random background).
+            fasta_path: Path to the genome FASTA file for computing GC content.
+            chrom_sizes: Dictionary of chromosome sizes.
+            exclude_intervals: Dictionary of excluded regions.
+            folds: Fold definitions.
+            bins: Number of bins to use for GC content histogram (default: 100).
+            match_ratio: Ratio of candidate samples to target samples per GC bin.
+                         - 1.0: 1:1 matching (same number of negatives as positives per bin).
+                         - 2.0: 2:1 matching (twice as many negatives).
+                         - 0.5: 0.5:1 matching (half as many negatives).
+            seed: Random seed for sampling candidates.
+        """
         super().__init__(
             chrom_sizes=chrom_sizes,
             exclude_intervals=exclude_intervals,

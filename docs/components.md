@@ -34,7 +34,11 @@ Samples random intervals from the genome, respecting exclusions.
 ### GCMatchedSampler
 Selects candidates from a `candidate_sampler` (e.g., RandomSampler) that match the GC content distribution of a `target_sampler` (e.g., IntervalSampler of peaks).
 *   **Use Case**: Creating balanced datasets where negatives match positives in GC content, removing GC bias.
-*   **Behavior**: Pre-computes GC content for all intervals. Bins targets. Samples candidates from corresponding bins to match the target distribution.
+*   **Behavior**: Pre-computes GC content for all intervals and bins targets. Samples candidates from corresponding bins to match the target distribution.
+    *   **`match_ratio`**: Controls the ratio of candidates to targets in each GC bin (default: 1.0).
+        *   `1.0`: Selects an equal number of candidates as targets (1:1 balanced).
+        *   `> 1.0`: Selects more candidates (e.g., `2.0` for 2:1 negatives to positives).
+        *   `< 1.0`: Selects fewer candidates.
 
 ### Resampling
 
