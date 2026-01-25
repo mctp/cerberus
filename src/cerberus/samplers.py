@@ -809,7 +809,7 @@ class PeakSampler(MultiSampler):
     def __init__(
         self,
         intervals_path: Path | str,
-        fasta_path: Path | str,
+        fasta_path: Path | str | None,
         chrom_sizes: dict[str, int],
         padded_size: int,
         exclude_intervals: dict[str, InterLap],
@@ -841,48 +841,58 @@ class PeakSampler(MultiSampler):
             folds=folds,
         )
 
-        # 2. Exclusions for Negatives (Original Excludes + Peaks)
-        # Deep copy the exclusions to avoid modifying the global state
-        neg_excludes = copy.deepcopy(exclude_intervals)
-        for interval in self.positives:
-            if interval.chrom not in neg_excludes:
-                neg_excludes[interval.chrom] = InterLap()
-            neg_excludes[interval.chrom].add((interval.start, interval.end))
+        samplers: list[Sampler] = [self.positives]
 
-        # 3. Candidates (Random background, excluding peaks)
-        # Auto-calculate candidate pool size. 
-        # We need enough candidates to find matches. 10x is usually safe.
-        # But ensure a minimum floor (e.g. 10,000) if peaks are few.
-        n_peaks = len(self.positives)
-        n_candidates = max(
-            self.MIN_CANDIDATES, 
-            int(n_peaks * background_ratio * self.CANDIDATE_OVERSAMPLE_FACTOR)
-        )
-             
-        self.candidates = RandomSampler(
-            chrom_sizes=chrom_sizes,
-            padded_size=padded_size,
-            num_intervals=n_candidates,
-            exclude_intervals=neg_excludes,
-            folds=folds,
-            seed=seed,
-        )
+        if background_ratio > 0:
+            if fasta_path is None:
+                raise ValueError("PeakSampler requires 'fasta_path' to be provided when background_ratio > 0.")
+            
+            # 2. Exclusions for Negatives (Original Excludes + Peaks)
+            # Deep copy the exclusions to avoid modifying the global state
+            neg_excludes = copy.deepcopy(exclude_intervals)
+            for interval in self.positives:
+                if interval.chrom not in neg_excludes:
+                    neg_excludes[interval.chrom] = InterLap()
+                neg_excludes[interval.chrom].add((interval.start, interval.end))
 
-        # 4. Negatives (GC Matched to Positives)
-        self.negatives = GCMatchedSampler(
-            target_sampler=self.positives,
-            candidate_sampler=self.candidates,
-            fasta_path=fasta_path,
-            chrom_sizes=chrom_sizes,
-            exclude_intervals=neg_excludes, # Use the augmented excludes
-            folds=folds,
-            match_ratio=background_ratio,
-            seed=seed,
-        )
+            # 3. Candidates (Random background, excluding peaks)
+            # Auto-calculate candidate pool size. 
+            # We need enough candidates to find matches. 10x is usually safe.
+            # But ensure a minimum floor (e.g. 10,000) if peaks are few.
+            n_peaks = len(self.positives)
+            n_candidates = max(
+                self.MIN_CANDIDATES, 
+                int(n_peaks * background_ratio * self.CANDIDATE_OVERSAMPLE_FACTOR)
+            )
+                
+            self.candidates = RandomSampler(
+                chrom_sizes=chrom_sizes,
+                padded_size=padded_size,
+                num_intervals=n_candidates,
+                exclude_intervals=neg_excludes,
+                folds=folds,
+                seed=seed,
+            )
+
+            # 4. Negatives (GC Matched to Positives)
+            self.negatives = GCMatchedSampler(
+                target_sampler=self.positives,
+                candidate_sampler=self.candidates,
+                fasta_path=fasta_path,
+                chrom_sizes=chrom_sizes,
+                exclude_intervals=neg_excludes, # Use the augmented excludes
+                folds=folds,
+                match_ratio=background_ratio,
+                seed=seed,
+            )
+            samplers.append(self.negatives)
+        else:
+            self.candidates = None
+            self.negatives = None
 
         # 5. Initialize MultiSampler
         super().__init__(
-            samplers=[self.positives, self.negatives],
+            samplers=samplers,
             chrom_sizes=chrom_sizes,
             exclude_intervals=exclude_intervals, # Base exclusions for validity
             seed=seed,
@@ -995,8 +1005,10 @@ def create_sampler(
         )
 
     elif sampler_type == "peak":
-        if fasta_path is None:
-            raise ValueError("PeakSampler requires 'fasta_path' to be provided.")
+        background_ratio = sampler_args["background_ratio"]
+        
+        if background_ratio > 0 and fasta_path is None:
+            raise ValueError("PeakSampler requires 'fasta_path' to be provided when background_ratio > 0.")
 
         return PeakSampler(
             intervals_path=sampler_args["intervals_path"],
@@ -1005,7 +1017,7 @@ def create_sampler(
             padded_size=padded_size,
             exclude_intervals=exclude_intervals,
             folds=folds,
-            background_ratio=sampler_args.get("background_ratio", 1.0),
+            background_ratio=background_ratio,
             seed=seed,
         )
 

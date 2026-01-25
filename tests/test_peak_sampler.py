@@ -82,4 +82,5 @@ def test_peak_sampler_resample(mock_dependencies):
     sampler.resample(seed=42)
     
     # Verify negatives.resample was called
-    sampler.negatives.resample.assert_called_with(42)
+    assert sampler.negatives is not None
+    sampler.negatives.resample.assert_called_with(42)  # type: ignore

@@ -258,7 +258,7 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
         "background_ratio": 1.0  # Ratio of GC-matched negatives to peaks (default: 1.0)
     }
     ```
-    *Note: PeakSampler automatically creates a GC-matched background set using a RandomSampler as the candidate pool, excluding the peaks themselves.*
+    *Note: PeakSampler automatically creates a GC-matched background set using a RandomSampler as the candidate pool, excluding the peaks themselves. If `background_ratio` is set to 0.0, no background sampling is performed (and `fasta_path` is not required).*
 
 *   **Multi Sampler**:
     *   *Deprecated in configuration.* Advanced users can instantiate `MultiSampler` classes directly in Python code for complex sampling strategies.

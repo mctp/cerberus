@@ -50,7 +50,7 @@ A specialized sampler for training on peaks with a GC-matched background.
     *   Selects background intervals that match the GC content of the peaks.
     *   Combines them into a single stream.
     *   **Arguments**: `intervals_path`, `background_ratio` (default 1.0).
-    *   **Defaults**: `background_ratio=1.0` ensures a 1:1 ratio between positives (peaks) and negatives (GC-matched background). `background_ratio=2.0` yields 2 backgrounds per peak.
+    *   **Defaults**: `background_ratio=1.0` ensures a 1:1 ratio between positives (peaks) and negatives (GC-matched background). `background_ratio=0.0` disables background sampling.
 
 ### Resampling
 
