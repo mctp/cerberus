@@ -161,7 +161,9 @@ class CerberusDataModule(pl.LightningDataModule):
                 rank = self.trainer.global_rank
                 epoch = self.trainer.current_epoch
                 # Ensure unique seed per rank to maximize data coverage in DDP
-                seed = int(epoch + rank)
+                world_size = self.trainer.world_size if self.trainer else 1
+                base_seed = self.seed if self.seed is not None else 0
+                seed = base_seed + (epoch * world_size) + rank
                 self.train_dataset.resample(seed=seed)
             except (AttributeError, RuntimeError):
                 # Trainer not fully initialized or in testing
