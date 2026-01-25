@@ -36,6 +36,17 @@ Selects candidates from a `candidate_sampler` (e.g., RandomSampler) that match t
 *   **Use Case**: Creating balanced datasets where negatives match positives in GC content, removing GC bias.
 *   **Behavior**: Pre-computes GC content for all intervals. Bins targets. Samples candidates from corresponding bins to match the target distribution.
 
+### Resampling
+
+The `resample(seed)` method allows dynamic samplers to regenerate their internal list of intervals. This is typically called at the start of each training epoch.
+
+*   **MultiSampler**: Resamples the indices from its sub-samplers based on scaling factors. This allows for:
+    *   **Dynamic Subsampling**: Randomly selecting a new subset of negatives each epoch.
+    *   **Oversampling**: Re-drawing samples with replacement.
+    *   **Shuffling**: Ensuring a new random order of mixed samples.
+*   **GCMatchedSampler**: Re-selects candidate intervals from the `candidate_sampler` to maintain the GC match with the target. This ensures that the model sees different negative examples that still match the GC profile of the positives.
+*   **Base Samplers**: Static samplers like `IntervalSampler` and `SlidingWindowSampler` generally have a no-op `resample` method, as their interval set is fixed.
+
 ## Extractors
 
 Extractors retrieve the actual data for a given `Interval`.

@@ -28,6 +28,17 @@ class Sampler(Protocol):
     def __getitem__(self, idx: int) -> Interval:
         ...
     def resample(self, seed: int | None = None) -> None:
+        """
+        Resamples the intervals for the next epoch/iteration.
+
+        This method is used by dynamic samplers (e.g. MultiSampler, GCMatchedSampler)
+        to regenerate or re-shuffle the list of intervals. This is critical for:
+        1. Subsampling/Oversampling: Generating a new random subset of data.
+        2. Shuffling: Ensuring a different order of examples (if not handled by DataLoader).
+
+        Args:
+            seed: Optional random seed for reproducibility. If None, behavior depends on implementation.
+        """
         ...
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
@@ -42,11 +53,19 @@ class BaseSampler(Sampler):
     Base class for samplers providing common functionality.
     
     Handles subsetting and basic iteration/access methods.
+    Also serves as a concrete implementation for holding a fixed list of intervals.
     """
-    _intervals: list[Interval]
-    folds: list[dict[str, InterLap]]
-    chrom_sizes: dict[str, int]
-    exclude_intervals: dict[str, InterLap]
+    def __init__(
+        self,
+        intervals: list[Interval] | None = None,
+        chrom_sizes: dict[str, int] | None = None,
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+    ):
+        self._intervals = intervals if intervals is not None else []
+        self.chrom_sizes = chrom_sizes if chrom_sizes is not None else {}
+        self.folds = folds if folds is not None else []
+        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
 
     def __iter__(self) -> Iterator[Interval]:
         for interval in self._intervals:
@@ -58,11 +77,12 @@ class BaseSampler(Sampler):
     def __getitem__(self, idx: int) -> Interval:
         return self._intervals[idx]
 
-    def _subset(self, indices: list[int]) -> "SubsetSampler":
-        return SubsetSampler(
-            [self._intervals[i] for i in indices],
-            self.folds,
-            self.exclude_intervals,
+    def _subset(self, indices: list[int]) -> "BaseSampler":
+        return BaseSampler(
+            intervals=[self._intervals[i] for i in indices],
+            chrom_sizes=self.chrom_sizes,
+            folds=self.folds,
+            exclude_intervals=self.exclude_intervals,
         )
 
     def is_excluded(self, chrom: str, start: int, end: int) -> bool:
@@ -70,7 +90,12 @@ class BaseSampler(Sampler):
         return is_excluded(self.exclude_intervals, chrom, start, end)
 
     def resample(self, seed: int | None = None) -> None:
-        """No-op by default."""
+        """
+        No-op by default.
+
+        Most static samplers (IntervalSampler, SlidingWindowSampler) do not need
+        to change their intervals between epochs.
+        """
         pass
 
     def split_folds(
@@ -156,10 +181,7 @@ class DummySampler(BaseSampler):
     Used when no sampler config is provided.
     """
     def __init__(self, chrom_sizes: dict[str, int]):
-        self.chrom_sizes = chrom_sizes
-        self.exclude_intervals = {}
-        self.folds = []
-        self._intervals = []
+        super().__init__(chrom_sizes=chrom_sizes)
 
     def __iter__(self):
         return iter([])
@@ -169,22 +191,6 @@ class DummySampler(BaseSampler):
 
     def __getitem__(self, idx: int):
         raise NotImplementedError("DummySampler does not support indexing.")
-
-
-class SubsetSampler(BaseSampler):
-    """
-    A sampler that wraps a subset of intervals from another sampler.
-    Returned by `split_folds`.
-    """
-    def __init__(
-        self,
-        intervals: list[Interval],
-        folds: list[dict[str, InterLap]],
-        exclude_intervals: dict[str, InterLap],
-    ):
-        self._intervals = intervals
-        self.folds = folds
-        self.exclude_intervals = exclude_intervals
 
 
 class RandomSampler(BaseSampler):
@@ -201,12 +207,13 @@ class RandomSampler(BaseSampler):
         folds: list[dict[str, InterLap]] | None = None,
         seed: int | None = None,
     ):
-        self.chrom_sizes = chrom_sizes
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+            folds=folds,
+        )
         self.padded_size = padded_size
         self.num_intervals = num_intervals
-        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
-        self.folds = folds if folds is not None else []
-        self._intervals: list[Interval] = []
         self.rng = random.Random(seed)
         self._generate_intervals()
 
@@ -259,12 +266,14 @@ class GCMatchedSampler(BaseSampler):
         match_ratio: float = 1.0,
         seed: int | None = None,
     ):
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+            folds=folds,
+        )
         self.target_sampler = target_sampler
         self.candidate_sampler = candidate_sampler
         self.fasta_path = Path(fasta_path)
-        self.chrom_sizes = chrom_sizes
-        self.exclude_intervals = exclude_intervals
-        self.folds = folds if folds is not None else []
         self.bins = bins
         self.match_ratio = match_ratio
         self.rng = random.Random(seed)
@@ -276,7 +285,16 @@ class GCMatchedSampler(BaseSampler):
         self._indices: list[int] = []  # Indices into candidate_sampler
         self.resample()
 
-    def resample(self, seed: int | None = None):
+    def resample(self, seed: int | None = None) -> None:
+        """
+        Resamples candidate intervals to match the target GC distribution.
+
+        This re-draws candidates from the candidate_sampler to ensure that the
+        active set of intervals maintains the desired GC match ratio with the target.
+
+        Args:
+            seed: Seed for the random number generator used for sampling.
+        """
         if seed is not None:
             self.rng.seed(seed)
 
@@ -390,12 +408,13 @@ class IntervalSampler(BaseSampler):
             exclude_intervals: Dictionary of regions to exclude.
             folds: Fold definitions for cross-validation.
         """
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+            folds=folds,
+        )
         self.file_path = Path(file_path)
         self.padded_size = padded_size
-        self.chrom_sizes = chrom_sizes
-        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
-        self.folds = folds if folds is not None else []
-        self._intervals: list[Interval] = []
         self._load()
         self._filter_excludes()
 
@@ -543,12 +562,13 @@ class SlidingWindowSampler(BaseSampler):
             exclude_intervals: Dictionary of regions to exclude.
             folds: Fold definitions.
         """
-        self.chrom_sizes = chrom_sizes
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+            folds=folds,
+        )
         self.padded_size = padded_size
         self.stride = stride
-        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
-        self.folds = folds if folds is not None else []
-        self._intervals: list[Interval] = []
         self._generate_intervals()
 
     def _generate_intervals(self):
@@ -588,9 +608,11 @@ class MultiSampler(BaseSampler):
                                     Implemented as random sampling WITH replacement.
             seed: Optional random seed for initialization.
         """
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+        )
         self.samplers = samplers
-        self.chrom_sizes = chrom_sizes
-        self.exclude_intervals = exclude_intervals
         self.scaling_factors = (
             scaling_factors if scaling_factors is not None else [1.0] * len(samplers)
         )
@@ -601,7 +623,7 @@ class MultiSampler(BaseSampler):
         self._indices: list[tuple[int, int]] = []  # List of (sampler_idx, interval_idx)
         self.resample(seed=seed)
 
-    def resample(self, seed: int | None = None):
+    def resample(self, seed: int | None = None) -> None:
         """
         Regenerates the list of indices based on scaling factors.
         Call this at the start of each epoch to get a fresh random subset for subsampled inputs.

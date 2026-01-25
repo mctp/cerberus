@@ -44,7 +44,7 @@ The primary entry point for PyTorch. Orchestrates data loading, sampling, and sp
 *   **`_subset(self, sampler: Sampler) -> 'CerberusDataset'`**
     *   Internal method to create a lightweight copy of the dataset.
     *   Shares `sequence_extractor`, `input_signal_extractor`, `target_signal_extractor`, and `exclude_intervals` with the new instance to avoid memory duplication and re-computation.
-    *   Uses the provided `sampler` (e.g., a `SubsetSampler`).
+    *   Uses the provided `sampler` (e.g., a `BaseSampler`).
 
 ## 2. Sampling Components
 **Location**: `src/cerberus/samplers.py`
@@ -54,14 +54,15 @@ Interface for defining iteration strategies.
 
 ### `class BaseSampler`
 Base class providing common splitting functionality.
-*   **`_subset(self, indices: List[int]) -> SubsetSampler`**: Returns a new sampler containing only the specified indices.
-*   **`split_folds(self, test_fold: int, val_fold: int) -> Tuple[SubsetSampler, SubsetSampler, SubsetSampler]`**:
+*   **`_subset(self, indices: List[int]) -> BaseSampler`**: Returns a new sampler containing only the specified indices.
+*   **`split_folds(self, test_fold: int, val_fold: int) -> Tuple[BaseSampler, BaseSampler, BaseSampler]`**:
     *   Uses pre-computed chromosome folds to generate train/val/test splits.
-    *   Returns `SubsetSampler`s for each split.
+    *   Returns `BaseSampler`s for each split.
 *   **`create_folds(chrom_sizes: dict, num_folds: int)`**: Static method to greedily distribute chromosomes into balanced folds.
 
-### `class SubsetSampler(BaseSampler)`
-*   **`__init__(self, intervals: List[Interval])`**
+### `class BaseSampler`
+Now instantiable, replacing `SubsetSampler`.
+*   **`__init__(self, intervals: List[Interval], ...)`**
     *   A lightweight wrapper around a list of intervals.
 
 ### `class IntervalSampler(BaseSampler)`

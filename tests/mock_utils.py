@@ -2,7 +2,7 @@ from typing import Protocol
 import numpy as np
 import torch
 from cerberus.interval import Interval
-from cerberus.samplers import BaseSampler, SubsetSampler
+from cerberus.samplers import BaseSampler
 from cerberus.sequence import BaseSequenceExtractor, SequenceExtractor
 from cerberus.signal import BaseSignalExtractor
 
@@ -54,7 +54,7 @@ class MockSampler(BaseSampler):
 
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
-    ) -> tuple["SubsetSampler", "SubsetSampler", "SubsetSampler"]:
+    ) -> tuple["BaseSampler", "BaseSampler", "BaseSampler"]:
         """
         Randomly splits the mock samples into train/val/test.
         Ignores fold arguments and does a simple 80/10/10 split for simplicity,
