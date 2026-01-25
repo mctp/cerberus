@@ -83,4 +83,7 @@ def test_peak_sampler_resample(mock_dependencies):
     
     # Verify negatives.resample was called
     assert sampler.negatives is not None
-    sampler.negatives.resample.assert_called_with(42)  # type: ignore
+    # PeakSampler is a MultiSampler with [positives, negatives].
+    # MultiSampler propagates seed + index.
+    # positives is index 0 (seed 42), negatives is index 1 (seed 43).
+    sampler.negatives.resample.assert_called_with(43)  # type: ignore

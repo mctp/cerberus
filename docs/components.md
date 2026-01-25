@@ -18,7 +18,6 @@ Systematically scans the genome with a fixed stride.
 A meta-sampler that combines multiple samplers.
 *   **Use Case**: Balancing positive (peaks) and negative (background) examples.
 *   **Behavior**: Mixes samples from sub-samplers. Resizing/balancing is handled by wrapping sub-samplers in `ScaledSampler`.
-    *   **Note**: Configuration via `create_sampler` still supports the `scaling` parameter for backward compatibility (including "min", "max", "count:N"), which automatically wraps the sampler in `ScaledSampler`. "min" scaling ignores empty samplers.
 
 ### ScaledSampler
 Wraps a sampler to resize it (subsample or oversample) to a target number of samples.

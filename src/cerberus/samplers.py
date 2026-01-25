@@ -155,8 +155,10 @@ class MultiSampler(BaseSampler):
         Regenerates the list of indices.
         """
         # Propagate resample to sub-samplers (e.g. GCMatchedSampler needs to pick new candidates)
-        for sampler in self.samplers:
-            sampler.resample(seed)
+        for i, sampler in enumerate(self.samplers):
+            # Ensure unique seed for each sub-sampler to avoid correlated randomness
+            sub_seed = seed + i if seed is not None else None
+            sampler.resample(sub_seed)
 
         rng = random.Random(seed)
 
@@ -573,12 +575,16 @@ class ScaledSampler(ProxySampler):
         self.sampler = sampler
         self.num_samples = int(num_samples)
         self._indices: list[int] = []
+        self.seed = seed
         self.resample(seed=seed)
 
     def resample(self, seed: int | None = None) -> None:
-        self.sampler.resample(seed)
+        if seed is not None:
+            self.seed = seed
+            
+        self.sampler.resample(self.seed)
         
-        rng = random.Random(seed)
+        rng = random.Random(self.seed)
         n_total = len(self.sampler)
         
         if n_total == 0:
@@ -619,12 +625,14 @@ class ScaledSampler(ProxySampler):
         val_size = int(len(val) * ratio)
         test_size = int(len(test) * ratio)
         
-        rng = random.Random() 
-        
+        s1 = self.seed + 1 if self.seed is not None else None
+        s2 = self.seed + 2 if self.seed is not None else None
+        s3 = self.seed + 3 if self.seed is not None else None
+
         return (
-            ScaledSampler(train, train_size, rng.randint(0, 10000)),
-            ScaledSampler(val, val_size, rng.randint(0, 10000)),
-            ScaledSampler(test, test_size, rng.randint(0, 10000)),
+            ScaledSampler(train, train_size, s1),
+            ScaledSampler(val, val_size, s2),
+            ScaledSampler(test, test_size, s3),
         )
 
 
@@ -679,6 +687,7 @@ class GCMatchedSampler(ProxySampler):
         self.fasta_path = Path(fasta_path)
         self.bins = bins
         self.match_ratio = match_ratio
+        self.seed = seed
         self.rng = random.Random(seed)
 
         # Pre-compute GC content
@@ -699,6 +708,7 @@ class GCMatchedSampler(ProxySampler):
             seed: Seed for the random number generator used for sampling.
         """
         if seed is not None:
+            self.seed = seed
             self.rng.seed(seed)
 
         # 1. Bin target GC
@@ -752,6 +762,10 @@ class GCMatchedSampler(ProxySampler):
         target_splits = self.target_sampler.split_folds(test_fold, val_fold)
         candidate_splits = self.candidate_sampler.split_folds(test_fold, val_fold)
 
+        s1 = self.seed + 1 if self.seed is not None else None
+        s2 = self.seed + 2 if self.seed is not None else None
+        s3 = self.seed + 3 if self.seed is not None else None
+
         return (
             GCMatchedSampler(
                 target_splits[0],
@@ -762,7 +776,7 @@ class GCMatchedSampler(ProxySampler):
                 self.folds,
                 self.bins,
                 self.match_ratio,
-                self.rng.randint(0, 10000),
+                s1,
             ),
             GCMatchedSampler(
                 target_splits[1],
@@ -773,7 +787,7 @@ class GCMatchedSampler(ProxySampler):
                 self.folds,
                 self.bins,
                 self.match_ratio,
-                self.rng.randint(0, 10000),
+                s2,
             ),
             GCMatchedSampler(
                 target_splits[2],
@@ -784,7 +798,7 @@ class GCMatchedSampler(ProxySampler):
                 self.folds,
                 self.bins,
                 self.match_ratio,
-                self.rng.randint(0, 10000),
+                s3,
             ),
         )
 
