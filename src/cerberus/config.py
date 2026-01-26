@@ -128,6 +128,7 @@ class TrainConfig(TypedDict):
     scheduler_type: str
     scheduler_args: dict[str, Any]
     filter_bias_and_bn: bool
+    reload_dataloaders_every_n_epochs: int
 
 
 class ModelConfig(TypedDict):
@@ -593,6 +594,10 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
     if not isinstance(scheduler_args, dict):
         raise TypeError("scheduler_args must be a dictionary")
 
+    reload_dataloaders = config.get("reload_dataloaders_every_n_epochs", 0)
+    if not isinstance(reload_dataloaders, int) or reload_dataloaders < 0:
+        raise ValueError("reload_dataloaders_every_n_epochs must be a non-negative integer")
+
     return {
         "batch_size": config["batch_size"],
         "max_epochs": config["max_epochs"],
@@ -603,6 +608,7 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
         "scheduler_type": scheduler_type,
         "scheduler_args": scheduler_args,
         "filter_bias_and_bn": config["filter_bias_and_bn"],
+        "reload_dataloaders_every_n_epochs": reload_dataloaders,
     }
 
 

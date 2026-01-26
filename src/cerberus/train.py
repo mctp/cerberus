@@ -96,6 +96,7 @@ def _train(
         max_epochs=train_config["max_epochs"],
         callbacks=current_callbacks,
         precision=precision,
+        reload_dataloaders_every_n_epochs=train_config["reload_dataloaders_every_n_epochs"],
         **trainer_kwargs,
     )
 

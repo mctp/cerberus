@@ -37,6 +37,7 @@ def test_train_multi_loop():
         "patience": 5,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
+        "reload_dataloaders_every_n_epochs": 0,
     })
 
     # Patches

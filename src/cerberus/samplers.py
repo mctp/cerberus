@@ -63,6 +63,8 @@ class Sampler(Protocol):
 class BaseSampler(Sampler):
     """
     Base class for samplers providing common configuration and exclusion logic.
+
+    Do not instantiate directly; extend for specific sampler implementations.
     """
     def __init__(
         self,
@@ -102,6 +104,8 @@ class BaseSampler(Sampler):
 class ProxySampler(BaseSampler):
     """
     Base class for samplers that wrap another sampler and provide index-based access.
+
+    Do not instantiate directly; extend for specific proxy sampler implementations.
     """
     def __init__(
         self,

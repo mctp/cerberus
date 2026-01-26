@@ -19,6 +19,7 @@ def test_train_wrapper_logger_setup():
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
+        "reload_dataloaders_every_n_epochs": 0,
     })
     
     # Patch pl.Trainer and CSVLogger
@@ -59,6 +60,7 @@ def test_train_wrapper_logger_setup_default_dir():
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
+        "reload_dataloaders_every_n_epochs": 0,
     })
     
     with patch("pytorch_lightning.Trainer") as mock_trainer_cls, \

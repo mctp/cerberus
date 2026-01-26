@@ -62,6 +62,7 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
         "scheduler_type": "none",
         "scheduler_args": {},
         "filter_bias_and_bn": False,
+        "reload_dataloaders_every_n_epochs": 0,
     }
 
     # Prepare trainer_kwargs

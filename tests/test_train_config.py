@@ -11,7 +11,8 @@ def test_validate_train_config_valid():
         "optimizer": "adam",
         "filter_bias_and_bn": True,
         "scheduler_type": "cosine",
-        "scheduler_args": {"T_max": 10}
+        "scheduler_args": {"T_max": 10},
+        "reload_dataloaders_every_n_epochs": 1
     }
     validated = validate_train_config(config)
     assert validated == config
@@ -56,8 +57,23 @@ def test_validate_train_config_defaults():
         "patience": 5,
         "optimizer": "adam",
         "filter_bias_and_bn": True
-        # Missing scheduler, should default
+        # Missing scheduler and reload_dataloaders, should default
     }
     validated = validate_train_config(config) # type: ignore
     assert validated["scheduler_type"] == "default"
     assert validated["scheduler_args"] == {}
+    assert validated["reload_dataloaders_every_n_epochs"] == 0
+
+def test_validate_train_config_reload_dataloaders_invalid():
+    config = {
+        "batch_size": 32,
+        "max_epochs": 10,
+        "learning_rate": 1e-3,
+        "weight_decay": 1e-4,
+        "patience": 5,
+        "optimizer": "adam",
+        "filter_bias_and_bn": True,
+        "reload_dataloaders_every_n_epochs": -1 # Invalid
+    }
+    with pytest.raises(ValueError, match="reload_dataloaders_every_n_epochs must be a non-negative integer"):
+        validate_train_config(config) # type: ignore

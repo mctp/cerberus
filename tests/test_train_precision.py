@@ -19,6 +19,7 @@ def test_train_wrapper_matmul_precision():
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
+        "reload_dataloaders_every_n_epochs": 0,
     })
     
     # Test default (highest)

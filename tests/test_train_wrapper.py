@@ -20,6 +20,7 @@ def test_train_wrapper_calls_trainer_fit():
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
+        "reload_dataloaders_every_n_epochs": 0,
     })
     
     # Patch pl.Trainer
@@ -68,6 +69,7 @@ def test_train_wrapper_custom_callbacks():
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
+        "reload_dataloaders_every_n_epochs": 0,
     })
     
     custom_cb = MagicMock(spec=pl.Callback)
