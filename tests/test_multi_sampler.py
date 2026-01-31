@@ -100,3 +100,30 @@ def test_multi_sampler_split_folds(peaks_bed, negatives_bed, chrom_sizes):
     total_len = len(train) + len(val) + len(test)
     original_len = len(ms)
     assert total_len == original_len
+
+def test_multi_sampler_inference(peaks_bed, negatives_bed, chrom_sizes):
+    folds = create_genome_folds(chrom_sizes, fold_type="chrom_partition", fold_args={"k": 5})
+    s1 = IntervalSampler(peaks_bed, chrom_sizes, padded_size=100, exclude_intervals={}, folds=folds)
+    s2 = IntervalSampler(negatives_bed, chrom_sizes, padded_size=100, exclude_intervals={}, folds=folds)
+    
+    # Init WITHOUT chrom_sizes/exclude_intervals
+    ms = MultiSampler([s1, s2], seed=42)
+    
+    # Check inference
+    assert ms.chrom_sizes == chrom_sizes
+    # Both s1 and s2 have empty exclude_intervals, so inferred should be empty
+    assert ms.exclude_intervals == {}
+    
+    # Check basic functionality still works
+    assert len(ms) == 3 + 4
+
+def test_multi_sampler_empty_list():
+    ms = MultiSampler([], seed=42)
+    assert ms.chrom_sizes == {}
+    assert ms.exclude_intervals == {}
+    assert len(ms) == 0
+    
+    # Check explicit override works on empty list
+    chrom_sizes = {"chr1": 1000}
+    ms2 = MultiSampler([], chrom_sizes=chrom_sizes, seed=42)
+    assert ms2.chrom_sizes == chrom_sizes

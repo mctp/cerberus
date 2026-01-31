@@ -145,8 +145,8 @@ class MultiSampler(BaseSampler):
     def __init__(
         self,
         samplers: list[Sampler],
-        chrom_sizes: dict[str, int],
-        exclude_intervals: dict[str, InterLap],
+        chrom_sizes: dict[str, int] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
         seed: int | None = None,
         generate_on_init: bool = True,
     ):
@@ -158,6 +158,18 @@ class MultiSampler(BaseSampler):
             seed: Optional random seed for initialization.
             generate_on_init: Whether to generate samples immediately (default: True).
         """
+        if chrom_sizes is None:
+            if samplers and hasattr(samplers[0], "chrom_sizes"):
+                chrom_sizes = samplers[0].chrom_sizes  # type: ignore
+            else:
+                chrom_sizes = {}
+
+        if exclude_intervals is None:
+            if samplers and hasattr(samplers[0], "exclude_intervals"):
+                exclude_intervals = samplers[0].exclude_intervals  # type: ignore
+            else:
+                exclude_intervals = {}
+
         super().__init__(
             chrom_sizes=chrom_sizes,
             exclude_intervals=exclude_intervals,
