@@ -198,8 +198,8 @@ class CerberusDataset(Dataset):
         return create_sampler(
             self.sampler_config,
             self.genome_config["chrom_sizes"],
-            self.exclude_intervals,
             folds=self.folds,
+            exclude_intervals=self.exclude_intervals,
             fasta_path=self.genome_config["fasta_path"],
             seed=self.seed,
         )

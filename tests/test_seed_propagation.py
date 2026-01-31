@@ -151,7 +151,7 @@ def test_multisampler_split_folds_seed_propagation_consistency():
     ]
     
     rs = RandomSampler(chrom_sizes, padded_size, num_intervals, folds=folds, seed=seed)
-    ms = MultiSampler([rs], chrom_sizes, {}, seed=seed)
+    ms = MultiSampler([rs], chrom_sizes, folds=folds, exclude_intervals={}, seed=seed)
     
     # Split 1
     t1, v1, te1 = ms.split_folds(test_fold=0, val_fold=1)
@@ -184,7 +184,7 @@ def test_multisampler_resample_updates_seed():
     ]
     
     rs = RandomSampler(chrom_sizes, padded_size, num_intervals, folds=folds, seed=seed)
-    ms = MultiSampler([rs], chrom_sizes, {}, seed=seed)
+    ms = MultiSampler([rs], chrom_sizes, folds=folds, exclude_intervals={}, seed=seed)
     
     # Split 1 (Epoch 0)
     t1, _, _ = ms.split_folds(test_fold=0, val_fold=1)

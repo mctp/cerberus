@@ -12,8 +12,8 @@ def test_random_sampler_seeding():
     }
     
     # Test deterministic behavior
-    s1 = create_sampler(config, chrom_sizes, {}, [], seed=42)
-    s2 = create_sampler(config, chrom_sizes, {}, [], seed=42)
+    s1 = create_sampler(config, chrom_sizes, [], {}, seed=42)
+    s2 = create_sampler(config, chrom_sizes, [], {}, seed=42)
     
     # RandomSampler generates intervals in init
     intervals1 = list(s1)
@@ -29,7 +29,7 @@ def test_random_sampler_seeding():
         assert i1.end == i2.end
         
     # Test difference with different seed
-    s3 = create_sampler(config, chrom_sizes, {}, [], seed=43)
+    s3 = create_sampler(config, chrom_sizes, [], {}, seed=43)
     intervals3 = list(s3)
     assert intervals1 != intervals3
 
@@ -46,7 +46,7 @@ def test_multi_sampler_seeding(tmp_path):
     def create_ms(seed):
         # We need to replicate the seeding logic that create_sampler used to do for children
         # s1: Interval (no seed needed really, but ScaledSampler wrapper needs it)
-        s1 = IntervalSampler(p, chrom_sizes, 100, {}, [])
+        s1 = IntervalSampler(p, chrom_sizes, 100, [], {})
         # Scaling 0.5 (2 items -> 1 item)
         seed1 = seed + 1 if seed is not None else None
         s1_scaled = ScaledSampler(s1, num_samples=1, seed=seed1)
@@ -55,7 +55,7 @@ def test_multi_sampler_seeding(tmp_path):
         seed2 = seed + 2 if seed is not None else None
         s2 = RandomSampler(chrom_sizes, 100, num_intervals=10, exclude_intervals={}, folds=[], seed=seed2)
         
-        return MultiSampler([s1_scaled, s2], chrom_sizes, {}, seed=seed)
+        return MultiSampler([s1_scaled, s2], chrom_sizes, folds=[], exclude_intervals={}, seed=seed)
 
     ms1 = create_ms(42)
     ms2 = create_ms(42)

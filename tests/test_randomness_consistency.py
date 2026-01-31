@@ -55,7 +55,7 @@ class TestRandomnessConsistency(unittest.TestCase):
         ]
         
         rs = RandomSampler(chrom_sizes, padded_size, num_intervals, folds=folds, seed=seed)
-        ms = MultiSampler([rs], chrom_sizes, {}, seed=seed)
+        ms = MultiSampler([rs], chrom_sizes, folds=folds, exclude_intervals={}, seed=seed)
         
         # Split 1
         t1, v1, te1 = ms.split_folds(test_fold=0, val_fold=1)
@@ -91,7 +91,7 @@ class TestRandomnessConsistency(unittest.TestCase):
         ]
         
         rs = RandomSampler(chrom_sizes, padded_size, num_intervals, folds=folds, seed=seed)
-        ms = MultiSampler([rs], chrom_sizes, {}, seed=seed)
+        ms = MultiSampler([rs], chrom_sizes, folds=folds, exclude_intervals={}, seed=seed)
         
         # Split 1 (Epoch 0)
         t1, _, _ = ms.split_folds(test_fold=0, val_fold=1)
@@ -125,7 +125,7 @@ class TestRandomnessConsistency(unittest.TestCase):
             cerberus.samplers.compute_intervals_gc = lambda sampler, fasta: [0.5] * len(sampler)
             
             # Init with None
-            gc = GCMatchedSampler(target, candidate, "dummy.fa", chrom_sizes, {}, folds=folds, seed=None)
+            gc = GCMatchedSampler(target, candidate, "dummy.fa", chrom_sizes, folds, {}, seed=None)
             
             # Check self-seeding (Improvement: GCMatchedSampler should ideally have a seed now, 
             # but strict idempotency check is via split results)

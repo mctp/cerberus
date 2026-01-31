@@ -146,6 +146,7 @@ class MultiSampler(BaseSampler):
         self,
         samplers: list[Sampler],
         chrom_sizes: dict[str, int] | None = None,
+        folds: list[dict[str, InterLap]] | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
         seed: int | None = None,
         generate_on_init: bool = True,
@@ -154,6 +155,7 @@ class MultiSampler(BaseSampler):
         Args:
             samplers: List of Sampler instances.
             chrom_sizes: Dictionary of chromosome sizes.
+            folds: List of fold definitions.
             exclude_intervals: Dictionary of excluded regions.
             seed: Optional random seed for initialization.
             generate_on_init: Whether to generate samples immediately (default: True).
@@ -164,6 +166,12 @@ class MultiSampler(BaseSampler):
             else:
                 chrom_sizes = {}
 
+        if folds is None:
+            if samplers and hasattr(samplers[0], "folds"):
+                folds = samplers[0].folds  # type: ignore
+            else:
+                folds = []
+
         if exclude_intervals is None:
             if samplers and hasattr(samplers[0], "exclude_intervals"):
                 exclude_intervals = samplers[0].exclude_intervals  # type: ignore
@@ -172,6 +180,7 @@ class MultiSampler(BaseSampler):
 
         super().__init__(
             chrom_sizes=chrom_sizes,
+            folds=folds,
             exclude_intervals=exclude_intervals,
         )
         self.samplers = samplers
@@ -243,18 +252,21 @@ class MultiSampler(BaseSampler):
             MultiSampler(
                 train_samplers,
                 self.chrom_sizes,
+                self.folds,
                 self.exclude_intervals,
                 seed=s1,
             ),
             MultiSampler(
                 val_samplers,
                 self.chrom_sizes,
+                self.folds,
                 self.exclude_intervals,
                 seed=s2,
             ),
             MultiSampler(
                 test_samplers,
                 self.chrom_sizes,
+                self.folds,
                 self.exclude_intervals,
                 seed=s3,
             ),
@@ -354,16 +366,16 @@ class RandomSampler(BaseSampler):
         chrom_sizes: dict[str, int],
         padded_size: int,
         num_intervals: int,
-        exclude_intervals: dict[str, InterLap] | None = None,
         folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
         regions: dict[str, InterLap] | None = None,
         seed: int | None = None,
         generate_on_init: bool = True,
     ):
         super().__init__(
             chrom_sizes=chrom_sizes,
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
         )
         self.padded_size = padded_size
         self.num_intervals = num_intervals
@@ -520,8 +532,8 @@ class RandomSampler(BaseSampler):
                 chrom_sizes=self.chrom_sizes,
                 padded_size=self.padded_size,
                 num_intervals=count,
-                exclude_intervals=self.exclude_intervals,
                 folds=self.folds,
+                exclude_intervals=self.exclude_intervals,
                 regions=regions,
                 seed=seed
             )
@@ -544,21 +556,21 @@ class IntervalSampler(ListSampler):
         file_path: Path,
         chrom_sizes: dict[str, int],
         padded_size: int,
-        exclude_intervals: dict[str, InterLap] | None = None,
         folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
     ):
         """
         Args:
             file_path: Path to the interval file (BED/narrowPeak).
             chrom_sizes: Dictionary of chromosome sizes.
             padded_size: Desired length of the intervals.
-            exclude_intervals: Dictionary of regions to exclude.
             folds: Fold definitions for cross-validation.
+            exclude_intervals: Dictionary of regions to exclude.
         """
         super().__init__(
             chrom_sizes=chrom_sizes,
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
         )
         self.file_path = Path(file_path)
         self.padded_size = padded_size
@@ -698,21 +710,21 @@ class SlidingWindowSampler(ListSampler):
         chrom_sizes: dict[str, int],
         padded_size: int,
         stride: int,
-        exclude_intervals: dict[str, InterLap] | None = None,
         folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
     ):
         """
         Args:
             chrom_sizes: Dictionary of chromosome sizes.
             padded_size: Size of the window.
             stride: Step size.
-            exclude_intervals: Dictionary of regions to exclude.
             folds: Fold definitions.
+            exclude_intervals: Dictionary of regions to exclude.
         """
         super().__init__(
             chrom_sizes=chrom_sizes,
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
         )
         self.padded_size = padded_size
         self.stride = stride
@@ -844,8 +856,8 @@ class GCMatchedSampler(ProxySampler):
         candidate_sampler: Sampler,
         fasta_path: Path | str,
         chrom_sizes: dict[str, int],
-        exclude_intervals: dict[str, InterLap],
         folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
         bins: int = 100,
         match_ratio: float = 1.0,
         seed: int | None = None,
@@ -857,8 +869,8 @@ class GCMatchedSampler(ProxySampler):
             candidate_sampler: Sampler to select from (e.g., random background).
             fasta_path: Path to the genome FASTA file for computing GC content.
             chrom_sizes: Dictionary of chromosome sizes.
-            exclude_intervals: Dictionary of excluded regions.
             folds: Fold definitions.
+            exclude_intervals: Dictionary of excluded regions.
             bins: Number of bins to use for GC content histogram (default: 100).
             match_ratio: Ratio of candidate samples to target samples per GC bin.
                          - 1.0: 1:1 matching (same number of negatives as positives per bin).
@@ -869,8 +881,8 @@ class GCMatchedSampler(ProxySampler):
         """
         super().__init__(
             chrom_sizes=chrom_sizes,
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
         )
         self.target_sampler = target_sampler
         self.candidate_sampler = candidate_sampler
@@ -972,8 +984,8 @@ class GCMatchedSampler(ProxySampler):
                 candidate_splits[0],
                 self.fasta_path,
                 self.chrom_sizes,
-                self.exclude_intervals,
                 self.folds,
+                self.exclude_intervals,
                 self.bins,
                 self.match_ratio,
                 s1,
@@ -983,8 +995,8 @@ class GCMatchedSampler(ProxySampler):
                 candidate_splits[1],
                 self.fasta_path,
                 self.chrom_sizes,
-                self.exclude_intervals,
                 self.folds,
+                self.exclude_intervals,
                 self.bins,
                 self.match_ratio,
                 s2,
@@ -994,8 +1006,8 @@ class GCMatchedSampler(ProxySampler):
                 candidate_splits[2],
                 self.fasta_path,
                 self.chrom_sizes,
-                self.exclude_intervals,
                 self.folds,
+                self.exclude_intervals,
                 self.bins,
                 self.match_ratio,
                 s3,
@@ -1026,8 +1038,8 @@ class PeakSampler(MultiSampler):
         fasta_path: Path | str | None,
         chrom_sizes: dict[str, int],
         padded_size: int,
-        exclude_intervals: dict[str, InterLap],
         folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
         background_ratio: float = 1.0,
         seed: int | None = None,
     ):
@@ -1037,8 +1049,8 @@ class PeakSampler(MultiSampler):
             fasta_path: Path to genome FASTA.
             chrom_sizes: Chromosome sizes.
             padded_size: Interval size.
-            exclude_intervals: Excluded regions.
             folds: Fold definitions.
+            exclude_intervals: Excluded regions.
             background_ratio: Ratio of background intervals to peaks. 
                               e.g. 1.0 = 1:1, 2.0 = 2 backgrounds per peak.
             seed: Random seed.
@@ -1051,8 +1063,8 @@ class PeakSampler(MultiSampler):
             file_path=self.intervals_path,
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
         )
 
         samplers: list[Sampler] = [self.positives]
@@ -1061,6 +1073,9 @@ class PeakSampler(MultiSampler):
             if fasta_path is None:
                 raise ValueError("PeakSampler requires 'fasta_path' to be provided when background_ratio > 0.")
             
+            if exclude_intervals is None:
+                exclude_intervals = {}
+
             # 2. Exclusions for Negatives (Original Excludes + Peaks)
             # Deep copy the exclusions to avoid modifying the global state
             neg_excludes = copy.deepcopy(exclude_intervals)
@@ -1083,8 +1098,8 @@ class PeakSampler(MultiSampler):
                 chrom_sizes=chrom_sizes,
                 padded_size=padded_size,
                 num_intervals=n_candidates,
-                exclude_intervals=neg_excludes,
                 folds=folds,
+                exclude_intervals=neg_excludes,
                 seed=None,
                 generate_on_init=False,
             )
@@ -1095,8 +1110,8 @@ class PeakSampler(MultiSampler):
                 candidate_sampler=self.candidates,
                 fasta_path=fasta_path,
                 chrom_sizes=chrom_sizes,
-                exclude_intervals=neg_excludes, # Use the augmented excludes
                 folds=folds,
+                exclude_intervals=neg_excludes, # Use the augmented excludes
                 match_ratio=background_ratio,
                 seed=None,
                 generate_on_init=False,
@@ -1119,8 +1134,8 @@ class PeakSampler(MultiSampler):
 def create_sampler(
     config: dict | SamplerConfig,
     chrom_sizes: dict[str, int],
-    exclude_intervals: dict[str, InterLap],
     folds: list[dict[str, InterLap]],
+    exclude_intervals: dict[str, InterLap],
     fasta_path: Path | str | None = None,
     seed: int | None = None,
 ) -> Sampler:
@@ -1130,8 +1145,8 @@ def create_sampler(
     Args:
         config: Sampler configuration dictionary.
         chrom_sizes: Chromosome sizes dictionary.
-        exclude_intervals: Dictionary of excluded regions.
         folds: List of fold definitions.
+        exclude_intervals: Dictionary of excluded regions.
         fasta_path: Path to the genome FASTA file (required for GCMatchedSampler).
         
     Returns:
@@ -1151,8 +1166,8 @@ def create_sampler(
             file_path=file_path,
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
         )
 
     elif sampler_type == "sliding_window":
@@ -1160,8 +1175,8 @@ def create_sampler(
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
             stride=sampler_args["stride"],
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
         )
 
     elif sampler_type == "random":
@@ -1170,8 +1185,8 @@ def create_sampler(
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
             num_intervals=num_intervals,
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
             seed=seed,
         )
 
@@ -1198,10 +1213,10 @@ def create_sampler(
         target_seed, candidate_seed = generate_sub_seeds(seed, 2)
 
         target_sampler = create_sampler(
-            target_full_conf, chrom_sizes, exclude_intervals, folds, fasta_path, seed=target_seed
+            target_full_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=target_seed
         )
         candidate_sampler = create_sampler(
-            candidate_full_conf, chrom_sizes, exclude_intervals, folds, fasta_path, seed=candidate_seed
+            candidate_full_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=candidate_seed
         )
 
         return GCMatchedSampler(
@@ -1209,8 +1224,8 @@ def create_sampler(
             candidate_sampler=candidate_sampler,
             fasta_path=fasta_path,
             chrom_sizes=chrom_sizes,
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
             bins=sampler_args["bins"],
             match_ratio=sampler_args["match_ratio"],
             seed=seed,
@@ -1227,8 +1242,8 @@ def create_sampler(
             fasta_path=fasta_path,
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
-            exclude_intervals=exclude_intervals,
             folds=folds,
+            exclude_intervals=exclude_intervals,
             background_ratio=background_ratio,
             seed=seed,
         )

@@ -116,12 +116,12 @@ def test_nested_multi_sampler(peaks_bed, chrom_sizes, folds):
     s2 = IntervalSampler(peaks_bed, chrom_sizes, 100, folds=folds) # 5 items
     
     # Inner: 10 items
-    inner = MultiSampler([s1, s2], chrom_sizes, {}, seed=1)
+    inner = MultiSampler([s1, s2], chrom_sizes, folds=[], exclude_intervals={}, seed=1)
     
     s3 = IntervalSampler(peaks_bed, chrom_sizes, 100, folds=folds) # 5 items
     
     # Outer: 15 items
-    outer = MultiSampler([inner, s3], chrom_sizes, {}, seed=2)
+    outer = MultiSampler([inner, s3], chrom_sizes, folds=[], exclude_intervals={}, seed=2)
     
     assert len(outer) == 15
     
@@ -180,7 +180,7 @@ def test_resampling_determinism(chrom_sizes, folds, peaks_bed):
     assert items_scaled_1 != items_scaled_3
     
     # Verify MultiSampler propagates seeds
-    ms = MultiSampler([sampler], chrom_sizes, {}, seed=100)
+    ms = MultiSampler([sampler], chrom_sizes, folds=[], exclude_intervals={}, seed=100)
     
     ms.resample(seed=100)
     m_items1 = list(ms)

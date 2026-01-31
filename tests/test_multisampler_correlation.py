@@ -22,7 +22,7 @@ class TestMultiSamplerCorrelation(unittest.TestCase):
         self.assertEqual([i.start for i in rs1], [i.start for i in rs2])
         
         # Wrap in MultiSampler with seed=None
-        ms = MultiSampler([rs1, rs2], chrom_sizes, {}, seed=None)
+        ms = MultiSampler([rs1, rs2], chrom_sizes, folds=[], exclude_intervals={}, seed=None)
         
         # Trigger resample(None) which happens on init if generate_on_init=True (default)
         # But let's call it explicitly to be sure we are testing the "Next Epoch" or "Init" behavior.

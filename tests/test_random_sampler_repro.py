@@ -39,7 +39,7 @@ class TestRandomSamplerInconsistencies(unittest.TestCase):
         seed = 42
         
         rs = RandomSampler(chrom_sizes, padded_size, num_intervals, seed=seed)
-        ms = MultiSampler([rs], chrom_sizes, {}, seed=seed)
+        ms = MultiSampler([rs], chrom_sizes, folds=[], exclude_intervals={}, seed=seed)
         
         intervals_1 = list(ms)
         
