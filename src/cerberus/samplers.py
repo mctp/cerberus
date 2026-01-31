@@ -123,7 +123,7 @@ class ProxySampler(BaseSampler):
 
     def __iter__(self) -> Iterator[Interval]:
         if self._source_sampler is None:
-            return
+            raise IndexError("Source sampler not initialized")
         for idx in self._indices:
             yield self._source_sampler[idx]
 
