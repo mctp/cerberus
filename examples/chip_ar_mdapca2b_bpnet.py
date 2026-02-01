@@ -35,7 +35,7 @@ def get_args():
     parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_bpnet", help="Root directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
-    parser.add_argument("--max-epochs", type=int, default=25, help="Maximum number of epochs")
+    parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
@@ -207,7 +207,7 @@ def main():
             "devices": devices,
             "strategy": "ddp_find_unused_parameters_false" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto",
             "benchmark": True,
-            "compile": False
+            "compile": True
         }
 
     print("\nConfigurations:")

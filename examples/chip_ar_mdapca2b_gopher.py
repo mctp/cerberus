@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import os
 import torch
 from pathlib import Path
 from pprint import pprint
@@ -34,7 +35,7 @@ def get_args():
     parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_gopher", help="Root directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
-    parser.add_argument("--max-epochs", type=int, default=25, help="Maximum number of epochs")
+    parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
@@ -248,7 +249,8 @@ def main():
             **precision_args
         )
 
-    print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
+    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+        print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
 
 if __name__ == "__main__":
     main()
