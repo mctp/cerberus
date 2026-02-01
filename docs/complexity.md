@@ -89,6 +89,7 @@ where:
     *   `0.0`: Neutral (Observed ≈ Expected).
     *   `> 0`: Enriched (CpG Island-like).
     *   `< 0`: Depleted (Methylation suppression).
+*   **Normalization:** If `normalize=True`, the score is transformed using \(( \tanh(\text{score}) + 1 ) / 2\). This maps the result to \((0, 1)\), with 0.5 representing neutral.
 *   **Epsilon:** A small smoothing factor (default `1e-6`) to prevent division by zero or log of zero.
 
 **Example:**

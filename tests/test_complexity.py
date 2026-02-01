@@ -232,11 +232,11 @@ def test_cpg_ratio_normalize():
     assert isinstance(res, float)
     assert abs(res - 0.5) < 1e-4
     
-    # Enriched: CGCG. Ratio=2. Log2=1. Sigmoid(1) = 0.731.
+    # Enriched: CGCG. Ratio=2. Log2=1. Scaled Tanh(1) = (tanh(1)+1)/2 = 0.88.
     res2 = calculate_log_cpg_ratio("CGCG", normalize=True)
     assert isinstance(res2, float)
-    assert res2 > 0.7
-    assert res2 < 0.75
+    assert res2 > 0.85
+    assert res2 < 0.90
     
     # Depleted: Ratio ~ 0. Log2 ~ -inf. Sigmoid(-inf) ~ 0.
     res3 = calculate_log_cpg_ratio("CCTTTTGG", normalize=True)
@@ -263,3 +263,70 @@ def test_gc_content_all_N():
     """Verify GC content returns 0.0 for sequences with no valid bases."""
     assert calculate_gc_content("NNNN") == 0.0
     assert calculate_gc_content(["NNNN", "ACGT"]) == [0.0, 0.5]
+
+def test_dust_comprehensive_normalization():
+    """Check DUST score normalization across various complexities."""
+    test_cases = [
+        ("ACGT", 0.0),       # Unique -> 0
+        ("AAAAAAAA", 2.5),   # Repetitive -> High
+        ("ATATATAT", 1.0),   # Moderate -> Medium
+        ("NNNN", 0.5)        # N repeat (L=4, k=3, M=2. "NNN" count=2. Score=2*1/2=1. Norm=1/2=0.5)
+    ]
+    
+    for seq, expected_raw in test_cases:
+        # Check Unnormalized
+        raw = calculate_dust_score(seq, k=3, normalize=False)
+        assert abs(raw - expected_raw) < 1e-6, f"Raw mismatch for {seq}"
+        
+        # Check Normalized
+        norm = calculate_dust_score(seq, k=3, normalize=True)
+        expected_norm = np.tanh(raw)
+        assert abs(norm - expected_norm) < 1e-6, f"Norm mismatch for {seq}"
+        assert 0.0 <= norm < 1.0
+
+def test_cpg_comprehensive_normalization():
+    """Check CpG ratio normalization across various enrichments."""
+    test_cases = [
+        ("ACGT", 2.0),            # Enriched (C=1,G=1,L=4. Exp=0.25. Obs=1. Ratio~4. Log2=2.0)
+        ("AAAA", 0.0),            # Neutral (Obs=0, Exp=0 -> Ratio=1 -> Log=0)
+        ("CGCGCGCG", 1.0),        # Enriched (Obs=4, L=8. Exp=2. Ratio=2. Log2=1)
+        ("CCTTTTGG", -10.0)       # Depleted (Obs=0, Exp>0)
+    ]
+    
+    for seq, expected_log_approx in test_cases:
+        # Check Unnormalized
+        raw = calculate_log_cpg_ratio(seq, normalize=False)
+        
+        # Verify manual calc matches roughly what we expect
+        if expected_log_approx > -5:
+             assert abs(raw - expected_log_approx) < 0.1, f"Raw mismatch for {seq}: {raw} vs {expected_log_approx}"
+        
+        # Check Normalized
+        norm = calculate_log_cpg_ratio(seq, normalize=True)
+        
+        # Relationship: norm = (tanh(raw) + 1) / 2
+        expected_norm = (np.tanh(raw) + 1.0) / 2.0
+        assert abs(norm - expected_norm) < 1e-6, f"Norm mismatch for {seq}. Raw={raw}, Norm={norm}"
+        assert 0.0 <= norm <= 1.0
+        
+    # Edge case: Short sequence
+    short = "A"
+    raw_short = calculate_log_cpg_ratio(short, normalize=False)
+    norm_short = calculate_log_cpg_ratio(short, normalize=True)
+    assert raw_short == 0.0
+    assert norm_short == 0.5 # Neutral
+
+def test_normalization_batch_consistency():
+    """Verify normalization works consistently in batch mode."""
+    batch = ["ACGT", "AAAA", "CGCGCGCG"]
+    
+    # DUST
+    raw_dust = calculate_dust_score(batch, normalize=False)
+    norm_dust = calculate_dust_score(batch, normalize=True)
+    assert np.allclose(norm_dust, np.tanh(raw_dust))
+    
+    # CpG
+    raw_cpg = calculate_log_cpg_ratio(batch, normalize=False)
+    norm_cpg = calculate_log_cpg_ratio(batch, normalize=True)
+    expected_norm_cpg = (np.tanh(raw_cpg) + 1.0) / 2.0
+    assert np.allclose(norm_cpg, expected_norm_cpg)

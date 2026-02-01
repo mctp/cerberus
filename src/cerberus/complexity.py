@@ -182,8 +182,8 @@ def calculate_log_cpg_ratio(
             - Sequence[str]: Batch of DNA sequences (e.g., list of strings).
             - np.ndarray: Batch of DNA sequences.
         epsilon: Smoothing factor (default: 1e-6).
-        normalize: If True, applies sigmoid transform to map result to (0, 1).
-                   0.5 corresponds to neutral (0.0 log ratio).
+        normalize: If True, applies scaled tanh transform ((tanh(score)+1)/2)
+                   to map result to (0, 1). 0.5 corresponds to neutral.
 
     Returns:
         float or List[float]: Log2 CpG ratio.
@@ -209,7 +209,7 @@ def calculate_log_cpg_ratio(
             exp = (n_c * n_g) / length
             ratio = (n_cg + epsilon) / (exp + epsilon)
             val = float(np.log2(ratio))
-            return _sigmoid(val) if normalize else val
+            return (float(np.tanh(val)) + 1.0) / 2.0 if normalize else val
             
         elif sequence.ndim == 3 and sequence.shape[1] == 4:
             # Batch: (B, 4, L)
@@ -228,7 +228,7 @@ def calculate_log_cpg_ratio(
             exp = (n_c * n_g) / L
             ratio = (n_cg + epsilon) / (exp + epsilon)
             vals = torch.log2(ratio)
-            return (torch.sigmoid(vals) if normalize else vals).tolist()
+            return ((torch.tanh(vals) + 1.0) / 2.0 if normalize else vals).tolist()
             
         else:
             raise ValueError(
@@ -411,7 +411,7 @@ def _calculate_cpg_single(
     exp = (n_c * n_g) / length
     ratio = (n_cg + epsilon) / (exp + epsilon)
     val = float(np.log2(ratio))
-    return _sigmoid(val) if normalize else val
+    return (float(np.tanh(val)) + 1.0) / 2.0 if normalize else val
 
 
 def _calculate_cpg_batch_equal_len(
@@ -436,10 +436,6 @@ def _calculate_cpg_batch_equal_len(
     vals = np.log2(ratio)
     
     if normalize:
-        vals = 1.0 / (1.0 + np.exp(-vals))
+        vals = (np.tanh(vals) + 1.0) / 2.0
         
     return vals.tolist()
-
-
-def _sigmoid(x: float) -> float:
-    return 1.0 / (1.0 + np.exp(-x))
