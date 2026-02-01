@@ -33,6 +33,7 @@ class CerberusDataModule(pl.LightningDataModule):
         persistent_workers: bool = True,
         multiprocessing_context: str | None = None,
         seed: int | None = None,
+        drop_last: bool = False,
     ):
         """
         Args:
@@ -45,6 +46,7 @@ class CerberusDataModule(pl.LightningDataModule):
             persistent_workers: Whether to use persistent workers in DataLoaders.
             multiprocessing_context: Context name for multiprocessing (e.g., 'spawn', 'fork').
             seed: Optional random seed for sampler initialization.
+            drop_last: Whether to drop the last incomplete batch in training.
         """
         super().__init__()
         self.genome_config = validate_genome_config(genome_config)
@@ -74,6 +76,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.persistent_workers = persistent_workers
         self.multiprocessing_context = multiprocessing_context
         self.seed = seed
+        self.drop_last = drop_last
 
         self.train_dataset: CerberusDataset | None = None
         self.val_dataset: CerberusDataset | None = None
@@ -178,6 +181,7 @@ class CerberusDataModule(pl.LightningDataModule):
             worker_init_fn=self._worker_init_fn,
             persistent_workers=(self.persistent_workers and self.num_workers > 0),
             multiprocessing_context=self.multiprocessing_context,
+            drop_last=self.drop_last,
         )
 
     def val_dataloader(self) -> DataLoader:
