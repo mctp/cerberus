@@ -104,7 +104,7 @@ sampler_config: SamplerConfig = {
 # Standard training config with AdamW optimizer and cosine scheduler.
 train_config: TrainConfig = {
     "batch_size": 16,
-    "max_epochs": 2, # Short training for demonstration
+    "max_epochs": 10, # Short training for demonstration
     "learning_rate": 1e-3,
     "weight_decay": 0.01,
     "patience": 5,
@@ -113,7 +113,7 @@ train_config: TrainConfig = {
     "reload_dataloaders_every_n_epochs": 0,
     "scheduler_type": "cosine",
     "scheduler_args": {
-        "num_epochs": 2, # Must match max_epochs
+        "num_epochs": 10, # Must match max_epochs
         "warmup_epochs": 0,
         "min_lr": 1e-5
     }
@@ -138,6 +138,7 @@ datamodule = CerberusDataModule(
     genome_config=genome_config,
     data_config=data_config,
     sampler_config=sampler_config,
+    drop_last=True,
 )
 
 # Setup datamodule (create datasets) and set runtime batch size
@@ -167,6 +168,9 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
 # - Output: `(Batch, Output_Channels, Output_Bins)` e.g., `(B, 1, 256)`.
 # 
 # We configure it with `output_len=1024` to match our target field of view (1024bp -> 256 bins @ 4bp).
+#
+# We then define the loss function and metrics suitable for profile prediction.
+# We set implicit log targets since our data is log-transformed.
 
 # %%
 # Initialize Model
@@ -175,8 +179,8 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
 model = GlobalProfileCNN(input_len=2048, output_len=1024, output_bin_size=4)
 
 # Define Loss and Metrics
-criterion = ProfilePoissonNLLLoss(log_input=True, full=False, implicit_log_targets=True)
-metrics = DefaultMetricCollection(num_channels=1, implicit_log_targets=True)
+criterion = ProfilePoissonNLLLoss(log_input=True, full=False, implicit_log_targets=False)
+metrics = DefaultMetricCollection(num_channels=1, implicit_log_targets=False)
 
 # Create Lightning Module
 module = CerberusModule(
@@ -189,7 +193,7 @@ module = CerberusModule(
 # %% [markdown]
 # ## 5. Training
 # 
-# We run the training loop using `entrypoints.train`.
+# We run the training loop using `cerberus.train._train`.
 
 # %%
 # Train
@@ -202,11 +206,11 @@ trainer = train(
     in_memory=False,
     accelerator="auto",
     devices=1,
-    limit_train_batches=10, # For demo purposes
-    limit_val_batches=5,
+    # limit_train_batches=10, # For demo purposes
+    # limit_val_batches=5,
     enable_checkpointing=True,
     logger=True, # Enable logging
-    enable_progress_bar=False,
+    enable_progress_bar=True,
     log_every_n_steps=5
 )
 
@@ -229,4 +233,72 @@ print("Training finished.")
 # Alternatively, set `num_workers=0` in `train_config` to avoid multiprocessing.
 #
 
+# %% [markdown]
+# ## 6. Analyze Training Results
+# 
+# We inspect the training and validation loss over epochs.
+
 # %%
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# The trainer object from the previous cell contains the logger
+log_dir = trainer.logger.log_dir
+metrics_path = f"{log_dir}/metrics.csv"
+print(f"Metrics saved to: {metrics_path}")
+
+try:
+    metrics = pd.read_csv(metrics_path)
+    
+    # Group by epoch to get one row per epoch (taking the last logged value for that epoch)
+    epoch_metrics = metrics.groupby("epoch").last()
+    
+    # Display Loss columns
+    loss_cols = [c for c in epoch_metrics.columns if "loss" in c]
+    print("\nLoss per Epoch:")
+    print(epoch_metrics[loss_cols])
+    
+    # Plot
+    plt.figure(figsize=(10, 6))
+    for col in loss_cols:
+        # separate train and val
+        if "train" in col:
+            plt.plot(epoch_metrics.index, epoch_metrics[col], label=col, marker='o')
+        elif "val" in col:
+            plt.plot(epoch_metrics.index, epoch_metrics[col], label=col, marker='x', linestyle='--')
+            
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training and Validation Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+except Exception as e:
+    print(f"Could not load or plot metrics: {e}")
+
+# %% [markdown]
+# ## 7. Epoch Analysis
+# 
+# Report the number of samples in one epoch.
+
+# %%
+train_samples = len(datamodule.train_dataset)
+val_samples = len(datamodule.val_dataset)
+batch_size = train_config["batch_size"]
+
+print(f"Total Train Samples (Full Epoch): {train_samples}")
+print(f"Total Validation Samples (Full Epoch): {val_samples}")
+print(f"Batch Size: {batch_size}")
+
+# Effective samples if limit_train_batches is set
+# trainer.limit_train_batches can be int (num batches) or float (fraction) or 1.0 (default)
+limit = trainer.limit_train_batches
+print(f"Limit Train Batches: {limit}")
+
+if isinstance(limit, int) and limit > 0:
+    effective_samples = limit * batch_size
+    print(f"Effective Train Samples per Epoch (due to limit): {effective_samples}")
+elif isinstance(limit, float) and limit < 1.0:
+    effective_samples = int(train_samples * limit)
+    print(f"Effective Train Samples per Epoch (due to limit): {effective_samples}")
