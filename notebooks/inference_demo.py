@@ -9,11 +9,16 @@ from cerberus import model_ensemble
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.interval import Interval
 from cerberus.dataset import CerberusDataset
+try:
+    from paths import get_project_root
+except ImportError:
+    from notebooks.paths import get_project_root
 
 # %%
 ## 1. Load Model Ensemble
+project_root = get_project_root()
 model_ensemble = ModelEnsemble(
-    checkpoint_path="tests/data/models/chip_ar_mdapca2b_bpnet/multi-fold"
+    checkpoint_path=project_root / "tests/data/models/chip_ar_mdapca2b_bpnet/multi-fold"
 )
 # pprint(model_ensemble.folds)
 # pprint(model_ensemble.keys())

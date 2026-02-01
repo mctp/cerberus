@@ -104,8 +104,8 @@ sampler_config: SamplerConfig = {
 # Standard training config with AdamW optimizer and cosine scheduler.
 train_config: TrainConfig = {
     "batch_size": 16,
-    "max_epochs": 10, # Short training for demonstration
-    "learning_rate": 1e-3,
+    "max_epochs": 3, # Short training for demonstration
+    "learning_rate": 0.1,
     "weight_decay": 0.01,
     "patience": 5,
     "optimizer": "adamw",
@@ -113,7 +113,7 @@ train_config: TrainConfig = {
     "reload_dataloaders_every_n_epochs": 0,
     "scheduler_type": "cosine",
     "scheduler_args": {
-        "num_epochs": 10, # Must match max_epochs
+        "num_epochs": 3, # Must match max_epochs
         "warmup_epochs": 0,
         "min_lr": 1e-5
     }
@@ -206,8 +206,8 @@ trainer = train(
     in_memory=False,
     accelerator="auto",
     devices=1,
-    # limit_train_batches=10, # For demo purposes
-    # limit_val_batches=5,
+    limit_train_batches=10, # For demo purposes
+    limit_val_batches=5,
     enable_checkpointing=True,
     logger=True, # Enable logging
     enable_progress_bar=True,
