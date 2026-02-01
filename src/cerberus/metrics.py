@@ -38,8 +38,9 @@ class ProfilePearsonCorrCoef(PearsonCorrCoef):
         target_flat = target.detach().permute(0, 2, 1).reshape(-1, self.num_channels)
         
         # Cast to float64 to try to avoid precision issues with small variance
-        preds_flat = preds_flat.double()
-        target_flat = target_flat.double()
+        # this does not work on MPS backend and is commented out for now
+        # preds_flat = preds_flat.double()
+        # target_flat = target_flat.double()
         
         PearsonCorrCoef.update(self, preds_flat, target_flat)
 
