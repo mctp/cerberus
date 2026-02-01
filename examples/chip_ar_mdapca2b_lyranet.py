@@ -134,6 +134,7 @@ def main():
         "patience": 10,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
+        "reload_dataloaders_every_n_epochs": 0,
         "scheduler_type": "cosine",
         "scheduler_args": {
             "num_epochs": args.max_epochs,

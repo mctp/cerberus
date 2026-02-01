@@ -44,23 +44,11 @@ data_config = {
 
 # 3. Sampler Configuration (Peaks + Negatives)
 sampler_config = {
-    "sampler_type": "multi",
+    "sampler_type": "peak",
     "padded_size": 2114,
     "sampler_args": {
-        "samplers": [
-            # Positive examples (peaks)
-            {
-                "type": "interval",
-                "args": {"intervals_path": peaks_path},
-                "scaling": 1.0 
-            },
-            # Negative examples (background)
-            {
-                "type": "sliding_window",
-                "args": {"stride": 10000}, # Sparse scan
-                "scaling": 0.1 # Downsample heavily
-            }
-        ]
+        "intervals_path": peaks_path,
+        "background_ratio": 1.0 # 1:1 ratio of peaks to GC-matched background
     }
 }
 ```
@@ -94,7 +82,7 @@ You can use the `cerberus.train` module to instantiate the model and start train
 ```python
 import torch.nn as nn
 from cerberus.train import train_single, train_multi
-from cerberus.loss import BPNetLoss
+from cerberus.loss import MSEMultinomialLoss
 from torchmetrics import MetricCollection, PearsonCorrCoef, MeanSquaredError
 
 # 4. Train Configuration
@@ -111,29 +99,27 @@ train_config = {
 }
 
 # 5. Model Configuration
-# Define your PyTorch model class (must accept input_channels, output_channels, input_len)
-# It will also receive output_len and output_bin_size automatically.
-class MyModel(nn.Module):
-    def __init__(self, input_channels, output_channels, input_len, **kwargs):
-        super().__init__()
-        num_in = len(input_channels)
-        num_out = len(output_channels)
-        self.conv = nn.Conv1d(num_in, num_out, 1)
-    def forward(self, x): return self.conv(x)
+# Uses standard models from cerberus.models or your own importable class path.
+# "model_cls", "loss_cls", and "metrics_cls" must be strings.
 
 model_config = {
     "name": "my_bpnet",
-    "model_cls": MyModel,
-    "loss_cls": BPNetLoss,
-    "loss_args": {"alpha": 1.0},
-    "metrics_cls": MetricCollection,
+    "model_cls": "cerberus.models.BPNet",
+    "loss_cls": "cerberus.loss.MSEMultinomialLoss",
+    "loss_args": {"count_weight": 1.0},
+    "metrics_cls": "torchmetrics.MetricCollection",
     "metrics_args": {
         "metrics": {
-            "pearson": PearsonCorrCoef(),
-            "mse_profile": MeanSquaredError()
+            "pearson": "cerberus.metrics.CountProfilePearsonCorrCoef",
+            "mse_profile": "cerberus.metrics.CountProfileMeanSquaredError"
         }
     },
     "model_args": {
+        "filters": 64,
+        "n_dilated_layers": 9,
+        # Note: input_channels and output_channels are passed if the model requires them.
+        # BPNet automatically infers input/output dimensions from input_len/output_len/DataConfig,
+        # but explicit channels can be passed if needed by custom models.
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["AR"]
     }

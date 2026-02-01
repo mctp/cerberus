@@ -137,6 +137,7 @@ train_config: TrainConfig = {
     "patience": 1,
     "optimizer": "adam",
     "filter_bias_and_bn": False,
+    "reload_dataloaders_every_n_epochs": 0,
     "scheduler_type": "default",
     "scheduler_args": {}
 }

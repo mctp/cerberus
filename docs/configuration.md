@@ -145,13 +145,16 @@ class TrainConfig(TypedDict):
     
     # Patience for EarlyStopping (used by entrypoints)
     patience: int
+
+    # Reload dataloaders every n epochs (0 to disable)
+    reload_dataloaders_every_n_epochs: int
 ```
 
 *Note: Runtime parameters like `num_workers`, `in_memory`, `precision`, `matmul_precision`, and `compile` are passed directly to the `train` or `instantiate` functions, not included in `TrainConfig`.*
 
-## PredictConfig
+## PredictConfig (Runtime)
 
-Defines configuration for inference/prediction.
+Defines configuration arguments for inference/prediction functions (e.g., `predict_to_bigwig`). These are typically passed as runtime arguments rather than a static configuration object.
 
 ```python
 class PredictConfig(TypedDict):
@@ -174,17 +177,17 @@ class ModelConfig(TypedDict):
     # Name of the model
     name: str
     
-    # Model class (nn.Module subclass)
-    model_cls: type[nn.Module]
+    # Model class (Fully qualified class name string, e.g. "cerberus.models.BPNet")
+    model_cls: str
     
-    # Loss class (nn.Module subclass)
-    loss_cls: type[nn.Module]
+    # Loss class (Fully qualified class name string, e.g. "cerberus.loss.MSEMultinomialLoss")
+    loss_cls: str
     
     # Arguments for loss instantiation
     loss_args: dict[str, Any]
     
-    # Metrics collection class
-    metrics_cls: type[MetricCollection]
+    # Metrics collection class (Fully qualified class name string, e.g. "torchmetrics.MetricCollection")
+    metrics_cls: str
     
     # Arguments for metrics instantiation
     metrics_args: dict[str, Any]

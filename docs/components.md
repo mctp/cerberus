@@ -1,5 +1,28 @@
 # Core Components
 
+## Data Management
+
+### CerberusDataset
+The `CerberusDataset` class (`src/cerberus/dataset.py`) ties together configuration, sampling, and data extraction.
+
+*   **Responsibility**:
+    *   **Sampling**: Uses a `Sampler` to select genomic intervals.
+    *   **Extraction**: Uses `SequenceExtractor` and `SignalExtractor` to retrieve data for those intervals.
+    *   **Transformation**: Applies augmentation and normalization via `Transforms`.
+*   **Modes**:
+    *   **Disk-Based**: Reads data on-the-fly (low RAM, slower).
+    *   **In-Memory**: Pre-loads data into RAM (high RAM, fastest).
+*   **Splitting**: Supports `split_folds()` to create Train/Val/Test subsets that share underlying resources but sample from disjoint regions.
+
+### CerberusDataModule
+The `CerberusDataModule` class (`src/cerberus/datamodule.py`) wraps the dataset for PyTorch Lightning.
+
+*   **Responsibility**:
+    *   **Setup**: Initializes the dataset and performs fold splitting.
+    *   **Loaders**: Creates `DataLoader` instances for training, validation, and testing.
+    *   **Worker Seeding**: Implements `_worker_init_fn` to ensure correct random seeding across multi-process workers.
+    *   **Epoch Management**: Calls `resample()` on the training dataset at the start of each epoch to refresh random samples.
+
 ## Samplers
 
 Samplers determine *where* the model looks during training. They yield `Interval` objects (Chromosome, Start, End, Strand).
@@ -82,6 +105,13 @@ Extractors retrieve the actual data for a given `Interval`.
     seq_tensor = extractor.extract(interval) # Returns (4, 100)
     ```
 
+### UniversalExtractor
+Intelligently routes input channels to the appropriate specific extractor based on file extension. This is the default extractor used by `CerberusDataset`.
+
+*   **Source**: BigWig (.bw), BigBed (.bb), BED (.bed) files.
+*   **Output**: Signal tensors or Masks.
+*   **Behavior**: Routes files to `SignalExtractor` (BigWig), `BigBedMaskExtractor` (BigBed), or `BedMaskExtractor` (BED).
+
 ### SignalExtractor
 *   **Source**: BigWig files.
 *   **Output**: Continuous values (e.g., read counts).
@@ -97,15 +127,16 @@ Extractors retrieve the actual data for a given `Interval`.
     ```
 
 ### MaskExtractor
-*   **Source**: BigBed files.
+*   **Source**: BigBed or BED files.
 *   **Output**: Binary or categorical mask tensors indicating regions of interest (e.g., mappability, blacklists).
 *   **Modes**:
-    *   `MaskExtractor`: Reads from disk (using `pybigtools`).
-    *   `InMemoryMaskExtractor`: Loads masks into RAM.
+    *   `BigBedMaskExtractor`: Reads BigBed from disk.
+    *   `InMemoryBigBedMaskExtractor`: Loads BigBed into RAM.
+    *   `BedMaskExtractor`: Reads BED files (always in-memory using InterLap).
 
     ```python
     # Example Usage (from tests/test_mask.py)
-    extractor = MaskExtractor({"mappability": "mappability.bb"})
+    extractor = BigBedMaskExtractor({"mappability": "mappability.bb"})
     interval = Interval("chr1", 150, 250, "+")
     mask = extractor.extract(interval) # Returns tensor of shape (1, 100)
     ```
@@ -138,29 +169,62 @@ Cerberus provides a composable transformation pipeline via `cerberus.transform.C
 
 Cerberus provides specialized loss functions for genomic signal prediction.
 
-### BPNetLoss
+### ProfilePoissonNLLLoss
+Standard Poisson NLL loss for models predicting log-rates (log-intensities).
+
+*   **Behavior**: Computes `PoissonNLL(exp(log_rates), targets)`.
+*   **Use Case**: Models predicting unnormalized log-counts directly (e.g. `ConvNeXtDCNN`).
+*   **Inputs**: `ProfileLogRates`.
+
+### MSEMultinomialLoss (BPNetLoss)
 Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).
 
 *   **Profile Loss**: Penalizes the shape of the predicted signal distribution (Exact Multinomial NLL).
 *   **Count Loss**: Penalizes the total count prediction (MSE on `log(1+x)`).
 *   **Args**:
-    *   `alpha`: Weight for the count loss component.
+    *   `count_weight` (aliases `alpha`): Weight for the count loss component.
     *   `flatten_channels`: Whether to compute multinomial over all channels flattened (default: True, typical for BPNet).
     *   `implicit_log_targets`: If targets are already log-transformed, reverses them for profile loss calculation.
 
-### PoissonMultinomialLoss (Unified)
-A flexible loss function combining Poisson NLL for total counts and Multinomial (Cross-Entropy) for profile shape. It unifies the functionality of the deprecated `BPNetPoissonLoss` and supports both standard BPNet (Tuple) and generic (Tensor) model outputs.
+### CoupledMSEMultinomialLoss
+Coupled version of BPNetLoss for models predicting log-rates directly.
+
+*   **Behavior**: Derives predicted counts by summing log-rates (LogSumExp) before computing MSE count loss.
+*   **Use Case**: Models that output a single `log_rates` tensor (ProfileLogRates) instead of separate logits and counts.
+
+### PoissonMultinomialLoss
+A flexible loss function combining Poisson NLL for total counts and Multinomial (Cross-Entropy) for profile shape. It unifies the functionality of the deprecated `BPNetPoissonLoss`.
 
 *   **Ref**: Boshar et al. 2025 (Concept).
 *   **Count Loss**: Poisson Negative Log-Likelihood.
 *   **Profile Loss**: Multinomial Negative Log-Likelihood (Cross-Entropy form, ignoring constants).
-*   **Supported Inputs**:
-    *   **Tuple (BPNet)**: `(profile_logits, log_counts)`.
-    *   **Tensor (Generic)**: `predicted_counts`.
+*   **Supported Inputs**: `ProfileCountOutput` (logits, log_counts).
 *   **Args**:
-    *   `count_weight`: Weight for the count loss component (aliases `alpha`).
+    *   `count_weight`: Weight for the count loss component.
     *   `flatten_channels`: Whether to flatten channels/length for profile loss (default: False).
     *   `implicit_log_targets`: Handling of log-transformed targets.
+
+### CoupledPoissonMultinomialLoss
+Coupled version of PoissonMultinomialLoss for models predicting log-rates.
+
+*   **Behavior**: Derives predicted counts by summing log-rates (LogSumExp) before computing Poisson count loss.
+*   **Use Case**: Models that output `ProfileLogRates`.
+
+### NegativeBinomialMultinomialLoss
+Combines Negative Binomial NLL for total counts and Multinomial (Cross-Entropy) for profile shape.
+
+*   **Count Loss**: Negative Binomial NLL (using a fixed `total_count` dispersion parameter).
+*   **Profile Loss**: Multinomial Negative Log-Likelihood.
+*   **Supported Inputs**: `ProfileCountOutput`.
+*   **Args**:
+    *   `total_count`: Fixed dispersion parameter (r) for Negative Binomial.
+
+### CoupledNegativeBinomialMultinomialLoss
+Coupled version of NegativeBinomialMultinomialLoss.
+
+*   **Behavior**: Derives predicted counts by summing log-rates (LogSumExp).
+*   **Use Case**: Models that output `ProfileLogRates`.
+*   **Supported Inputs**: `ProfileLogRates`.
 
 ## Model Outputs
 
@@ -195,6 +259,16 @@ Computes MSE on probability profiles (Softmax of logits) vs normalized target pr
 
 ### CountProfileMeanSquaredError
 Computes MSE on reconstructed counts (`Softmax(logits) * Exp(log_counts)`) vs target counts.
+
+### LogCountsMeanSquaredError
+Computes MSE on Log Counts.
+*   **Behavior**: Computes MSE between predicted log counts and `log1p(target_counts)`.
+*   **Inputs**: `ProfileCountOutput` (uses `log_counts`) or `ProfileLogRates` (uses `logsumexp(log_rates)`).
+
+### LogCountsPearsonCorrCoef
+Computes Pearson Correlation on Log Counts.
+*   **Behavior**: Computes correlation between predicted log counts and `log1p(target_counts)`.
+*   **Inputs**: `ProfileCountOutput` or `ProfileLogRates`.
 
 ### Default Pipeline Order
 When `transforms` are not explicitly provided to `CerberusDataset`, they are automatically constructed from `DataConfig` in the following order:

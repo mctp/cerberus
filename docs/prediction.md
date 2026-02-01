@@ -30,7 +30,7 @@ from cerberus.model_ensemble import ModelEnsemble
 
 # Load from a training log directory (containing hparams.yaml and checkpoints)
 ensemble = ModelEnsemble(
-    run_dir="logs/my_experiment",
+    checkpoint_path="logs/my_experiment",
     device="cuda"
 )
 
@@ -47,7 +47,7 @@ If you move a trained model to a new environment (e.g., from a training cluster 
 from pathlib import Path
 
 ensemble = ModelEnsemble(
-    run_dir="logs/my_experiment",
+    checkpoint_path="logs/my_experiment",
     # Look for files in current dir and tests/data if original paths fail
     search_paths=[Path.cwd(), Path("tests/data")] 
 )
@@ -65,7 +65,7 @@ sampler = IntervalSampler(file_path="peaks.bed", ...)
 
 # Iterate over batches
 for batch_output, batch_intervals in ensemble.predict_intervals_batched(
-    sampler=sampler,
+    intervals=sampler,
     dataset=dataset,
     use_folds=["test", "val", "train"], # Use all folds to ensure coverage
     batch_size=256

@@ -11,11 +11,11 @@ src/cerberus/
 ├── datamodule.py       # PyTorch Lightning DataModule implementation
 ├── dataset.py          # PyTorch Dataset implementation
 ├── download.py         # Utilities for downloading reference genomes and datasets
-├── entrypoints.py      # High-level training and model instantiation utilities
 ├── exclude.py          # Logic for handling exclusion intervals (blacklists)
 ├── genome.py           # Genome configuration helpers and folding strategies
 ├── interval.py         # Core Interval dataclass
-├── loss.py             # Loss functions (BPNetLoss, PoissonMultinomialLoss)
+├── layers.py           # Neural network building blocks (PGC, S4D, ConvNeXt)
+├── loss.py             # Loss functions (MSEMultinomialLoss, PoissonMultinomialLoss)
 ├── mask.py             # Extractors for mask data (BigBed)
 ├── metrics.py          # Evaluation metrics (Pearson, MSE)
 ├── model_ensemble.py   # Model loading and ensemble prediction logic
@@ -25,6 +25,7 @@ src/cerberus/
 ├── samplers.py         # Sampling logic (Interval, SlidingWindow, MultiSampler)
 ├── sequence.py         # Sequence extraction (FASTA handling)
 ├── signal.py           # Signal extraction (BigWig handling)
+├── train.py            # High-level training workflows (train_single, train_multi)
 └── transform.py        # Data augmentation pipelines (Jitter, Crop, etc.)
 ```
 
@@ -38,9 +39,9 @@ These are the main entry points.
 *   `dataset.py`: Ties together the Sampler (where), Extractors (what), and Transforms (how).
 *   `datamodule.py`: Wraps the dataset for PyTorch Lightning, managing distributed training concerns like worker seeding and splitting.
 *   `module.py`: `CerberusModule` ties together the Model, Optimizer, Scheduler, and Loss. It defines the training step.
-*   `entrypoints.py`: High-level training workflows (`train`, `train_single`, `train_multi`) and re-exports of instantiation logic.
+*   `train.py`: High-level training workflows (`train_single`, `train_multi`) and orchestration.
 
-### Model & Training (`loss.py`, `metrics.py`, `module.py`, `output.py`)
+### Model & Training (`loss.py`, `metrics.py`, `module.py`, `output.py`, `layers.py`)
 *   `loss.py`: Domain-specific loss functions (e.g., `BPNetLoss` for profile prediction).
 *   `metrics.py`: Metrics for evaluation (Pearson Correlation, MSE).
 *   `output.py`: Standardized data structures for model outputs and logic for aggregating/unbatching them.

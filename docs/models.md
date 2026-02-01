@@ -57,6 +57,19 @@ A modern profile prediction architecture using Pointwise-Gated Convolutions (PGC
 *   **Efficiency**: Higher throughput than BPNet with comparable or better performance.
 *   **Output**: Dual-head (Profile + Counts) similar to BPNet.
 
+## LyraNet
+
+**Implementation**: `cerberus.models.LyraNet`
+**Source**: `src/cerberus/models/lyra.py`
+
+A hybrid architecture combining PGC blocks for local context and S4D layers (State Space Models) for efficient global context modeling.
+
+### Key Features
+*   **Hybrid Stem/Body**: Uses Convolutional Stem, PGC layers for local interactions, and S4D layers for global sequence modeling.
+*   **State Space Models (S4D)**: Efficiently models very long-range dependencies.
+*   **Variants**: `LyraNet`, `LyraNetMedium`, `LyraNetLarge`, `LyraNetExtraLarge` scaling from ~140k to ~5.4M parameters.
+*   **Output**: Dual-head (Profile + Counts).
+
 ## ConvNeXtDCNN (ASAP)
 
 **Implementation**: `cerberus.models.ConvNeXtDCNN`

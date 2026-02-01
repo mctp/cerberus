@@ -129,6 +129,7 @@ def main():
         "patience": 10,
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
+        "reload_dataloaders_every_n_epochs": 0,
         "scheduler_type": "cosine",
         "scheduler_args": {
             "num_epochs": args.max_epochs,
@@ -144,10 +145,8 @@ def main():
         "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
         "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
         "loss_args": {
-            "log_input": True, # Expects log-transformed input in loss if data is log transformed? 
-                               # Wait, if data is log_transform=True, model output is likely log counts?
-                               # Let's check the previous file config.
-                               # Old file: "loss_args": {"log_input": True, "full": False}
+            "log_input": True,
+            "implicit_log_targets": True,
         },
         "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
         "metrics_args": {},

@@ -110,6 +110,7 @@ train_config: TrainConfig = {
     "patience": 5,
     "optimizer": "adamw",
     "filter_bias_and_bn": True,
+    "reload_dataloaders_every_n_epochs": 0,
     "scheduler_type": "cosine",
     "scheduler_args": {
         "num_epochs": 2, # Must match max_epochs
@@ -174,8 +175,8 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
 model = GlobalProfileCNN(input_len=2048, output_len=1024, output_bin_size=4)
 
 # Define Loss and Metrics
-criterion = ProfilePoissonNLLLoss(log_input=True, full=False)
-metrics = DefaultMetricCollection(num_channels=1)
+criterion = ProfilePoissonNLLLoss(log_input=True, full=False, implicit_log_targets=True)
+metrics = DefaultMetricCollection(num_channels=1, implicit_log_targets=True)
 
 # Create Lightning Module
 module = CerberusModule(
