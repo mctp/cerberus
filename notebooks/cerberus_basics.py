@@ -178,8 +178,8 @@ exclude_intervals = get_exclude_intervals(genome_config["exclude_intervals"])
 peak_sampler = create_sampler(
     sampler_config_peaks,
     genome_config["chrom_sizes"],
-    exclude_intervals,
-    folds
+    folds=folds,
+    exclude_intervals=exclude_intervals
 )
 
 print(f"Number of peaks: {len(peak_sampler)}")
@@ -203,8 +203,8 @@ sampler_config_sw: SamplerConfig = {
 sw_sampler = create_sampler(
     sampler_config_sw,
     genome_config["chrom_sizes"],
-    exclude_intervals,
-    folds
+    folds=folds,
+    exclude_intervals=exclude_intervals
 )
 
 print(f"Number of sliding windows: {len(sw_sampler)}")

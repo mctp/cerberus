@@ -8,7 +8,7 @@ This document outlines the classes and functions for the `Cerberus` dataloader i
 ### `class CerberusDataset(torch.utils.data.Dataset)`
 The primary entry point for PyTorch. Orchestrates data loading, sampling, and splitting.
 
-*   **`__init__(self, genome_config: dict | GenomeConfig, data_config: dict | DataConfig, sampler_config: dict | SamplerConfig, sequence_extractor: BaseSequenceExtractor | None = None, input_signal_extractor: BaseSignalExtractor | None = None, target_signal_extractor: BaseSignalExtractor | None = None, sampler: Sampler | None = None, exclude_intervals: dict[str, InterLap] | None = None)`**
+*   **`__init__(self, genome_config: GenomeConfig, data_config: DataConfig, sampler_config: SamplerConfig | None = None, sequence_extractor: BaseSequenceExtractor | None = None, input_signal_extractor: BaseSignalExtractor | None = None, target_signal_extractor: BaseSignalExtractor | None = None, sampler: Sampler | None = None, exclude_intervals: dict[str, InterLap] | None = None, transforms: list[DataTransform] | None = None, deterministic_transforms: list[DataTransform] | None = None, in_memory: bool = False, is_train: bool = True, seed: int | None = None)`**
     *   **`genome_config`**: Configuration for genome FASTA and chromosome sizes.
     *   **`data_config`**: Configuration for input/output dimensions and tracks.
     *   **`sampler_config`**: Configuration for the sampling strategy.
@@ -17,9 +17,14 @@ The primary entry point for PyTorch. Orchestrates data loading, sampling, and sp
     *   **`target_signal_extractor`**: Optional pre-initialized extractor for target signals (e.g. ChIP-seq counts).
     *   **`sampler`**: Optional pre-initialized sampler (for subsets).
     *   **`exclude_intervals`**: Optional pre-loaded exclusion intervals (for sharing across subsets).
+    *   **`transforms`**: Optional list of transforms for training.
+    *   **`deterministic_transforms`**: Optional list of deterministic transforms for val/test.
+    *   **`in_memory`**: Whether to load data into memory.
+    *   **`is_train`**: Whether this dataset is used for training.
+    *   **`seed`**: Optional random seed for sampler initialization.
     *   Initializes `DataSource`s (Genome/Signals) if not provided.
     *   Initializes `Sampler` if not provided.
-    *   Supports `InMemory` versions of extractors based on `genome_config['in_memory']`.
+    *   Supports `InMemory` versions of extractors based on `in_memory`.
 
 *   **`__len__(self) -> int`**
     *   Delegates to the active `Sampler`.
@@ -60,9 +65,9 @@ Base class providing common splitting functionality.
     *   Returns `BaseSampler`s for each split.
 *   **`create_folds(chrom_sizes: dict, num_folds: int)`**: Static method to greedily distribute chromosomes into balanced folds.
 
-### `class BaseSampler`
-Now instantiable, replacing `SubsetSampler`.
-*   **`__init__(self, intervals: List[Interval], ...)`**
+### `class ListSampler(BaseSampler)`
+Base class for samplers that store a concrete list of intervals.
+*   **`__init__(self, intervals: List[Interval] | None = None, ...)`**
     *   A lightweight wrapper around a list of intervals.
 
 ### `class IntervalSampler(BaseSampler)`
@@ -81,11 +86,10 @@ Now instantiable, replacing `SubsetSampler`.
     *   Initializes `self.folds` for cross-validation.
 
 ### `class MultiSampler(BaseSampler)`
-*   **`__init__(self, samplers: List[Sampler], scaling_factors: List[float], ...)`**
+*   **`__init__(self, samplers: List[Sampler], ...)`**
     *   Combines multiple samplers (e.g., Peaks and Background).
     *   **Scaling**:
-        *   Accepts `scaling_factors` to balance or over/under-sample components.
-        *   `create_sampler` factory supports dynamic scaling strings in config: `"min"` (match smallest), `"max"` (match largest), `"count:<N>"` (fixed size).
+        *   Scaling/balancing is handled by wrapping sub-samplers in `ScaledSampler`.
     *   **Resampling**: Supports epoch-based resampling of subsets.
 
 ## 3. PyTorch Lightning Integration
