@@ -7,6 +7,7 @@ Cerberus is organized into modular components to separate concerns between confi
 ```
 src/cerberus/
 ├── __init__.py         # Top-level API exports
+├── complexity.py       # Sequence complexity metrics (GC, DUST)
 ├── config.py           # TypedDict definitions (GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig)
 ├── datamodule.py       # PyTorch Lightning DataModule implementation
 ├── dataset.py          # PyTorch Dataset implementation
@@ -59,5 +60,6 @@ Handles the low-level I/O with genomic file formats.
 *   Abstracts away the differences between on-disk reading (via `pyfaidx`/`pybigtools`) and in-memory access (via dictionaries/arrays).
 
 ### Utilities
+*   `complexity.py`: Functions for calculating sequence metrics like GC content and DUST scores.
 *   `genome.py`: Helper functions to load chromosome sizes and generate cross-validation folds.
 *   `download.py`: Scripts to fetch public datasets and references, useful for testing and tutorials.

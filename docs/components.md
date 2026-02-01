@@ -141,6 +141,28 @@ Intelligently routes input channels to the appropriate specific extractor based 
     mask = extractor.extract(interval) # Returns tensor of shape (1, 100)
     ```
 
+## Sequence Analysis
+
+The `cerberus.complexity` module provides tools for analyzing DNA sequence properties.
+
+### GC Content
+Calculates the fraction of G and C nucleotides.
+*   **Function**: `calculate_gc_content(sequence)`
+*   **Input**: String, List of Strings, or One-Hot Tensor.
+*   **Output**: Float (0.0 to 1.0).
+
+### DUST Score
+Calculates sequence complexity based on k-mer repetition. Higher scores indicate lower complexity (more repetitive).
+*   **Function**: `calculate_dust_score(sequence, k=3)`
+*   **Input**: String, List of Strings, or One-Hot Tensor.
+*   **Output**: Float score.
+
+### CpG Ratio
+Calculates the log-transformed observed/expected CpG ratio.
+*   **Function**: `calculate_log_cpg_ratio(sequence)`
+*   **Input**: String, List of Strings, or One-Hot Tensor.
+*   **Output**: Float score (Log2 ratio).
+
 ## Transforms
 
 Cerberus provides a composable transformation pipeline via `cerberus.transform.Compose`.

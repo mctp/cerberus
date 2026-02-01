@@ -5,6 +5,7 @@ import pyfaidx
 import torch
 
 from cerberus.interval import Interval
+from cerberus.complexity import calculate_gc_content
 
 
 def _create_mapping(encoding: str) -> np.ndarray:
@@ -69,37 +70,6 @@ def encode_dna(sequence: str, encoding: str = "ACGT") -> torch.Tensor:
     one_hot[indices[valid_mask], np.where(valid_mask)[0]] = 1.0
 
     return torch.from_numpy(one_hot)
-
-
-def calculate_gc_content(sequence: str | torch.Tensor) -> float:
-    """
-    Calculates the GC content of a sequence.
-
-    Args:
-        sequence: DNA sequence as a string or a one-hot encoded tensor (4, L).
-
-    Returns:
-        float: GC content ratio (0.0 to 1.0).
-    """
-    if isinstance(sequence, str):
-        seq = sequence.upper()
-        gc = seq.count("G") + seq.count("C")
-        # Count only valid bases (A, C, G, T)
-        total = gc + seq.count("A") + seq.count("T")
-        return gc / total if total > 0 else 0.0
-
-    if isinstance(sequence, torch.Tensor):
-        # Assume (4, L) one-hot encoding with A=0, C=1, G=2, T=3 (default ACGT)
-        # Check shape
-        if sequence.shape[0] != 4:
-            raise ValueError(f"Expected tensor of shape (4, L), got {sequence.shape}")
-        
-        # Sum C (index 1) and G (index 2)
-        gc = sequence[1, :].sum() + sequence[2, :].sum()
-        total = sequence.sum()
-        return (gc / total).item() if total > 0 else 0.0
-    
-    raise TypeError("Input must be a string or torch.Tensor")
 
 
 def compute_intervals_gc(intervals: Iterable[Interval], fasta_path: Path | str) -> list[float]:
