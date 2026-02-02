@@ -1,6 +1,7 @@
 from typing import Iterator, Protocol
 from pathlib import Path
 import gzip
+import numpy as np
 import random
 import copy
 from collections import defaultdict
@@ -9,6 +10,7 @@ from .interval import Interval
 from .config import SamplerConfig
 from .exclude import is_excluded
 from .sequence import compute_intervals_gc
+from .complexity import compute_intervals_complexity
 
 
 def generate_sub_seeds(seed: int | None, n: int) -> list[int | None]:
@@ -19,6 +21,83 @@ def generate_sub_seeds(seed: int | None, n: int) -> list[int | None]:
         return [None] * n
     rng = random.Random(seed)
     return [rng.getrandbits(32) for _ in range(n)]
+
+
+def match_bin_counts(
+    target_metrics: list[float] | np.ndarray,
+    candidate_metrics: list[float] | np.ndarray,
+    bins: int,
+    match_ratio: float,
+    rng: random.Random
+) -> list[int]:
+    """
+    Selects indices from candidate_metrics to match the distribution of target_metrics.
+    
+    This function bins the metrics (1D or ND) and selects candidates to match 
+    the count of targets in each bin, scaled by match_ratio.
+
+    Args:
+        target_metrics: Metric values for target samples. Shape (N,) or (N, D).
+        candidate_metrics: Metric values for candidate samples. Shape (M,) or (M, D).
+        bins: Number of bins per dimension. Values are assumed to be in [0, 1].
+        match_ratio: Ratio of candidates to targets per bin.
+        rng: Random number generator.
+
+    Returns:
+        List of selected indices from candidate_metrics.
+    """
+    # Ensure numpy arrays
+    t_metrics = np.asarray(target_metrics)
+    c_metrics = np.asarray(candidate_metrics)
+    
+    # Handle 1D case by reshaping to (N, 1)
+    if t_metrics.ndim == 1:
+        t_metrics = t_metrics.reshape(-1, 1)
+    if c_metrics.ndim == 1:
+        c_metrics = c_metrics.reshape(-1, 1)
+        
+    # Helper to get bin tuple
+    def get_bin_index(row):
+        # Check for NaNs
+        if np.isnan(row).any():
+            return None
+        # Floor and clip
+        idx = np.floor(row * bins).astype(int)
+        idx = np.clip(idx, 0, bins - 1)
+        return tuple(idx)
+        
+    # 1. Bin targets
+    target_hist = defaultdict(int)
+    for row in t_metrics:
+        bin_idx = get_bin_index(row)
+        if bin_idx is not None:
+            target_hist[bin_idx] += 1
+            
+    # 2. Bin candidates
+    candidate_bins = defaultdict(list)
+    for i, row in enumerate(c_metrics):
+        bin_idx = get_bin_index(row)
+        if bin_idx is not None:
+            candidate_bins[bin_idx].append(i)
+            
+    # 3. Match
+    selected_indices = []
+    for bin_idx, count in target_hist.items():
+        needed = int(count * match_ratio)
+        candidates = candidate_bins.get(bin_idx, [])
+        
+        if not candidates:
+            continue
+            
+        if len(candidates) >= needed:
+            selected = rng.sample(candidates, needed)
+        else:
+            selected = rng.choices(candidates, k=needed)
+            
+        selected_indices.extend(selected)
+        
+    rng.shuffle(selected_indices)
+    return selected_indices
 
 
 #### Sampler Protocol and Base Classes ####
@@ -925,38 +1004,13 @@ class GCMatchedSampler(ProxySampler):
         # Re-compute GC content as candidate intervals have changed
         self.candidate_gc = compute_intervals_gc(self.candidate_sampler, self.fasta_path)
 
-        # 1. Bin target GC
-        target_hist = defaultdict(int)
-        for gc in self.target_gc:
-            bin_idx = min(int(gc * self.bins), self.bins - 1)
-            target_hist[bin_idx] += 1
-
-        # 2. Group candidate indices by bin
-        candidate_bins = defaultdict(list)
-        for idx, gc in enumerate(self.candidate_gc):
-            bin_idx = min(int(gc * self.bins), self.bins - 1)
-            candidate_bins[bin_idx].append(idx)
-
-        self._indices = []
-
-        # 3. Match
-        for bin_idx, count in target_hist.items():
-            needed = int(count * self.match_ratio)
-            candidates = candidate_bins[bin_idx]
-
-            if not candidates:
-                continue
-
-            if len(candidates) >= needed:
-                # Sample without replacement
-                selected = self.rng.sample(candidates, needed)
-            else:
-                # Sample with replacement
-                selected = self.rng.choices(candidates, k=needed)
-
-            self._indices.extend(selected)
-
-        self.rng.shuffle(self._indices)
+        self._indices = match_bin_counts(
+            target_metrics=self.target_gc,
+            candidate_metrics=self.candidate_gc,
+            bins=self.bins,
+            match_ratio=self.match_ratio,
+            rng=self.rng
+        )
 
     def __iter__(self) -> Iterator[Interval]:
         for idx in self._indices:
@@ -1002,6 +1056,168 @@ class GCMatchedSampler(ProxySampler):
                 s2,
             ),
             GCMatchedSampler(
+                target_splits[2],
+                candidate_splits[2],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.folds,
+                self.exclude_intervals,
+                self.bins,
+                self.match_ratio,
+                s3,
+            ),
+        )
+
+
+        return (
+            GCMatchedSampler(
+                target_splits[0],
+                candidate_splits[0],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.folds,
+                self.exclude_intervals,
+                self.bins,
+                self.match_ratio,
+                s1,
+            ),
+            GCMatchedSampler(
+                target_splits[1],
+                candidate_splits[1],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.folds,
+                self.exclude_intervals,
+                self.bins,
+                self.match_ratio,
+                s2,
+            ),
+            GCMatchedSampler(
+                target_splits[2],
+                candidate_splits[2],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.folds,
+                self.exclude_intervals,
+                self.bins,
+                self.match_ratio,
+                s3,
+            ),
+        )
+
+
+class ComplexityMatchedSampler(ProxySampler):
+    """
+    Selects candidates from a candidate_sampler that match the distributional properties
+    of a target_sampler in terms of 3 complexity metrics:
+    - GC content
+    - Dust score
+    - Log CpG ratio
+
+    This sampler bins the target intervals by their 3 complexity metrics and then selects
+    intervals from the candidate sampler to match the count in each bin, scaled
+    by `match_ratio`.
+    """
+
+    def __init__(
+        self,
+        target_sampler: Sampler,
+        candidate_sampler: Sampler,
+        fasta_path: Path | str,
+        chrom_sizes: dict[str, int],
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+        bins: int = 20,
+        match_ratio: float = 1.0,
+        seed: int | None = None,
+        generate_on_init: bool = True,
+    ):
+        super().__init__(
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+        )
+        self.target_sampler = target_sampler
+        self.candidate_sampler = candidate_sampler
+        self.fasta_path = Path(fasta_path)
+        self.bins = bins
+        self.match_ratio = match_ratio
+        self.seed = seed
+        self.rng = random.Random(seed)
+
+        # Pre-compute target metrics
+        self.target_metrics = compute_intervals_complexity(self.target_sampler, self.fasta_path)
+        self.candidate_metrics = None  # Computed in resample()
+
+        self._indices: list[int] = []  # Indices into candidate_sampler
+        if generate_on_init:
+            self.resample()
+
+    def resample(self, seed: int | None = None) -> None:
+        if seed is not None:
+            self.seed = seed
+            self.rng = random.Random(self.seed)
+        else:
+            self.seed = self.rng.getrandbits(32)
+            self.rng = random.Random(self.seed)
+
+        cand_seed = self.rng.getrandbits(32)
+        self.candidate_sampler.resample(cand_seed)
+
+        self.candidate_metrics = compute_intervals_complexity(self.candidate_sampler, self.fasta_path)
+
+        self._indices = match_bin_counts(
+            target_metrics=self.target_metrics,
+            candidate_metrics=self.candidate_metrics,
+            bins=self.bins,
+            match_ratio=self.match_ratio,
+            rng=self.rng
+        )
+        
+    def __iter__(self) -> Iterator[Interval]:
+        for idx in self._indices:
+            yield self.candidate_sampler[idx]
+
+    def __len__(self) -> int:
+        return len(self._indices)
+
+    def __getitem__(self, idx: int) -> Interval:
+        real_idx = self._indices[idx]
+        return self.candidate_sampler[real_idx]
+
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple["ComplexityMatchedSampler", "ComplexityMatchedSampler", "ComplexityMatchedSampler"]:
+        
+        target_splits = self.target_sampler.split_folds(test_fold, val_fold)
+        candidate_splits = self.candidate_sampler.split_folds(test_fold, val_fold)
+
+        s1, s2, s3 = generate_sub_seeds(self.seed, 3)
+
+        return (
+            ComplexityMatchedSampler(
+                target_splits[0],
+                candidate_splits[0],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.folds,
+                self.exclude_intervals,
+                self.bins,
+                self.match_ratio,
+                s1,
+            ),
+            ComplexityMatchedSampler(
+                target_splits[1],
+                candidate_splits[1],
+                self.fasta_path,
+                self.chrom_sizes,
+                self.folds,
+                self.exclude_intervals,
+                self.bins,
+                self.match_ratio,
+                s2,
+            ),
+            ComplexityMatchedSampler(
                 target_splits[2],
                 candidate_splits[2],
                 self.fasta_path,
@@ -1220,6 +1436,47 @@ def create_sampler(
         )
 
         return GCMatchedSampler(
+            target_sampler=target_sampler,
+            candidate_sampler=candidate_sampler,
+            fasta_path=fasta_path,
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+            bins=sampler_args["bins"],
+            match_ratio=sampler_args["match_ratio"],
+            seed=seed,
+        )
+
+    elif sampler_type == "complexity_matched":
+        if fasta_path is None:
+            raise ValueError("ComplexityMatchedSampler requires 'fasta_path' to be provided.")
+
+        target_conf = sampler_args["target_sampler"]
+        candidate_conf = sampler_args["candidate_sampler"]
+
+        # Recursive creation
+        target_full_conf = {
+            "sampler_type": target_conf["type"],
+            "sampler_args": target_conf["args"],
+            "padded_size": padded_size,
+        }
+        candidate_full_conf = {
+            "sampler_type": candidate_conf["type"],
+            "sampler_args": candidate_conf["args"],
+            "padded_size": padded_size,
+        }
+
+        # Propagate seed to children
+        target_seed, candidate_seed = generate_sub_seeds(seed, 2)
+
+        target_sampler = create_sampler(
+            target_full_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=target_seed
+        )
+        candidate_sampler = create_sampler(
+            candidate_full_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=candidate_seed
+        )
+
+        return ComplexityMatchedSampler(
             target_sampler=target_sampler,
             candidate_sampler=candidate_sampler,
             fasta_path=fasta_path,

@@ -45,7 +45,7 @@ where \(c_i\) is the count of the \(i\)-th unique k-mer in the sequence, and \(L
 *   **k:** The k-mer length (default 3). Must be \(\le 5\).
 *   **Non-ACGT Characters:** Characters like 'N' are treated as a distinct 5th base type (index 4). For example, "NNN" is treated as a repeat of the "N" base, contributing to the complexity score.
 *   **Interpretation:** Higher scores indicate lower complexity (more repetition). A sequence like "AAAAAAAA" has a high DUST score, while a random sequence has a low score.
-*   **Normalization:** If `normalize=True`, the raw score is transformed using \(\tanh(\ln(\text{Score} + 1) / 2)\). This maps the unbounded score `[0, inf)` to `[0, 1)`, providing a non-linear scaling that saturates for highly repetitive sequences.
+*   **Normalization:** If `normalize=True`, the raw score is transformed using \(\tanh(\log(\text{Ratio}) / 1.5)\), where \(\text{Ratio} = (\text{RawScore} + \epsilon) / \text{ExpRandom}\). This maps the unbounded score `[0, inf)` to `[0, 1)`. The scaling factor `k=1.5` spreads out scores for sequences with intermediate complexity (ratios 1.5–2.5), pushing them into the 0.2–0.4 range, while simple repeats saturate near 1.0.
 
 **Example:**
 ```python
@@ -53,14 +53,14 @@ from cerberus.complexity import calculate_dust_score
 
 # Single sequence
 score = calculate_dust_score("AAAAAAAA", k=3)
-# Returns: 2.5
+# Returns: ~0.99 (Normalized)
 ```
 
 ---
 
 ### `calculate_log_cpg_ratio`
 
-Calculates the log-transformed Observed/Expected CpG ratio.
+Calculates the normalized Observed/Expected CpG ratio score.
 
 **Signature:**
 ```python
@@ -71,20 +71,19 @@ def calculate_log_cpg_ratio(
 ) -> float
 ```
 
-**Formula:**
-\[ Score = \log_2 \left( \frac{\text{Obs}_{\text{CG}} + \epsilon}{\text{Exp}_{\text{CG}} + \epsilon} \right) \]
+**Formula (Unnormalized):**
+\[ Val = \log_2 \left( \frac{\text{Obs}_{\text{CG}} + \epsilon}{\text{Exp}_{\text{CG}} + \epsilon} \right) \]
 where:
 *   \(\text{Obs}_{\text{CG}}\) is the count of CG dinucleotides.
 *   \(\text{Exp}_{\text{CG}} = \frac{\text{Count(C)} \times \text{Count(G)}}{L}\) (where \(L\) is the full sequence length, including Ns).
 
 **Behavior:**
 *   **Input:** Supports single strings only.
-*   **Non-ACGT Characters:** 'N's (and other non-ACGT characters) are included in the sequence length \(L\), which dilutes the expected CpG count compared to a sequence of only valid bases.
-*   **Values:**
-    *   `0.0`: Neutral (Observed ≈ Expected).
-    *   `> 0`: Enriched (CpG Island-like).
-    *   `< 0`: Depleted (Methylation suppression).
-*   **Normalization:** If `normalize=True`, the score is transformed using \(( \tanh(\text{score} / 2) + 1 ) / 2\). This maps the result to \((0, 1)\), with 0.5 representing neutral.
+*   **Normalization:** If `normalize=True` (default), the log-ratio \( Val \) is transformed using a logistic sigmoid: \[ Score = \frac{\tanh(Val / 2) + 1}{2} \]
+    *   **Range:** `[0, 1]`
+    *   **Neutral (Val=0, Ratio=1):** Maps to `0.5`.
+    *   **Enriched (Val>0):** Maps to `(0.5, 1]`. Typical CpG islands (>0.6 ratio) map to >0.7.
+    *   **Depleted (Val<0):** Maps to `[0, 0.5)`.
 *   **Epsilon:** A smoothing factor (default `1.0`) to prevent division by zero or log of zero and to dampen ratios for sequences with low counts.
 
 **Example:**
@@ -93,9 +92,9 @@ from cerberus.complexity import calculate_log_cpg_ratio
 
 # CpG Island-like
 score = calculate_log_cpg_ratio("CGCGCGCG")
-# Returns: ~1.0 (2x enrichment)
+# Returns: ~0.64 (Enriched)
 
 # Depleted
 score = calculate_log_cpg_ratio("CCTTTTGG")
-# Returns: Very negative
+# Returns: ~0.36 (Depleted)
 ```

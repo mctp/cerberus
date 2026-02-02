@@ -155,13 +155,13 @@ Calculates the fraction of G and C nucleotides.
 Calculates sequence complexity based on k-mer repetition. Higher scores indicate lower complexity (more repetitive).
 *   **Function**: `calculate_dust_score(sequence, k=3)`
 *   **Input**: String, List of Strings, or One-Hot Tensor.
-*   **Output**: Float score.
+*   **Output**: Normalized Float score (0.0 to ~1.0).
 
-### CpG Ratio
-Calculates the log-transformed observed/expected CpG ratio.
+### Normalized CpG Score
+Calculates the normalized observed/expected CpG ratio.
 *   **Function**: `calculate_log_cpg_ratio(sequence)`
 *   **Input**: String, List of Strings, or One-Hot Tensor.
-*   **Output**: Float score (Log2 ratio).
+*   **Output**: Normalized Float score (0.0 to 1.0).
 
 ## Transforms
 

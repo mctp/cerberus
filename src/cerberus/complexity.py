@@ -1,5 +1,10 @@
 import math
+from typing import Iterable
+from pathlib import Path
 import numpy as np
+import pyfaidx
+
+from cerberus.interval import Interval
 
 
 def calculate_gc_content(sequence: str) -> float:
@@ -82,7 +87,15 @@ def calculate_dust_score(
     val = float(score / (seq_len - k + 1))
     
     if normalize:
-        return math.tanh(math.log(val + 1) / 2)
+        # Expected random val
+        exp_random = max((seq_len - k + 1) / (2 * 4**k), 1e-9)
+        # Ratio of Observed / Expected
+        ratio = (val + 1e-9) / exp_random
+        # Log of ratio. Random ~ 1 -> log(1)=0. Repeat >> 1 -> log(high) -> 1.
+        # We use tanh(log(ratio)/1.5) which spreads out the low-to-medium scores.
+        # k=1.5 maps ratios ~2.0 to ~0.4, utilizing more of the 0-1 range for actual targets.
+        norm_val = math.tanh(math.log(ratio) / 1.5)
+        return max(0.0, norm_val)
     return val
 
 
@@ -130,5 +143,48 @@ def calculate_log_cpg_ratio(
     val = math.log2(ratio)
     
     if normalize:
-        return (math.tanh(val / 2) + 1.0) / 2.0
+        # Normalize to spread scores. Random DNA (ratio ~1, val ~0) maps to ~0.5.
+        # Uses logistic sigmoid: (tanh(val/2) + 1) / 2
+        # Maps:
+        #   Depleted (val < 0) -> [0, 0.5)
+        #   Neutral  (val = 0) -> 0.5
+        #   Enriched (val > 0) -> (0.5, 1]
+        return (math.tanh(val / 2) + 1) / 2
     return val
+
+
+def compute_intervals_complexity(
+    intervals: Iterable[Interval],
+    fasta_path: Path | str
+) -> np.ndarray:
+    """
+    Computes GC content, Dust score, and Log CpG ratio for a collection of intervals.
+
+    Args:
+        intervals: Iterable of Interval objects.
+        fasta_path: Path to the genome FASTA file.
+
+    Returns:
+        np.ndarray: A (N, 3) array where columns are [GC, Dust, CpG].
+    """
+    metrics = []
+    fasta = pyfaidx.Fasta(str(fasta_path))
+
+    for interval in intervals:
+        try:
+            if interval.chrom in fasta:
+                # pyfaidx expects 0-based [start:end]
+                seq_obj = fasta[interval.chrom][interval.start : interval.end]
+                seq = str(seq_obj)
+                
+                gc = calculate_gc_content(seq)
+                dust = calculate_dust_score(seq, normalize=True)
+                cpg = calculate_log_cpg_ratio(seq, normalize=True)
+                
+                metrics.append([gc, dust, cpg])
+            else:
+                metrics.append([np.nan, np.nan, np.nan])
+        except Exception:
+            metrics.append([np.nan, np.nan, np.nan])
+
+    return np.array(metrics, dtype=np.float32)

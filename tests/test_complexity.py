@@ -51,19 +51,18 @@ def test_dust_score_Ns():
 
 def test_dust_score_normalize():
     # AAAAAAAA (8) k=3. Raw Score = 2.5.
-    # Normalize uses tanh(ln(score + 1) / 2).
-    # ln(3.5) approx 1.25276 -> /2 -> 0.626
-    # tanh(0.626) approx 0.555
+    # Exp Random = 6/128 = 0.046875. Ratio = 2.5/0.046875 = 53.33. Log = 3.976.
+    # Norm = tanh(3.976 / 1.5) = tanh(2.651) = 0.990.
     res = calculate_dust_score("AAAAAAAA", k=3, normalize=True)
     assert isinstance(res, float)
-    assert abs(res - 0.555) < 1e-3
+    assert abs(res - 0.990) < 1e-3
     
     # ATATATAT (8). Raw Score = 1.0.
-    # ln(2.0) approx 0.6931 -> /2 -> 0.346
-    # tanh(0.346) approx 0.333
+    # Ratio = 1.0/0.046875 = 21.33. Log = 3.06.
+    # Norm = tanh(3.06 / 1.5) = tanh(2.04) = 0.967.
     res2 = calculate_dust_score("ATATATAT", k=3, normalize=True)
     assert isinstance(res2, float)
-    assert abs(res2 - 0.333) < 1e-3
+    assert abs(res2 - 0.967) < 1e-3
 
 def test_dust_score_k_value_error():
     with pytest.raises(ValueError, match="k must be <= 5"):
@@ -85,6 +84,13 @@ def test_dust_comprehensive_normalization():
         ("NNNN", 0.5)        # N repeat (L=4, k=3, M=2. "NNN" count=2. Score=2*1/2=1. Norm=1/2=0.5)
     ]
     
+    # Helper to calc expected norm
+    def expected_norm_func(raw, seq_len, k=3):
+        if seq_len < k: return 0.0
+        exp_random = max((seq_len - k + 1) / (2 * 4**k), 1e-9)
+        ratio = (raw + 1e-9) / exp_random
+        return np.tanh(np.log(ratio) / 1.5)
+
     for seq, expected_raw in test_cases:
         # Check Unnormalized
         raw = calculate_dust_score(seq, k=3, normalize=False)
@@ -92,8 +98,11 @@ def test_dust_comprehensive_normalization():
         
         # Check Normalized
         norm = calculate_dust_score(seq, k=3, normalize=True)
-        expected_norm = np.tanh(np.log(raw + 1) / 2)
-        assert abs(norm - expected_norm) < 1e-6, f"Norm mismatch for {seq}"
+        exp_norm = expected_norm_func(raw, len(seq), k=3)
+        # Use max(0, val) as in impl
+        exp_norm = max(0.0, exp_norm)
+        
+        assert abs(norm - exp_norm) < 1e-6, f"Norm mismatch for {seq}"
         assert 0.0 <= norm < 1.0
 
 # --- CpG Ratio Tests ---

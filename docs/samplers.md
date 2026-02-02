@@ -62,6 +62,15 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
     3.  Re-computes GC matches and selects a new subset of indices.
     4.  Note: The `target_sampler` is **not** automatically resampled, as it is assumed to be the fixed reference (e.g., peaks).
 
+### ComplexityMatchedSampler
+*   **Function**: Selects a subset of intervals from a `candidate_sampler` to match the distributional properties of a `target_sampler` in terms of 3 complexity metrics: **GC Content**, **Normalized Dust Score**, and **Normalized CpG Score**.
+*   **Seeding**: The `seed` controls the random selection of candidates from the 3D complexity bins.
+*   **Resampling**:
+    1.  Updates self-seed.
+    2.  Derives a new seed for the `candidate_sampler` and resamples it.
+    3.  Re-computes complexity metrics for candidates and matches the target distribution by binning in 3D space.
+    4.  Note: The `target_sampler` is **not** automatically resampled.
+
 ### ScaledSampler
 *   **Function**: Subsamples or oversamples another sampler to a fixed size.
 *   **Seeding**: The `seed` controls the random selection of indices.
