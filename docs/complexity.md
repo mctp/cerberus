@@ -12,17 +12,14 @@ Calculates the GC content (fraction of G and C nucleotides) of a sequence.
 
 **Signature:**
 ```python
-def calculate_gc_content(sequence: str | torch.Tensor | Sequence[str]) -> float | List[float]
+def calculate_gc_content(sequence: str) -> float
 ```
 
 **Args:**
-*   `sequence`: Input DNA sequence(s). Supports:
-    *   Single string (e.g., `"ACGT"`)
-    *   List of strings
-    *   One-hot encoded `torch.Tensor` (shape `(4, L)` for single, or `(B, 4, L)` for batch)
+*   `sequence`: Input DNA sequence (string).
 
 **Returns:**
-*   `float` (for single input) or `List[float]` (for batch input): The GC content ratio (0.0 to 1.0).
+*   `float`: The GC content ratio (0.0 to 1.0).
 
 ---
 
@@ -33,10 +30,10 @@ Calculates the DUST score, a measure of low-complexity regions based on k-mer re
 **Signature:**
 ```python
 def calculate_dust_score(
-    sequence: str | torch.Tensor | Sequence[str],
+    sequence: str,
     k: int = 3,
-    normalize: bool = False
-) -> float | List[float]
+    normalize: bool = True
+) -> float
 ```
 
 **Formula:**
@@ -44,10 +41,11 @@ def calculate_dust_score(
 where \(c_i\) is the count of the \(i\)-th unique k-mer in the sequence, and \(L\) is the sequence length.
 
 **Behavior:**
-*   **Input:** Supports single strings, lists of strings, and one-hot tensors.
+*   **Input:** Supports single strings only.
+*   **k:** The k-mer length (default 3). Must be \(\le 5\).
 *   **Non-ACGT Characters:** Characters like 'N' are treated as a distinct 5th base type (index 4). For example, "NNN" is treated as a repeat of the "N" base, contributing to the complexity score.
 *   **Interpretation:** Higher scores indicate lower complexity (more repetition). A sequence like "AAAAAAAA" has a high DUST score, while a random sequence has a low score.
-*   **Normalization:** If `normalize=True`, the raw score is passed through `tanh`. This maps the unbounded score `[0, inf)` to `[0, 1)`, providing a non-linear scaling that saturates for highly repetitive sequences.
+*   **Normalization:** If `normalize=True`, the raw score is transformed using \(\tanh(\ln(\text{Score} + 1) / 2)\). This maps the unbounded score `[0, inf)` to `[0, 1)`, providing a non-linear scaling that saturates for highly repetitive sequences.
 
 **Example:**
 ```python
@@ -56,10 +54,6 @@ from cerberus.complexity import calculate_dust_score
 # Single sequence
 score = calculate_dust_score("AAAAAAAA", k=3)
 # Returns: 2.5
-
-# Batch
-scores = calculate_dust_score(["AAAAAAAA", "ACGTACGT"], k=3)
-# Returns: [2.5, 0.2]
 ```
 
 ---
@@ -71,9 +65,10 @@ Calculates the log-transformed Observed/Expected CpG ratio.
 **Signature:**
 ```python
 def calculate_log_cpg_ratio(
-    sequence: str | torch.Tensor | Sequence[str] | np.ndarray,
-    epsilon: float = 1e-6
-) -> float | List[float]
+    sequence: str,
+    epsilon: float = 1.0,
+    normalize: bool = True
+) -> float
 ```
 
 **Formula:**
@@ -83,14 +78,14 @@ where:
 *   \(\text{Exp}_{\text{CG}} = \frac{\text{Count(C)} \times \text{Count(G)}}{L}\) (where \(L\) is the full sequence length, including Ns).
 
 **Behavior:**
-*   **Input:** Supports single strings, lists of strings, one-hot tensors, and numpy arrays.
+*   **Input:** Supports single strings only.
 *   **Non-ACGT Characters:** 'N's (and other non-ACGT characters) are included in the sequence length \(L\), which dilutes the expected CpG count compared to a sequence of only valid bases.
 *   **Values:**
     *   `0.0`: Neutral (Observed ≈ Expected).
     *   `> 0`: Enriched (CpG Island-like).
     *   `< 0`: Depleted (Methylation suppression).
-*   **Normalization:** If `normalize=True`, the score is transformed using \(( \tanh(\text{score}) + 1 ) / 2\). This maps the result to \((0, 1)\), with 0.5 representing neutral.
-*   **Epsilon:** A small smoothing factor (default `1e-6`) to prevent division by zero or log of zero.
+*   **Normalization:** If `normalize=True`, the score is transformed using \(( \tanh(\text{score} / 2) + 1 ) / 2\). This maps the result to \((0, 1)\), with 0.5 representing neutral.
+*   **Epsilon:** A smoothing factor (default `1.0`) to prevent division by zero or log of zero and to dampen ratios for sequences with low counts.
 
 **Example:**
 ```python
