@@ -155,19 +155,30 @@ def calculate_log_cpg_ratio(
 
 def compute_intervals_complexity(
     intervals: Iterable[Interval],
-    fasta_path: Path | str
+    fasta_path: Path | str,
+    metrics: list[str] | None = None
 ) -> np.ndarray:
     """
-    Computes GC content, Dust score, and Log CpG ratio for a collection of intervals.
+    Computes selected complexity metrics for a collection of intervals.
 
     Args:
         intervals: Iterable of Interval objects.
         fasta_path: Path to the genome FASTA file.
+        metrics: List of metrics to compute. Options: 'gc', 'dust', 'cpg'.
+                 If None, computes all.
 
     Returns:
-        np.ndarray: A (N, 3) array where columns are [GC, Dust, CpG].
+        np.ndarray: A (N, M) array where columns correspond to the requested metrics in order.
     """
-    metrics = []
+    if metrics is None:
+        metrics = ["gc", "dust", "cpg"]
+        
+    valid_metrics = {"gc", "dust", "cpg"}
+    for m in metrics:
+        if m not in valid_metrics:
+            raise ValueError(f"Invalid metric: {m}. Options: {valid_metrics}")
+
+    results = []
     fasta = pyfaidx.Fasta(str(fasta_path))
 
     for interval in intervals:
@@ -177,14 +188,18 @@ def compute_intervals_complexity(
                 seq_obj = fasta[interval.chrom][interval.start : interval.end]
                 seq = str(seq_obj)
                 
-                gc = calculate_gc_content(seq)
-                dust = calculate_dust_score(seq, normalize=True)
-                cpg = calculate_log_cpg_ratio(seq, normalize=True)
-                
-                metrics.append([gc, dust, cpg])
+                row = []
+                for m in metrics:
+                    if m == "gc":
+                        row.append(calculate_gc_content(seq))
+                    elif m == "dust":
+                        row.append(calculate_dust_score(seq, normalize=True))
+                    elif m == "cpg":
+                        row.append(calculate_log_cpg_ratio(seq, normalize=True))
+                results.append(row)
             else:
-                metrics.append([np.nan, np.nan, np.nan])
+                results.append([np.nan] * len(metrics))
         except Exception:
-            metrics.append([np.nan, np.nan, np.nan])
+            results.append([np.nan] * len(metrics))
 
-    return np.array(metrics, dtype=np.float32)
+    return np.array(results, dtype=np.float32)

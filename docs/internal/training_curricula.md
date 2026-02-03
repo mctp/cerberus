@@ -40,8 +40,8 @@ This document evaluates the current codebase's support for these paradigms and p
 **Status**: Partially supported (requires specific configuration).
 *   **`MultiSampler`**: Designed to mix different data sources (e.g., "peaks" vs "random") with configurable `scaling_factors`.
 *   **Resampling**: `MultiSampler.resample(seed)` re-draws indices based on the scaling factors. This allows changing the ratio of positive/negative examples.
-*   **Constraint - `GCMatchedSampler`**: This sampler pre-computes GC content matching based on the *initial* state of the candidate sampler. Dynamic changes to the underlying candidate sampler (e.g., changing its size) are **not** automatically propogated and would require expensive re-computation.
-    *   *Recommendation*: Avoid wrapping dynamic samplers inside `GCMatchedSampler`. Use `MultiSampler` as the top-level aggregator.
+*   **Constraint - `ComplexityMatchedSampler`**: This sampler pre-computes metrics (like GC content) matching based on the *initial* state of the candidate sampler. Dynamic changes to the underlying candidate sampler (e.g., changing its size) are **not** automatically propogated and would require expensive re-computation.
+    *   *Recommendation*: Avoid wrapping dynamic samplers inside `ComplexityMatchedSampler`. Use `MultiSampler` as the top-level aggregator.
 
 ### 3.3. Data Loading
 **Status**: Supported with overhead.
@@ -243,9 +243,9 @@ class MultiSampler(BaseSampler):
     ```
 3.  **Extensibility**: New samplers (e.g., `HardExampleMiningSampler`) can implement their own curriculum logic (e.g., updating the threshold for "hard" examples) without changing the callback code.
 
-### 8.4. Handling `GCMatchedSampler`
+### 8.4. Handling `ComplexityMatchedSampler`
 
-With this abstraction, `GCMatchedSampler` could implement `update_curriculum` to intelligently handle updates. For example, it could check if the underlying `candidate_sampler` has changed significantly and decide whether to trigger a potentially expensive GC re-computation, or use an approximation.
+With this abstraction, `ComplexityMatchedSampler` could implement `update_curriculum` to intelligently handle updates. For example, it could check if the underlying `candidate_sampler` has changed significantly and decide whether to trigger a potentially expensive metric re-computation, or use an approximation.
 
 ## 9. Trade-off Analysis & Recommendation
 

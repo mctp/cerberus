@@ -1,7 +1,7 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
-from cerberus.samplers import PeakSampler, IntervalSampler, RandomSampler, GCMatchedSampler
+from cerberus.samplers import PeakSampler, IntervalSampler, RandomSampler, ComplexityMatchedSampler
 from cerberus.interval import Interval
 from interlap import InterLap
 
@@ -9,8 +9,8 @@ from interlap import InterLap
 def mock_dependencies():
     with patch("cerberus.samplers.IntervalSampler") as mock_interval_sampler, \
          patch("cerberus.samplers.RandomSampler") as mock_random_sampler, \
-         patch("cerberus.samplers.GCMatchedSampler") as mock_gc_matched_sampler, \
-         patch("cerberus.samplers.compute_intervals_gc") as mock_compute_gc:
+         patch("cerberus.samplers.ComplexityMatchedSampler") as mock_complexity_matched_sampler, \
+         patch("cerberus.samplers.compute_intervals_complexity") as mock_compute_gc:
          
         # Setup mock return values
         mock_interval_instance = MagicMock(spec=IntervalSampler)
@@ -24,13 +24,13 @@ def mock_dependencies():
         mock_random_instance = MagicMock(spec=RandomSampler)
         mock_random_sampler.return_value = mock_random_instance
         
-        mock_gc_instance = MagicMock(spec=GCMatchedSampler)
-        mock_gc_matched_sampler.return_value = mock_gc_instance
+        mock_complexity_instance = MagicMock(spec=ComplexityMatchedSampler)
+        mock_complexity_matched_sampler.return_value = mock_complexity_instance
         
         yield {
             "interval_sampler": mock_interval_sampler,
             "random_sampler": mock_random_sampler,
-            "gc_matched_sampler": mock_gc_matched_sampler,
+            "complexity_matched_sampler": mock_complexity_matched_sampler,
             "compute_gc": mock_compute_gc
         }
 
@@ -58,9 +58,9 @@ def test_peak_sampler_init(mock_dependencies):
     assert call_args.kwargs["num_intervals"] == PeakSampler.MIN_CANDIDATES
     assert call_args.kwargs.get("generate_on_init") is False
     
-    # Verify GCMatchedSampler created (Negatives)
-    mock_dependencies["gc_matched_sampler"].assert_called_once()
-    assert mock_dependencies["gc_matched_sampler"].call_args.kwargs.get("generate_on_init") is False
+    # Verify ComplexityMatchedSampler created (Negatives)
+    mock_dependencies["complexity_matched_sampler"].assert_called_once()
+    assert mock_dependencies["complexity_matched_sampler"].call_args.kwargs.get("generate_on_init") is False
     
     # Check exclusions passed to RandomSampler include the peaks
     random_excludes = call_args.kwargs["exclude_intervals"]

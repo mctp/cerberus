@@ -206,7 +206,7 @@ Ensuring reproducibility in training runs involves two levels of randomness cont
     ```
 
 2.  **Dataset Composition (Samplers)**:
-    Some samplers, specifically `RandomSampler` and `GCMatchedSampler`, perform random selection logic (e.g., choosing 10,000 random intervals from the whole genome). To ensure that the **same set of intervals** is selected across different runs, you must provide a seed to the `CerberusDataModule` or `CerberusDataset` at run-time.
+    Some samplers, specifically `RandomSampler` and `ComplexityMatchedSampler`, perform random selection logic (e.g., choosing 10,000 random intervals from the whole genome). To ensure that the **same set of intervals** is selected across different runs, you must provide a seed to the `CerberusDataModule` or `CerberusDataset` at run-time.
 
     ```python
     # Ensure the sampler picks the same random intervals every time

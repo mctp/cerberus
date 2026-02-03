@@ -5,7 +5,7 @@ from interlap import InterLap
 from cerberus.samplers import (
     IntervalSampler,
     RandomSampler,
-    GCMatchedSampler,
+    ComplexityMatchedSampler,
     PeakSampler,
     MultiSampler,
     Sampler
@@ -102,7 +102,7 @@ def test_random_sampler_impossible():
     # Should result in 0 intervals and print warning (but not crash)
     assert len(sampler) == 0
 
-# --- GCMatchedSampler Tests ---
+# --- ComplexityMatchedSampler Tests ---
 
 @pytest.fixture
 def mock_fasta_simple(tmp_path):
@@ -114,7 +114,7 @@ def mock_fasta_simple(tmp_path):
     pyfaidx.Faidx(str(p))
     return p
 
-def test_gc_matched_sampler_no_matches(mock_fasta_simple):
+def test_complexity_matched_sampler_gc_no_matches(mock_fasta_simple):
     # Target: chr1 (100% GC)
     # Candidate: chr1 (100% GC) - wait, this will match.
     
@@ -140,12 +140,12 @@ def test_gc_matched_sampler_no_matches(mock_fasta_simple):
     chrom_sizes = {"chr1": 100, "chr2": 100}
     
     # Target: 1 interval on chr1
-    target_sampler = GCMatchedSamplerDummy([Interval("chr1", 0, 10, "+")])
+    target_sampler = MockSampler([Interval("chr1", 0, 10, "+")])
     
     # Candidate: 10 intervals on chr2
-    candidate_sampler = GCMatchedSamplerDummy([Interval("chr2", 0, 10, "+")] * 10)
+    candidate_sampler = MockSampler([Interval("chr2", 0, 10, "+")] * 10)
     
-    sampler = GCMatchedSampler(
+    sampler = ComplexityMatchedSampler(
         target_sampler=target_sampler,
         candidate_sampler=candidate_sampler,
         fasta_path=p,
@@ -154,13 +154,14 @@ def test_gc_matched_sampler_no_matches(mock_fasta_simple):
         folds=[],
         bins=10,
         match_ratio=1.0,
-        seed=42
+        seed=42,
+        metrics=["gc"]
     )
     
     # Should find NO matches
     assert len(sampler) == 0
 
-class GCMatchedSamplerDummy(Sampler):
+class MockSampler(Sampler):
     def __init__(self, intervals):
         self.intervals = intervals
         self.chrom_sizes = {}

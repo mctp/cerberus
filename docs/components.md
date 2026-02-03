@@ -55,11 +55,12 @@ Samples random intervals from the genome, respecting exclusions.
 *   **Behavior**: Generates `num_intervals` random intervals that do not overlap with `exclude_intervals`.
 *   **Dynamic**: Supports `resample(seed)` to generate a fresh set of random intervals for each epoch.
 
-### GCMatchedSampler
-Selects candidates from a `candidate_sampler` (e.g., RandomSampler) that match the GC content distribution of a `target_sampler` (e.g., IntervalSampler of peaks).
-*   **Use Case**: Creating balanced datasets where negatives match positives in GC content, removing GC bias.
-*   **Behavior**: Pre-computes GC content for all intervals and bins targets. Samples candidates from corresponding bins to match the target distribution.
-    *   **`match_ratio`**: Controls the ratio of candidates to targets in each GC bin (default: 1.0).
+### ComplexityMatchedSampler
+Selects candidates from a `candidate_sampler` (e.g., RandomSampler) that match the distributional properties of a `target_sampler` (e.g., IntervalSampler of peaks).
+*   **Use Case**: Creating balanced datasets where negatives match positives in complexity metrics (GC, DUST, CpG), removing bias.
+*   **Behavior**: Pre-computes metrics for all intervals and bins targets. Samples candidates from corresponding bins to match the target distribution.
+    *   **`metrics`**: List of metrics to match (e.g., `["gc"]` for GC-matching, `["gc", "dust"]` for multi-metric matching).
+    *   **`match_ratio`**: Controls the ratio of candidates to targets in each bin (default: 1.0).
         *   `1.0`: Selects an equal number of candidates as targets (1:1 balanced).
         *   `> 1.0`: Selects more candidates (e.g., `2.0` for 2:1 negatives to positives).
         *   `< 1.0`: Selects fewer candidates.
@@ -83,7 +84,7 @@ The `resample(seed)` method allows dynamic samplers to regenerate their internal
     *   **Dynamic Subsampling**: Randomly selecting a new subset of negatives each epoch.
     *   **Oversampling**: Re-drawing samples with replacement.
     *   **Shuffling**: Ensuring a new random order of mixed samples.
-*   **GCMatchedSampler**: Re-selects candidate intervals from the `candidate_sampler` to maintain the GC match with the target. Crucially, it also propagates resampling to the `candidate_sampler` (e.g., refreshing the pool of random background sites).
+*   **ComplexityMatchedSampler**: Re-selects candidate intervals from the `candidate_sampler` to maintain the match with the target. Crucially, it also propagates resampling to the `candidate_sampler` (e.g., refreshing the pool of random background sites).
 *   **RandomSampler**: Regenerates its list of random intervals using the new seed.
 *   **Base Samplers**: Static samplers like `IntervalSampler` and `SlidingWindowSampler` generally have a no-op `resample` method, as their interval set is fixed.
 

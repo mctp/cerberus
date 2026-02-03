@@ -9,7 +9,6 @@ from interlap import InterLap
 from .interval import Interval
 from .config import SamplerConfig
 from .exclude import is_excluded
-from .sequence import compute_intervals_gc
 from .complexity import compute_intervals_complexity
 
 
@@ -124,7 +123,7 @@ class Sampler(Protocol):
         """
         Resamples the intervals for the next epoch/iteration.
 
-        This method is used by dynamic samplers (e.g. MultiSampler, GCMatchedSampler)
+        This method is used by dynamic samplers (e.g. MultiSampler, ComplexityMatchedSampler)
         to regenerate or re-shuffle the list of intervals. This is critical for:
         1. Subsampling/Oversampling: Generating a new random subset of data.
         2. Shuffling: Ensuring a different order of examples (if not handled by DataLoader).
@@ -286,7 +285,7 @@ class MultiSampler(BaseSampler):
             self.seed = self.rng.getrandbits(32)
             self.rng = random.Random(self.seed)
 
-        # Propagate resample to sub-samplers (e.g. GCMatchedSampler needs to pick new candidates)
+        # Propagate resample to sub-samplers (e.g. ComplexityMatchedSampler needs to pick new candidates)
         sub_seeds = generate_sub_seeds(self.seed, len(self.samplers))
         for sampler, sub_seed in zip(self.samplers, sub_seeds):
             sampler.resample(sub_seed)
@@ -915,206 +914,14 @@ class ScaledSampler(ProxySampler):
         )
 
 
-class GCMatchedSampler(ProxySampler):
-    """
-    Selects candidates from a candidate_sampler that match the GC content distribution
-    of a target_sampler.
-
-    This sampler bins the target intervals by their GC content and then selects
-    intervals from the candidate sampler to match the count in each bin, scaled
-    by `match_ratio`.
-
-    For example, if a bin has 100 target intervals and `match_ratio` is 1.0,
-    the sampler will attempt to select 100 candidate intervals falling into that
-    same GC bin. If `match_ratio` is 2.0, it will attempt to select 200.
-    """
-
-    def __init__(
-        self,
-        target_sampler: Sampler,
-        candidate_sampler: Sampler,
-        fasta_path: Path | str,
-        chrom_sizes: dict[str, int],
-        folds: list[dict[str, InterLap]] | None = None,
-        exclude_intervals: dict[str, InterLap] | None = None,
-        bins: int = 100,
-        match_ratio: float = 1.0,
-        seed: int | None = None,
-        generate_on_init: bool = True,
-    ):
-        """
-        Args:
-            target_sampler: Sampler defining the desired GC distribution (e.g., peaks).
-            candidate_sampler: Sampler to select from (e.g., random background).
-            fasta_path: Path to the genome FASTA file for computing GC content.
-            chrom_sizes: Dictionary of chromosome sizes.
-            folds: Fold definitions.
-            exclude_intervals: Dictionary of excluded regions.
-            bins: Number of bins to use for GC content histogram (default: 100).
-            match_ratio: Ratio of candidate samples to target samples per GC bin.
-                         - 1.0: 1:1 matching (same number of negatives as positives per bin).
-                         - 2.0: 2:1 matching (twice as many negatives).
-                         - 0.5: 0.5:1 matching (half as many negatives).
-            seed: Random seed for sampling candidates.
-            generate_on_init: Whether to generate samples immediately (default: True).
-        """
-        super().__init__(
-            chrom_sizes=chrom_sizes,
-            folds=folds,
-            exclude_intervals=exclude_intervals,
-        )
-        self.target_sampler = target_sampler
-        self.candidate_sampler = candidate_sampler
-        self.fasta_path = Path(fasta_path)
-        self.bins = bins
-        self.match_ratio = match_ratio
-        self.seed = seed
-        self.rng = random.Random(seed)
-
-        # Pre-compute GC content
-        self.target_gc = compute_intervals_gc(self.target_sampler, self.fasta_path)
-        self.candidate_gc = []  # Computed in resample()
-
-        self._indices: list[int] = []  # Indices into candidate_sampler
-        if generate_on_init:
-            self.resample()
-
-    def resample(self, seed: int | None = None) -> None:
-        """
-        Resamples candidate intervals to match the target GC distribution.
-
-        This re-draws candidates from the candidate_sampler to ensure that the
-        active set of intervals maintains the desired GC match ratio with the target.
-
-        Args:
-            seed: Seed for the random number generator used for sampling.
-        """
-        if seed is not None:
-            self.seed = seed
-            self.rng = random.Random(self.seed)
-        else:
-            # Advance seed using current RNG state
-            self.seed = self.rng.getrandbits(32)
-            self.rng = random.Random(self.seed)
-
-        # Reset candidate sampler deterministically
-        cand_seed = self.rng.getrandbits(32)
-        self.candidate_sampler.resample(cand_seed)
-
-        # Re-compute GC content as candidate intervals have changed
-        self.candidate_gc = compute_intervals_gc(self.candidate_sampler, self.fasta_path)
-
-        self._indices = match_bin_counts(
-            target_metrics=self.target_gc,
-            candidate_metrics=self.candidate_gc,
-            bins=self.bins,
-            match_ratio=self.match_ratio,
-            rng=self.rng
-        )
-
-    def __iter__(self) -> Iterator[Interval]:
-        for idx in self._indices:
-            yield self.candidate_sampler[idx]
-
-    def __len__(self) -> int:
-        return len(self._indices)
-
-    def __getitem__(self, idx: int) -> Interval:
-        real_idx = self._indices[idx]
-        return self.candidate_sampler[real_idx]
-
-    def split_folds(
-        self, test_fold: int | None = None, val_fold: int | None = None
-    ) -> tuple["GCMatchedSampler", "GCMatchedSampler", "GCMatchedSampler"]:
-        
-        target_splits = self.target_sampler.split_folds(test_fold, val_fold)
-        candidate_splits = self.candidate_sampler.split_folds(test_fold, val_fold)
-
-        s1, s2, s3 = generate_sub_seeds(self.seed, 3)
-
-        return (
-            GCMatchedSampler(
-                target_splits[0],
-                candidate_splits[0],
-                self.fasta_path,
-                self.chrom_sizes,
-                self.folds,
-                self.exclude_intervals,
-                self.bins,
-                self.match_ratio,
-                s1,
-            ),
-            GCMatchedSampler(
-                target_splits[1],
-                candidate_splits[1],
-                self.fasta_path,
-                self.chrom_sizes,
-                self.folds,
-                self.exclude_intervals,
-                self.bins,
-                self.match_ratio,
-                s2,
-            ),
-            GCMatchedSampler(
-                target_splits[2],
-                candidate_splits[2],
-                self.fasta_path,
-                self.chrom_sizes,
-                self.folds,
-                self.exclude_intervals,
-                self.bins,
-                self.match_ratio,
-                s3,
-            ),
-        )
-
-
-        return (
-            GCMatchedSampler(
-                target_splits[0],
-                candidate_splits[0],
-                self.fasta_path,
-                self.chrom_sizes,
-                self.folds,
-                self.exclude_intervals,
-                self.bins,
-                self.match_ratio,
-                s1,
-            ),
-            GCMatchedSampler(
-                target_splits[1],
-                candidate_splits[1],
-                self.fasta_path,
-                self.chrom_sizes,
-                self.folds,
-                self.exclude_intervals,
-                self.bins,
-                self.match_ratio,
-                s2,
-            ),
-            GCMatchedSampler(
-                target_splits[2],
-                candidate_splits[2],
-                self.fasta_path,
-                self.chrom_sizes,
-                self.folds,
-                self.exclude_intervals,
-                self.bins,
-                self.match_ratio,
-                s3,
-            ),
-        )
-
-
 class ComplexityMatchedSampler(ProxySampler):
     """
     Selects candidates from a candidate_sampler that match the distributional properties
-    of a target_sampler in terms of 3 complexity metrics:
-    - GC content
-    - Dust score
-    - Log CpG ratio
+    of a target_sampler.
 
-    This sampler bins the target intervals by their 3 complexity metrics and then selects
+    Matches on a specified list of complexity metrics: 'gc', 'dust', 'cpg'.
+
+    This sampler bins the target intervals by their metrics and then selects
     intervals from the candidate sampler to match the count in each bin, scaled
     by `match_ratio`.
     """
@@ -1131,6 +938,7 @@ class ComplexityMatchedSampler(ProxySampler):
         match_ratio: float = 1.0,
         seed: int | None = None,
         generate_on_init: bool = True,
+        metrics: list[str] | str = "complexity",
     ):
         super().__init__(
             chrom_sizes=chrom_sizes,
@@ -1144,9 +952,18 @@ class ComplexityMatchedSampler(ProxySampler):
         self.match_ratio = match_ratio
         self.seed = seed
         self.rng = random.Random(seed)
+        
+        if metrics == "complexity":
+             self.metrics = ["gc", "dust", "cpg"]
+        elif metrics == "gc":
+             self.metrics = ["gc"]
+        elif isinstance(metrics, str):
+             self.metrics = [metrics]
+        else:
+             self.metrics = metrics
 
         # Pre-compute target metrics
-        self.target_metrics = compute_intervals_complexity(self.target_sampler, self.fasta_path)
+        self.target_metrics = compute_intervals_complexity(self.target_sampler, self.fasta_path, self.metrics)
         self.candidate_metrics = None  # Computed in resample()
 
         self._indices: list[int] = []  # Indices into candidate_sampler
@@ -1164,7 +981,7 @@ class ComplexityMatchedSampler(ProxySampler):
         cand_seed = self.rng.getrandbits(32)
         self.candidate_sampler.resample(cand_seed)
 
-        self.candidate_metrics = compute_intervals_complexity(self.candidate_sampler, self.fasta_path)
+        self.candidate_metrics = compute_intervals_complexity(self.candidate_sampler, self.fasta_path, self.metrics)
 
         self._indices = match_bin_counts(
             target_metrics=self.target_metrics,
@@ -1173,7 +990,7 @@ class ComplexityMatchedSampler(ProxySampler):
             match_ratio=self.match_ratio,
             rng=self.rng
         )
-        
+
     def __iter__(self) -> Iterator[Interval]:
         for idx in self._indices:
             yield self.candidate_sampler[idx]
@@ -1205,6 +1022,8 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.bins,
                 self.match_ratio,
                 s1,
+                generate_on_init=True,
+                metrics=self.metrics,
             ),
             ComplexityMatchedSampler(
                 target_splits[1],
@@ -1216,6 +1035,8 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.bins,
                 self.match_ratio,
                 s2,
+                generate_on_init=True,
+                metrics=self.metrics,
             ),
             ComplexityMatchedSampler(
                 target_splits[2],
@@ -1227,6 +1048,8 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.bins,
                 self.match_ratio,
                 s3,
+                generate_on_init=True,
+                metrics=self.metrics,
             ),
         )
 
@@ -1321,7 +1144,7 @@ class PeakSampler(MultiSampler):
             )
 
             # 4. Negatives (GC Matched to Positives)
-            self.negatives = GCMatchedSampler(
+            self.negatives = ComplexityMatchedSampler(
                 target_sampler=self.positives,
                 candidate_sampler=self.candidates,
                 fasta_path=fasta_path,
@@ -1331,6 +1154,7 @@ class PeakSampler(MultiSampler):
                 match_ratio=background_ratio,
                 seed=None,
                 generate_on_init=False,
+                metrics=["gc"],
             )
             samplers.append(self.negatives)
         else:
@@ -1363,7 +1187,7 @@ def create_sampler(
         chrom_sizes: Chromosome sizes dictionary.
         folds: List of fold definitions.
         exclude_intervals: Dictionary of excluded regions.
-        fasta_path: Path to the genome FASTA file (required for GCMatchedSampler).
+        fasta_path: Path to the genome FASTA file (required for ComplexityMatchedSampler/PeakSampler).
         
     Returns:
         Sampler: An instantiated sampler object.
@@ -1406,47 +1230,6 @@ def create_sampler(
             seed=seed,
         )
 
-    elif sampler_type == "gc_matched":
-        if fasta_path is None:
-            raise ValueError("GCMatchedSampler requires 'fasta_path' to be provided.")
-
-        target_conf = sampler_args["target_sampler"]
-        candidate_conf = sampler_args["candidate_sampler"]
-
-        # Recursive creation
-        target_full_conf = {
-            "sampler_type": target_conf["type"],
-            "sampler_args": target_conf["args"],
-            "padded_size": padded_size,
-        }
-        candidate_full_conf = {
-            "sampler_type": candidate_conf["type"],
-            "sampler_args": candidate_conf["args"],
-            "padded_size": padded_size,
-        }
-
-        # Propagate seed to children
-        target_seed, candidate_seed = generate_sub_seeds(seed, 2)
-
-        target_sampler = create_sampler(
-            target_full_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=target_seed
-        )
-        candidate_sampler = create_sampler(
-            candidate_full_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=candidate_seed
-        )
-
-        return GCMatchedSampler(
-            target_sampler=target_sampler,
-            candidate_sampler=candidate_sampler,
-            fasta_path=fasta_path,
-            chrom_sizes=chrom_sizes,
-            folds=folds,
-            exclude_intervals=exclude_intervals,
-            bins=sampler_args["bins"],
-            match_ratio=sampler_args["match_ratio"],
-            seed=seed,
-        )
-
     elif sampler_type == "complexity_matched":
         if fasta_path is None:
             raise ValueError("ComplexityMatchedSampler requires 'fasta_path' to be provided.")
@@ -1486,6 +1269,7 @@ def create_sampler(
             bins=sampler_args["bins"],
             match_ratio=sampler_args["match_ratio"],
             seed=seed,
+            metrics=sampler_args["metrics"],
         )
 
     elif sampler_type == "peak":

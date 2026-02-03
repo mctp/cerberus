@@ -50,7 +50,7 @@ class SamplerConfig(TypedDict):
     Configuration for data samplers.
 
     Attributes:
-        sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random', 'gc_matched', 'peak').
+        sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random', 'complexity_matched', 'peak').
         padded_size: Length of the intervals yielded by the sampler (after padding/centering).
         sampler_args: Dictionary of arguments specific to the sampler type.
 
@@ -61,11 +61,12 @@ class SamplerConfig(TypedDict):
         - stride: Step size for generating sliding windows across the genome.
     - 'random':
         - num_intervals: Number of random intervals to generate.
-    - 'gc_matched':
-        - target_sampler: Configuration for the target sampler (dict with 'type' and 'args').
-        - candidate_sampler: Configuration for the candidate sampler (dict with 'type' and 'args').
-        - bins: Number of bins for GC content histogram (default: 100).
-        - match_ratio: Ratio of candidate samples to target samples per GC bin (default: 1.0).
+    - 'complexity_matched':
+        - target_sampler: Configuration for the target sampler.
+        - candidate_sampler: Configuration for the candidate sampler.
+        - bins: Number of bins.
+        - match_ratio: Ratio of candidates to targets.
+        - metrics: List of metrics (e.g. ['gc']).
     - 'peak':
         - intervals_path: Path to peaks file.
         - background_ratio: Ratio of background intervals to peaks (default: 1.0).
@@ -478,18 +479,6 @@ def validate_sampler_config(
         if not all(k in config["sampler_args"] for k in required_args):
             missing = required_args - config["sampler_args"].keys()
             raise ValueError(f"RandomSampler args missing required keys: {missing}")
-
-    elif config["sampler_type"] == "gc_matched":
-        for key in ["target_sampler", "candidate_sampler"]:
-            if key not in config["sampler_args"]:
-                raise ValueError(f"GCMatchedSampler requires '{key}' in sampler_args")
-            sub = config["sampler_args"][key]
-            if not isinstance(sub, dict):
-                raise TypeError(f"GCMatchedSampler '{key}' config must be a dictionary")
-            if "type" not in sub or "args" not in sub:
-                raise ValueError(
-                    f"GCMatchedSampler '{key}' config must contain 'type' and 'args'"
-                )
 
     elif config["sampler_type"] == "peak":
         required_args = {"intervals_path"}

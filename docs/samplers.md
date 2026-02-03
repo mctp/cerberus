@@ -4,7 +4,7 @@ Cerberus implements a rigorous strategy for handling randomness and seeding acro
 
 ## The Seeding Contract
 
-All samplers in Cerberus (`RandomSampler`, `MultiSampler`, `GCMatchedSampler`, etc.) adhere to a unified contract regarding initialization, resampling, and state propagation.
+All samplers in Cerberus (`RandomSampler`, `MultiSampler`, `ComplexityMatchedSampler`, etc.) adhere to a unified contract regarding initialization, resampling, and state propagation.
 
 ### 1. Initialization
 *   **Argument**: All samplers accept an optional `seed: int | None` argument in their constructor.
@@ -53,22 +53,14 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Seeding**: The `seed` controls the shuffling of the combined index list and the seed propagation to sub-samplers.
 *   **Resampling**: Updates self-seed, propagates derived seeds to all sub-samplers, and re-shuffles the combined index list.
 
-### GCMatchedSampler
-*   **Function**: Selects a subset of intervals from a `candidate_sampler` to match the GC content distribution of a `target_sampler`.
-*   **Seeding**: The `seed` controls the random selection of candidates from GC bins.
-*   **Resampling**:
-    1.  Updates self-seed.
-    2.  Derives a new seed for the `candidate_sampler` and resamples it (regenerating the background pool).
-    3.  Re-computes GC matches and selects a new subset of indices.
-    4.  Note: The `target_sampler` is **not** automatically resampled, as it is assumed to be the fixed reference (e.g., peaks).
-
 ### ComplexityMatchedSampler
-*   **Function**: Selects a subset of intervals from a `candidate_sampler` to match the distributional properties of a `target_sampler` in terms of 3 complexity metrics: **GC Content**, **Normalized Dust Score**, and **Normalized CpG Score**.
-*   **Seeding**: The `seed` controls the random selection of candidates from the 3D complexity bins.
+*   **Function**: Selects a subset of intervals from a `candidate_sampler` to match the distributional properties of a `target_sampler`.
+*   **Metrics**: Matches on a specified list of complexity metrics (e.g., `["gc"]`, `["gc", "dust"]`, or `["gc", "dust", "cpg"]`).
+*   **Seeding**: The `seed` controls the random selection of candidates from the N-dimensional complexity bins.
 *   **Resampling**:
     1.  Updates self-seed.
     2.  Derives a new seed for the `candidate_sampler` and resamples it.
-    3.  Re-computes complexity metrics for candidates and matches the target distribution by binning in 3D space.
+    3.  Re-computes selected complexity metrics for candidates and matches the target distribution by binning.
     4.  Note: The `target_sampler` is **not** automatically resampled.
 
 ### ScaledSampler

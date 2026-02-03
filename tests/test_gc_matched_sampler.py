@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 import random
-from cerberus.samplers import create_sampler, RandomSampler, GCMatchedSampler
+from cerberus.samplers import create_sampler, RandomSampler, ComplexityMatchedSampler
 from cerberus.sequence import calculate_gc_content
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def test_random_sampler():
     exclude_intervals = {}
     folds = []
     
-    sampler = RandomSampler(chrom_sizes, padded_size, num_intervals, exclude_intervals, folds, seed=42)
+    sampler = RandomSampler(chrom_sizes, padded_size, num_intervals, folds, exclude_intervals, seed=42)
     
     assert len(sampler) == num_intervals
     for interval in sampler:
@@ -48,7 +48,7 @@ def test_random_sampler():
         assert interval.start >= 0
         assert interval.end <= chrom_sizes[interval.chrom]
 
-def test_gc_matched_sampler(mock_fasta):
+def test_complexity_matched_sampler_gc_only(mock_fasta):
     # Setup:
     # Target: 10 intervals from chr1 (100% GC)
     # Candidate: 100 random intervals from chr1, chr2, chr3
@@ -66,7 +66,7 @@ def test_gc_matched_sampler(mock_fasta):
             f.write(f"chr1\t{i*10}\t{i*10+10}\n")
             
     config = {
-        "sampler_type": "gc_matched",
+        "sampler_type": "complexity_matched",
         "padded_size": 10,
         "sampler_args": {
             "target_sampler": {
@@ -78,15 +78,16 @@ def test_gc_matched_sampler(mock_fasta):
                 "args": {"num_intervals": 300} # Enough to likely hit all chroms
             },
             "bins": 10,
-            "match_ratio": 1.0
+            "match_ratio": 1.0,
+            "metrics": ["gc"]
         }
     }
     
     sampler = create_sampler(
-        config, chrom_sizes, {}, [], fasta_path=mock_fasta
+        config, chrom_sizes, [], {}, fasta_path=mock_fasta
     )
     
-    assert isinstance(sampler, GCMatchedSampler)
+    assert isinstance(sampler, ComplexityMatchedSampler)
     
     # Initial length should match target * ratio
     assert len(sampler) == 10
@@ -97,7 +98,7 @@ def test_gc_matched_sampler(mock_fasta):
     # Candidates from chr2 are 0% GC.
     # Candidates from chr3 are 50% GC.
     
-    # GCMatchedSampler should pick mostly chr1 candidates.
+    # ComplexityMatchedSampler with gc metric should pick mostly chr1 candidates.
     
     count_chr1 = 0
     count_chr2 = 0

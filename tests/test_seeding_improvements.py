@@ -4,7 +4,7 @@ from pathlib import Path
 from cerberus.samplers import (
     generate_sub_seeds,
     RandomSampler,
-    GCMatchedSampler,
+    ComplexityMatchedSampler,
 )
 from cerberus.interval import Interval
 
@@ -60,9 +60,9 @@ def test_random_sampler_resample_clears_list():
     rs.resample(43)
     assert len(rs) == 5
 
-def test_gc_matched_sampler_propagation():
+def test_complexity_matched_sampler_propagation():
     """
-    Verify that GCMatchedSampler propagates resampling to its candidate_sampler.
+    Verify that ComplexityMatchedSampler propagates resampling to its candidate_sampler.
     """
     class MockCandidateSampler:
         def __init__(self):
@@ -79,25 +79,26 @@ def test_gc_matched_sampler_propagation():
         def __getitem__(self, idx): raise IndexError
         def split_folds(self, t, v): return (self, self, self)
 
-    # Subclass GCMatchedSampler to mock dependencies
-    class TestGCMatchedSampler(GCMatchedSampler):
+    # Subclass ComplexityMatchedSampler to mock dependencies
+    class TestComplexityMatchedSampler(ComplexityMatchedSampler):
         def __init__(self, candidate_sampler, seed):
             self.candidate_sampler = candidate_sampler
             self.seed = seed
             self.match_ratio = 1.0
             self.bins = 100
             self.rng = random.Random(seed)
-            self.target_gc = []
-            self.candidate_gc = []
-            self.fasta_path = "dummy.fa" # Required for compute_intervals_gc
+            self.target_metrics = []
+            self.candidate_metrics = []
+            self.fasta_path = "dummy.fa" 
+            self.metrics = ["gc"]
             # Bypass heavy init of base class
             
     mock_candidate = MockCandidateSampler()
-    sampler = TestGCMatchedSampler(mock_candidate, seed=42)
+    sampler = TestComplexityMatchedSampler(mock_candidate, seed=42)
     
-    # Patch compute_intervals_gc to avoid actual file IO
+    # Patch compute_intervals_complexity to avoid actual file IO
     from unittest.mock import patch
-    with patch("cerberus.samplers.compute_intervals_gc") as mock_gc:
+    with patch("cerberus.samplers.compute_intervals_complexity") as mock_gc:
         mock_gc.return_value = []
         
         # Call resample

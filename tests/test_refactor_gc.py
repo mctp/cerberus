@@ -4,7 +4,7 @@ from pathlib import Path
 import random
 from cerberus.sequence import compute_intervals_gc
 from cerberus.interval import Interval
-from cerberus.samplers import GCMatchedSampler  # Ensure this imports without error
+from cerberus.samplers import ComplexityMatchedSampler  # Ensure this imports without error
 
 def create_dummy_fasta(path: Path, chroms: dict[str, str]):
     """Creates a dummy FASTA file."""

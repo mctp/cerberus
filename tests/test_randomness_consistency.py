@@ -1,7 +1,7 @@
 
 import unittest
 import random
-from cerberus.samplers import RandomSampler, MultiSampler, ScaledSampler, GCMatchedSampler, ListSampler
+from cerberus.samplers import RandomSampler, MultiSampler, ScaledSampler, ComplexityMatchedSampler, ListSampler
 from cerberus.interval import Interval
 from interlap import InterLap
 import cerberus.samplers
@@ -106,9 +106,9 @@ class TestRandomnessConsistency(unittest.TestCase):
         
         self.assertNotEqual(seed1, seed2, "MultiSampler split seeds should change after resample(None)")
 
-    def test_gc_matched_sampler_idempotency_unseeded(self):
+    def test_complexity_matched_sampler_idempotency_unseeded(self):
         """
-        Verify GCMatchedSampler idempotency when initialized with seed=None.
+        Verify ComplexityMatchedSampler idempotency when initialized with seed=None.
         Fixed behavior: It should self-seed and be idempotent.
         """
         chrom_sizes = {"chr1": 10000}
@@ -120,14 +120,15 @@ class TestRandomnessConsistency(unittest.TestCase):
         target = ListSampler(intervals, chrom_sizes, folds=folds)
         candidate = RandomSampler(chrom_sizes, padded_size, num_intervals=100, folds=folds, seed=123)
         
-        original_compute = cerberus.samplers.compute_intervals_gc
+        import numpy as np
+        original_compute = cerberus.samplers.compute_intervals_complexity
         try:
-            cerberus.samplers.compute_intervals_gc = lambda sampler, fasta: [0.5] * len(sampler)
+            cerberus.samplers.compute_intervals_complexity = lambda sampler, fasta, metrics: np.full((len(sampler), len(metrics)), 0.5)
             
             # Init with None
-            gc = GCMatchedSampler(target, candidate, "dummy.fa", chrom_sizes, folds, {}, seed=None)
+            gc = ComplexityMatchedSampler(target, candidate, "dummy.fa", chrom_sizes, folds, {}, seed=None, metrics=["gc"])
             
-            # Check self-seeding (Improvement: GCMatchedSampler should ideally have a seed now, 
+            # Check self-seeding (Improvement: ComplexityMatchedSampler should ideally have a seed now, 
             # but strict idempotency check is via split results)
             
             t1, v1, te1 = gc.split_folds(test_fold=0, val_fold=1)
@@ -136,15 +137,15 @@ class TestRandomnessConsistency(unittest.TestCase):
             # Check seeds of children
             # If self-seeding works, these should be derived from the locked-in self.seed
             # and thus should be equal.
-            self.assertEqual(te1.seed, te2.seed, "GCMatchedSampler splits should have same seeds (idempotent)")
+            self.assertEqual(te1.seed, te2.seed, "ComplexityMatchedSampler splits should have same seeds (idempotent)")
             
             indices1 = te1._indices
             indices2 = te2._indices
             
-            self.assertEqual(indices1, indices2, "GCMatchedSampler splits should be idempotent")
+            self.assertEqual(indices1, indices2, "ComplexityMatchedSampler splits should be idempotent")
             
         finally:
-            cerberus.samplers.compute_intervals_gc = original_compute
+            cerberus.samplers.compute_intervals_complexity = original_compute
 
     def test_scaled_sampler_seed_derivation(self):
         """

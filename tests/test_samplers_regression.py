@@ -8,7 +8,6 @@ from cerberus.samplers import (
     IntervalSampler,
     PeakSampler,
     RandomSampler,
-    GCMatchedSampler,
     ScaledSampler,
 )
 from cerberus.genome import create_genome_folds
@@ -197,17 +196,18 @@ def test_create_sampler_errors(chrom_sizes, folds):
     """
     Test error messages.
     """
-    # Missing fasta for gc_matched
+    # Missing fasta for complexity_matched
     config = {
-        "sampler_type": "gc_matched",
+        "sampler_type": "complexity_matched",
         "padded_size": 100,
         "sampler_args": {
             "target_sampler": {"type": "random", "args": {"num_intervals": 10}},
-            "candidate_sampler": {"type": "random", "args": {"num_intervals": 10}}
+            "candidate_sampler": {"type": "random", "args": {"num_intervals": 10}},
+            "metrics": ["gc"]
         }
     }
-    with pytest.raises(ValueError, match="requires 'fasta_path'"):
-        create_sampler(config, chrom_sizes, {}, folds, fasta_path=None)
+    with pytest.raises(ValueError, match="ComplexityMatchedSampler requires 'fasta_path'"):
+        create_sampler(config, chrom_sizes, folds, {}, fasta_path=None)
         
     # MultiSampler unsupported
     config_multi = {
@@ -218,5 +218,5 @@ def test_create_sampler_errors(chrom_sizes, folds):
         }
     }
     with pytest.raises(ValueError, match="Unsupported sampler type: multi"):
-        create_sampler(config_multi, chrom_sizes, {}, folds)
+        create_sampler(config_multi, chrom_sizes, folds, {})
 

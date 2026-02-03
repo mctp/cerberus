@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
-from cerberus.samplers import PeakSampler, IntervalSampler, RandomSampler, GCMatchedSampler, create_sampler
+from cerberus.samplers import PeakSampler, IntervalSampler, RandomSampler, ComplexityMatchedSampler, create_sampler
 from cerberus.interval import Interval
 from interlap import InterLap
 
@@ -14,7 +14,7 @@ class TestPeakSamplerNoBackground(unittest.TestCase):
         # Mock dependencies
         with patch("cerberus.samplers.IntervalSampler") as MockIntervalSampler, \
              patch("cerberus.samplers.RandomSampler") as MockRandomSampler, \
-             patch("cerberus.samplers.GCMatchedSampler") as MockGCMatchedSampler:
+             patch("cerberus.samplers.ComplexityMatchedSampler") as MockComplexityMatchedSampler:
 
             # Setup Mock IntervalSampler (Positives)
             positives = MagicMock(spec=IntervalSampler)
@@ -26,7 +26,7 @@ class TestPeakSamplerNoBackground(unittest.TestCase):
             
             MockIntervalSampler.return_value = positives
 
-            # We don't expect RandomSampler or GCMatchedSampler to be called
+            # We don't expect RandomSampler or ComplexityMatchedSampler to be called
             
             sampler = PeakSampler(
                 intervals_path="dummy_peaks.bed",
@@ -40,8 +40,8 @@ class TestPeakSamplerNoBackground(unittest.TestCase):
             # Check if RandomSampler was NOT initialized
             MockRandomSampler.assert_not_called()
             
-            # Check if GCMatchedSampler was NOT initialized
-            MockGCMatchedSampler.assert_not_called()
+            # Check if ComplexityMatchedSampler was NOT initialized
+            MockComplexityMatchedSampler.assert_not_called()
             
             # Check total length (should be 10)
             self.assertEqual(len(sampler), 10)
