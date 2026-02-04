@@ -66,15 +66,15 @@ Selects candidates from a `candidate_sampler` (e.g., RandomSampler) that match t
         *   `< 1.0`: Selects fewer candidates.
 
 ### PeakSampler
-A specialized sampler for training on peaks with a GC-matched background.
-*   **Use Case**: Standard ChIP-seq/ATAC-seq peak training where you want a balanced set of peaks (positives) and GC-matched non-peak genomic regions (negatives).
+A specialized sampler for training on peaks with a complexity-matched background.
+*   **Use Case**: Standard ChIP-seq/ATAC-seq peak training where you want a balanced set of peaks (positives) and complexity-matched non-peak genomic regions (negatives).
 *   **Behavior**:
     *   Loads peaks from a file.
     *   Automatically creates a background set that excludes the peaks.
     *   Selects background intervals that match the GC content of the peaks.
     *   Combines them into a single stream.
     *   **Arguments**: `intervals_path`, `background_ratio` (default 1.0).
-    *   **Defaults**: `background_ratio=1.0` ensures a 1:1 ratio between positives (peaks) and negatives (GC-matched background). `background_ratio=0.0` disables background sampling.
+    *   **Defaults**: `background_ratio=1.0` ensures a 1:1 ratio between positives (peaks) and negatives (complexity-matched background). `background_ratio=0.0` disables background sampling.
 
 ### Resampling
 

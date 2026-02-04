@@ -48,7 +48,7 @@ sampler_config = {
     "padded_size": 2114,
     "sampler_args": {
         "intervals_path": peaks_path,
-        "background_ratio": 1.0 # 1:1 ratio of peaks to GC-matched background
+        "background_ratio": 1.0 # 1:1 ratio of peaks to complexity-matched background
     }
 }
 ```

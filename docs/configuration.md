@@ -259,10 +259,10 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
     ```python
     {
         "intervals_path": "peaks.bed",
-        "background_ratio": 1.0  # Ratio of GC-matched negatives to peaks (default: 1.0)
+        "background_ratio": 1.0  # Ratio of complexity-matched negatives to peaks (default: 1.0)
     }
     ```
-    *Note: PeakSampler automatically creates a GC-matched background set using a RandomSampler as the candidate pool, excluding the peaks themselves. If `background_ratio` is set to 0.0, no background sampling is performed (and `fasta_path` is not required).*
+    *Note: PeakSampler automatically creates a complexity-matched background set using a RandomSampler as the candidate pool, excluding the peaks themselves. If `background_ratio` is set to 0.0, no background sampling is performed (and `fasta_path` is not required).*
 
 *   **Multi Sampler**:
     *   *Deprecated in configuration.* Advanced users can instantiate `MultiSampler` classes directly in Python code for complex sampling strategies.

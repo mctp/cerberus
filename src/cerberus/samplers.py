@@ -1060,12 +1060,12 @@ class ComplexityMatchedSampler(ProxySampler):
 class PeakSampler(MultiSampler):
     """
     A specialized MultiSampler that combines a set of positive intervals (peaks)
-    with a GC-matched negative set.
+    with a complexity-matched negative set.
     
     This class simplifies the creation of a balanced training set by:
     1. Loading the peaks once.
     2. Automatically excluding peaks from the background candidates.
-    3. Generating a GC-matched negative set with a specified ratio.
+    3. Generating a complexity-matched negative set with a specified ratio.
     4. Mixing the positives and negatives with a default 1:1 ratio.
     """
     MIN_CANDIDATES = 10000
@@ -1143,7 +1143,7 @@ class PeakSampler(MultiSampler):
                 generate_on_init=False,
             )
 
-            # 4. Negatives (GC Matched to Positives)
+            # 4. Negatives (Complexity Matched to Positives)
             self.negatives = ComplexityMatchedSampler(
                 target_sampler=self.positives,
                 candidate_sampler=self.candidates,
@@ -1154,7 +1154,7 @@ class PeakSampler(MultiSampler):
                 match_ratio=background_ratio,
                 seed=None,
                 generate_on_init=False,
-                metrics=["gc"],
+                metrics="complexity",
             )
             samplers.append(self.negatives)
         else:
