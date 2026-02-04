@@ -158,8 +158,11 @@ def test_complexity_matched_sampler_gc_no_matches(mock_fasta_simple):
         metrics=["gc"]
     )
     
-    # Should find NO matches
-    assert len(sampler) == 0
+    # Should find NO matches via complexity matching, but fallback ensures
+    # we return expected number of samples (1).
+    assert len(sampler) == 1
+    # Verify we got a candidate from chr2 (fallback)
+    assert sampler[0].chrom == "chr2"
 
 class MockSampler(Sampler):
     def __init__(self, intervals):

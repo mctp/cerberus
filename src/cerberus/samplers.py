@@ -991,6 +991,21 @@ class ComplexityMatchedSampler(ProxySampler):
             rng=self.rng
         )
 
+        # Ensure exact count by filling gaps if necessary
+        # (e.g. if some bins had no candidates)
+        target_count = len(self.target_sampler)
+        expected_count = int(target_count * self.match_ratio)
+        current_count = len(self._indices)
+
+        if current_count < expected_count:
+            missing = expected_count - current_count
+            n_candidates = len(self.candidate_sampler)
+            if n_candidates > 0:
+                # Fallback: sample randomly from all candidates
+                fallback_indices = self.rng.choices(range(n_candidates), k=missing)
+                self._indices.extend(fallback_indices)
+                self.rng.shuffle(self._indices)
+
     def __iter__(self) -> Iterator[Interval]:
         for idx in self._indices:
             yield self.candidate_sampler[idx]

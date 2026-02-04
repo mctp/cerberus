@@ -83,13 +83,14 @@ def test_complexity_matched_sampler_propagation():
     class TestComplexityMatchedSampler(ComplexityMatchedSampler):
         def __init__(self, candidate_sampler, seed):
             self.candidate_sampler = candidate_sampler
+            self.target_sampler = MockCandidateSampler()
             self.seed = seed
             self.match_ratio = 1.0
             self.bins = 100
             self.rng = random.Random(seed)
             self.target_metrics = []
             self.candidate_metrics = []
-            self.fasta_path = "dummy.fa" 
+            self.fasta_path = "dummy.fa"
             self.metrics = ["gc"]
             # Bypass heavy init of base class
             
