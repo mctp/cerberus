@@ -239,7 +239,7 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
     ```
     *Note: Intervals are regenerated with a new random seed at the beginning of each epoch.*
 
-*   **GC Matched Sampler**:
+*   **Complexity Matched Sampler**:
     ```python
     {
         "target_sampler": {
@@ -250,8 +250,9 @@ Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
             "type": "random",
             "args": {"num_intervals": 100000}
         },
-        "bins": 100,       # Number of GC bins (default: 100)
-        "match_ratio": 1.0 # Ratio of candidates to targets (default: 1.0)
+        "bins": 100,       # Number of complexity bins (default: 100)
+        "candidate_ratio": 1.0, # Ratio of candidates to targets (default: 1.0)
+        "metrics": ["gc", "dust", "cpg"] # List of metrics to match (default: ["gc", "dust", "cpg"])
     }
     ```
 

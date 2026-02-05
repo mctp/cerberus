@@ -9,7 +9,7 @@ from interlap import InterLap
 from .interval import Interval
 from .config import SamplerConfig
 from .exclude import is_excluded
-from .complexity import compute_intervals_complexity
+from .complexity import compute_intervals_complexity, compute_hist, get_bin_index
 
 
 def generate_sub_seeds(seed: int | None, n: int) -> list[int | None]:
@@ -26,20 +26,20 @@ def match_bin_counts(
     target_metrics: list[float] | np.ndarray,
     candidate_metrics: list[float] | np.ndarray,
     bins: int,
-    match_ratio: float,
+    candidate_ratio: float,
     rng: random.Random
 ) -> list[int]:
     """
     Selects indices from candidate_metrics to match the distribution of target_metrics.
     
     This function bins the metrics (1D or ND) and selects candidates to match 
-    the count of targets in each bin, scaled by match_ratio.
+    the count of targets in each bin, scaled by candidate_ratio.
 
     Args:
         target_metrics: Metric values for target samples. Shape (N,) or (N, D).
         candidate_metrics: Metric values for candidate samples. Shape (M,) or (M, D).
         bins: Number of bins per dimension. Values are assumed to be in [0, 1].
-        match_ratio: Ratio of candidates to targets per bin.
+        candidate_ratio: Ratio of candidates to targets per bin.
         rng: Random number generator.
 
     Returns:
@@ -55,34 +55,24 @@ def match_bin_counts(
     if c_metrics.ndim == 1:
         c_metrics = c_metrics.reshape(-1, 1)
         
-    # Helper to get bin tuple
-    def get_bin_index(row):
-        # Check for NaNs
-        if np.isnan(row).any():
-            return None
-        # Floor and clip
-        idx = np.floor(row * bins).astype(int)
-        idx = np.clip(idx, 0, bins - 1)
-        return tuple(idx)
-        
     # 1. Bin targets
     target_hist = defaultdict(int)
     for row in t_metrics:
-        bin_idx = get_bin_index(row)
+        bin_idx = get_bin_index(row, bins)
         if bin_idx is not None:
             target_hist[bin_idx] += 1
             
     # 2. Bin candidates
     candidate_bins = defaultdict(list)
     for i, row in enumerate(c_metrics):
-        bin_idx = get_bin_index(row)
+        bin_idx = get_bin_index(row, bins)
         if bin_idx is not None:
             candidate_bins[bin_idx].append(i)
             
     # 3. Match
     selected_indices = []
     for bin_idx, count in target_hist.items():
-        needed = int(count * match_ratio)
+        needed = int(count * candidate_ratio)
         candidates = candidate_bins.get(bin_idx, [])
         
         if not candidates:
@@ -923,7 +913,7 @@ class ComplexityMatchedSampler(ProxySampler):
 
     This sampler bins the target intervals by their metrics and then selects
     intervals from the candidate sampler to match the count in each bin, scaled
-    by `match_ratio`.
+    by `candidate_ratio`.
     """
 
     def __init__(
@@ -935,10 +925,10 @@ class ComplexityMatchedSampler(ProxySampler):
         folds: list[dict[str, InterLap]] | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
         bins: int = 20,
-        match_ratio: float = 1.0,
+        candidate_ratio: float = 1.0,
         seed: int | None = None,
         generate_on_init: bool = True,
-        metrics: list[str] | str = "complexity",
+        metrics: list[str] = ["gc", "dust", "cpg"],
     ):
         super().__init__(
             chrom_sizes=chrom_sizes,
@@ -949,26 +939,42 @@ class ComplexityMatchedSampler(ProxySampler):
         self.candidate_sampler = candidate_sampler
         self.fasta_path = Path(fasta_path)
         self.bins = bins
-        self.match_ratio = match_ratio
+        self.candidate_ratio = candidate_ratio
         self.seed = seed
         self.rng = random.Random(seed)
         
-        if metrics == "complexity":
-             self.metrics = ["gc", "dust", "cpg"]
-        elif metrics == "gc":
-             self.metrics = ["gc"]
-        elif isinstance(metrics, str):
-             self.metrics = [metrics]
-        else:
-             self.metrics = metrics
+        self.metrics = metrics
 
-        # Pre-compute target metrics
-        self.target_metrics = compute_intervals_complexity(self.target_sampler, self.fasta_path, self.metrics)
-        self.candidate_metrics = None  # Computed in resample()
+        # Lazy initialization
+        self.target_metrics: np.ndarray = np.empty((0, len(self.metrics)), dtype=np.float32)
+        self.target_hist: dict[tuple[int, ...], int] = {}
+        self.candidate_bins: dict[tuple[int, ...], list[int]] = {}
+        self._initialized = False
 
         self._indices: list[int] = []  # Indices into candidate_sampler
         if generate_on_init:
             self.resample()
+
+    def _initialize(self):
+        # Compute target metrics
+        self.target_metrics = compute_intervals_complexity(self.target_sampler, self.fasta_path, self.metrics)
+        self.target_hist = compute_hist(self.target_metrics, self.bins)
+
+        # Generate candidate metrics
+        # Provide a new seed based on current RNG state
+        cand_seed = self.rng.getrandbits(32)
+        self.candidate_sampler.resample(cand_seed)
+        self.candidate_metrics = compute_intervals_complexity(self.candidate_sampler, self.fasta_path, self.metrics)
+        
+        # Bin candidates
+        self.candidate_bins = defaultdict(list)
+        
+        for i, row in enumerate(self.candidate_metrics):
+            bin_idx = get_bin_index(row, self.bins)
+            if bin_idx is not None:
+                self.candidate_bins[bin_idx].append(i)
+        
+        self._initialized = True
 
     def resample(self, seed: int | None = None) -> None:
         if seed is not None:
@@ -978,23 +984,34 @@ class ComplexityMatchedSampler(ProxySampler):
             self.seed = self.rng.getrandbits(32)
             self.rng = random.Random(self.seed)
 
-        cand_seed = self.rng.getrandbits(32)
-        self.candidate_sampler.resample(cand_seed)
+        # Ensure pool is initialized (lazy initialization if generate_on_init was False)
+        if not self._initialized:
+            self._initialize()
+        
+        # NOTE: We do NOT resample candidate_sampler here. 
+        # We reuse the pool generated in _initialize.
+        self._indices = []
 
-        self.candidate_metrics = compute_intervals_complexity(self.candidate_sampler, self.fasta_path, self.metrics)
-
-        self._indices = match_bin_counts(
-            target_metrics=self.target_metrics,
-            candidate_metrics=self.candidate_metrics,
-            bins=self.bins,
-            match_ratio=self.match_ratio,
-            rng=self.rng
-        )
+        for bin_idx, count in self.target_hist.items():
+            needed = int(count * self.candidate_ratio)
+            candidates = self.candidate_bins.get(bin_idx, [])
+            
+            if not candidates:
+                continue
+                
+            if len(candidates) >= needed:
+                selected = self.rng.sample(candidates, needed)
+            else:
+                # Sample with replacement if we don't have enough in the pool
+                selected = self.rng.choices(candidates, k=needed)
+            
+            self._indices.extend(selected)
 
         # Ensure exact count by filling gaps if necessary
-        # (e.g. if some bins had no candidates)
+        # (e.g. if some bins had no candidates), also the 
+        # also: int(count * self.candidate_ratio) rounds down so we may be short.
         target_count = len(self.target_sampler)
-        expected_count = int(target_count * self.match_ratio)
+        expected_count = int(target_count * self.candidate_ratio)
         current_count = len(self._indices)
 
         if current_count < expected_count:
@@ -1004,7 +1021,9 @@ class ComplexityMatchedSampler(ProxySampler):
                 # Fallback: sample randomly from all candidates
                 fallback_indices = self.rng.choices(range(n_candidates), k=missing)
                 self._indices.extend(fallback_indices)
-                self.rng.shuffle(self._indices)
+        
+        # We must shuffle because the loop over target_hist produces grouped indices
+        self.rng.shuffle(self._indices)
 
     def __iter__(self) -> Iterator[Interval]:
         for idx in self._indices:
@@ -1035,7 +1054,7 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.folds,
                 self.exclude_intervals,
                 self.bins,
-                self.match_ratio,
+                self.candidate_ratio,
                 s1,
                 generate_on_init=True,
                 metrics=self.metrics,
@@ -1048,7 +1067,7 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.folds,
                 self.exclude_intervals,
                 self.bins,
-                self.match_ratio,
+                self.candidate_ratio,
                 s2,
                 generate_on_init=True,
                 metrics=self.metrics,
@@ -1061,7 +1080,7 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.folds,
                 self.exclude_intervals,
                 self.bins,
-                self.match_ratio,
+                self.candidate_ratio,
                 s3,
                 generate_on_init=True,
                 metrics=self.metrics,
@@ -1084,7 +1103,7 @@ class PeakSampler(MultiSampler):
     4. Mixing the positives and negatives with a default 1:1 ratio.
     """
     MIN_CANDIDATES = 10000
-    CANDIDATE_OVERSAMPLE_FACTOR = 10
+    CANDIDATE_OVERSAMPLE_FACTOR = 20
 
     def __init__(
         self,
@@ -1166,10 +1185,10 @@ class PeakSampler(MultiSampler):
                 chrom_sizes=chrom_sizes,
                 folds=folds,
                 exclude_intervals=neg_excludes, # Use the augmented excludes
-                match_ratio=background_ratio,
+                candidate_ratio=background_ratio,
                 seed=None,
                 generate_on_init=False,
-                metrics="complexity",
+                metrics=["gc", "dust", "cpg"],
             )
             samplers.append(self.negatives)
         else:
@@ -1282,7 +1301,7 @@ def create_sampler(
             folds=folds,
             exclude_intervals=exclude_intervals,
             bins=sampler_args["bins"],
-            match_ratio=sampler_args["match_ratio"],
+            candidate_ratio=sampler_args.get("candidate_ratio", sampler_args.get("match_ratio", 1.0)),
             seed=seed,
             metrics=sampler_args["metrics"],
         )

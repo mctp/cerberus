@@ -78,11 +78,11 @@ def test_complexity_matched_sampler_gc_only(mock_fasta):
                 "args": {"num_intervals": 300} # Enough to likely hit all chroms
             },
             "bins": 10,
-            "match_ratio": 1.0,
+            "candidate_ratio": 1.0,
             "metrics": ["gc"]
         }
     }
-    
+
     sampler = create_sampler(
         config, chrom_sizes, [], {}, fasta_path=mock_fasta
     )

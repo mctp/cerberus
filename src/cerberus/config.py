@@ -65,7 +65,7 @@ class SamplerConfig(TypedDict):
         - target_sampler: Configuration for the target sampler.
         - candidate_sampler: Configuration for the candidate sampler.
         - bins: Number of bins.
-        - match_ratio: Ratio of candidates to targets.
+        - candidate_ratio: Ratio of candidates to targets.
         - metrics: List of metrics (e.g. ['gc']).
     - 'peak':
         - intervals_path: Path to peaks file.

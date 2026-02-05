@@ -61,7 +61,7 @@ def test_peak_sampler_init(mock_dependencies):
     # Verify ComplexityMatchedSampler created (Negatives)
     mock_dependencies["complexity_matched_sampler"].assert_called_once()
     assert mock_dependencies["complexity_matched_sampler"].call_args.kwargs.get("generate_on_init") is False
-    assert mock_dependencies["complexity_matched_sampler"].call_args.kwargs.get("metrics") == "complexity"
+    assert mock_dependencies["complexity_matched_sampler"].call_args.kwargs.get("metrics") == ['gc', 'dust', 'cpg']
     
     # Check exclusions passed to RandomSampler include the peaks
     random_excludes = call_args.kwargs["exclude_intervals"]

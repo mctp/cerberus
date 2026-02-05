@@ -63,8 +63,8 @@ def test_complexity_sampler_padding(mock_fasta):
                 }
             },
             "bins": 5,
-            "match_ratio": 1.0,
-            "metrics": "gc" # Only GC for simplicity
+            "candidate_ratio": 1.0,
+            "metrics": ["gc"] # Only GC for simplicity
         }
     }
     
@@ -97,8 +97,8 @@ def test_complexity_sampler_padding(mock_fasta):
         fasta_path=mock_fasta,
         chrom_sizes=chrom_sizes,
         bins=5,
-        match_ratio=1.0,
-        metrics="gc",
+        candidate_ratio=1.0,
+        metrics=["gc"],
         seed=42
     )
     

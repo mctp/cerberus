@@ -60,7 +60,7 @@ Selects candidates from a `candidate_sampler` (e.g., RandomSampler) that match t
 *   **Use Case**: Creating balanced datasets where negatives match positives in complexity metrics (GC, DUST, CpG), removing bias.
 *   **Behavior**: Pre-computes metrics for all intervals and bins targets. Samples candidates from corresponding bins to match the target distribution.
     *   **`metrics`**: List of metrics to match (e.g., `["gc"]` for GC-matching, `["gc", "dust"]` for multi-metric matching).
-    *   **`match_ratio`**: Controls the ratio of candidates to targets in each bin (default: 1.0).
+    *   **`candidate_ratio`**: Controls the ratio of candidates to targets in each bin (default: 1.0).
         *   `1.0`: Selects an equal number of candidates as targets (1:1 balanced).
         *   `> 1.0`: Selects more candidates (e.g., `2.0` for 2:1 negatives to positives).
         *   `< 1.0`: Selects fewer candidates.

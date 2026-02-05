@@ -19,7 +19,7 @@ def calculate_gc_content(sequence: str) -> float
 *   `sequence`: Input DNA sequence (string).
 
 **Returns:**
-*   `float`: The GC content ratio (0.0 to 1.0).
+*   `float`: GC content ratio (0.0 to 1.0).
 
 ---
 
@@ -98,3 +98,62 @@ score = calculate_log_cpg_ratio("CGCGCGCG")
 score = calculate_log_cpg_ratio("CCTTTTGG")
 # Returns: ~0.36 (Depleted)
 ```
+
+---
+
+### `compute_intervals_complexity`
+
+Computes selected complexity metrics for a collection of intervals.
+
+**Signature:**
+```python
+def compute_intervals_complexity(
+    intervals: Iterable[Interval],
+    fasta_path: Path | str,
+    metrics: list[str] | None = None
+) -> np.ndarray
+```
+
+**Args:**
+*   `intervals`: Iterable of Interval objects.
+*   `fasta_path`: Path to the genome FASTA file.
+*   `metrics`: List of metrics to compute. Options: 'gc', 'dust', 'cpg'. If None, computes all.
+
+**Returns:**
+*   `np.ndarray`: A (N, M) array where columns correspond to the requested metrics in order.
+
+---
+
+### `get_bin_index`
+
+Computes the multi-dimensional bin index for a given metric row.
+
+**Signature:**
+```python
+def get_bin_index(row: np.ndarray, bins: int) -> tuple[int, ...] | None
+```
+
+**Args:**
+*   `row`: A 1D numpy array representing metrics for a single interval.
+*   `bins`: The number of bins per dimension.
+
+**Returns:**
+*   A tuple of integers representing the bin coordinates, or None if the row contains NaNs.
+
+---
+
+### `compute_hist`
+
+Computes a histogram of metric occurrences across defined bins.
+
+**Signature:**
+```python
+def compute_hist(metrics: np.ndarray, bins: int) -> dict[tuple[int, ...], int]
+```
+
+**Args:**
+*   `metrics`: A numpy array of shape (N, D) or (N,), where N is samples and D is dimensions.
+*   `bins`: The number of bins per dimension.
+
+**Returns:**
+*   A dictionary mapping bin indices (tuples) to counts.

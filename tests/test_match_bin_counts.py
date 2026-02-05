@@ -11,7 +11,7 @@ def test_match_bin_counts_1d_perfect_match():
     # Candidates: 10 values all 0.5
     candidate_metrics = np.array([0.5] * 10)
     
-    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, match_ratio=1.0, rng=rng)
+    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, candidate_ratio=1.0, rng=rng)
     
     assert len(indices) == 10
     # Should pick all candidates
@@ -25,7 +25,7 @@ def test_match_bin_counts_1d_distribution():
     # Candidates: 100 values in bin 0, 100 values in bin 9, 100 values in bin 5
     candidate_metrics = np.array([0.05]*100 + [0.95]*100 + [0.5]*100)
     
-    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, match_ratio=1.0, rng=rng)
+    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, candidate_ratio=1.0, rng=rng)
     
     assert len(indices) == 10
     
@@ -54,7 +54,7 @@ def test_match_bin_counts_2d():
         [[0.9, 0.9]] * 20
     ])
     
-    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, match_ratio=1.0, rng=rng)
+    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, candidate_ratio=1.0, rng=rng)
     
     assert len(indices) == 10
     # Indices should be from first 20
@@ -65,7 +65,7 @@ def test_match_bin_counts_ratio():
     target_metrics = np.array([0.5] * 10)
     candidate_metrics = np.array([0.5] * 100)
     
-    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, match_ratio=2.0, rng=rng)
+    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, candidate_ratio=2.0, rng=rng)
     
     assert len(indices) == 20
 
@@ -77,7 +77,7 @@ def test_match_bin_counts_nan_handling():
     # 2 valid targets (0.5). 1 ignored.
     # 2 valid candidates (0.5). 1 ignored.
     
-    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, match_ratio=1.0, rng=rng)
+    indices = match_bin_counts(target_metrics, candidate_metrics, bins=10, candidate_ratio=1.0, rng=rng)
     
     # Should match 2
     assert len(indices) == 2

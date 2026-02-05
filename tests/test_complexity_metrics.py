@@ -49,16 +49,16 @@ def test_complexity_matched_sampler_metrics(mock_fasta):
     candidate = MockSampler([Interval("chr1", 100, 200, "+")])
     chrom_sizes = {"chr1": 1000}
     
-    # Test "complexity" mode (default) -> 3 metrics
+    # Test default mode -> 3 metrics
     s1 = ComplexityMatchedSampler(
-        target, candidate, mock_fasta, chrom_sizes, metrics="complexity"
+        target, candidate, mock_fasta, chrom_sizes
     )
     assert s1.target_metrics.shape[1] == 3
     assert s1.metrics == ["gc", "dust", "cpg"]
     
     # Test "gc" mode -> 1 metric
     s2 = ComplexityMatchedSampler(
-        target, candidate, mock_fasta, chrom_sizes, metrics="gc"
+        target, candidate, mock_fasta, chrom_sizes, metrics=["gc"]
     )
     assert s2.target_metrics.shape[1] == 1
     assert s2.metrics == ["gc"]

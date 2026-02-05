@@ -75,7 +75,7 @@ def main():
         fasta_path=fasta_path,
         chrom_sizes=chrom_sizes,
         bins=20,
-        match_ratio=1.0,
+        candidate_ratio=1.0,
         seed=42
     )
     print(f"Selected {len(matched_sampler)} matched intervals.")

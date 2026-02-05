@@ -1,5 +1,6 @@
 import pytest
 import random
+import numpy as np
 from pathlib import Path
 from cerberus.samplers import (
     generate_sub_seeds,
@@ -85,22 +86,25 @@ def test_complexity_matched_sampler_propagation():
             self.candidate_sampler = candidate_sampler
             self.target_sampler = MockCandidateSampler()
             self.seed = seed
-            self.match_ratio = 1.0
+            self.candidate_ratio = 1.0
             self.bins = 100
             self.rng = random.Random(seed)
-            self.target_metrics = []
-            self.candidate_metrics = []
+            self.target_metrics = np.empty((0, 1))
+            self.candidate_metrics = None
             self.fasta_path = "dummy.fa"
             self.metrics = ["gc"]
+            self._initialized = False  # Start uninitialized to trigger _initialize
+            self.candidate_bins = {} # Mock bins
+            self.target_hist = {} # Mock hist
             # Bypass heavy init of base class
-            
+
     mock_candidate = MockCandidateSampler()
     sampler = TestComplexityMatchedSampler(mock_candidate, seed=42)
     
     # Patch compute_intervals_complexity to avoid actual file IO
     from unittest.mock import patch
     with patch("cerberus.samplers.compute_intervals_complexity") as mock_gc:
-        mock_gc.return_value = []
+        mock_gc.return_value = np.array([])
         
         # Call resample
         sampler.resample(123)

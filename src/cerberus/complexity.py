@@ -3,6 +3,7 @@ from typing import Iterable
 from pathlib import Path
 import numpy as np
 import pyfaidx
+from collections import defaultdict
 
 from cerberus.interval import Interval
 
@@ -202,4 +203,48 @@ def compute_intervals_complexity(
         except Exception:
             results.append([np.nan] * len(metrics))
 
+    if not results:
+        return np.zeros((0, len(metrics)), dtype=np.float32)
+
     return np.array(results, dtype=np.float32)
+
+
+def get_bin_index(row: np.ndarray, bins: int) -> tuple[int, ...] | None:
+    """
+    Computes the multi-dimensional bin index for a given metric row.
+
+    Args:
+        row: A 1D numpy array representing metrics for a single interval.
+        bins: The number of bins per dimension.
+
+    Returns:
+        A tuple of integers representing the bin coordinates, or None if the row contains NaNs.
+    """
+    if np.isnan(row).any():
+        return None
+    idx = np.floor(row * bins).astype(int)
+    idx = np.clip(idx, 0, bins - 1)
+    return tuple(idx)
+
+
+def compute_hist(metrics: np.ndarray, bins: int) -> dict[tuple[int, ...], int]:
+    """
+    Computes a histogram of metric occurrences across defined bins.
+
+    Args:
+        metrics: A numpy array of shape (N, D) or (N,), where N is samples and D is dimensions.
+        bins: The number of bins per dimension.
+
+    Returns:
+        A dictionary mapping bin indices (tuples) to counts.
+    """
+    hist = defaultdict(int)
+    # Handle 1D
+    if metrics.ndim == 1:
+        metrics = metrics.reshape(-1, 1)
+        
+    for row in metrics:
+        bin_idx = get_bin_index(row, bins)
+        if bin_idx is not None:
+            hist[bin_idx] += 1
+    return hist

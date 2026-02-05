@@ -63,8 +63,8 @@ def test_complexity_matched_sampler(mock_fasta):
                 "args": {"num_intervals": 1000} 
             },
             "bins": 5,
-            "match_ratio": 1.0,
-            "metrics": "complexity"
+            "candidate_ratio": 1.0,
+            "metrics": ["gc", "dust", "cpg"]
         }
     }
     

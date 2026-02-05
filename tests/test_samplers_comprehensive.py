@@ -153,7 +153,7 @@ def test_complexity_matched_sampler_gc_no_matches(mock_fasta_simple):
         exclude_intervals={},
         folds=[],
         bins=10,
-        match_ratio=1.0,
+        candidate_ratio=1.0,
         seed=42,
         metrics=["gc"]
     )
