@@ -970,6 +970,10 @@ class ComplexityMatchedSampler(ProxySampler):
         self.candidate_bins = defaultdict(list)
         
         for i, row in enumerate(self.candidate_metrics):
+            interval = self.candidate_sampler[i]
+            if self.is_excluded(interval.chrom, interval.start, interval.end):
+                continue
+
             bin_idx = get_bin_index(row, self.bins)
             if bin_idx is not None:
                 self.candidate_bins[bin_idx].append(i)
@@ -1108,7 +1112,7 @@ class PeakSampler(MultiSampler):
     def __init__(
         self,
         intervals_path: Path | str,
-        fasta_path: Path | str | None,
+        fasta_path: Path | str,
         chrom_sizes: dict[str, int],
         padded_size: int,
         folds: list[dict[str, InterLap]] | None = None,
