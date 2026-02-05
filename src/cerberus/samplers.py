@@ -1,6 +1,7 @@
 from typing import Iterator, Protocol
 from pathlib import Path
 import gzip
+import logging
 import numpy as np
 import random
 import copy
@@ -10,6 +11,8 @@ from .interval import Interval
 from .config import SamplerConfig
 from .exclude import is_excluded
 from .complexity import compute_intervals_complexity, compute_hist, get_bin_index
+
+logger = logging.getLogger(__name__)
 
 
 def generate_sub_seeds(seed: int | None, n: int) -> list[int | None]:
@@ -929,6 +932,7 @@ class ComplexityMatchedSampler(ProxySampler):
         metrics: list[str] = ["gc", "dust", "cpg"],
         seed: int | None = None,
         generate_on_init: bool = True,
+        metrics_cache: dict[str, np.ndarray] | None = None,
     ):
         """
         Args:
@@ -943,6 +947,7 @@ class ComplexityMatchedSampler(ProxySampler):
             metrics: List of complexity metrics to match.
             seed: Random seed.
             generate_on_init: Whether to generate samples immediately.
+            metrics_cache: Shared cache for interval metrics.
         """
         super().__init__(
             chrom_sizes=chrom_sizes,
@@ -958,6 +963,7 @@ class ComplexityMatchedSampler(ProxySampler):
         self.rng = random.Random(seed)
         
         self.metrics = metrics
+        self.metrics_cache = metrics_cache if metrics_cache is not None else {}
 
         # Lazy initialization
         self.target_metrics: np.ndarray = np.empty((0, len(self.metrics)), dtype=np.float32)
@@ -969,18 +975,46 @@ class ComplexityMatchedSampler(ProxySampler):
         if generate_on_init:
             self.resample()
 
+    def _get_metrics(self, sampler: Sampler, name: str) -> np.ndarray:
+        intervals = list(sampler)
+        missing = []
+        
+        for iv in intervals:
+            key = str(iv)
+            if key not in self.metrics_cache:
+                missing.append(iv)
+        
+        if missing:
+            logger.info(f"ComplexityMatchedSampler: Computing {len(missing)} missing metrics for {name} intervals...")
+            new_metrics = compute_intervals_complexity(missing, self.fasta_path, self.metrics)
+            for iv, row in zip(missing, new_metrics):
+                self.metrics_cache[str(iv)] = row
+        
+        if not intervals:
+            return np.empty((0, len(self.metrics)), dtype=np.float32)
+
+        return np.array([self.metrics_cache[str(iv)] for iv in intervals], dtype=np.float32)
+
     def _initialize(self):
+        logger.info("ComplexityMatchedSampler: Initializing complexity matching...")
+        
         # Compute target metrics
-        self.target_metrics = compute_intervals_complexity(self.target_sampler, self.fasta_path, self.metrics)
+        logger.info(f"ComplexityMatchedSampler: Retrieving complexity metrics for {len(self.target_sampler)} target intervals...")
+        self.target_metrics = self._get_metrics(self.target_sampler, "target")
         self.target_hist = compute_hist(self.target_metrics, self.bins)
+        logger.info("ComplexityMatchedSampler: Target metrics ready and binned.")
 
         # Generate candidate metrics
         # Provide a new seed based on current RNG state
         cand_seed = self.rng.getrandbits(32)
         self.candidate_sampler.resample(cand_seed)
-        self.candidate_metrics = compute_intervals_complexity(self.candidate_sampler, self.fasta_path, self.metrics)
+        
+        logger.info(f"ComplexityMatchedSampler: Retrieving complexity metrics for {len(self.candidate_sampler)} candidate intervals...")
+        self.candidate_metrics = self._get_metrics(self.candidate_sampler, "candidate")
+        logger.info("ComplexityMatchedSampler: Candidate metrics ready.")
         
         # Bin candidates
+        logger.info("ComplexityMatchedSampler: Binning candidate intervals...")
         self.candidate_bins = defaultdict(list)
         
         for i, row in enumerate(self.candidate_metrics):
@@ -993,6 +1027,7 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.candidate_bins[bin_idx].append(i)
         
         self._initialized = True
+        logger.info("ComplexityMatchedSampler: Initialization complete.")
 
     def resample(self, seed: int | None = None) -> None:
         if seed is not None:
@@ -1076,6 +1111,7 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.metrics,
                 s1,
                 generate_on_init=True,
+                metrics_cache=self.metrics_cache,
             ),
             ComplexityMatchedSampler(
                 target_splits[1],
@@ -1089,6 +1125,7 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.metrics,
                 s2,
                 generate_on_init=True,
+                metrics_cache=self.metrics_cache,
             ),
             ComplexityMatchedSampler(
                 target_splits[2],
@@ -1102,6 +1139,7 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.metrics,
                 s3,
                 generate_on_init=True,
+                metrics_cache=self.metrics_cache,
             ),
         )
 
@@ -1130,7 +1168,7 @@ class PeakSampler(MultiSampler):
         exclude_intervals: dict[str, InterLap] | None = None,
         background_ratio: float = 1.0,
         min_candidates: int = 10000,
-        candidate_oversample_factor: float = 20.0,
+        candidate_oversample_factor: float = 5.0,
         seed: int | None = None,
     ):
         """
@@ -1150,6 +1188,7 @@ class PeakSampler(MultiSampler):
         self.intervals_path = Path(intervals_path)
         self.background_ratio = background_ratio
         
+        logger.info(f"PeakSampler: Loading positive intervals from {self.intervals_path}...")
         # 1. Positives (Peaks)
         self.positives = IntervalSampler(
             file_path=self.intervals_path,
@@ -1158,10 +1197,12 @@ class PeakSampler(MultiSampler):
             folds=folds,
             exclude_intervals=exclude_intervals,
         )
+        logger.info(f"PeakSampler: Loaded {len(self.positives)} positive intervals.")
 
         samplers: list[Sampler] = [self.positives]
 
         if background_ratio > 0:
+            logger.info(f"PeakSampler: Generating background candidates (ratio={background_ratio})...")
             
             if exclude_intervals is None:
                 exclude_intervals = {}

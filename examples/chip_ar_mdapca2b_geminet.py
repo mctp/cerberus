@@ -19,6 +19,7 @@ Usage:
 
 import argparse
 import os
+import logging
 import torch
 from pathlib import Path
 from pprint import pprint
@@ -55,6 +56,10 @@ def get_args():
     return parser.parse_args()
 
 def main():
+    # Setup logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', force=True)
+    logging.info("Starting GemiNet training script...")
+
     args = get_args()
     
     # Setup directories
@@ -263,6 +268,7 @@ def main():
 
     if args.multi:
         print("Starting Multi-Fold Training (train_multi)...")
+        logging.info("Calling train_multi...")
         train_multi(
             genome_config=genome_config,
             data_config=data_config,
@@ -279,6 +285,7 @@ def main():
         )
     else:
         print("Starting Single Fold Training (train_single)...")
+        logging.info("Calling train_single...")
         train_single(
             genome_config=genome_config,
             data_config=data_config,
