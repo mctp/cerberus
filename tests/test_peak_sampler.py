@@ -54,8 +54,8 @@ def test_peak_sampler_init(mock_dependencies):
     # Verify RandomSampler created (Candidates)
     mock_dependencies["random_sampler"].assert_called_once()
     call_args = mock_dependencies["random_sampler"].call_args
-    # Check that num_intervals is max(10000, 100 * 1.0 * 10) = 10000
-    assert call_args.kwargs["num_intervals"] == PeakSampler.MIN_CANDIDATES
+    # Check that num_intervals is max(10000, 100 * 1.0 * 20) = 10000
+    assert call_args.kwargs["num_intervals"] == 10000
     assert call_args.kwargs.get("generate_on_init") is False
     
     # Verify ComplexityMatchedSampler created (Negatives)
@@ -93,3 +93,43 @@ def test_peak_sampler_resample(mock_dependencies):
     call_args = sampler.negatives.resample.call_args  # type: ignore
     assert isinstance(call_args.args[0], int)
     assert call_args.args[0] != 42
+
+def test_peak_sampler_parameters(mock_dependencies):
+    chrom_sizes = {"chr1": 10000}
+    exclude_intervals = {"chr1": InterLap()}
+    
+    # Init PeakSampler with custom parameters
+    sampler = PeakSampler(
+        intervals_path="peaks.bed",
+        fasta_path="genome.fa",
+        chrom_sizes=chrom_sizes,
+        padded_size=50,
+        exclude_intervals=exclude_intervals,
+        background_ratio=1.0,
+        min_candidates=5000,
+        candidate_oversample_factor=5.0
+    )
+    
+    # Verify RandomSampler created with custom parameters
+    mock_dependencies["random_sampler"].assert_called()
+    call_args = mock_dependencies["random_sampler"].call_args
+    
+    # n_peaks = 100 (from mock)
+    # expected = max(5000, 100 * 1.0 * 5.0) = 5000
+    assert call_args.kwargs["num_intervals"] == 5000
+
+    # Test where oversample factor dominates
+    sampler = PeakSampler(
+        intervals_path="peaks.bed",
+        fasta_path="genome.fa",
+        chrom_sizes=chrom_sizes,
+        padded_size=50,
+        exclude_intervals=exclude_intervals,
+        background_ratio=1.0,
+        min_candidates=100,
+        candidate_oversample_factor=100.0
+    )
+    # n_peaks = 100
+    # expected = max(100, 100 * 1.0 * 100.0) = 10000
+    call_args = mock_dependencies["random_sampler"].call_args
+    assert call_args.kwargs["num_intervals"] == 10000

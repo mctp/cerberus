@@ -926,10 +926,24 @@ class ComplexityMatchedSampler(ProxySampler):
         exclude_intervals: dict[str, InterLap] | None = None,
         bins: int = 20,
         candidate_ratio: float = 1.0,
+        metrics: list[str] = ["gc", "dust", "cpg"],
         seed: int | None = None,
         generate_on_init: bool = True,
-        metrics: list[str] = ["gc", "dust", "cpg"],
     ):
+        """
+        Args:
+            target_sampler: Sampler providing target distribution.
+            candidate_sampler: Sampler providing candidate pool.
+            fasta_path: Path to genome FASTA.
+            chrom_sizes: Chromosome sizes.
+            folds: Fold definitions.
+            exclude_intervals: Excluded regions.
+            bins: Number of bins for complexity matching.
+            candidate_ratio: Ratio of candidates to targets.
+            metrics: List of complexity metrics to match.
+            seed: Random seed.
+            generate_on_init: Whether to generate samples immediately.
+        """
         super().__init__(
             chrom_sizes=chrom_sizes,
             folds=folds,
@@ -1059,9 +1073,9 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.exclude_intervals,
                 self.bins,
                 self.candidate_ratio,
+                self.metrics,
                 s1,
                 generate_on_init=True,
-                metrics=self.metrics,
             ),
             ComplexityMatchedSampler(
                 target_splits[1],
@@ -1072,9 +1086,9 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.exclude_intervals,
                 self.bins,
                 self.candidate_ratio,
+                self.metrics,
                 s2,
                 generate_on_init=True,
-                metrics=self.metrics,
             ),
             ComplexityMatchedSampler(
                 target_splits[2],
@@ -1085,9 +1099,9 @@ class ComplexityMatchedSampler(ProxySampler):
                 self.exclude_intervals,
                 self.bins,
                 self.candidate_ratio,
+                self.metrics,
                 s3,
                 generate_on_init=True,
-                metrics=self.metrics,
             ),
         )
 
@@ -1104,11 +1118,8 @@ class PeakSampler(MultiSampler):
     1. Loading the peaks once.
     2. Automatically excluding peaks from the background candidates.
     3. Generating a complexity-matched negative set with a specified ratio.
-    4. Mixing the positives and negatives with a default 1:1 ratio.
+    4. Mixing the positives and negatives with given ratio.
     """
-    MIN_CANDIDATES = 10000
-    CANDIDATE_OVERSAMPLE_FACTOR = 20
-
     def __init__(
         self,
         intervals_path: Path | str,
@@ -1118,6 +1129,8 @@ class PeakSampler(MultiSampler):
         folds: list[dict[str, InterLap]] | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
         background_ratio: float = 1.0,
+        min_candidates: int = 10000,
+        candidate_oversample_factor: float = 20.0,
         seed: int | None = None,
     ):
         """
@@ -1130,6 +1143,8 @@ class PeakSampler(MultiSampler):
             exclude_intervals: Excluded regions.
             background_ratio: Ratio of background intervals to peaks. 
                               e.g. 1.0 = 1:1, 2.0 = 2 backgrounds per peak.
+            min_candidates: Minimum number of candidate intervals to generate.
+            candidate_oversample_factor: Factor to oversample candidates relative to peaks.
             seed: Random seed.
         """
         self.intervals_path = Path(intervals_path)
@@ -1147,8 +1162,6 @@ class PeakSampler(MultiSampler):
         samplers: list[Sampler] = [self.positives]
 
         if background_ratio > 0:
-            if fasta_path is None:
-                raise ValueError("PeakSampler requires 'fasta_path' to be provided when background_ratio > 0.")
             
             if exclude_intervals is None:
                 exclude_intervals = {}
@@ -1158,6 +1171,7 @@ class PeakSampler(MultiSampler):
             neg_excludes = copy.deepcopy(exclude_intervals)
             for interval in self.positives:
                 if interval.chrom not in neg_excludes:
+                    # initialize a new empty interval-tree for a chrom if needed
                     neg_excludes[interval.chrom] = InterLap()
                 neg_excludes[interval.chrom].add((interval.start, interval.end))
 
@@ -1167,10 +1181,9 @@ class PeakSampler(MultiSampler):
             # But ensure a minimum floor (e.g. 10,000) if peaks are few.
             n_peaks = len(self.positives)
             n_candidates = max(
-                self.MIN_CANDIDATES, 
-                int(n_peaks * background_ratio * self.CANDIDATE_OVERSAMPLE_FACTOR)
+                min_candidates, 
+                int(n_peaks * background_ratio * candidate_oversample_factor)
             )
-                
             self.candidates = RandomSampler(
                 chrom_sizes=chrom_sizes,
                 padded_size=padded_size,
@@ -1305,7 +1318,7 @@ def create_sampler(
             folds=folds,
             exclude_intervals=exclude_intervals,
             bins=sampler_args["bins"],
-            candidate_ratio=sampler_args.get("candidate_ratio", sampler_args.get("match_ratio", 1.0)),
+            candidate_ratio=sampler_args["candidate_ratio"],
             seed=seed,
             metrics=sampler_args["metrics"],
         )
@@ -1313,8 +1326,8 @@ def create_sampler(
     elif sampler_type == "peak":
         background_ratio = sampler_args["background_ratio"]
         
-        if background_ratio > 0 and fasta_path is None:
-            raise ValueError("PeakSampler requires 'fasta_path' to be provided when background_ratio > 0.")
+        if fasta_path is None:
+            raise ValueError("PeakSampler requires 'fasta_path' to be provided.")
 
         return PeakSampler(
             intervals_path=sampler_args["intervals_path"],

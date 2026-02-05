@@ -30,7 +30,7 @@ class TestPeakSamplerNoBackground(unittest.TestCase):
             
             sampler = PeakSampler(
                 intervals_path="dummy_peaks.bed",
-                fasta_path=None, # Should be allowed now
+                fasta_path="dummy.fa", # Ignored when background_ratio=0.0
                 chrom_sizes=chrom_sizes,
                 padded_size=50,
                 exclude_intervals=exclude_intervals,
@@ -71,14 +71,14 @@ class TestPeakSamplerNoBackground(unittest.TestCase):
                 chrom_sizes=chrom_sizes,
                 exclude_intervals=exclude_intervals,
                 folds=[],
-                fasta_path=None # Should be allowed
+                fasta_path="dummy.fa" # Required by create_sampler
             )
             
             MockPeakSampler.assert_called_once()
             call_args = MockPeakSampler.call_args
             self.assertEqual(call_args.kwargs["background_ratio"], 0.0)
-            self.assertIsNone(call_args.kwargs["fasta_path"])
-            print("Verified: create_sampler allows fasta_path=None when background_ratio=0.0")
+            self.assertEqual(call_args.kwargs["fasta_path"], "dummy.fa")
+            print("Verified: create_sampler passes fasta_path even if not used")
 
 if __name__ == "__main__":
     unittest.main()

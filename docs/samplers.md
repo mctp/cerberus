@@ -59,9 +59,9 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Seeding**: The `seed` controls the random selection of candidates from the N-dimensional complexity bins.
 *   **Resampling**:
     1.  Updates self-seed.
-    2.  Derives a new seed for the `candidate_sampler` and resamples it.
-    3.  Re-computes selected complexity metrics for candidates and matches the target distribution by binning.
-    4.  Note: The `target_sampler` is **not** automatically resampled.
+    2.  Selects a new subset of candidates from the *existing* candidate pool using the new seed.
+    3.  Note: The `candidate_sampler` is **not** automatically resampled after initialization. The pool of candidates remains static to avoid expensive re-computation of complexity metrics. Only the selection *from* that pool changes.
+    4.  Note: The `target_sampler` is also **not** automatically resampled.
 
 ### ScaledSampler
 *   **Function**: Subsamples or oversamples another sampler to a fixed size.

@@ -120,13 +120,14 @@ def main():
 
     # Sampler Config - Peak Intervals
     padded_size = input_len + 2 * max_jitter
-    print(f"Using Peak Sampler (Intervals) with padded_size={padded_size}...")
+    print(f"Using Peak Sampler (Positives + Negatives) with padded_size={padded_size}...")
     
     sampler_config: SamplerConfig = {
-        "sampler_type": "interval",
+        "sampler_type": "peak",
         "padded_size": padded_size,
         "sampler_args": {
-            "intervals_path": dataset_files["narrowPeak"]
+            "intervals_path": dataset_files["narrowPeak"],
+            "background_ratio": 1.0,
         }
     }
 
