@@ -1,4 +1,4 @@
-from typing import Iterator, Protocol
+from typing import Iterator, Iterable, Protocol
 from pathlib import Path
 import gzip
 import logging
@@ -13,6 +13,34 @@ from .exclude import is_excluded
 from .complexity import compute_intervals_complexity, compute_hist, get_bin_index
 
 logger = logging.getLogger(__name__)
+
+
+from typing import Any
+
+def _select_from_bins(
+    target_hist: dict[Any, int],
+    candidate_bins: dict[Any, list[int]],
+    candidate_ratio: float,
+    rng: random.Random
+) -> list[int]:
+    """
+    Helper to select indices from candidate bins to match target histogram counts.
+    """
+    selected_indices = []
+    for bin_idx, count in target_hist.items():
+        needed = int(count * candidate_ratio)
+        candidates = candidate_bins.get(bin_idx, [])
+        
+        if not candidates:
+            continue
+            
+        if len(candidates) >= needed:
+            selected = rng.sample(candidates, needed)
+        else:
+            selected = rng.choices(candidates, k=needed)
+            
+        selected_indices.extend(selected)
+    return selected_indices
 
 
 def generate_sub_seeds(seed: int | None, n: int) -> list[int | None]:
@@ -73,23 +101,61 @@ def match_bin_counts(
             candidate_bins[bin_idx].append(i)
             
     # 3. Match
-    selected_indices = []
-    for bin_idx, count in target_hist.items():
-        needed = int(count * candidate_ratio)
-        candidates = candidate_bins.get(bin_idx, [])
-        
-        if not candidates:
-            continue
-            
-        if len(candidates) >= needed:
-            selected = rng.sample(candidates, needed)
-        else:
-            selected = rng.choices(candidates, k=needed)
-            
-        selected_indices.extend(selected)
-        
+    selected_indices = _select_from_bins(target_hist, candidate_bins, candidate_ratio, rng)
     rng.shuffle(selected_indices)
     return selected_indices
+
+
+def partition_intervals_by_fold(
+    intervals: Iterable[Interval], 
+    folds: list[dict[str, InterLap]], 
+    test_fold: int | None, 
+    val_fold: int | None
+) -> tuple[list[Interval], list[Interval], list[Interval]]:
+    """
+    Partitions intervals into train, validation, and test lists based on folds.
+    
+    If test_fold and val_fold overlap (or are the same), intervals in the overlapping region
+    will be included in BOTH test_intervals and val_intervals.
+    train_intervals will contain intervals that are in neither test_fold nor val_fold.
+
+    Args:
+        intervals: Iterable of intervals to partition.
+        folds: List of fold definitions.
+        test_fold: Index of the test fold.
+        val_fold: Index of the validation fold.
+        
+    Returns:
+        Tuple of (train_intervals, val_intervals, test_intervals).
+    """
+    test_fold_intervals = folds[test_fold] if test_fold is not None else {}
+    val_fold_intervals = folds[val_fold] if val_fold is not None else {}
+
+    train_intervals = []
+    val_intervals = []
+    test_intervals = []
+
+    def is_in_fold(fold_intervals: dict[str, InterLap], chrom: str, start: int, end: int) -> bool:
+        if chrom not in fold_intervals:
+            return False
+        # Check overlap: InterLap stores closed intervals [start, end]
+        # Interval uses [start, end) -> [start, end-1]
+        return (start, end - 1) in fold_intervals[chrom]
+
+    for interval in intervals:
+        in_test = is_in_fold(test_fold_intervals, interval.chrom, interval.start, interval.end)
+        in_val = is_in_fold(val_fold_intervals, interval.chrom, interval.start, interval.end)
+
+        if in_test:
+            test_intervals.append(interval)
+        
+        if in_val:
+            val_intervals.append(interval)
+            
+        if not in_test and not in_val:
+            train_intervals.append(interval)
+            
+    return train_intervals, val_intervals, test_intervals
 
 
 #### Sampler Protocol and Base Classes ####
@@ -150,6 +216,22 @@ class BaseSampler(Sampler):
     def is_excluded(self, chrom: str, start: int, end: int) -> bool:
         """Checks if a region overlaps with the exclusion intervals."""
         return is_excluded(self.exclude_intervals, chrom, start, end)
+
+    def _update_seed(self, seed: int | None) -> None:
+        """
+        Updates the seed and random number generator.
+        
+        If seed is provided, uses it.
+        If seed is None, generates a new seed from the existing RNG state.
+        Assumes self.rng is initialized.
+        """
+        if seed is not None:
+            self.seed = seed
+            self.rng = random.Random(self.seed)
+        else:
+            # Advance seed using current RNG state
+            self.seed = self.rng.getrandbits(32)
+            self.rng = random.Random(self.seed)
 
     def resample(self, seed: int | None = None) -> None:
         """
@@ -265,18 +347,7 @@ class MultiSampler(BaseSampler):
         """
         Regenerates the list of indices.
         """
-        if seed is not None:
-            self.seed = seed
-            self.rng = random.Random(seed)
-        elif self.seed is not None:
-            # Advance seed to ensure next split is different
-            self.seed = self.rng.getrandbits(32)
-            self.rng = random.Random(self.seed)
-        else:
-            # Case where seed is None and self.seed is None (unseeded init).
-            # We must establish a seed to ensure sub-samplers are de-correlated.
-            self.seed = self.rng.getrandbits(32)
-            self.rng = random.Random(self.seed)
+        self._update_seed(seed)
 
         # Propagate resample to sub-samplers (e.g. ComplexityMatchedSampler needs to pick new candidates)
         sub_seeds = generate_sub_seeds(self.seed, len(self.samplers))
@@ -390,39 +461,14 @@ class ListSampler(BaseSampler):
         Split the sampler into train, validation, and test sets using K-fold strategy.
         Uses pre-computed fold intervals.
         """
-        folds = self.folds
-
-        test_fold_intervals = folds[test_fold] if test_fold is not None else {}
-        val_fold_intervals = folds[val_fold] if val_fold is not None else {}
-
-        train_indices = []
-        val_indices = []
-        test_indices = []
-
-        def is_in_fold(fold_intervals: dict[str, InterLap], chrom: str, start: int, end: int) -> bool:
-            if chrom not in fold_intervals:
-                return False
-            # Check overlap: InterLap stores closed intervals [start, end]
-            # Interval uses [start, end) -> [start, end-1]
-            return (start, end - 1) in fold_intervals[chrom]
-
-        for i, interval in enumerate(self._intervals):
-            in_test = is_in_fold(test_fold_intervals, interval.chrom, interval.start, interval.end)
-            in_val = is_in_fold(val_fold_intervals, interval.chrom, interval.start, interval.end)
-
-            if in_test:
-                test_indices.append(i)
-            
-            if in_val:
-                val_indices.append(i)
-            
-            if not in_test and not in_val:
-                train_indices.append(i)
-
+        train, val, test = partition_intervals_by_fold(
+            self._intervals, self.folds, test_fold, val_fold
+        )
+        
         return (
-            self._subset(train_indices),
-            self._subset(val_indices),
-            self._subset(test_indices),
+            ListSampler(train, self.chrom_sizes, self.folds, self.exclude_intervals),
+            ListSampler(val, self.chrom_sizes, self.folds, self.exclude_intervals),
+            ListSampler(test, self.chrom_sizes, self.folds, self.exclude_intervals),
         )
 
 
@@ -468,13 +514,7 @@ class RandomSampler(BaseSampler):
         return self._intervals[idx]
 
     def resample(self, seed: int | None = None) -> None:
-        if seed is not None:
-            self.seed = seed
-            self.rng = random.Random(self.seed)
-        else:
-            # Advance seed using current RNG state
-            self.seed = self.rng.getrandbits(32)
-            self.rng = random.Random(self.seed)
+        self._update_seed(seed)
 
         self._intervals = []
         self._generate_intervals()
@@ -556,32 +596,17 @@ class RandomSampler(BaseSampler):
         if not self.folds:
             raise ValueError("Cannot split folds without fold definitions.")
 
-        test_fold_intervals = self.folds[test_fold] if test_fold is not None else {}
-        val_fold_intervals = self.folds[val_fold] if val_fold is not None else {}
+        train_intervals, val_intervals, test_intervals = partition_intervals_by_fold(
+            self._intervals, self.folds, test_fold, val_fold
+        )
 
-        train_count = 0
-        val_count = 0
-        test_count = 0
-
-        def is_in_fold(fold_intervals: dict[str, InterLap], chrom: str, start: int, end: int) -> bool:
-            if chrom not in fold_intervals:
-                return False
-            return (start, end - 1) in fold_intervals[chrom]
-
-        for interval in self._intervals:
-            in_test = is_in_fold(test_fold_intervals, interval.chrom, interval.start, interval.end)
-            in_val = is_in_fold(val_fold_intervals, interval.chrom, interval.start, interval.end)
-
-            if in_test:
-                test_count += 1
-            elif in_val:
-                val_count += 1
-            else:
-                train_count += 1
+        train_count = len(train_intervals)
+        val_count = len(val_intervals)
+        test_count = len(test_intervals)
 
         # Define regions for each split
-        test_regions = test_fold_intervals
-        val_regions = val_fold_intervals
+        test_regions = self.folds[test_fold] if test_fold is not None else {}
+        val_regions = self.folds[val_fold] if val_fold is not None else {}
         
         train_regions = defaultdict(InterLap)
         for i, fold in enumerate(self.folds):
@@ -846,13 +871,7 @@ class ScaledSampler(ProxySampler):
             self.resample(seed=seed)
 
     def resample(self, seed: int | None = None) -> None:
-        if seed is not None:
-            self.seed = seed
-            self.rng = random.Random(self.seed)
-        else:
-            # Advance seed using current RNG state
-            self.seed = self.rng.getrandbits(32)
-            self.rng = random.Random(self.seed)
+        self._update_seed(seed)
             
         # Propagate derived seed to child to decouple RNG streams
         child_seed = self.rng.getrandbits(32)
@@ -1030,12 +1049,7 @@ class ComplexityMatchedSampler(ProxySampler):
         logger.info("ComplexityMatchedSampler: Initialization complete.")
 
     def resample(self, seed: int | None = None) -> None:
-        if seed is not None:
-            self.seed = seed
-            self.rng = random.Random(self.seed)
-        else:
-            self.seed = self.rng.getrandbits(32)
-            self.rng = random.Random(self.seed)
+        self._update_seed(seed)
 
         # Ensure pool is initialized (lazy initialization if generate_on_init was False)
         if not self._initialized:
@@ -1043,22 +1057,7 @@ class ComplexityMatchedSampler(ProxySampler):
         
         # NOTE: We do NOT resample candidate_sampler here. 
         # We reuse the pool generated in _initialize.
-        self._indices = []
-
-        for bin_idx, count in self.target_hist.items():
-            needed = int(count * self.candidate_ratio)
-            candidates = self.candidate_bins.get(bin_idx, [])
-            
-            if not candidates:
-                continue
-                
-            if len(candidates) >= needed:
-                selected = self.rng.sample(candidates, needed)
-            else:
-                # Sample with replacement if we don't have enough in the pool
-                selected = self.rng.choices(candidates, k=needed)
-            
-            self._indices.extend(selected)
+        self._indices = _select_from_bins(self.target_hist, self.candidate_bins, self.candidate_ratio, self.rng)
 
         # Ensure exact count by filling gaps if necessary
         # (e.g. if some bins had no candidates), also the 
@@ -1094,7 +1093,23 @@ class ComplexityMatchedSampler(ProxySampler):
     ) -> tuple["ComplexityMatchedSampler", "ComplexityMatchedSampler", "ComplexityMatchedSampler"]:
         
         target_splits = self.target_sampler.split_folds(test_fold, val_fold)
-        candidate_splits = self.candidate_sampler.split_folds(test_fold, val_fold)
+
+        # If initialized, partition the existing candidate pool to preserve cache hits.
+        # If we rely on RandomSampler.split_folds(), it regenerates new random intervals (cache miss).
+        if self._initialized:
+            # We iterate the candidate sampler and bucket intervals into train/val/test
+            train_intervals, val_intervals, test_intervals = partition_intervals_by_fold(
+                self.candidate_sampler, self.folds, test_fold, val_fold
+            )
+
+            candidate_splits = (
+                ListSampler(train_intervals, self.chrom_sizes, self.folds, self.exclude_intervals),
+                ListSampler(val_intervals, self.chrom_sizes, self.folds, self.exclude_intervals),
+                ListSampler(test_intervals, self.chrom_sizes, self.folds, self.exclude_intervals),
+            )
+        else:
+            # Fallback if not initialized (though cache will miss on first run)
+            candidate_splits = self.candidate_sampler.split_folds(test_fold, val_fold)
 
         s1, s2, s3 = generate_sub_seeds(self.seed, 3)
 
