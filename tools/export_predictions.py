@@ -5,11 +5,13 @@ import torch
 import csv
 import gzip
 import re
+import json
 
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.samplers import IntervalSampler
 from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
+from cerberus.config import import_class
 
 def main():
     parser = argparse.ArgumentParser(description="Export predicted vs observed log-counts to TSV.")
@@ -69,6 +71,7 @@ def main():
     cerberus_config = ensemble.cerberus_config
     data_config = cerberus_config["data_config"]
     genome_config = cerberus_config["genome_config"]
+    model_config = cerberus_config["model_config"]
     
     # Override targets with provided bigwig
     if not data_config["targets"]:
@@ -106,6 +109,20 @@ def main():
     if len(peak_sampler) == 0:
         print("No intervals found. Exiting.")
         return
+
+    # 3.5 Setup Metrics and Loss
+    print("Configuring metrics and loss...")
+    
+    metrics_cls = import_class(model_config["metrics_cls"])
+    metrics_args = model_config["metrics_args"]
+    metrics = metrics_cls(**metrics_args).to(device)
+
+    loss_cls = import_class(model_config["loss_cls"])
+    loss_args = model_config["loss_args"]
+    criterion = loss_cls(**loss_args).to(device)
+
+    total_loss = 0.0
+    total_samples = 0
 
     # 4. Predict and Collect
     print("Running prediction...")
@@ -162,7 +179,16 @@ def main():
         obs_log_total = torch.log1p(obs_total)
         obs_batch = obs_log_total.numpy()
         
-        # 4c. Collect Metadata
+        # 4c. Update Metrics and Loss
+        targets_device = targets.to(device)
+        metrics.update(batch_output, targets_device)
+        
+        with torch.no_grad():
+             batch_loss = criterion(batch_output, targets_device)
+             total_loss += batch_loss.item() * targets.size(0)
+             total_samples += targets.size(0)
+        
+        # 4d. Collect Metadata
         for i, interval in enumerate(batch_intervals):
             # Interval here is the input interval (padded/centered)
             # We also calculate the output interval (prediction window)
@@ -200,6 +226,29 @@ def main():
         writer.writerows(results)
     finally:
         f.close()
+        
+    # 6. Compute and Save Metrics
+    print("Computing final metrics...")
+    final_metrics = metrics.compute()
+    avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
+    
+    summary_metrics = {k: v.item() for k, v in final_metrics.items()}
+    summary_metrics["loss"] = avg_loss
+    
+    # Get params
+    first_model = next(iter(ensemble.values()))
+    num_params = sum(p.numel() for p in first_model.parameters())
+    
+    summary = {
+        "model_name": str(args.model_path),
+        "parameters": num_params,
+        "metrics": summary_metrics
+    }
+    
+    summary_path = str(output_path) + ".metrics.json"
+    print(f"Writing metrics to {summary_path}...")
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
         
     print("Done.")
 
