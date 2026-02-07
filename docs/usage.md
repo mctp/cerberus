@@ -222,6 +222,20 @@ The `notebooks/` directory contains complete examples:
 *   `notebooks/cerberus_basics.py`: A step-by-step walkthrough of the library components (Configuration, Samplers, Datasets, Transforms).
 *   `notebooks/baseline_cnn_train.py`: A complete training example using the `GlobalProfileCNN` model to predict BigWig tracks from DNA sequence.
 
+## Generic Training Tools
+
+For quick training on custom data, you can use generic scripts in the `tools/` directory:
+
+*   `tools/train_pomeranian.py`: Train a Pomeranian model on any BigWig and BED (narrowPeak) file.
+    ```bash
+    # Basic usage
+    python tools/train_pomeranian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_pomeranian
+
+    # Customized training (adjust learning rate, patience, background ratio)
+    python tools/train_pomeranian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_pomeranian \
+        --learning-rate 0.001 --patience 15 --background-ratio 2.0
+    ```
+
 ## Next Steps
 
 Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.

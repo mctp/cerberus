@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 """
-BPNet training example for ChIP-seq data using Cerberus.
+Pomeranian Training Example.
 
-This script implements a standard BPNet training run using the MDA-PCA-2b AR dataset.
-It follows the standard configuration:
-- Input: 2114bp DNA sequence
-- Output: 1000bp base-resolution profile
-- Model: BPNet (8 dilated layers)
-- Loss: BPNetLoss (Multinomial NLL + MSE log counts)
-- Training: Based on peak intervals (narrowPeak)
+This script implements training for Pomeranian models on the MDA-PCA-2b AR dataset.
+
+Models:
+- Pomeranian (Default): Large Kernel (9), Factorized Stem. Input 2112bp.
+- PomeranianK5 (--k5): Medium Kernel (5), Factorized Stem. Input 2112bp.
 
 Usage:
-    python examples/chip_ar_mdapca2b_bpnet.py --batch-size 32 --max-epochs 50
-    python examples/chip_ar_mdapca2b_bpnet.py --multi --batch-size 32
+    python examples/chip_ar_mdapca2b_pomeranian.py --batch-size 32         # Uses Default (K9)
+    python examples/chip_ar_mdapca2b_pomeranian.py --k5 --batch-size 32    # Uses K5
 """
 
 import argparse
@@ -30,23 +28,27 @@ from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Train a BPNet model with Cerberus")
+    parser = argparse.ArgumentParser(description="Train Pomeranian models with Cerberus")
     
     # Script arguments
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data")
-    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_bpnet", help="Root directory for logs and checkpoints")
+    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_pomeranian", help="Root directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
     parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
+    
+    # Model variants
+    parser.add_argument("--k5", action="store_true", help="Use PomeranianK5 (Medium Kernel Variant)")
 
     # Hyperparameters
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
     parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
-    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson"], help="Loss function to use")
-
+    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson", "nb"], help="Loss function to use")
+    parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
+    
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
     parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
@@ -56,7 +58,7 @@ def get_args():
 def main():
     # Setup logging
     cerberus.setup_logging()
-    logging.info("Starting BPNet training script...")
+    logging.info("Starting Pomeranian training script...")
 
     args = get_args()
     
@@ -78,8 +80,11 @@ def main():
     logging.info("Downloading/Checking Human Reference (hg38)...")
     genome_files = download_human_reference(data_dir / "genome", name="hg38")
 
-    logging.info("Downloading/Checking Dataset (MDA-PCA-2b AR)...")
-    dataset_files = download_dataset(data_dir / "dataset", name="mdapca2b_ar")
+    logging.info("Downloading/Checking Dataset (TC32 PROX1)...")
+    dataset_files = {
+        "bigwig": "tmp/SI_38975_TC32_DMSO_PROX1.bw",
+        "narrowPeak": "tmp/SI_38975_TC32_DMSO_PROX1.narrowPeak.gz"
+    }
 
     # 2. Configuration
     
@@ -96,23 +101,22 @@ def main():
         }
     )
 
-    # Data Config for BPNet
-    # Input: 2114bp DNA
-    # Output: 1000bp at base resolution
-    input_len = 2114
-    output_len = 1000
+    # Data Config
+    # Both use 2112bp input
+    input_len = 2112
+    output_len = 1024
     output_bin_size = 1
     max_jitter = args.jitter
 
     data_config: DataConfig = {
-        "inputs": {}, # No additional input tracks, just DNA
+        "inputs": {}, 
         "targets": {"signal": dataset_files["bigwig"]},
         "input_len": input_len,
         "output_len": output_len, 
         "max_jitter": max_jitter,
         "output_bin_size": output_bin_size,
         "encoding": "ACGT",
-        "log_transform": False, # BPNet uses raw counts for multinomial loss
+        "log_transform": False, # Uses raw counts for multinomial loss
         "reverse_complement": True, # Augmentation
         "use_sequence": True,
     }
@@ -134,7 +138,7 @@ def main():
     train_config: TrainConfig = {
         "batch_size": args.batch_size,
         "max_epochs": args.max_epochs,
-        "learning_rate": 1e-3,
+        "learning_rate": 5e-4,
         "weight_decay": 0.01,
         "patience": 10,
         "optimizer": "adamw",
@@ -144,35 +148,70 @@ def main():
         "scheduler_args": {
             "num_epochs": args.max_epochs,
             "warmup_epochs": 10,
-            "min_lr": 1e-5
+            "min_lr": 5e-6
         }
     }
 
-    # Model Config for BPNet
-    logging.info("Using BPNet Model...")
+    # Model Config
+    if args.k5:
+        logging.info(f"Using PomeranianK5 (Medium Kernel) Model...")
+        model_args = {
+            "input_channels": ["A", "C", "G", "T"],
+            "output_channels": ["signal"],
+            "filters": 64,
+            "n_dilated_layers": 8,
+            "conv_kernel_size": [11, 11],
+            "dil_kernel_size": 5,
+            "profile_kernel_size": 49,
+            "expansion": 1,
+            "dropout": 0.1,
+            "predict_total_count": True,
+            "stem_expansion": 2,
+            "dilations": [1, 2, 4, 8, 16, 32, 64, 128],
+        }
+        model_cls_name = "cerberus.models.pomeranian.PomeranianK5"
+        model_name = "PomeranianK5"
+    else:
+        # Default to Pomeranian (K9 Config)
+        logging.info(f"Using Pomeranian (Default) Model...")
+        model_args = {
+            "input_channels": ["A", "C", "G", "T"],
+            "output_channels": ["signal"],
+            "filters": 64,
+            "n_dilated_layers": 8,
+            "conv_kernel_size": [11, 11],
+            "dil_kernel_size": 9,
+            "profile_kernel_size": 45,
+            "expansion": 1,
+            "dropout": 0.1,
+            "predict_total_count": True,
+            "stem_expansion": 2,
+            "dilations": [1, 1, 2, 4, 8, 16, 32, 64],
+        }
+        model_cls_name = "cerberus.models.pomeranian.Pomeranian"
+        model_name = "Pomeranian"
 
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
         loss_args = {"count_weight": args.alpha}
         logging.info(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
+    elif args.loss == "nb":
+        loss_cls = "cerberus.loss.NegativeBinomialMultinomialLoss"
+        loss_args = {"count_weight": args.alpha, "total_count": args.total_count}
+        logging.info(f"Using NegativeBinomialMultinomialLoss (count_weight={args.alpha}, total_count={args.total_count})...")
     else:
         loss_cls = "cerberus.models.bpnet.BPNetLoss"
         loss_args = {"alpha": args.alpha}
         logging.info(f"Using BPNetLoss (alpha={args.alpha})...")
 
     model_config: ModelConfig = {
-        "name": "BPNet",
-        "model_cls": "cerberus.models.bpnet.BPNet",
+        "name": model_name,
+        "model_cls": model_cls_name,
         "loss_cls": loss_cls,
         "loss_args": loss_args,
-        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
+        "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
         "metrics_args": {},
-        "model_args": {
-            "input_channels": ["A", "C", "G", "T"],
-            "output_channels": ["signal"],
-            "filters": 64,
-            "n_dilated_layers": 8
-        }
+        "model_args": model_args
     }
 
     # 3. Training
@@ -199,14 +238,16 @@ def main():
     
     # Precision settings
     if accelerator == "mps":
+        # MPS-optimized settings
         precision_args = {
             "precision": "16-mixed",
             "accelerator": accelerator,
             "devices": devices,
-            "strategy": "auto",
+            "strategy": "auto", 
             "compile": False
         }
     else:
+        # NVIDIA A100 / CUDA optimized settings
         precision_args = {
             "precision": "bf16-mixed",
             "matmul_precision": "medium",

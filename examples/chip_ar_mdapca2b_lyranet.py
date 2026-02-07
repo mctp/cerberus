@@ -25,6 +25,7 @@ from pathlib import Path
 from pprint import pprint
 
 # Cerberus imports
+import cerberus
 from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
@@ -56,7 +57,7 @@ def get_args():
 
 def main():
     # Setup logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', force=True)
+    cerberus.setup_logging()
     logging.info("Starting LyraNet training script...")
 
     args = get_args()
@@ -72,14 +73,14 @@ def main():
         output_dir = output_dir / "single-fold"
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    print(f"Data Directory: {data_dir}")
-    print(f"Output Directory: {output_dir}")
+    logging.info(f"Data Directory: {data_dir}")
+    logging.info(f"Output Directory: {output_dir}")
 
     # 1. Download/Check Data
-    print("Downloading/Checking Human Reference (hg38)...")
+    logging.info("Downloading/Checking Human Reference (hg38)...")
     genome_files = download_human_reference(data_dir / "genome", name="hg38")
 
-    print("Downloading/Checking Dataset (MDA-PCA-2b AR)...")
+    logging.info("Downloading/Checking Dataset (MDA-PCA-2b AR)...")
     dataset_files = download_dataset(data_dir / "dataset", name="mdapca2b_ar")
 
     # 2. Configuration
@@ -120,7 +121,7 @@ def main():
 
     # Sampler Config - Peak Intervals
     padded_size = input_len + 2 * max_jitter
-    print(f"Using Peak Sampler (Positives + Negatives) with padded_size={padded_size}...")
+    logging.info(f"Using Peak Sampler (Positives + Negatives) with padded_size={padded_size}...")
     
     sampler_config: SamplerConfig = {
         "sampler_type": "peak",
@@ -150,16 +151,16 @@ def main():
     }
 
     # Model Config for LyraNet
-    print(f"Using LyraNet Model (~100k params)...")
+    logging.info(f"Using LyraNet Model (~100k params)...")
 
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
         loss_args = {"count_weight": args.alpha}
-        print(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
+        logging.info(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
     else:
         loss_cls = "cerberus.models.bpnet.BPNetLoss"
         loss_args = {"alpha": args.alpha}
-        print(f"Using BPNetLoss (alpha={args.alpha})...")
+        logging.info(f"Using BPNetLoss (alpha={args.alpha})...")
 
     # LyraNet Configuration
     # Tuned for ~100k parameters
@@ -203,9 +204,9 @@ def main():
         accelerator = "mps"
 
     if accelerator == "mps":
-        print(f"[INFO] Using Apple Silicon (MPS) acceleration.")
+        logging.info(f"[INFO] Using Apple Silicon (MPS) acceleration.")
         if num_workers > 0:
-            print(f"[WARN] num_workers={num_workers} may cause instability on MPS. Recommend setting --num-workers 0.")
+            logging.warning(f"[WARN] num_workers={num_workers} may cause instability on MPS. Recommend setting --num-workers 0.")
     
     # Precision settings
     if accelerator == "mps":
@@ -229,25 +230,25 @@ def main():
             "compile": True
         }
 
-    print("\nConfigurations:")
-    print("-" * 20)
-    print("Genome Config:")
+    logging.info("\nConfigurations:")
+    logging.info("-" * 20)
+    logging.info("Genome Config:")
     pprint(genome_config)
-    print("\nData Config:")
+    logging.info("\nData Config:")
     pprint(data_config)
-    print("\nSampler Config:")
+    logging.info("\nSampler Config:")
     pprint(sampler_config)
-    print("\nTrain Config:")
+    logging.info("\nTrain Config:")
     pprint(train_config)
-    print("\nModel Config:")
+    logging.info("\nModel Config:")
     pprint(model_config)
-    print("\nPrecision and Hardware Args:")
+    logging.info("\nPrecision and Hardware Args:")
     pprint(precision_args)
-    print("-" * 20 + "\n")
+    logging.info("-" * 20 + "\n")
 
 
     if args.multi:
-        print("Starting Multi-Fold Training (train_multi)...")
+        logging.info("Starting Multi-Fold Training (train_multi)...")
         logging.info("Calling train_multi...")
         train_multi(
             genome_config=genome_config,
@@ -264,7 +265,7 @@ def main():
             **precision_args
         )
     else:
-        print("Starting Single Fold Training (train_single)...")
+        logging.info("Starting Single Fold Training (train_single)...")
         logging.info("Calling train_single...")
         train_single(
             genome_config=genome_config,
@@ -282,7 +283,7 @@ def main():
         )
 
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-        print(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
+        logging.info(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
 
 if __name__ == "__main__":
     main()

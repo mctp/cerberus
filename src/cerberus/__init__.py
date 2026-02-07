@@ -14,6 +14,7 @@ from .download import (
     download_dataset,
     download_human_reference,
 )
+from .logging import setup_logging
 
 __all__ = [
     # Core
@@ -32,4 +33,6 @@ __all__ = [
     # Download Utilities
     "download_dataset",
     "download_human_reference",
+    # Logging
+    "setup_logging",
 ]

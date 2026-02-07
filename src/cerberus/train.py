@@ -1,4 +1,5 @@
 import os
+import logging
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
@@ -15,6 +16,8 @@ from .config import (
 )
 from .module import instantiate, configure_callbacks
 from .model_ensemble import update_ensemble_metadata
+
+logger = logging.getLogger(__name__)
 
 
 def _train(
@@ -253,7 +256,7 @@ def train_multi(
         test_fold = i
         val_fold = (i + 1) % k
 
-        print(f"Starting training for Fold {test_fold} (Val: {val_fold})...")
+        logger.info(f"Starting training for Fold {test_fold} (Val: {val_fold})...")
 
         trainer = train_single(
             genome_config=genome_config,

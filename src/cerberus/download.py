@@ -1,9 +1,12 @@
 
+import logging
 from pathlib import Path
 import urllib.request
 import shutil
 import gzip
 import pyfaidx
+
+logger = logging.getLogger(__name__)
 
 def _download_file(url: str, dest: Path):
     """Downloads a file from a URL to a destination path."""
@@ -48,7 +51,7 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
         for key, filename in files.items():
             filepath = out_dir / filename
             if not filepath.exists():
-                print(f"Downloading {filename}...")
+                logger.info(f"Downloading {filename}...")
                 _download_file(urls[key], filepath)
             results[key] = filepath
             
@@ -106,9 +109,9 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
     fasta_gz = out_dir / f"{genome}.fa.gz"
     fasta_final = out_dir / f"{genome}.fa"
     if not fasta_final.exists():
-        print(f"Downloading FASTA from {resources['fasta_url']}...")
+        logger.info(f"Downloading FASTA from {resources['fasta_url']}...")
         _download_file(resources["fasta_url"], fasta_gz)
-        print("Decompressing FASTA...")
+        logger.info("Decompressing FASTA...")
         with gzip.open(fasta_gz, "rb") as f_in, open(fasta_final, "wb") as f_out:
             shutil.copyfileobj(f_in, f_out)
         fasta_gz.unlink()  # cleanup
@@ -117,7 +120,7 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
     # 1b. FASTA Index
     fai_final = out_dir / f"{genome}.fa.fai"
     if not fai_final.exists():
-        print("Generating FASTA Index using pyfaidx...")
+        logger.info("Generating FASTA Index using pyfaidx...")
         _ = pyfaidx.Fasta(str(fasta_final))
     results["fai"] = fai_final
 
@@ -125,9 +128,9 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
     blacklist_gz = out_dir / "blacklist.bed.gz"
     blacklist_final = out_dir / "blacklist.bed"
     if not blacklist_final.exists():
-        print(f"Downloading Blacklist from {resources['blacklist_url']}...")
+        logger.info(f"Downloading Blacklist from {resources['blacklist_url']}...")
         _download_file(resources["blacklist_url"], blacklist_gz)
-        print("Decompressing Blacklist...")
+        logger.info("Decompressing Blacklist...")
         with gzip.open(blacklist_gz, "rb") as f_in, open(blacklist_final, "wb") as f_out:
             shutil.copyfileobj(f_in, f_out)
         blacklist_gz.unlink()
@@ -139,10 +142,10 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
 
     if not gaps_path.exists():
         if not gap_gz.exists():
-            print(f"Downloading Gap tracks from {resources['gaps_url']}...")
+            logger.info(f"Downloading Gap tracks from {resources['gaps_url']}...")
             _download_file(resources["gaps_url"], gap_gz)
 
-        print("Processing gap tracks...")
+        logger.info("Processing gap tracks...")
         with gzip.open(gap_gz, "rt") as f, open(gaps_path, "w") as f_gaps:
             for line in f:
                 parts = line.strip().split("\t")
@@ -169,7 +172,7 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
     if resources["mappability_url"]:
         mappability_path = out_dir / "mappability.bw"
         if not mappability_path.exists():
-            print(f"Downloading Mappability from {resources['mappability_url']}...")
+            logger.info(f"Downloading Mappability from {resources['mappability_url']}...")
             _download_file(resources["mappability_url"], mappability_path)
         results["mappability"] = mappability_path
 
@@ -177,7 +180,7 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
     if resources["ccre_url"]:
         encode_cre_path = out_dir / "encode_cre.bb"
         if not encode_cre_path.exists():
-            print(f"Downloading ENCODE cCREs from {resources['ccre_url']}...")
+            logger.info(f"Downloading ENCODE cCREs from {resources['ccre_url']}...")
             _download_file(resources["ccre_url"], encode_cre_path)
         results["encode_cre"] = encode_cre_path
 
