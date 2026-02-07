@@ -39,8 +39,21 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Seed Derivation**: The new samplers for Train, Val, and Test are initialized with seeds derived from the parent sampler's *current* state.
 *   **Idempotency**: Calling `split_folds` multiple times on the same sampler state will return identical splits.
 *   **Dynamic Splits**: If the parent sampler is resampled (advanced to next epoch), subsequent calls to `split_folds` will produce new splits with new seeds. This allows the validation set (if stochastic) to vary across epochs if desired, though typically validation sets are kept static by using a separate, non-resampled sampler instance.
+*   **Overlap Handling**: If the defined Test and Validation folds overlap (or are identical), intervals falling into the overlapping regions will be assigned to **both** the Test and Validation samplers. Intervals present in either Test or Validation folds are strictly excluded from the Training sampler.
 
 ## Specific Implementations
+
+### IntervalSampler
+*   **Function**: Loads a static list of intervals from a file (BED or narrowPeak).
+*   **Seeding**: Not applicable (deterministic data).
+*   **Resampling**: No-op (data is static).
+*   **Splitting**: Filters the loaded intervals based on the fold definitions.
+
+### SlidingWindowSampler
+*   **Function**: Generates intervals by sliding a fixed-size window across the genome with a specified stride.
+*   **Seeding**: Not applicable (deterministic generation).
+*   **Resampling**: No-op.
+*   **Splitting**: Filters the generated windows based on the fold definitions.
 
 ### RandomSampler
 *   **Function**: Generates `num_intervals` random genomic intervals.
@@ -67,6 +80,12 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Function**: Subsamples or oversamples another sampler to a fixed size.
 *   **Seeding**: The `seed` controls the random selection of indices.
 *   **Resampling**: Updates self-seed, propagates a derived seed to the child sampler, and re-selects indices.
+
+### PeakSampler
+*   **Function**: A high-level convenience class that combines an `IntervalSampler` (positives/peaks) with a `ComplexityMatchedSampler` (negatives/background) into a single `MultiSampler`.
+*   **Seeding**: Propagates seed to the negative generation process.
+*   **Resampling**: Re-samples the negative set to match the positives (while keeping positives static).
+*   **Splitting**: Splits both the positive and negative samplers consistent with folds.
 
 ## Best Practices for Users
 
