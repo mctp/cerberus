@@ -550,7 +550,7 @@ class RandomSampler(BaseSampler):
 
         if not flat_regions:
             if self.num_intervals > 0:
-                print("Warning: No allowed regions large enough for sampling.")
+                logger.warning("No allowed regions large enough for sampling.")
             return
 
         count = 0
@@ -575,8 +575,8 @@ class RandomSampler(BaseSampler):
                 count += 1
 
         if count < self.num_intervals:
-            print(
-                f"Warning: RandomSampler could only generate {count}/{self.num_intervals} "
+            logger.warning(
+                f"RandomSampler could only generate {count}/{self.num_intervals} "
                 f"intervals after {attempts} attempts."
             )
 

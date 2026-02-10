@@ -1,4 +1,5 @@
 import torch
+import logging
 from collections.abc import Iterable
 import pybigtools
 from pathlib import Path
@@ -8,6 +9,8 @@ from cerberus.interval import Interval
 from cerberus.dataset import CerberusDataset
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.samplers import SlidingWindowSampler
+
+logger = logging.getLogger(__name__)
 
 
 def predict_to_bigwig(
@@ -98,7 +101,7 @@ def predict_to_bigwig(
                     batch_size,
                 )
 
-    print(f"Writing BigWig to {output_path}...")
+    logger.info(f"Writing BigWig to {output_path}...")
     # Using pybigtools to write the stream
     bw = pybigtools.open(str(output_path), "w")  # type: ignore
     bw.write(genome_config["chrom_sizes"], stream_generator())

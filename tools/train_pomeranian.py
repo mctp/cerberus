@@ -1,20 +1,16 @@
 #!/usr/bin/env python
 """
-GemiNet training example for ChIP-seq data using Cerberus.
+Pomeranian Training Tool.
 
-This script implements a GemiNet training run using the MDA-PCA-2b AR dataset.
-GemiNet is a drop-in replacement for BPNet using Projected Gated Convolutions (PGC).
+This script implements a generic training tool for Pomeranian models, allowing
+users to provide any BigWig and BED file for training.
 
-It follows the standard configuration:
-- Input: 2048bp DNA sequence
-- Output: 1024bp base-resolution profile
-- Model: GemiNet (8 dilated PGC layers)
-- Loss: BPNetLoss (Multinomial NLL + MSE log counts)
-- Training: Based on peak intervals (narrowPeak)
+Models:
+- Pomeranian (Default): Large Kernel (9), Factorized Stem. Input 2112bp.
+- PomeranianK5 (--k5): Medium Kernel (5), Factorized Stem. Input 2112bp.
 
 Usage:
-    python examples/chip_ar_mdapca2b_geminet.py --batch-size 32 --max-epochs 50
-    python examples/chip_ar_mdapca2b_geminet.py --multi --batch-size 32
+    python tools/train_pomeranian.py --bigwig path/to/signal.bw --peaks path/to/peaks.narrowPeak --output-dir models/my_model
 """
 
 import argparse
@@ -26,30 +22,58 @@ from pprint import pprint
 
 # Cerberus imports
 import cerberus
-from cerberus.download import download_dataset, download_human_reference
+from cerberus.download import download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Train a GemiNet model with Cerberus")
+    parser = argparse.ArgumentParser(description="Train Pomeranian models with Cerberus using any BigWig and BED file")
+    
+    # Input files
+    parser.add_argument("--bigwig", type=str, required=True, help="Path to the BigWig file (signal)")
+    parser.add_argument("--peaks", type=str, required=True, help="Path to the BED/narrowPeak file (training regions)")
+    
+    # Genome arguments
+    parser.add_argument("--genome", type=str, default="hg38", help="Genome name (default: hg38)")
+    parser.add_argument("--species", type=str, default="human", help="Species (default: human)")
+    parser.add_argument("--fasta", type=str, help="Path to genome FASTA file (if not provided, will try to download for hg38)")
+    parser.add_argument("--blacklist", type=str, help="Path to blacklist file")
+    parser.add_argument("--gaps", type=str, help="Path to gaps file")
     
     # Script arguments
-    parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data")
-    parser.add_argument("--output-dir", type=str, default="tests/data/models/chip_ar_mdapca2b_geminet", help="Root directory for logs and checkpoints")
+    parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data (e.g., genome reference)")
+    parser.add_argument("--output-dir", type=str, required=True, help="Root directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
     parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
+    parser.add_argument("--val-fold", type=int, default=1, help="Validation fold (for single-fold training)")
+    parser.add_argument("--test-fold", type=int, default=0, help="Test fold")
+    
+    # Model variants
+    parser.add_argument("--k5", action="store_true", help="Use PomeranianK5 (Medium Kernel Variant)")
 
     # Hyperparameters
+    parser.add_argument("--input-len", type=int, default=2112, help="Input sequence length")
+    parser.add_argument("--output-len", type=int, default=1024, help="Output signal length")
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
     parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
-    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson"], help="Loss function to use")
-    parser.add_argument("--model-size", type=str, default="small", choices=["small", "large", "xl"], help="GemiNet model size (small, large, xl)")
-
+    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson", "nb"], help="Loss function to use")
+    parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
+    parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
+    
+    # Training parameters
+    parser.add_argument("--learning-rate", type=float, default=5e-4, help="Learning rate")
+    parser.add_argument("--weight-decay", type=float, default=0.01, help="Weight decay")
+    parser.add_argument("--patience", type=int, default=10, help="Patience for early stopping")
+    parser.add_argument("--optimizer", type=str, default="adamw", help="Optimizer type")
+    parser.add_argument("--scheduler-type", type=str, default="cosine", help="Learning rate scheduler type")
+    parser.add_argument("--warmup-epochs", type=int, default=10, help="Number of warmup epochs")
+    parser.add_argument("--min-lr", type=float, default=5e-6, help="Minimum learning rate")
+    
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
     parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
@@ -59,7 +83,7 @@ def get_args():
 def main():
     # Setup logging
     cerberus.setup_logging()
-    logging.info("Starting GemiNet training script...")
+    logging.info("Starting Generic Pomeranian training tool...")
 
     args = get_args()
     
@@ -74,46 +98,52 @@ def main():
         output_dir = output_dir / "single-fold"
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Update output directory with model size
-    output_dir = output_dir / args.model_size
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     logging.info(f"Data Directory: {data_dir}")
     logging.info(f"Output Directory: {output_dir}")
 
-    # 1. Download/Check Data
-    logging.info("Downloading/Checking Human Reference (hg38)...")
-    genome_files = download_human_reference(data_dir / "genome", name="hg38")
-
-    logging.info("Downloading/Checking Dataset (MDA-PCA-2b AR)...")
-    dataset_files = download_dataset(data_dir / "dataset", name="mdapca2b_ar")
+    # 1. Genome Reference
+    if not args.fasta:
+        if args.genome == "hg38":
+            logging.info("Downloading/Checking Human Reference (hg38)...")
+            genome_files = download_human_reference(data_dir / "genome", name="hg38")
+            fasta_path = genome_files["fasta"]
+            blacklist_path = args.blacklist or genome_files["blacklist"]
+            gaps_path = args.gaps or genome_files["gaps"]
+        else:
+            raise ValueError(f"Fasta path must be provided for genome {args.genome} if not hg38")
+    else:
+        fasta_path = Path(args.fasta)
+        blacklist_path = Path(args.blacklist) if args.blacklist else None
+        gaps_path = Path(args.gaps) if args.gaps else None
 
     # 2. Configuration
     
+    # Build exclude_intervals dict, filtering out None values
+    exclude_intervals = {}
+    if blacklist_path:
+        exclude_intervals["blacklist"] = blacklist_path
+    if gaps_path:
+        exclude_intervals["gaps"] = gaps_path
+
     # Genome Config
     genome_config: GenomeConfig = create_genome_config(
-        name="hg38",
-        fasta_path=genome_files["fasta"],
-        species="human",
+        name=args.genome,
+        fasta_path=fasta_path,
+        species=args.species,
         fold_type="chrom_partition",
-        fold_args={"k": 5, "val_fold": 1, "test_fold": 0},
-        exclude_intervals={
-            "blacklist": genome_files["blacklist"],
-            "gaps": genome_files["gaps"],
-        }
+        fold_args={"k": 5, "val_fold": args.val_fold, "test_fold": args.test_fold},
+        exclude_intervals=exclude_intervals
     )
 
-    # Data Config for GemiNet
-    # Input: 2048bp DNA (Cleaner power-of-2 length, possible due to GemiNet's flexibility)
-    # Output: 1024bp at base resolution
-    input_len = 2048
-    output_len = 1024
+    # Data Config
+    input_len = args.input_len
+    output_len = args.output_len
     output_bin_size = 1
     max_jitter = args.jitter
 
     data_config: DataConfig = {
         "inputs": {}, 
-        "targets": {"signal": dataset_files["bigwig"]},
+        "targets": {"signal": args.bigwig},
         "input_len": input_len,
         "output_len": output_len, 
         "max_jitter": max_jitter,
@@ -132,75 +162,87 @@ def main():
         "sampler_type": "peak",
         "padded_size": padded_size,
         "sampler_args": {
-            "intervals_path": dataset_files["narrowPeak"],
-            "background_ratio": 1.0,
+            "intervals_path": args.peaks,
+            "background_ratio": args.background_ratio,
         }
     }
 
     # Train Config
-    # Use optimized parameters for Extra Large model to prevent overfitting
-    if args.model_size == "xl":
-        learning_rate = 5e-4
-        weight_decay = 0.1
-    else:
-        learning_rate = 1e-3
-        weight_decay = 0.01
-
     train_config: TrainConfig = {
         "batch_size": args.batch_size,
         "max_epochs": args.max_epochs,
-        "learning_rate": learning_rate,
-        "weight_decay": weight_decay,
-        "patience": 10,
-        "optimizer": "adamw",
+        "learning_rate": args.learning_rate,
+        "weight_decay": args.weight_decay,
+        "patience": args.patience,
+        "optimizer": args.optimizer,
         "filter_bias_and_bn": True,
         "reload_dataloaders_every_n_epochs": 0,
-        "scheduler_type": "cosine",
+        "scheduler_type": args.scheduler_type,
         "scheduler_args": {
             "num_epochs": args.max_epochs,
-            "warmup_epochs": 10,
-            "min_lr": 1e-5
+            "warmup_epochs": args.warmup_epochs,
+            "min_lr": args.min_lr
         }
     }
 
-    # Model Config for GemiNet
-    logging.info(f"Using GemiNet Model ({args.model_size})...")
+    # Model Config
+    if args.k5:
+        logging.info(f"Using PomeranianK5 (Medium Kernel) Model...")
+        model_args = {
+            "input_channels": ["A", "C", "G", "T"],
+            "output_channels": ["signal"],
+            "filters": 64,
+            "n_dilated_layers": 8,
+            "conv_kernel_size": [11, 11],
+            "dil_kernel_size": 5,
+            "profile_kernel_size": 49,
+            "expansion": 1,
+            "dropout": 0.1,
+            "predict_total_count": True,
+            "stem_expansion": 2,
+            "dilations": [1, 2, 4, 8, 16, 32, 64, 128],
+        }
+        model_cls_name = "cerberus.models.pomeranian.PomeranianK5"
+        model_name = "PomeranianK5"
+    else:
+        # Default to Pomeranian (K9 Config)
+        logging.info(f"Using Pomeranian (Default) Model...")
+        model_args = {
+            "input_channels": ["A", "C", "G", "T"],
+            "output_channels": ["signal"],
+            "filters": 64,
+            "n_dilated_layers": 8,
+            "conv_kernel_size": [11, 11],
+            "dil_kernel_size": 9,
+            "profile_kernel_size": 45,
+            "expansion": 1,
+            "dropout": 0.1,
+            "predict_total_count": True,
+            "stem_expansion": 2,
+            "dilations": [1, 1, 2, 4, 8, 16, 32, 64],
+        }
+        model_cls_name = "cerberus.models.pomeranian.Pomeranian"
+        model_name = "Pomeranian"
 
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
         loss_args = {"count_weight": args.alpha}
         logging.info(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
+    elif args.loss == "nb":
+        loss_cls = "cerberus.loss.NegativeBinomialMultinomialLoss"
+        loss_args = {"count_weight": args.alpha, "total_count": args.total_count}
+        logging.info(f"Using NegativeBinomialMultinomialLoss (count_weight={args.alpha}, total_count={args.total_count})...")
     else:
         loss_cls = "cerberus.models.bpnet.BPNetLoss"
         loss_args = {"alpha": args.alpha}
         logging.info(f"Using BPNetLoss (alpha={args.alpha})...")
 
-    # Select Model Class based on size
-    if args.model_size == "small":
-        model_cls = "cerberus.models.geminet.GemiNet"
-        model_args = {}
-    elif args.model_size == "medium":
-        model_cls = "cerberus.models.geminet.GemiNetMedium"
-        model_args = {} 
-    elif args.model_size == "large":
-        model_cls = "cerberus.models.geminet.GemiNetLarge"
-        model_args = {} 
-    elif args.model_size == "xl":
-        model_cls = "cerberus.models.geminet.GemiNetExtraLarge"
-        model_args = {}
-    else:
-        raise ValueError(f"Invalid model size: {args.model_size}")
-    
-    # Common args
-    model_args["input_channels"] = ["A", "C", "G", "T"]
-    model_args["output_channels"] = ["signal"]
-
     model_config: ModelConfig = {
-        "name": f"GemiNet-{args.model_size}",
-        "model_cls": model_cls,
+        "name": model_name,
+        "model_cls": model_cls_name,
         "loss_cls": loss_cls,
         "loss_args": loss_args,
-        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
+        "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
         "metrics_args": {},
         "model_args": model_args
     }
@@ -234,7 +276,6 @@ def main():
             "precision": "16-mixed",
             "accelerator": accelerator,
             "devices": devices,
-            # MPS currently has issues with torch.compile and DDP
             "strategy": "auto", 
             "compile": False
         }

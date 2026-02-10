@@ -6,6 +6,7 @@ import dataclasses
 from typing import Iterable, Iterator
 import itertools
 import yaml
+import logging
 
 from cerberus.config import (
     CerberusConfig,
@@ -24,6 +25,8 @@ from cerberus.output import (
     aggregate_models
 )
 from cerberus.interval import Interval
+
+logger = logging.getLogger(__name__)
 
 
 class ModelEnsemble(nn.ModuleDict):
@@ -537,7 +540,7 @@ class _ModelManager:
                 ckpt_path = self._select_best_checkpoint(checkpoints)
                 models_dict[str(fold_idx)] = self._load_model(f"fold_{fold_idx}", ckpt_path)
             else:
-                print(f"Warning: No checkpoint found for fold {fold_idx} in {fold_dir}")
+                logger.warning(f"No checkpoint found for fold {fold_idx} in {fold_dir}")
             
         return models_dict, self.folds
 
@@ -548,7 +551,7 @@ class _ModelManager:
         if key in self.cache:
             return self.cache[key]
         
-        print(f"Loading model from {ckpt_file} for {key}...")
+        logger.info(f"Loading model from {ckpt_file} for {key}...")
         # Instantiate only the backbone model to avoid overhead of CerberusModule (metrics, loss, etc.)
         model = instantiate_model(
             model_config=self.model_config,
