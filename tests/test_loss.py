@@ -107,7 +107,7 @@ def test_decoupled_mse_implicit_log_targets():
     
     # Preds: Matches raw
     logits = torch.tensor([[[0.0]]]) # Prob 1.0
-    log_counts = torch.log(torch.tensor([[10.0]]))
+    log_counts = torch.log1p(torch.tensor([[10.0]]))
     preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
     
     # Correct config

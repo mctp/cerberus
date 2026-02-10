@@ -112,10 +112,11 @@ def test_decoupled_pearson_metric():
     channels = 2
     length = 50
     
-    logits = torch.randn(batch_size, channels, length)
-    log_counts = torch.randn(batch_size, channels)
+    # Use deterministic inputs with sufficient variance
+    logits = torch.randn(batch_size, channels, length) * 10.0
+    log_counts = torch.abs(torch.randn(batch_size, channels)) + 1.0 # Positive log counts
     preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-    targets = torch.randn(batch_size, channels, length)
+    targets = torch.randn(batch_size, channels, length) * 10.0
     
     metric.update(preds, targets)
     result = metric.compute()
@@ -146,7 +147,7 @@ def test_decoupled_mse_metric():
     assert result.dim() == 0
     
     probs = nn.functional.softmax(logits, dim=-1)
-    counts = torch.exp(log_counts).unsqueeze(-1)
+    counts = torch.expm1(log_counts.float()).clamp_min(0.0).unsqueeze(-1)
     expected_preds = probs * counts
     expected_mse = nn.functional.mse_loss(expected_preds, targets)
     assert torch.allclose(result, expected_mse, atol=1e-5)

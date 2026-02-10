@@ -71,7 +71,7 @@ class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef):
         log_counts = preds.log_counts
 
         probs = F.softmax(logits, dim=-1)
-        total_counts = torch.exp(log_counts)
+        total_counts = torch.expm1(log_counts.float()).clamp_min(0.0)
         
         # Handle (Batch,) edge case
         if total_counts.dim() == 1:
@@ -110,7 +110,7 @@ class CountProfileMeanSquaredError(MeanSquaredError):
         log_counts = preds.log_counts
 
         probs = F.softmax(logits, dim=-1)
-        total_counts = torch.exp(log_counts)
+        total_counts = torch.expm1(log_counts.float()).clamp_min(0.0)
         
         # Handle (Batch,) edge case
         if total_counts.dim() == 1:
