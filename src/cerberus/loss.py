@@ -18,12 +18,12 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     def forward(self, log_input, target):
         if not isinstance(log_input, ProfileLogRates):
              raise TypeError("ProfilePoissonNLLLoss requires ProfileLogRates")
-        
+
         log_input = log_input.log_rates
-        
+
         if self.implicit_log_targets:
-            target = torch.expm1(target)
-            
+            target = torch.expm1(target).clamp_min(0.0)
+
         return super().forward(log_input, target)
 
 
@@ -103,11 +103,11 @@ class MSEMultinomialLoss(nn.Module):
 
     def forward(self, outputs, targets):
         if self.implicit_log_targets:
-            targets = torch.expm1(targets)
+            targets = torch.expm1(targets).clamp_min(0.0)
 
         if not isinstance(outputs, ProfileCountOutput):
              raise TypeError("MSEMultinomialLoss requires ProfileCountOutput")
-        
+
         logits = outputs.logits
         pred_log_counts = outputs.log_counts
 
@@ -144,7 +144,7 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
     """
     def forward(self, outputs, targets):
         if self.implicit_log_targets:
-            targets = torch.expm1(targets)
+            targets = torch.expm1(targets).clamp_min(0.0)
 
         if isinstance(outputs, ProfileCountOutput):
             raise TypeError("CoupledMSEMultinomialLoss does not accept ProfileCountOutput. Use MSEMultinomialLoss instead.")
@@ -230,7 +230,7 @@ class PoissonMultinomialLoss(nn.Module):
 
     def forward(self, predictions, targets):
         if self.implicit_log_targets:
-            targets = torch.expm1(targets)
+            targets = torch.expm1(targets).clamp_min(0.0)
 
         if not isinstance(predictions, ProfileCountOutput):
              raise TypeError("PoissonMultinomialLoss requires ProfileCountOutput")
@@ -268,7 +268,7 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
     """
     def forward(self, predictions, targets):
         if self.implicit_log_targets:
-            targets = torch.expm1(targets)
+            targets = torch.expm1(targets).clamp_min(0.0)
 
         if isinstance(predictions, ProfileCountOutput):
             raise TypeError("CoupledPoissonMultinomialLoss does not accept ProfileCountOutput. Use PoissonMultinomialLoss instead.")
@@ -316,7 +316,7 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
         
     def forward(self, predictions, targets):
         if self.implicit_log_targets:
-            targets = torch.expm1(targets)
+            targets = torch.expm1(targets).clamp_min(0.0)
 
         if not isinstance(predictions, ProfileCountOutput):
              raise TypeError("NegativeBinomialMultinomialLoss requires ProfileCountOutput")
@@ -357,7 +357,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
     """
     def forward(self, predictions, targets):
         if self.implicit_log_targets:
-            targets = torch.expm1(targets)
+            targets = torch.expm1(targets).clamp_min(0.0)
 
         if isinstance(predictions, ProfileCountOutput):
             raise TypeError("CoupledNegativeBinomialMultinomialLoss does not accept ProfileCountOutput. Use NegativeBinomialMultinomialLoss instead.")
