@@ -10,26 +10,85 @@ This document analyzes the compatibility between cerberus (genomic sequence-to-f
 
 ## 2. Tangermeme Capability Overview
 
-Tangermeme provides post-hoc analysis tools for any PyTorch sequence model:
+Tangermeme provides post-hoc analysis tools for any PyTorch sequence model. Not all modules are equally relevant for studying how inputs affect outputs. This section classifies each module by its role in model interpretation.
 
-| Tool | Function | What it does |
-|------|----------|-------------|
-| `predict` | `predict(model, X)` | Batched GPU inference with memory management |
-| `marginalize` | `marginalize(model, X, motif)` | Measure effect of inserting a motif |
-| `ablate` | `ablate(model, X, start, end)` | Measure effect of shuffling out a region |
-| `saturation_mutagenesis` | `saturation_mutagenesis(model, X)` | All single-nucleotide substitution effects (ISM) |
-| `deep_lift_shap` | `deep_lift_shap(model, X)` | DeepLIFT/SHAP attribution scores |
-| `variant_effect` | `substitution_effect(model, X, subs)` | Predict effect of specific variants |
-| `space` | `space(model, X, motifs, spacing)` | Test cooperative effects at different motif spacings |
-| `design` | `greedy_substitution(model, X, ...)` | Optimize sequences toward target predictions |
+### 2.1 Attribution methods — per-position input importance
 
-**Model interface tangermeme expects:**
+These methods answer: **"which input positions drive the model's output?"** They produce per-nucleotide scores across the full input sequence, directly revealing the input→output relationship.
+
+| Module | Function | How it works | Gradient-based? | Output shape |
+|--------|----------|-------------|----------------|-------------|
+| `deep_lift_shap` | `deep_lift_shap(model, X)` | Compares activations between input and shuffled references through all layers; decomposes output into per-input contributions | Yes — modified backprop with custom hooks on nonlinearities | `(B, 4, L_input)` |
+| `saturation_mutagenesis` | `saturation_mutagenesis(model, X)` | Exhaustively substitutes every nucleotide at every position; measures how each change affects output | No — forward-pass only, runs model 4×L times per sequence | `(B, 4, L_input)` |
+| `pisa` | `pisa(model, X)` | Runs DeepLIFT/SHAP once per output position; builds a pairwise matrix of which input positions influence which output positions | Yes — N_output × DeepLIFT/SHAP runs | `(B, 4, L_input)` per output position |
+
+**deep_lift_shap** requires the model to return a single 2D tensor `(B, n_targets)`. The `target` parameter selects which output to attribute. Attributions are additive: they sum to the difference between the model's prediction on the input and on the reference.
+
+**saturation_mutagenesis** (ISM) is gradient-free but computationally expensive. By default it internally computes attribution scores via `_attribution_score` (difference + position-normalization + task-averaging). With `raw_outputs=True` it returns the raw before/after predictions for custom scoring.
+
+**pisa** (Pairwise Influence by Sequence Attribution) is specific to profile-output models. It answers not just "which inputs matter" but "which inputs matter *for which output positions*" — directly relevant for cerberus profile models. Like `deep_lift_shap`, it requires the model to return a single tensor. It uses `predict(model, X[:1]).shape[-1]` to determine the number of output positions, then runs DeepLIFT/SHAP once per position.
+
+### 2.2 Perturbation experiments — hypothesis-driven input→output testing
+
+These methods answer: **"how does a specific sequence modification change the model's output?"** They return raw predictions before and after the modification. The user computes the comparison (see Section 5.7).
+
+| Module | Function | What it modifies | What hypothesis it tests |
+|--------|----------|-----------------|------------------------|
+| `marginalize` | `marginalize(model, X, motif)` | Inserts a motif into background sequences | Does this motif affect the model? (gain-of-function) |
+| `ablate` | `ablate(model, X, start, end)` | Shuffles a region to destroy signal | Is this region necessary for the prediction? (loss-of-function) |
+| `space` | `space(model, X, motifs, spacing)` | Inserts multiple motifs at varying spacings | Do these motifs cooperate? At what distance? |
+| `variant_effect` | `substitution_effect(model, X, subs)` | Applies specific point mutations | Does this SNP/variant change the prediction? |
+| `variant_effect` | `deletion_effect(model, X, dels)` | Deletes nucleotides (with edge trimming) | Does this deletion change the prediction? |
+| `variant_effect` | `insertion_effect(model, X, ins)` | Inserts nucleotides (with edge trimming) | Does this insertion change the prediction? |
+
+All perturbation methods return `(y_before, y_after)` — raw predictions, not scores. tangermeme explicitly avoids computing comparisons for these operations (see Section 5.7). The user decides how to score the effect (difference, fold change, divergence, etc.).
+
+**marginalize vs ablate** are conceptual opposites. Marginalize adds a motif to neutral background → gain-of-function. Ablate removes signal from an active sequence → loss-of-function. Together they bracket the isolated contribution of a motif.
+
+**space** is unique in that it tests *interactions* between motifs, not individual motifs. It reveals cooperativity, competition, and preferred spacing — phenomena invisible to single-motif methods.
+
+### 2.3 Post-attribution analysis — interpreting attribution scores
+
+These modules process the per-position attribution scores from Section 2.1 into biologically meaningful patterns:
+
+| Module | Function | What it does |
+|--------|----------|-------------|
+| `seqlet` | `seqlet.extract_seqlets(attr)` | Discovers recurring high-attribution subsequences (seqlets) using TF-MoDISCo-inspired algorithm with Laplacian null fitting |
+| `annotate` | `annotate.annotate_seqlets(seqlets)` | Matches discovered seqlets against known motif databases (TOMTOM) to assign biological identity |
+| `kmers` | `kmers.kmers(X, scores)` | Extracts k-mer features optionally weighted by attribution scores — converts attributions to interpretable feature vectors |
+
+These form a pipeline: **attributions → seqlets → annotation → biological interpretation**.
+
+### 2.4 Sequence design — reverse engineering desired outputs
+
+| Module | Function | What it does |
+|--------|----------|-------------|
+| `design` | `screen(model, X, y, loss)` | Random screening: generates sequences, evaluates against target |
+| `design` | `greedy_substitution(model, X, motifs, y)` | Iteratively inserts motifs to optimize toward target output |
+| `design` | `greedy_marginalize(model, X, motifs, y)` | Builds optimal motif construct via sequential marginalizations |
+
+Design operates in the reverse direction — given a desired output, find an input that produces it. This tests the model's generative capacity rather than interpreting existing predictions.
+
+### 2.5 Infrastructure — prediction, I/O, sequence manipulation
+
+| Module | Function | Role |
+|--------|----------|------|
+| `predict` | `predict(model, X)` | Batched GPU inference with memory management, dtype conversion, device transfer |
+| `ersatz` | `substitute()`, `shuffle()`, `insert()`, etc. | Sequence manipulation primitives used by perturbation methods |
+| `utils` | `one_hot_encode()`, `reverse_complement()`, etc. | Encoding, validation, coordinate conversion |
+| `io` | `extract_loci()`, `read_meme()`, `read_vcf()` | Loading genomic sequences, signals, motifs, variants |
+| `product` | `apply_pairwise()`, `apply_product()` | Apply any function across Cartesian products of inputs (e.g., sequences × cell types) |
+| `match` | GC-matching utilities | Generate GC-content matched control sequences |
+| `plot` | Logo visualization | Visualize attribution scores as sequence logos |
+
+### 2.6 Model interface tangermeme expects
+
 ```python
-# Minimum contract:
+# Minimum contract (all operations except deep_lift_shap/pisa):
 y = model(X)  # X: (B, 4, L) → y: torch.Tensor or tuple of torch.Tensors
 
-# For deep_lift_shap specifically:
-y = model(X)  # Must return (B, n_targets) — 2D tensor only
+# For deep_lift_shap and pisa:
+y = model(X)  # Must return (B, n_targets) — single 2D tensor only
 ```
 
 Source: `tangermeme/predict.py:119-124` — raises `ValueError` for any output that is not `torch.Tensor` or `tuple/list` of tensors.
@@ -292,6 +351,7 @@ When `y0` and `y_hat` are lists (from tuple output), this indexing fails — you
 | `space` | Full | Each element stacked | `([t0, t1], [t0_stacked, t1_stacked])` | N/A |
 | `saturation_mutagenesis` | **`raw_outputs=True` only** | Each element reshaped | `([t0, t1], [t0_reshaped, t1_reshaped])` | Default mode crashes: `_attribution_score` indexes a list |
 | `deep_lift_shap` | **No** | N/A | N/A | `model(X_)[:, target]` fails on tuple |
+| `pisa` | **No** | N/A | N/A | `predict(model, X[:1]).shape[-1]` fails on list; internally calls `deep_lift_shap` |
 | `design` | **No** | N/A | N/A | Loss function receives list |
 
 ### 5.4 The `target` parameter — never indexes into tuple elements
@@ -325,13 +385,112 @@ Compare with `space.py:116` and `saturation_mutagenesis.py:201` which correctly 
 Since tangermeme handles tuples natively for predict/marginalize/ablate/variant_effect/space, a wrapper can expose `output_mode="both"` returning `(logits, log_counts)` as a raw tuple. This preserves all information without requiring the user to choose upfront. However:
 
 - `output_mode="both"` is **incompatible** with `deep_lift_shap` (requires single 2D tensor)
+- `output_mode="both"` is **incompatible** with `pisa` (requires single tensor; internally uses `deep_lift_shap`)
 - `output_mode="both"` **crashes** `saturation_mutagenesis` in default mode (only works with `raw_outputs=True`)
 - `output_mode="both"` **crashes** `marginalize_annotations` and `ablate_annotations` except when annotation count equals 2 (upstream bug)
 - `output_mode="both"` is **incompatible** with `design` functions
 
 For these operations, users must use a single-tensor output mode with appropriate reduction.
 
-### 5.7 Internal acknowledgment in tangermeme
+### 5.7 How tangermeme outputs are consumed — tangermeme returns raw predictions, not scores
+
+A critical design point: for most operations, **tangermeme does not compute any comparison between y_before and y_after**. It returns the raw predictions and leaves all scoring, differencing, and interpretation to the user. This is an explicit design choice — the README states:
+
+> "Because `tangermeme` aims to be assumption-free, these functions take in a batch of examples that you specify, and return the predictions before and after adding the motif in for each example."
+
+And for variant effect/ISM:
+
+> "There are numerous ways to combine the predictions of each variant with the predictions on the original sequence and tangermeme allows you to use whichever approach you would like."
+
+#### Which operations compute scores internally vs return raw
+
+| Operation | What it returns | Internal scoring? |
+|-----------|----------------|-------------------|
+| `predict` | Single prediction | N/A — no before/after |
+| `marginalize` | `(y_before, y_after)` — raw predictions | **No** — user computes difference |
+| `ablate` | `(y_before, y_after)` — raw predictions | **No** — user computes difference |
+| `variant_effect` | `(y_before, y_after)` — raw predictions | **No** — user computes difference |
+| `space` | `(y_before, y_afters)` — raw predictions | **No** — user computes difference |
+| `saturation_mutagenesis` | Attribution tensor (default) or `(y0, y_hat)` raw | **Yes** (default) — `_attribution_score` computes difference + position-normalization + task-averaging |
+| `deep_lift_shap` | Attribution tensor | **Yes** — DeepLIFT/SHAP algorithm computes attributions internally |
+
+#### Concrete example: `variant_effect` with single-tensor output
+
+Using `output_mode="counts"` (single tensor):
+
+```python
+wrapper = TangermemeWrapper(model, output_mode="counts")
+subs = torch.tensor([[0, 500, 2]])  # example 0, position 500, change to G
+
+y_before, y_after = substitution_effect(wrapper, X, subs, device='cpu')
+# y_before: (B, 1, 1000) — predicted counts with ref allele
+# y_after:  (B, 1, 1000) — predicted counts with alt allele
+```
+
+tangermeme returns and is done. The user must then compute their own effect score:
+
+```python
+# User computes difference (tangermeme does NOT do this)
+delta = y_after - y_before                    # (B, 1, 1000) — change in counts per position
+log_fc = torch.log2(y_after / y_before)       # log fold change
+total_effect = (y_after - y_before).sum(dim=-1)  # scalar effect per sample
+```
+
+#### Concrete example: `variant_effect` with tuple output (`"both"` mode)
+
+Using `output_mode="both"` (tuple of logits + log_counts):
+
+```python
+wrapper = TangermemeWrapper(model, output_mode="both")
+subs = torch.tensor([[0, 500, 2]])
+
+y_before, y_after = substitution_effect(wrapper, X, subs, device='cpu')
+```
+
+Here, `y_before` and `y_after` are each a `list[Tensor]` (because `predict` concatenated the tuple elements separately — see Section 5.1):
+
+```python
+# y_before is a list of 2 tensors:
+y_before[0]  # logits:     (B, 1, 1000) — profile shape with ref allele
+y_before[1]  # log_counts: (B, 1)       — total count with ref allele
+
+# y_after is a list of 2 tensors:
+y_after[0]   # logits:     (B, 1, 1000) — profile shape with alt allele
+y_after[1]   # log_counts: (B, 1)       — total count with alt allele
+```
+
+tangermeme returns and is done. It did NOT compare `y_before[0]` with `y_after[0]`, nor `y_before[1]` with `y_after[1]`. It did NOT combine the tuple elements in any way. The user must compute their own scores from the raw predictions:
+
+```python
+# Shape change: did the variant alter the predicted profile?
+logit_delta = y_after[0] - y_before[0]            # (B, 1, 1000)
+profile_before = F.softmax(y_before[0], dim=-1)
+profile_after  = F.softmax(y_after[0], dim=-1)
+jsd = ...  # Jensen-Shannon divergence between profiles
+
+# Count change: did the variant alter total binding?
+count_delta = y_after[1] - y_before[1]             # (B, 1) — in log1p scale
+count_fc = torch.expm1(y_after[1]) / torch.expm1(y_before[1])  # fold change
+
+# Combined: reconstruct counts and compare
+counts_before = F.softmax(y_before[0], dim=-1) * torch.expm1(y_before[1]).unsqueeze(-1)
+counts_after  = F.softmax(y_after[0], dim=-1) * torch.expm1(y_after[1]).unsqueeze(-1)
+full_delta = counts_after - counts_before           # (B, 1, 1000)
+```
+
+#### Why this matters for the wrapper design
+
+The fact that tangermeme returns raw predictions means:
+
+1. **The `output_mode` choice determines what the user can analyze**, not what tangermeme will automatically score. With `"counts"` you get one perspective; with `"both"` you get the raw components for richer analysis.
+
+2. **`"both"` mode is most flexible** for these raw-return operations — the user can independently analyze shape changes and count changes, or reconstruct full counts. The trade-off is more complex downstream code.
+
+3. **`"counts"` mode is simplest** — one tensor, one subtraction, biologically interpretable. But it conflates shape and count changes.
+
+4. **For `saturation_mutagenesis` and `deep_lift_shap`**, which DO compute scores internally, the `output_mode` choice determines what signal those algorithms attribute to — there is no downstream user step except visualization.
+
+### 5.8 Internal acknowledgment in tangermeme
 
 The internal debugging function `_captum_deep_lift_shap` (`deep_lift_shap.py:527-528`) explicitly mentions the logits + counts pattern:
 
@@ -577,7 +736,29 @@ attr = deep_lift_shap(wrapper, X, target=0, device='cuda')
 
 **Warning:** Using `output_mode="counts"` with `reduce="sum"` is equivalent to `expm1(log_counts)` only when summing `softmax * count` (the softmax sums to 1 over spatial positions, so `sum(softmax * count) = count`). Thus `reduce="sum"` on `"counts"` and `"log_counts"` give related but not identical results — `sum(counts)` = `expm1(log_counts)` exactly, but the attribution through the softmax pathway differs from direct attribution on log_counts.
 
-### 7.5 `ablate(model, X, start, end)`
+### 7.5 `pisa(model, X)` (Pairwise Influence by Sequence Attribution)
+
+**Compatibility:** Requires wrapper with spatial reduction, like `deep_lift_shap`. Output must be a single 2D tensor `(B, n_targets)`.
+
+PISA runs DeepLIFT/SHAP once per output position. It determines the number of output positions via `predict(model, X[:1]).shape[-1]` (`pisa.py:196`), so the model must return a single tensor whose last dimension is the number of outputs. Tuple outputs are not supported.
+
+PISA is particularly relevant for cerberus profile models because it reveals which input nucleotides influence which output profile positions — a pairwise input→output matrix rather than a scalar attribution. However, running it on the full 1000-position profile output would require 1000 DeepLIFT/SHAP iterations per sequence.
+
+```python
+# PISA on total binding (reduced to scalar → 1 output position)
+wrapper = TangermemeWrapper(model, output_mode="counts", reduce="sum", channel=0)
+attr = pisa(wrapper, X, n_shuffles=20, device='cuda')
+# attr: (B, 4, L_input) — same as deep_lift_shap for scalar output
+
+# PISA on profile shape (each output bin is a target)
+# Caution: very expensive — runs DeepLIFT/SHAP 1000× per sequence
+wrapper = TangermemeWrapper(model, output_mode="profile", channel=0)
+# This would need output shape (B, 1000) — requires squeezing channel dim
+```
+
+**Note:** PISA's `predict(model, X[:1]).shape[-1]` call expects the last dimension to be the spatial/target dimension. For cerberus outputs that are `(B, C, L)` after the wrapper, the last dimension is `L` (spatial) which is correct for profile analysis, but the channel dimension `C` must be squeezed to 1 or selected via the `channel` parameter.
+
+### 7.6 `ablate(model, X, start, end)`
 
 **Compatibility:** Works with wrapper. Ablation shuffles a region without changing length.
 
@@ -587,7 +768,7 @@ results = ablate(wrapper, X, start=500, end=600, n=20, device='cuda')
 # results[0]: y_before, results[1:]: y_after_shuffle_1, ...
 ```
 
-### 7.6 `substitution_effect(model, X, substitutions)`
+### 7.7 `substitution_effect(model, X, substitutions)`
 
 **Compatibility:** Works with wrapper. Single-nucleotide substitutions preserve length.
 
@@ -597,7 +778,7 @@ subs = torch.tensor([[0, 500, 2]])  # example 0, position 500, change to G
 y_before, y_after = substitution_effect(wrapper, X, subs, device='cuda')
 ```
 
-### 7.7 `deletion_effect` and `insertion_effect`
+### 7.8 `deletion_effect` and `insertion_effect`
 
 **Compatibility:** Problematic. These operations change sequence length, conflicting with cerberus models' fixed input length requirement.
 
@@ -613,7 +794,7 @@ dels = torch.tensor([[0, 500, 503]])  # delete 3bp at position 500
 y_before, y_after = deletion_effect(wrapper, X, dels, device='cuda')
 ```
 
-### 7.8 `space(model, X, motifs, spacing)`
+### 7.9 `space(model, X, motifs, spacing)`
 
 **Compatibility:** Works with wrapper. Motif spacing analysis substitutes motifs at different positions without changing length.
 
@@ -623,7 +804,7 @@ spacings = torch.tensor([[10], [20], [50], [100]])  # test 4 spacings
 y = space(wrapper, X, ["GATA", "CAAT"], spacings, device='cuda')
 ```
 
-### 7.9 `design` (greedy_substitution, screen)
+### 7.10 `design` (greedy_substitution, screen)
 
 **Compatibility:** Works with wrapper. Sequence design modifies nucleotides without changing length.
 
@@ -719,39 +900,201 @@ Each output mode answers a different biological question. No single mode is univ
 
 ---
 
-## 9. Future Considerations
+## 9. Reimplementation vs. Wrapping: Analysis
+
+### 9.1 The question
+
+Should cerberus reimplement tangermeme's analysis functions natively rather than wrapping the two packages together? The goal is to make cerberus self-contained, well-tested, and powerful.
+
+### 9.2 Implementation complexity varies enormously across modules
+
+Tangermeme's modules fall into three complexity tiers:
+
+**Tier 1 — Trivial (5-20 lines of actual logic):**
+
+| Module | What it does | Core logic |
+|--------|-------------|-----------|
+| `predict` | Batched inference | `for` loop + `torch.no_grad()` + `torch.cat()` |
+| `marginalize` | Insert motif, compare | Two `predict()` calls with `substitute()` between |
+| `ablate` | Shuffle region, compare | Two `predict()` calls with `shuffle()` between |
+| `variant_effect` | Mutate, compare | Two `predict()` calls with point mutation between |
+| `space` | Insert motifs at spacings, compare | Loop of `predict()` calls with `multisubstitute()` |
+
+These functions are thin wrappers around sequence manipulation + prediction. Their entire value is in the API design (standardized before/after pattern), not in algorithmic complexity. Reimplementing them in cerberus is straightforward and eliminates the output-type mismatch entirely.
+
+**Tier 2 — Moderate (~100-200 lines):**
+
+| Module | What it does | Core logic |
+|--------|-------------|-----------|
+| `saturation_mutagenesis` | Exhaustive single-nt mutation scan | Generate edit-distance-1 variants (numba), predict all, reshape. Optional `_attribution_score` for default scoring. |
+| `pisa` | Per-output-position DeepLIFT/SHAP | Loop calling `deep_lift_shap` once per output position |
+
+ISM is conceptually simple but has performance-critical components (numba-accelerated variant generation). PISA is a thin loop over DeepLIFT/SHAP — its complexity is inherited from deep_lift_shap.
+
+**Tier 3 — Complex (~500 lines, subtle correctness requirements):**
+
+| Module | What it does | Core logic |
+|--------|-------------|-----------|
+| `deep_lift_shap` | Per-nucleotide attribution via modified backpropagation | Hook registration on all nonlinear modules, custom backward pass implementing DeepLIFT rescale rule, convergence checking, hypothetical attribution correction for one-hot data, dinucleotide-shuffled reference generation |
+
+### 9.3 Critical finding: tangermeme's deep_lift_shap is incompatible with cerberus models
+
+Tangermeme's `deep_lift_shap` works by registering `register_forward_hook`, `register_forward_pre_hook`, and `register_full_backward_hook` on `nn.Module` subclasses (`nn.ReLU`, `nn.GELU`, etc.). These hooks override the backward pass to implement the DeepLIFT rescale rule instead of standard gradients.
+
+**Problem:** Cerberus BPNet uses `F.relu()` (functional form) — not `nn.ReLU()` (module form):
+
+```python
+# bpnet.py:105
+x = F.relu(self.iconv(x))   # functional — invisible to module hooks
+
+# layers.py:227 (BPNet residual blocks)
+out = F.relu(out)            # functional — invisible to module hooks
+```
+
+Functional activations have no associated module, so tangermeme's hooks never fire. The backward pass falls through to standard PyTorch autograd, which computes the standard ReLU gradient (step function: 0 for x<0, 1 for x≥0) instead of the DeepLIFT rescale rule (delta_out / delta_in relative to reference). This produces **silently incorrect attribution scores** — the code runs without error but the results violate the DeepLIFT additivity property.
+
+**Impact by model:**
+- **BPNet**: ALL ReLU activations use `F.relu()` → attributions silently incorrect throughout
+- **Pomeranian**: ConvNeXtBlock uses `self.act = nn.GELU()` (hookable), but residual blocks inherit from `layers.py` which uses `F.relu()` → attributions partially incorrect
+- **Gopher**: Uses `nn.ReLU()` in `nn.Sequential` blocks → hookable, attributions correct
+
+**This is not specific to the wrapper approach** — the same `F.relu` issue exists regardless of whether we wrap tangermeme or call it directly.
+
+### 9.4 Options for deep_lift_shap
+
+| Option | Description | Pros | Cons |
+|--------|-------------|------|------|
+| **A: Use tangermeme + fix models** | Change `F.relu()` → `self.relu = nn.ReLU()` in cerberus models | Minimal code; leverages tested implementation | Requires model changes; retraining needed if weights depend on exact gradient flow; adds tangermeme dependency |
+| **B: Use Captum directly** | Write cerberus-specific adapter around `captum.attr.DeepLiftShap` | Captum handles functional activations via its own hooking system; maintained by Meta/PyTorch | Adds Captum dependency; still need genomics-specific code (dinucleotide shuffling, hypothetical attributions, convergence checking) |
+| **C: Reimplement in cerberus** | Full reimplementation of DeepLIFT/SHAP from scratch | Full control; no dependencies; can handle `F.relu` natively | High risk of subtle bugs; the rescale rule for nonlinearities has edge cases; convergence checking is important for correctness validation; significant engineering effort with no unique scientific value |
+| **D: Hybrid** | Reimplement Tier 1/2 natively; use tangermeme or Captum for DeepLIFT/SHAP | Best of both worlds; simple ops are self-contained; complex algorithm uses proven code | Two code styles; still has one external dependency |
+
+### 9.5 What makes deep_lift_shap genuinely hard to reimplement
+
+The core DeepLIFT algorithm has several subtle aspects that make reimplementation risky:
+
+1. **Rescale rule for nonlinearities** (`deep_lift_shap.py:116-133`): Computes `delta_out / delta_in` with special handling when `delta_in ≈ 0` (falls back to standard gradient). The threshold (`1e-6`) and the fallback behavior affect attribution quality.
+
+2. **Softmax-specific correction** (`deep_lift_shap.py:136-157`): Softmax requires a modified rescale rule that subtracts the mean attribution to maintain the zero-sum property. Getting this wrong produces attributions that don't sum to zero across the alphabet at each position.
+
+3. **MaxPool correction** (`deep_lift_shap.py:160-198`): MaxPool requires unpooling with tracked indices and a cross-reference maximum calculation. This is the most complex single operation handler.
+
+4. **Hypothetical attribution correction** (`deep_lift_shap.py:15-80`): For one-hot encoded DNA, changing one nucleotide simultaneously adds one base and removes another. The hypothetical attribution computation accounts for this by computing attributions for all possible bases at each position, not just the observed one.
+
+5. **Convergence checking** (`deep_lift_shap.py:459-462`): The sum of attributions should equal the difference in prediction between input and reference. Checking this property validates the implementation. If convergence deltas are large, the attributions are unreliable.
+
+6. **Batched reference management** (`deep_lift_shap.py:411-434`): Each input sequence is paired with multiple dinucleotide-shuffled references. The batching logic must correctly pair sequences with their references even when batch_size < n_shuffles.
+
+These components interact — a bug in any one of them can produce attributions that look plausible but are quantitatively wrong. Tangermeme includes a Captum-based cross-validation function (`_captum_deep_lift_shap`, line 521) specifically to catch such bugs.
+
+### 9.6 What is trivially reimplementable
+
+The Tier 1 operations (predict, marginalize, ablate, variant_effect, space) have no algorithmic complexity. Their entire implementation pattern is:
+
+```python
+# The pattern shared by ALL perturbation methods:
+y_before = predict(model, X)
+X_modified = modify_sequence(X, ...)  # substitute, shuffle, mutate, etc.
+y_after = predict(model, X_modified)
+return y_before, y_after
+```
+
+The sequence manipulation functions (substitute, shuffle, dinucleotide_shuffle) are also straightforward.
+
+**Advantages of cerberus-native reimplementation for these:**
+- Work directly with `ProfileCountOutput` — no wrapper needed
+- Can return structured results (e.g., a `MarginalizeResult` dataclass with `.logit_delta`, `.count_delta`, `.reconstructed_delta`)
+- Can integrate with cerberus's existing interval/coordinate system
+- Tests are self-contained
+- No dependency version issues
+
+**Saturation mutagenesis** is also reimplementable. The core algorithm is: generate all edit-distance-1 variants → predict → reshape. The numba-accelerated `_edit_distance_one` function is a nice optimization but not essential (a pure PyTorch version works too, just slower). The `_attribution_score` function is 6 lines.
+
+### 9.7 Recommendation
+
+**Reimplement natively in cerberus (Tier 1 + Tier 2):**
+- `predict` — batched inference with ProfileCountOutput handling
+- `marginalize` — motif insertion effect
+- `ablate` — region ablation effect
+- `variant_effect` — substitution/deletion/insertion effects
+- `space` — motif spacing interaction
+- `saturation_mutagenesis` — ISM with direct support for profile+count decomposition
+- Sequence manipulation utilities (substitute, shuffle, dinucleotide_shuffle)
+
+These operations benefit from cerberus-native implementation because they can work directly with `ProfileCountOutput`, return richer result types, and integrate with the interval system. The total implementation effort is modest (each is 20-50 lines of core logic) and the testing burden is manageable.
+
+**Use an external implementation for DeepLIFT/SHAP (Tier 3):**
+
+DeepLIFT/SHAP should NOT be reimplemented from scratch. The algorithm is complex, subtle, and the risk of silent correctness bugs is high. Instead:
+
+1. **Fix cerberus models**: Change `F.relu()` → `nn.ReLU()` module in BPNet and residual blocks. This is a prerequisite regardless of which DeepLIFT implementation is used. It does NOT require retraining — `nn.ReLU()` and `F.relu()` produce identical forward/backward results under standard autograd; the difference only matters when hooks override the backward pass.
+
+2. **Choose between tangermeme and Captum for the DeepLIFT engine:**
+   - tangermeme: Already genomics-aware (dinucleotide shuffling, hypothetical attributions, convergence checking). Can be used via a thin wrapper after fixing `F.relu`.
+   - Captum: More robust hook system, maintained by Meta. Would need a cerberus adapter for the genomics-specific parts (~100 lines for reference generation, hypothetical attributions, convergence checking).
+
+3. **PISA** follows whichever DeepLIFT implementation is chosen (it's a loop over DeepLIFT runs).
+
+### 9.8 Summary table
+
+| Module | Recommendation | Rationale |
+|--------|---------------|-----------|
+| predict | **Reimplement** | Trivial; direct ProfileCountOutput support |
+| marginalize | **Reimplement** | Trivial; richer result types |
+| ablate | **Reimplement** | Trivial; richer result types |
+| variant_effect | **Reimplement** | Trivial; richer result types |
+| space | **Reimplement** | Trivial; richer result types |
+| saturation_mutagenesis | **Reimplement** | Moderate; can handle profile+count natively |
+| ersatz (substitute, shuffle) | **Reimplement** | Trivial sequence manipulation |
+| deep_lift_shap | **Do NOT reimplement** | Complex algorithm; high risk of silent bugs; use tangermeme or Captum with `F.relu` → `nn.ReLU` fix |
+| pisa | **Do NOT reimplement** | Thin loop over deep_lift_shap; follows its choice |
+| seqlet | **Use tangermeme** | Independent post-processing; no model interface |
+| annotate | **Use tangermeme** | Independent post-processing; no model interface |
+
+### 9.9 Impact on the wrapper strategy
+
+If Tier 1 and Tier 2 operations are reimplemented natively, the `TangermemeWrapper` is only needed for DeepLIFT/SHAP and PISA. This simplifies the wrapper significantly — it only needs to handle the `reduce` parameter (since DeepLIFT requires 2D output), and the `"both"` output mode becomes irrelevant (the native cerberus functions can return structured results directly).
+
+---
+
+## 10. Future Considerations
 
 ### Multi-channel models
 
-Current BPNet/Pomeranian models use `output_channels=["signal"]` (single channel). If models are extended to multi-channel (e.g., predicting multiple marks simultaneously), the wrapper handles this transparently — `C > 1` in all output shapes. The `channel` parameter allows selecting specific channels.
+Current BPNet/Pomeranian models use `output_channels=["signal"]` (single channel). If models are extended to multi-channel (e.g., predicting multiple marks simultaneously), the native cerberus analysis functions and wrapper handle this transparently — `C > 1` in all output shapes.
 
 ### Ensemble wrapping
 
-Cerberus has `ModelEnsemble` for multi-fold aggregation. An ensemble wrapper could:
+Cerberus has `ModelEnsemble` for multi-fold aggregation. For DeepLIFT/SHAP (where the wrapper is still needed), an ensemble wrapper could:
 1. Wrap each fold model in `TangermemeWrapper`
 2. Average predictions across folds
 3. Return the averaged tensor
 
-This is a natural extension but not required for initial integration.
+For native cerberus operations (Tier 1+2), ensemble support can be built directly into the analysis functions.
 
 ### ProfileLogRates output type
 
-Some cerberus models (e.g., Gopher) return `ProfileLogRates` instead of `ProfileCountOutput`. The wrapper should be extended to handle this output type:
+Some cerberus models (e.g., Gopher) return `ProfileLogRates` instead of `ProfileCountOutput`. Both the native analysis functions and the DeepLIFT wrapper should handle this output type:
 ```python
 # ProfileLogRates: log_rates (B, C, L) → exp(log_rates) for counts
 ```
 
 ### Tangermeme version compatibility
 
-This analysis is based on tangermeme v1.0.3. The model interface contract (`forward() → Tensor or tuple`) is fundamental to tangermeme's design and unlikely to change, but specific function signatures may evolve.
+This analysis is based on tangermeme v1.0.3. The model interface contract (`forward() → Tensor or tuple`) is fundamental to tangermeme's design and unlikely to change, but specific function signatures may evolve. Since the hybrid approach (Section 9) limits tangermeme dependency to DeepLIFT/SHAP only, version compatibility concerns are confined to a narrow interface.
 
 ---
 
-## 10. Summary of Required Changes
+## 11. Summary of Required Changes
+
+Based on the hybrid recommendation from Section 9 (reimplement Tier 1+2 natively, use external for DeepLIFT/SHAP):
 
 | Priority | Change | Files | Resolves |
 |----------|--------|-------|----------|
-| P0 | Create `TangermemeWrapper` class | `src/cerberus/tangermeme.py` (new) | Issues 1, 2, 3 |
-| P1 | Add usage documentation / examples | `docs/` or `examples/` | Issue 4 (guidance) |
-| P2 | Add tests for wrapper with tangermeme ops | `tests/` | Validation |
-| P3 | Extend wrapper for `ProfileLogRates` | `src/cerberus/tangermeme.py` | Generality |
+| P0a | Fix `F.relu()` → `nn.ReLU()` in cerberus models | `src/cerberus/models/bpnet.py`, `src/cerberus/layers.py` | Prerequisite for any DeepLIFT/SHAP (Section 9.3) |
+| P0b | Implement native cerberus analysis functions (predict, marginalize, ablate, variant_effect, space, ISM) | `src/cerberus/analysis.py` (new) | Issues 1, 3; eliminates wrapper for Tier 1+2 ops |
+| P0c | Implement sequence manipulation utilities (substitute, shuffle) | `src/cerberus/analysis.py` or `src/cerberus/ersatz.py` (new) | Required by native analysis functions |
+| P1 | Create `TangermemeWrapper` for DeepLIFT/SHAP only | `src/cerberus/tangermeme.py` (new) | Issues 1, 2; needed only for Tier 3 |
+| P2 | Add tests for native analysis functions | `tests/` | Validation |
+| P3 | Add tests for DeepLIFT/SHAP wrapper | `tests/` | Validation |
+| P4 | Extend for `ProfileLogRates` output type | Analysis functions + wrapper | Generality |
