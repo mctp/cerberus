@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 import dataclasses
+import logging
 import torch
 import numpy as np
 from typing import Any, Sequence
 from cerberus.interval import Interval
+
+logger = logging.getLogger(__name__)
 
 @dataclass(kw_only=True)
 class ModelOutput:
@@ -215,6 +218,7 @@ def aggregate_intervals(
     if output_cls is None:
         raise ValueError("output_cls must be provided to aggregate_intervals")
 
+    logger.debug(f"Aggregated {len(outputs)} intervals into {merged_interval}")
     return output_cls(**aggregated_components, out_interval=merged_interval)
 
 def aggregate_models(
@@ -254,7 +258,8 @@ def aggregate_models(
     # Usually for batched aggregation, out_interval is None or same.
     # We take the first one.
     out_int = outputs[0].out_interval
-    
+
+    logger.debug(f"Aggregated {len(outputs)} model outputs using '{method}'")
     return cls(**aggregated_elements, out_interval=out_int)
 
 def compute_total_log_counts(model_output: ModelOutput) -> torch.Tensor:

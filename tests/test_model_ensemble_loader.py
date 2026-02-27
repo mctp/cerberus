@@ -34,6 +34,7 @@ def mock_configs():
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
         "use_sequence": True
     }
     train_config: TrainConfig = {

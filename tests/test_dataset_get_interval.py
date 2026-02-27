@@ -38,6 +38,7 @@ def test_get_interval_with_arbitrary_interval(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
         "use_sequence": True,
     })
     
@@ -93,6 +94,7 @@ def test_get_interval_equivalence_to_getitem(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
         "use_sequence": True,
     })
     
@@ -141,6 +143,7 @@ def test_no_sampler_and_parsing(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
         "use_sequence": True,
     })
     

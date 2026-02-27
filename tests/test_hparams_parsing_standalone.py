@@ -44,6 +44,7 @@ def test_parse_hparams_config_generated_success(tmp_path):
             "encoding": "ACGT",
             "log_transform": False,
             "reverse_complement": False,
+        "target_scale": 1.0,
             "use_sequence": True
         },
         "sampler_config": {

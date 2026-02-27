@@ -11,6 +11,7 @@ def test_validate_data_and_sampler_compatibility_valid():
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
         "inputs": {},
         "targets": {},
         "use_sequence": True,

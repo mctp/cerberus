@@ -38,7 +38,8 @@ def test_instantiate_model_compile():
         "encoding": "ACGT",
         "max_jitter": 0,
         "log_transform": False,
-        "reverse_complement": False
+        "reverse_complement": False,
+        "target_scale": 1.0,
     }
 
     with patch("cerberus.module.import_class") as mock_import:

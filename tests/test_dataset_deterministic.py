@@ -38,9 +38,10 @@ def test_deterministic_transforms_auto_generation(basic_files):
         "max_jitter": 50, # Jitter enabled
         "log_transform": False,
         "reverse_complement": True, # RC enabled
+        "target_scale": 1.0,
         "use_sequence": True,
     })
-    
+
     sampler_config = cast(SamplerConfig, {
         "sampler_type": "interval",
         "padded_size": 200, # 100 input + 2*50 jitter
@@ -83,6 +84,7 @@ def test_split_folds_deterministic_behavior(basic_files):
         "max_jitter": 50,
         "log_transform": False,
         "reverse_complement": True,
+        "target_scale": 1.0,
         "use_sequence": True,
     })
     
@@ -137,6 +139,7 @@ def test_manual_transforms_validation(basic_files):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
         "use_sequence": True,
     })
     

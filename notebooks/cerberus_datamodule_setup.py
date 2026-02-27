@@ -112,6 +112,7 @@ data_config: DataConfig = {
     "max_jitter": 128,
     "log_transform": True,
     "reverse_complement": True,
+        "target_scale": 1.0,
     "use_sequence": True,
 }
 print("Data Config Created:")

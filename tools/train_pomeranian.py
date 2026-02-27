@@ -18,7 +18,7 @@ import os
 import logging
 import torch
 from pathlib import Path
-from pprint import pprint
+from pprint import pformat
 
 # Cerberus imports
 import cerberus
@@ -308,21 +308,13 @@ def main():
             "compile": True,
         }
 
-    logging.info("\nConfigurations:")
-    logging.info("-" * 20)
-    logging.info("Genome Config:")
-    pprint(genome_config)
-    logging.info("\nData Config:")
-    pprint(data_config)
-    logging.info("\nSampler Config:")
-    pprint(sampler_config)
-    logging.info("\nTrain Config:")
-    pprint(train_config)
-    logging.info("\nModel Config:")
-    pprint(model_config)
-    logging.info("\nPrecision and Hardware Args:")
-    pprint(precision_args)
-    logging.info("-" * 20 + "\n")
+    logging.info("Configurations:")
+    logging.info("Genome Config:\n%s", pformat(genome_config))
+    logging.info("Data Config:\n%s", pformat(data_config))
+    logging.info("Sampler Config:\n%s", pformat(sampler_config))
+    logging.info("Train Config:\n%s", pformat(train_config))
+    logging.info("Model Config:\n%s", pformat(model_config))
+    logging.info("Precision and Hardware Args:\n%s", pformat(precision_args))
 
 
     if args.multi:

@@ -83,6 +83,7 @@ def test_dataset_bed_support(dummy_bed, tmp_path):
         "encoding": "onehot",
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
         "use_sequence": False
     }
     
@@ -131,6 +132,7 @@ def test_dataset_bigbed_support(dummy_bigbed, tmp_path):
         "encoding": "onehot",
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
         "use_sequence": False
     }
     

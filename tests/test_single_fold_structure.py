@@ -28,7 +28,8 @@ def minimal_configs():
         "max_jitter": 0,
         "encoding": "ACGT",
         "log_transform": False,
-        "reverse_complement": False
+        "reverse_complement": False,
+        "target_scale": 1.0,
     }
 
     sampler_config: SamplerConfig = {

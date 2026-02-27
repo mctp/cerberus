@@ -4,7 +4,7 @@ import pytest
 from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.layers import DilatedResidualBlock
 from cerberus.loss import PoissonMultinomialLoss, MSEMultinomialLoss, CoupledMSEMultinomialLoss, CoupledPoissonMultinomialLoss
-from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
+from cerberus.metrics import PerExampleCountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
 from cerberus.output import ProfileCountOutput, ProfileLogRates
 
 def test_bpnet_residual_block_cropping():
@@ -125,7 +125,7 @@ def test_decoupled_pearson_metric():
 def test_bpnet_metric_collection():
     metrics = BPNetMetricCollection(num_channels=1)
     assert "pearson" in metrics
-    assert isinstance(metrics["pearson"], CountProfilePearsonCorrCoef)
+    assert isinstance(metrics["pearson"], PerExampleCountProfilePearsonCorrCoef)
     assert "mse_profile" in metrics
     assert isinstance(metrics["mse_profile"], CountProfileMeanSquaredError)
     assert "mse_log_counts" in metrics

@@ -88,7 +88,6 @@ class BPNet(nn.Module):
         # regardless of the number of profile output channels, matching chrombpnet/bpnet-lite.
         num_count_outputs = 1 if self.predict_total_count else self.n_output_channels
         self.count_dense = nn.Linear(filters, num_count_outputs)
-        nn.init.constant_(self.count_dense.bias, 1.0)
 
     def forward(self, x) -> ProfileCountOutput:
         """

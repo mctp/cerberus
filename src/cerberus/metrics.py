@@ -57,11 +57,6 @@ class ProfilePearsonCorrCoef(PearsonCorrCoef):
         preds_flat = probs.detach().permute(0, 2, 1).reshape(-1, self.num_channels)
         target_flat = target.detach().permute(0, 2, 1).reshape(-1, self.num_channels)
 
-        # Cast to float64 to avoid catastrophic cancellation in Pearson variance computation.
-        # Note: MPS backend does not support float64 — on MPS this will need a workaround.
-        preds_flat = preds_flat.double()
-        target_flat = target_flat.double()
-
         PearsonCorrCoef.update(self, preds_flat, target_flat)
 
     def compute(self):
@@ -106,12 +101,6 @@ class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef):
         # Flatten and call PearsonCorrCoef directly to avoid Softmax in parent update
         preds_flat = preds_counts.detach().permute(0, 2, 1).reshape(-1, self.num_channels)
         target_flat = target.detach().permute(0, 2, 1).reshape(-1, self.num_channels)
-
-        # Cast to float64 to avoid catastrophic cancellation in Pearson variance computation.
-        # With softmax outputs (~1/L per position), float32 accumulation over millions of
-        # samples causes n*sum_x2 - sum_x^2 to go negative → NaN correlation.
-        preds_flat = preds_flat.double()
-        target_flat = target_flat.double()
 
         PearsonCorrCoef.update(self, preds_flat, target_flat)
 
@@ -421,6 +410,8 @@ class PerExampleLogCountsPearsonCorrCoef(Metric):
         if isinstance(self.preds_list, torch.Tensor):
             all_preds = self.preds_list
             all_targets = self.targets_list
+        elif len(self.preds_list) == 0:
+            return torch.tensor(float("nan"))
         else:
             all_preds = torch.cat(self.preds_list)
             all_targets = torch.cat(self.targets_list)

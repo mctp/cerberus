@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import logging
 from pathlib import Path
 import torch
 import csv
@@ -7,11 +8,14 @@ import gzip
 import re
 import json
 
+import cerberus
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.samplers import IntervalSampler
 from cerberus.output import compute_total_log_counts
 from cerberus.module import instantiate_metrics_and_loss
+
+logger = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(description="Export predicted vs observed log-counts to TSV.")
@@ -25,9 +29,11 @@ def main():
     parser.add_argument("--use_folds", type=str, default=None, help="Folds to use (e.g. 'test', 'test+val'). Default depends on model type.")
 
     args = parser.parse_args()
-    
+
+    cerberus.setup_logging()
+
     # 1. Load Model Ensemble
-    print(f"Loading model from {args.model_path}...")
+    logger.info(f"Loading model from {args.model_path}...")
     
     if args.device:
         device_name = args.device
@@ -39,7 +45,7 @@ def main():
         device_name = "cpu"
         
     device = torch.device(device_name)
-    print(f"Using device: {device}")
+    logger.info(f"Using device: {device}")
     
     # Provide search paths for resolving files (e.g. genome fasta) from other environments
     # We include tests/data as a likely location for test resources relative to project root
@@ -64,10 +70,10 @@ def main():
                 use_folds.append(p)
         use_folds = list(set(use_folds))
         
-    print(f"Using folds configuration: {use_folds if use_folds else 'Default'}")
+    logger.info(f"Using folds configuration: {use_folds if use_folds else 'Default'}")
 
     # 2. Configure Dataset
-    print("Configuring dataset...")
+    logger.info("Configuring dataset...")
     cerberus_config = ensemble.cerberus_config
     data_config = cerberus_config["data_config"]
     genome_config = cerberus_config["genome_config"]
@@ -83,7 +89,7 @@ def main():
     # Override the single target
     key = list(data_config["targets"].keys())[0]
     data_config["targets"][key] = Path(args.bigwig)
-    print(f"Overriding target '{key}' with {args.bigwig}")
+    logger.info(f"Overriding target '{key}' with {args.bigwig}")
             
     # Create Dataset
     dataset = CerberusDataset(
@@ -95,7 +101,7 @@ def main():
     )
     
     # 3. Load Peaks
-    print(f"Loading peaks from {args.peaks}...")
+    logger.info(f"Loading peaks from {args.peaks}...")
     padded_size = data_config["input_len"]
     
     # Create a minimal IntervalSampler
@@ -105,20 +111,20 @@ def main():
         padded_size=padded_size
     )
     
-    print(f"Loaded {len(peak_sampler)} intervals.")
+    logger.info(f"Loaded {len(peak_sampler)} intervals.")
     if len(peak_sampler) == 0:
-        print("No intervals found. Exiting.")
+        logger.warning("No intervals found. Exiting.")
         return
 
     # 3.5 Setup Metrics and Loss
-    print("Configuring metrics and loss...")
+    logger.info("Configuring metrics and loss...")
     metrics, criterion = instantiate_metrics_and_loss(model_config, device=device)
 
     total_loss = 0.0
     total_samples = 0
 
     # 4. Predict and Collect
-    print("Running prediction...")
+    logger.info("Running prediction...")
     
     results = [] # List of tuples (chrom, start, end, strand, pred, obs)
     
@@ -136,7 +142,7 @@ def main():
 
     for batch_output, batch_intervals in batch_gen:
         if args.max_batches is not None and batch_count >= args.max_batches:
-            print(f"Reached max_batches ({args.max_batches}). Stopping.")
+            logger.info(f"Reached max_batches ({args.max_batches}). Stopping.")
             break
         batch_count += 1
 
@@ -145,7 +151,7 @@ def main():
             pred_log_total = compute_total_log_counts(batch_output)
             preds_batch = pred_log_total.cpu().numpy()
         except ValueError:
-            print("Warning: Model output does not have log_counts or log_rates. Skipping batch.")
+            logger.warning("Model output does not have log_counts or log_rates. Skipping batch.")
             continue
 
         # 4b. Get Observed Log Counts
@@ -196,12 +202,12 @@ def main():
             ))
 
     if not results:
-        print("No predictions generated.")
+        logger.warning("No predictions generated.")
         return
 
     # 5. Write to TSV
     output_path = Path(args.output)
-    print(f"Writing results to {output_path}...")
+    logger.info(f"Writing results to {output_path}...")
     
     if output_path.suffix == ".gz":
         f = gzip.open(output_path, "wt", newline="")
@@ -218,7 +224,7 @@ def main():
         f.close()
         
     # 6. Compute and Save Metrics
-    print("Computing final metrics...")
+    logger.info("Computing final metrics...")
     final_metrics = metrics.compute()
     avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
     
@@ -236,11 +242,11 @@ def main():
     }
     
     summary_path = str(output_path) + ".metrics.json"
-    print(f"Writing metrics to {summary_path}...")
+    logger.info(f"Writing metrics to {summary_path}...")
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
         
-    print("Done.")
+    logger.info("Done.")
 
 if __name__ == "__main__":
     main()

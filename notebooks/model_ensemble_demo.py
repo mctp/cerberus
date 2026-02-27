@@ -55,6 +55,7 @@ data_config: DataConfig = {
     "max_jitter": 0, # Ignored during prediction (is_train=False)
     "log_transform": False,
     "reverse_complement": False, # Ignored during prediction
+        "target_scale": 1.0,
     "use_sequence": True,
 }
 

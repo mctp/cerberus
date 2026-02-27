@@ -358,7 +358,7 @@ def create_default_transforms(
         transforms.append(TargetCrop(output_len=data_config["output_len"]))
 
     # 4. Target Scaling (deterministic)
-    target_scale = data_config.get("target_scale", 1.0)
+    target_scale = data_config["target_scale"]
     if target_scale != 1.0:
         transforms.append(Scale(factor=target_scale, apply_to="targets"))
 

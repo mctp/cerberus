@@ -1,10 +1,13 @@
 from pathlib import Path
 from typing import Protocol
+import logging
 import numpy as np
 import pybigtools
 import torch
 from cerberus.interval import Interval
 from cerberus.mask import BigBedMaskExtractor, InMemoryBigBedMaskExtractor, BedMaskExtractor
+
+logger = logging.getLogger(__name__)
 
 
 class BaseSignalExtractor(Protocol):
@@ -38,6 +41,7 @@ class SignalExtractor(BaseSignalExtractor):
 
     def _load(self):
         """Lazy loader for BigWig handles."""
+        logger.debug(f"Lazy-loading {len(self.channels)} BigWig file(s)...")
         self._bigwig_files = {}
         for name in self.channels:
             path = str(self.bigwig_paths[name])
@@ -89,8 +93,10 @@ class SignalExtractor(BaseSignalExtractor):
 
             except RuntimeError:
                 # Chromosome not found or other read error -> zeros
+                logger.debug(f"Chrom {interval.chrom} not found in BigWig '{name}', returning zeros")
                 vals = np.zeros(length, dtype=np.float32)
             except Exception:
+                logger.debug(f"Error reading BigWig '{name}' at {interval}, returning zeros")
                 vals = np.zeros(length, dtype=np.float32)
 
             extracted_values.append(vals)
@@ -130,8 +136,9 @@ class UniversalExtractor(BaseSignalExtractor):
                 # Default to BigWig if unknown
                 self.bw_paths[name_str] = path
 
+        logger.debug(f"UniversalExtractor routing: {len(self.bw_paths)} BigWig, {len(self.bb_paths)} BigBed, {len(self.bed_paths)} BED")
         self.extractors = {}
-        
+
         if self.bw_paths:
             if self.in_memory:
                 self.extractors['bw'] = InMemorySignalExtractor(self.bw_paths)
@@ -198,6 +205,7 @@ class InMemorySignalExtractor(BaseSignalExtractor):
         self.channels = sorted(bigwig_paths.keys())
         self._cache = {}  # channel -> chrom -> tensor
 
+        logger.info(f"Loading {len(self.channels)} BigWig file(s) into memory...")
         for name in self.channels:
             path = str(bigwig_paths[name])
             try:

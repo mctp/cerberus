@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from pathlib import Path
+import logging
 
 from cerberus.config import GenomeConfig
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Interval:
@@ -97,6 +100,7 @@ def parse_intervals(
         for chrom in genome_config["allowed_chroms"]:
             if chrom in chrom_sizes:
                 parsed.append(Interval(chrom, 0, chrom_sizes[chrom]))
+        logger.debug(f"No intervals specified, defaulting to whole genome ({len(parsed)} chromosomes)")
         return parsed
 
     # Process intervals from strings
@@ -124,6 +128,7 @@ def parse_intervals(
                 if len(parts) >= 3:
                     parsed.append(Interval(parts[0], int(parts[1]), int(parts[2])))
 
+    logger.debug(f"Parsed {len(parsed)} interval(s) from {len(intervals)} string(s) and {len(interval_paths)} file(s)")
     return parsed
 
 

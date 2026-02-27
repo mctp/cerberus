@@ -373,6 +373,7 @@ def validate_data_config(
         "max_jitter",
         "log_transform",
         "reverse_complement",
+        "target_scale",
     }
     
     # Optional with default

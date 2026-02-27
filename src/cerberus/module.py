@@ -298,17 +298,9 @@ def instantiate(
     model_config = validate_model_config(model_config)
 
     # Instantiate criterion and metrics
-    loss_cls_name = model_config["loss_cls"]
-    loss_cls = import_class(loss_cls_name)
-    loss_args = model_config["loss_args"]
-    criterion = loss_cls(**loss_args)
+    metrics, criterion = instantiate_metrics_and_loss(model_config)
 
-    metrics_cls_name = model_config["metrics_cls"]
-    metrics_cls = import_class(metrics_cls_name)
-    metrics_args = model_config["metrics_args"]
-    metrics = metrics_cls(**metrics_args)
-    
-    logger.info(f"Instantiated CerberusModule (Model: {model_config['name']}, Loss: {loss_cls_name})")
+    logger.info(f"Instantiated CerberusModule (Model: {model_config['name']}, Loss: {model_config['loss_cls']})")
 
     return CerberusModule(
         model=model,
@@ -336,11 +328,11 @@ def instantiate_metrics_and_loss(
         tuple: (metrics, criterion)
     """
     metrics_cls = import_class(model_config["metrics_cls"])
-    metrics_args = model_config.get("metrics_args", {})
+    metrics_args = model_config["metrics_args"]
     metrics = metrics_cls(**metrics_args)
 
     loss_cls = import_class(model_config["loss_cls"])
-    loss_args = model_config.get("loss_args", {})
+    loss_args = model_config["loss_args"]
     criterion = loss_cls(**loss_args)
     
     if device is not None:

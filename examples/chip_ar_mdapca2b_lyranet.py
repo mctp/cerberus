@@ -22,7 +22,7 @@ import os
 import logging
 import torch
 from pathlib import Path
-from pprint import pprint
+from pprint import pformat
 
 # Cerberus imports
 import cerberus
@@ -116,6 +116,7 @@ def main():
         "encoding": "ACGT",
         "log_transform": False, # Uses raw counts for multinomial loss
         "reverse_complement": True, # Augmentation
+        "target_scale": 1.0,
         "use_sequence": True,
     }
 
@@ -232,18 +233,18 @@ def main():
 
     logging.info("\nConfigurations:")
     logging.info("-" * 20)
-    logging.info("Genome Config:")
-    pprint(genome_config)
-    logging.info("\nData Config:")
-    pprint(data_config)
-    logging.info("\nSampler Config:")
-    pprint(sampler_config)
-    logging.info("\nTrain Config:")
-    pprint(train_config)
-    logging.info("\nModel Config:")
-    pprint(model_config)
-    logging.info("\nPrecision and Hardware Args:")
-    pprint(precision_args)
+    logging.info("Genome Config:
+%s", pformat(genome_config))
+    logging.info("Data Config:
+%s", pformat(data_config))
+    logging.info("Sampler Config:
+%s", pformat(sampler_config))
+    logging.info("Train Config:
+%s", pformat(train_config))
+    logging.info("Model Config:
+%s", pformat(model_config))
+    logging.info("Precision and Hardware Args:
+%s", pformat(precision_args))
     logging.info("-" * 20 + "\n")
 
 

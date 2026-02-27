@@ -146,15 +146,10 @@ class Pomeranian(nn.Module):
         # 4. Counts Head (MLP)
         num_count_outputs = 1 if self.predict_total_count else self.n_output_channels
         hidden_dim = filters // 2
-        # Initialize output bias to a positive value so log_counts > 0 at init.
-        # Without this, expm1(log_counts) <= 0 gets clamped to zero, collapsing
-        # predicted counts to zero and causing NaN Pearson correlation metrics.
-        count_out = nn.Linear(hidden_dim, num_count_outputs)
-        nn.init.constant_(count_out.bias, 1.0)
         self.count_mlp = nn.Sequential(
             nn.Linear(filters, hidden_dim),
             nn.GELU(),
-            count_out
+            nn.Linear(hidden_dim, num_count_outputs),
         )
 
     def forward(self, x) -> ProfileCountOutput:

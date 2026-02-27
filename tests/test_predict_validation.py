@@ -34,6 +34,7 @@ MOCK_DATA_CONFIG = {
     "encoding": "onehot",
     "max_jitter": 0,
     "reverse_complement": False,
+        "target_scale": 1.0,
     "log_transform": False
 }
 
