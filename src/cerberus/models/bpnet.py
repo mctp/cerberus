@@ -4,7 +4,7 @@ from torchmetrics import MetricCollection
 
 from cerberus.loss import MSEMultinomialLoss
 from cerberus.output import ProfileCountOutput
-from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, LogCountsPearsonCorrCoef
+from cerberus.metrics import PerExampleCountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, PerExampleLogCountsPearsonCorrCoef
 from cerberus.layers import DilatedResidualBlock
 
 
@@ -88,6 +88,7 @@ class BPNet(nn.Module):
         # regardless of the number of profile output channels, matching chrombpnet/bpnet-lite.
         num_count_outputs = 1 if self.predict_total_count else self.n_output_channels
         self.count_dense = nn.Linear(filters, num_count_outputs)
+        nn.init.constant_(self.count_dense.bias, 1.0)
 
     def forward(self, x) -> ProfileCountOutput:
         """
@@ -257,8 +258,8 @@ class BPNetMetricCollection(MetricCollection):
     """
     def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
         super().__init__({
-            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
+            "pearson": PerExampleCountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
             "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
             "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
+            "pearson_log_counts": PerExampleLogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
         })

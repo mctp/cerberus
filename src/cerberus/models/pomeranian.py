@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torchmetrics import MetricCollection
 
 from cerberus.output import ProfileCountOutput
-from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, LogCountsPearsonCorrCoef
+from cerberus.metrics import PerExampleCountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, PerExampleLogCountsPearsonCorrCoef
 from cerberus.layers import ConvNeXtV2Block, PGCBlock
 
 class Pomeranian(nn.Module):
@@ -146,10 +146,15 @@ class Pomeranian(nn.Module):
         # 4. Counts Head (MLP)
         num_count_outputs = 1 if self.predict_total_count else self.n_output_channels
         hidden_dim = filters // 2
+        # Initialize output bias to a positive value so log_counts > 0 at init.
+        # Without this, expm1(log_counts) <= 0 gets clamped to zero, collapsing
+        # predicted counts to zero and causing NaN Pearson correlation metrics.
+        count_out = nn.Linear(hidden_dim, num_count_outputs)
+        nn.init.constant_(count_out.bias, 1.0)
         self.count_mlp = nn.Sequential(
             nn.Linear(filters, hidden_dim),
             nn.GELU(),
-            nn.Linear(hidden_dim, num_count_outputs)
+            count_out
         )
 
     def forward(self, x) -> ProfileCountOutput:
@@ -258,8 +263,8 @@ class PomeranianMetricCollection(MetricCollection):
     """
     def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
         super().__init__({
-            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
+            "pearson": PerExampleCountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
             "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
             "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
+            "pearson_log_counts": PerExampleLogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
         })
