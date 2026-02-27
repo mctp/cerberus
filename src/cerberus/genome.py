@@ -1,8 +1,11 @@
 from pathlib import Path
 from typing import Callable, Any
+import logging
 import heapq
 
 from interlap import InterLap
+
+logger = logging.getLogger(__name__)
 
 from cerberus.config import GenomeConfig
 
@@ -113,6 +116,8 @@ def create_genome_config(
 
     if fold_args is None:
         fold_args = {"k": 5}
+    
+    logger.debug(f"Created genome config for {name} ({species}) with {len(sorted_chroms)} chromosomes.")
 
     return {
         "name": name,

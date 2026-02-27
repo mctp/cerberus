@@ -2,6 +2,7 @@ import random
 import pytorch_lightning as pl
 import torch
 import numpy as np
+import logging
 from torch.utils.data import DataLoader
 from .dataset import CerberusDataset
 from .config import (
@@ -13,6 +14,8 @@ from .config import (
     validate_sampler_config,
     validate_data_and_sampler_compatibility,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CerberusDataModule(pl.LightningDataModule):
@@ -136,6 +139,8 @@ class CerberusDataModule(pl.LightningDataModule):
         if self._is_initialized:
             return
 
+        logger.info(f"Setting up DataModule (test_fold={self.test_fold}, val_fold={self.val_fold})...")
+
         # Initialize full dataset
         full_dataset = CerberusDataset(
             genome_config=self.genome_config,
@@ -149,6 +154,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.train_dataset, self.val_dataset, self.test_dataset = full_dataset.split_folds(
             test_fold=self.test_fold, val_fold=self.val_fold
         )
+        logger.info(f"DataModule setup complete. Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}, Test: {len(self.test_dataset)}")
         self._is_initialized = True
 
     def train_dataloader(self) -> DataLoader:
