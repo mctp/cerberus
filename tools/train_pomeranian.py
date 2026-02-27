@@ -64,6 +64,7 @@ def get_args():
     parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson", "nb"], help="Loss function to use")
     parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
     parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
+    parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets (e.g., 1000 for fractional BigWig values)")
     
     # Training parameters
     parser.add_argument("--learning-rate", type=float, default=5e-4, help="Learning rate")
@@ -77,6 +78,10 @@ def get_args():
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
     parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
+    parser.add_argument("--precision", type=str, default="bf16", choices=["bf16", "mps", "full"],
+                        help="Precision strategy: 'bf16' for NVIDIA bf16-mixed (default), "
+                             "'mps' for Apple Silicon fp16-mixed, "
+                             "'full' for safest float32 (32-true, matmul=highest, no compile)")
     
     return parser.parse_args()
 
@@ -152,6 +157,7 @@ def main():
         "log_transform": False, # Uses raw counts for multinomial loss
         "reverse_complement": True, # Augmentation
         "use_sequence": True,
+        "target_scale": args.target_scale,
     }
 
     # Sampler Config - Peak Intervals
@@ -270,17 +276,28 @@ def main():
             logging.warning(f"[WARN] num_workers={num_workers} may cause instability on MPS. Recommend setting --num-workers 0.")
     
     # Precision settings
-    if accelerator == "mps":
-        # MPS-optimized settings
+    if args.precision == "full":
+        # Safest full float32 — no reduced precision, no compile, no cuDNN benchmark.
+        # Use when numerical reproducibility or debugging is a priority.
+        precision_args = {
+            "precision": "32-true",
+            "matmul_precision": "highest",
+            "accelerator": accelerator,
+            "devices": devices,
+            "strategy": "auto",
+            "compile": False,
+        }
+    elif args.precision == "mps":
+        # Apple Silicon (MPS) — fp16 mixed precision.
         precision_args = {
             "precision": "16-mixed",
             "accelerator": accelerator,
             "devices": devices,
-            "strategy": "auto", 
-            "compile": False
+            "strategy": "auto",
+            "compile": False,
         }
     else:
-        # NVIDIA A100 / CUDA optimized settings
+        # bf16 (default) — NVIDIA Ampere+ bf16 mixed precision.
         precision_args = {
             "precision": "bf16-mixed",
             "matmul_precision": "medium",
@@ -288,7 +305,7 @@ def main():
             "devices": devices,
             "strategy": "ddp_find_unused_parameters_false" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto",
             "benchmark": True,
-            "compile": True
+            "compile": True,
         }
 
     logging.info("\nConfigurations:")

@@ -10,8 +10,8 @@ import json
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.samplers import IntervalSampler
-from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
-from cerberus.config import import_class
+from cerberus.output import compute_total_log_counts
+from cerberus.module import instantiate_metrics_and_loss
 
 def main():
     parser = argparse.ArgumentParser(description="Export predicted vs observed log-counts to TSV.")
@@ -112,14 +112,7 @@ def main():
 
     # 3.5 Setup Metrics and Loss
     print("Configuring metrics and loss...")
-    
-    metrics_cls = import_class(model_config["metrics_cls"])
-    metrics_args = model_config["metrics_args"]
-    metrics = metrics_cls(**metrics_args).to(device)
-
-    loss_cls = import_class(model_config["loss_cls"])
-    loss_args = model_config["loss_args"]
-    criterion = loss_cls(**loss_args).to(device)
+    metrics, criterion = instantiate_metrics_and_loss(model_config, device=device)
 
     total_loss = 0.0
     total_samples = 0
@@ -148,34 +141,31 @@ def main():
         batch_count += 1
 
         # 4a. Get Predicted Log Counts
-        preds_batch = None
-        if isinstance(batch_output, ProfileCountOutput):
-            log_counts = batch_output.log_counts
-            if log_counts.ndim == 2 and log_counts.shape[1] > 1:
-                pred_log_total = torch.logsumexp(log_counts, dim=1)
-            else:
-                pred_log_total = log_counts.flatten()
+        try:
+            pred_log_total = compute_total_log_counts(batch_output)
             preds_batch = pred_log_total.cpu().numpy()
-            
-        elif isinstance(batch_output, ProfileLogRates):
-             log_rates = batch_output.log_rates
-             if log_rates.shape[1] > 1:
-                 pred_log_total = torch.logsumexp(log_rates.flatten(start_dim=1), dim=-1)
-             else:
-                 pred_log_total = torch.logsumexp(log_rates, dim=(1,2)).flatten()
-             preds_batch = pred_log_total.cpu().numpy()
-        else:
-             print("Warning: Model output does not have log_counts or log_rates. Skipping batch.")
-             continue
+        except ValueError:
+            print("Warning: Model output does not have log_counts or log_rates. Skipping batch.")
+            continue
 
         # 4b. Get Observed Log Counts
         targets_list = []
+        raw_obs_list = []
+        
         for interval in batch_intervals:
+            # 1. Get transformed data for metrics/loss
             data = dataset.get_interval(interval)
             targets_list.append(data["targets"])
             
+            # 2. Get raw data for exported "observed" counts
+            raw_target = dataset.get_raw_targets(interval, crop_to_output_len=True)
+            raw_obs_list.append(raw_target)
+            
         targets = torch.stack(targets_list)
-        obs_total = targets.sum(dim=(1, 2))
+        
+        # Calculate observed total from RAW counts
+        raw_obs = torch.stack(raw_obs_list)
+        obs_total = raw_obs.sum(dim=(1, 2))
         obs_log_total = torch.log1p(obs_total)
         obs_batch = obs_log_total.numpy()
         
