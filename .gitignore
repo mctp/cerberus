@@ -134,4 +134,6 @@ tests/data/
 *.code-workspace
 lightning_logs/
 notebooks/plots/
-notebooks/plots/
+
+# Claude Code
+.claude/
