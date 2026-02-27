@@ -4,7 +4,7 @@ Cerberus is a PyTorch-based framework designed for genomic sequence-to-function 
 
 ## High-Level Architecture
 
-The core of Cerberus is built around the separation of **sampling** (where to look) from **extraction** (what to load). This decoupling allowing for flexible training strategies without rewriting data loading logic.
+The core of Cerberus is built around the separation of **sampling** (where to look) from **extraction** (what to load). This decoupling allows for flexible training strategies without rewriting data loading logic.
 
 ### Key Components
 
