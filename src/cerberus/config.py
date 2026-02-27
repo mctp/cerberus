@@ -1,7 +1,10 @@
 from typing import TypedDict, Any
 from pathlib import Path
 import yaml
+import logging
 import importlib
+
+logger = logging.getLogger(__name__)
 
 def import_class(name: str) -> Any:
     """
@@ -91,6 +94,7 @@ class DataConfig(TypedDict):
         encoding: DNA encoding strategy (e.g., 'ACGT').
         log_transform: Whether to apply log(x+1) transformation to signal.
         reverse_complement: Whether to apply reverse complement augmentation.
+        target_scale: Multiplicative scaling factor for targets.
         use_sequence: Whether to use sequence input (default: True).
     """
 
@@ -104,6 +108,7 @@ class DataConfig(TypedDict):
     log_transform: bool
     reverse_complement: bool
     use_sequence: bool
+    target_scale: float
 
 
 class TrainConfig(TypedDict):
@@ -402,6 +407,9 @@ def validate_data_config(
     if not isinstance(config["reverse_complement"], bool):
         raise TypeError("reverse_complement must be a boolean")
 
+    if not isinstance(config["target_scale"], float) or config["target_scale"] <= 0:
+        raise ValueError("target_scale must be a positive number")
+
     if not isinstance(use_sequence, bool):
         raise TypeError("use_sequence must be a boolean")
 
@@ -415,6 +423,7 @@ def validate_data_config(
         "encoding": config["encoding"],
         "log_transform": config["log_transform"],
         "reverse_complement": config["reverse_complement"],
+        "target_scale": config["target_scale"],
         "use_sequence": use_sequence,
     }
 
@@ -794,6 +803,8 @@ def parse_hparams_config(
         "sampler_config": sampler_conf,
         "model_config": model_conf,
     }
+    
+    logger.info(f"Successfully parsed hparams from {p}")
         
     return config
 

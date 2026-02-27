@@ -259,6 +259,26 @@ class Arcsinh:
         return inputs, targets, interval
 
 
+class Scale:
+    """
+    Multiplies targets (or inputs) by a constant factor.
+    Useful for rescaling fractional/normalized BigWig signal to integer-like counts.
+    """
+
+    def __init__(self, factor: float, apply_to: str = "targets"):
+        self.factor = factor
+        self.apply_to = apply_to
+
+    def __call__(
+        self, inputs: torch.Tensor, targets: torch.Tensor, interval: Interval
+    ) -> tuple[torch.Tensor, torch.Tensor, Interval]:
+        if self.apply_to in ("inputs", "both"):
+            inputs = inputs * self.factor
+        if self.apply_to in ("targets", "both"):
+            targets = targets * self.factor
+        return inputs, targets, interval
+
+
 class Bin:
     """
     Bins the signal by pooling.
@@ -337,11 +357,16 @@ def create_default_transforms(
     if data_config["output_len"] < data_config["input_len"]:
         transforms.append(TargetCrop(output_len=data_config["output_len"]))
 
-    # 4. Binning (deterministic)
+    # 4. Target Scaling (deterministic)
+    target_scale = data_config.get("target_scale", 1.0)
+    if target_scale != 1.0:
+        transforms.append(Scale(factor=target_scale, apply_to="targets"))
+
+    # 5. Binning (deterministic)
     if data_config["output_bin_size"] > 1:
         transforms.append(Bin(bin_size=data_config["output_bin_size"], apply_to="targets"))
 
-    # 5. Log Transform (deterministic)
+    # 6. Log Transform (deterministic)
     if data_config["log_transform"]:
         transforms.append(Log1p(apply_to="targets"))
 
