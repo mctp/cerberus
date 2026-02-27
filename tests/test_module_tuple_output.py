@@ -60,7 +60,8 @@ def test_cerberus_module_tuple_output():
         "scheduler_type": "default",
         "filter_bias_and_bn": False,
         "patience": 5,
-        "scheduler_args": {}
+        "scheduler_args": {},
+        "reload_dataloaders_every_n_epochs": 0,
     }
     
     module = CerberusModule(model, loss, metrics, train_config=train_config)

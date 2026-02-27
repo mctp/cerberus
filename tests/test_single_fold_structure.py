@@ -57,9 +57,10 @@ def minimal_configs():
         "filter_bias_and_bn": False,
         "patience": 1,
         "scheduler_type": "default",
-        "scheduler_args": {}
+        "scheduler_args": {},
+        "reload_dataloaders_every_n_epochs": 0,
     }
-    
+
     return genome_config, data_config, sampler_config, model_config, train_config
 
 def test_train_single_creates_structure(tmp_path, minimal_configs):

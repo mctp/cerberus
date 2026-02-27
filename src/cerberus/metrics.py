@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from typing import cast
 from torchmetrics import Metric, PearsonCorrCoef, MeanSquaredError, MetricCollection
 from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
 
@@ -275,7 +276,9 @@ class PerExampleProfilePearsonCorrCoef(Metric):
 
     Operates on probabilities (Softmax of logits or log_rates).
     """
-    full_state_update: bool = False
+    full_state_update: bool | None = False
+    sum_corr: torch.Tensor
+    count: torch.Tensor
 
     def __init__(self, num_channels=1, implicit_log_targets=False, **kwargs):
         super().__init__(**kwargs)
@@ -318,7 +321,9 @@ class PerExampleCountProfilePearsonCorrCoef(Metric):
     Numerically stable in float32.
     Preds = Softmax(logits) * Expm1(log_counts).
     """
-    full_state_update: bool = False
+    full_state_update: bool | None = False
+    sum_corr: torch.Tensor
+    count: torch.Tensor
 
     def __init__(self, num_channels=1, implicit_log_targets=False, **kwargs):
         super().__init__(**kwargs)
@@ -365,7 +370,9 @@ class PerExampleLogCountsPearsonCorrCoef(Metric):
     a single Pearson correlation at epoch end. Numerically stable because counts
     are 1 scalar per example (not L=1024), so the accumulation is small.
     """
-    full_state_update: bool = False
+    full_state_update: bool | None = False
+    preds_list: list[torch.Tensor]
+    targets_list: list[torch.Tensor]
 
     def __init__(self, count_per_channel=False, implicit_log_targets=False, **kwargs):
         super().__init__(**kwargs)
@@ -408,8 +415,8 @@ class PerExampleLogCountsPearsonCorrCoef(Metric):
         # After DDP reduce with dist_reduce_fx="cat", the list may already
         # be a single concatenated tensor rather than a list of tensors.
         if isinstance(self.preds_list, torch.Tensor):
-            all_preds = self.preds_list
-            all_targets = self.targets_list
+            all_preds = cast(torch.Tensor, self.preds_list)
+            all_targets = cast(torch.Tensor, self.targets_list)
         elif len(self.preds_list) == 0:
             return torch.tensor(float("nan"))
         else:

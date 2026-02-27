@@ -4,7 +4,7 @@ import pytest
 from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.layers import DilatedResidualBlock
 from cerberus.loss import PoissonMultinomialLoss, MSEMultinomialLoss, CoupledMSEMultinomialLoss, CoupledPoissonMultinomialLoss
-from cerberus.metrics import PerExampleCountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
+from cerberus.metrics import PerExampleCountProfilePearsonCorrCoef, CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
 from cerberus.output import ProfileCountOutput, ProfileLogRates
 
 def test_bpnet_residual_block_cropping():

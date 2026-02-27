@@ -158,7 +158,7 @@ class TestPerExampleCountProfilePearsonCorrCoef:
         metric = PerExampleCountProfilePearsonCorrCoef(num_channels=1)
         with pytest.raises(TypeError):
             metric.update(
-                ProfileLogRates(log_rates=torch.zeros(1, 1, 4)),
+                ProfileLogRates(log_rates=torch.zeros(1, 1, 4)),  # type: ignore[arg-type]
                 torch.zeros(1, 1, 4),
             )
 
@@ -281,7 +281,7 @@ class TestPerExampleLogCountsPearsonCorrCoef:
         metric = PerExampleLogCountsPearsonCorrCoef()
         with pytest.raises(TypeError):
             metric.update(
-                ProfileLogits(logits=torch.zeros(1, 1, 4)),
+                ProfileLogits(logits=torch.zeros(1, 1, 4)),  # type: ignore[arg-type]
                 torch.zeros(1, 1, 4),
             )
 

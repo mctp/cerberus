@@ -1,13 +1,15 @@
 import pytest
 import torch
 import torch.nn as nn
+from typing import Any, cast
 from torchmetrics import MetricCollection, MeanSquaredError
+from cerberus.config import ModelConfig
 from cerberus.module import instantiate_metrics_and_loss
 
 
-def _make_model_config(**overrides):
+def _make_model_config(**overrides: Any) -> ModelConfig:
     """Create a minimal model config for testing."""
-    config = {
+    config: dict[str, Any] = {
         "name": "test_model",
         "model_cls": "torch.nn.Linear",
         "loss_cls": "torch.nn.MSELoss",
@@ -21,7 +23,7 @@ def _make_model_config(**overrides):
         },
     }
     config.update(overrides)
-    return config
+    return cast(ModelConfig, config)
 
 
 class TestInstantiateMetricsAndLoss:
@@ -83,28 +85,28 @@ class TestInstantiateMetricsAndLoss:
     def test_missing_metrics_cls_raises(self):
         """Missing metrics_cls should raise KeyError."""
         config = _make_model_config()
-        del config["metrics_cls"]
+        del config["metrics_cls"]  # type: ignore[misc]
         with pytest.raises(KeyError, match="metrics_cls"):
             instantiate_metrics_and_loss(config)
 
     def test_missing_loss_cls_raises(self):
         """Missing loss_cls should raise KeyError."""
         config = _make_model_config()
-        del config["loss_cls"]
+        del config["loss_cls"]  # type: ignore[misc]
         with pytest.raises(KeyError, match="loss_cls"):
             instantiate_metrics_and_loss(config)
 
     def test_missing_metrics_args_raises(self):
         """Missing metrics_args should raise KeyError (no implicit defaults)."""
         config = _make_model_config()
-        del config["metrics_args"]
+        del config["metrics_args"]  # type: ignore[misc]
         with pytest.raises(KeyError, match="metrics_args"):
             instantiate_metrics_and_loss(config)
 
     def test_missing_loss_args_raises(self):
         """Missing loss_args should raise KeyError (no implicit defaults)."""
         config = _make_model_config()
-        del config["loss_args"]
+        del config["loss_args"]  # type: ignore[misc]
         with pytest.raises(KeyError, match="loss_args"):
             instantiate_metrics_and_loss(config)
 

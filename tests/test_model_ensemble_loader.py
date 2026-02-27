@@ -46,7 +46,8 @@ def mock_configs():
         "optimizer": "adam",
         "filter_bias_and_bn": False,
         "scheduler_type": "default",
-        "scheduler_args": {}
+        "scheduler_args": {},
+        "reload_dataloaders_every_n_epochs": 0,
     }
     genome_config: GenomeConfig = {
         "name": "test",
