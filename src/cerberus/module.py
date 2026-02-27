@@ -3,8 +3,8 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from torchmetrics import MetricCollection
-from typing import Callable
-from pathlib import Path
+import logging
+from typing import Callable, Any
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
@@ -22,6 +22,8 @@ from cerberus.config import (
     validate_sampler_config,
     import_class,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CerberusModule(pl.LightningModule):
@@ -74,6 +76,8 @@ class CerberusModule(pl.LightningModule):
         
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")
+        
+        logger.info(f"Initialized CerberusModule with model: {model.__class__.__name__}")
 
     def configure_optimizers(self): # type: ignore[override]
         if self.train_config is None:
@@ -240,6 +244,8 @@ def instantiate_model(
     model_cls = import_class(model_cls_name)
     model_args = model_config["model_args"]
     
+    logger.debug(f"Instantiating model {model_cls_name} with args: {model_args}")
+    
     model = model_cls(
         input_len=input_len,
         output_len=output_len,
@@ -301,6 +307,8 @@ def instantiate(
     metrics_cls = import_class(metrics_cls_name)
     metrics_args = model_config["metrics_args"]
     metrics = metrics_cls(**metrics_args)
+    
+    logger.info(f"Instantiated CerberusModule (Model: {model_config['name']}, Loss: {loss_cls_name})")
 
     return CerberusModule(
         model=model,
@@ -312,3 +320,31 @@ def instantiate(
         sampler_config=sampler_config,
         model_config=model_config,
     )
+
+def instantiate_metrics_and_loss(
+    model_config: ModelConfig, 
+    device: torch.device | None = None
+) -> tuple[Any, Any]:
+    """
+    Instantiates metrics and loss functions from model configuration.
+    
+    Args:
+        model_config: Model configuration dictionary.
+        device: Optional device to move metrics and loss to.
+        
+    Returns:
+        tuple: (metrics, criterion)
+    """
+    metrics_cls = import_class(model_config["metrics_cls"])
+    metrics_args = model_config.get("metrics_args", {})
+    metrics = metrics_cls(**metrics_args)
+
+    loss_cls = import_class(model_config["loss_cls"])
+    loss_args = model_config.get("loss_args", {})
+    criterion = loss_cls(**loss_args)
+    
+    if device is not None:
+        metrics = metrics.to(device)
+        criterion = criterion.to(device)
+        
+    return metrics, criterion

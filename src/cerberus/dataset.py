@@ -1,5 +1,6 @@
 from typing import Any
 import torch
+import logging
 from torch.utils.data import Dataset
 from interlap import InterLap
 from .config import (
@@ -18,6 +19,8 @@ from .sequence import SequenceExtractor, InMemorySequenceExtractor, BaseSequence
 from .signal import BaseSignalExtractor, UniversalExtractor
 from .transform import DataTransform, Compose, create_default_transforms
 from .interval import Interval, resolve_interval
+
+logger = logging.getLogger(__name__)
 
 
 class CerberusDataset(Dataset):
@@ -115,6 +118,7 @@ class CerberusDataset(Dataset):
         if sampler is not None:
             self.sampler = sampler
         elif self.sampler_config is not None:
+            logger.debug(f"Initializing sampler of type {self.sampler_config['sampler_type']}...")
             self.sampler = self._initialize_sampler()
         else:
             self.sampler = None
@@ -209,6 +213,42 @@ class CerberusDataset(Dataset):
         if self.sampler is None:
             return 0
         return len(self.sampler)
+
+    def get_raw_targets(
+        self, 
+        query: Any, 
+        crop_to_output_len: bool = True
+    ) -> torch.Tensor:
+        """
+        Retrieves raw target signals for a specific interval, bypassing transforms.
+        
+        This is useful for getting true observed counts without binning or log transforms
+        that might be applied in the standard pipeline.
+        
+        Args:
+            query: Interval object, string "chr:start-end", or tuple (chr, start, end).
+            crop_to_output_len: Whether to crop the extracted signal to the output length.
+            
+        Returns:
+            torch.Tensor: The raw target signal.
+        """
+        interval = resolve_interval(query)
+        
+        if self.target_signal_extractor is None:
+            raise RuntimeError("Target signal extractor is not initialized.")
+
+        # Extract (C, Input_Len)
+        raw_target = self.target_signal_extractor.extract(interval) 
+        
+        if crop_to_output_len:
+            crop_start = (self.data_config["input_len"] - self.data_config["output_len"]) // 2
+            crop_end = crop_start + self.data_config["output_len"]
+            
+            # Check if we need to crop
+            if raw_target.shape[-1] > self.data_config["output_len"]:
+                raw_target = raw_target[..., crop_start:crop_end]
+                
+        return raw_target
 
     def get_interval(self, query: Any) -> dict[str, Any]:
         """

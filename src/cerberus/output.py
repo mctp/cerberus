@@ -256,3 +256,30 @@ def aggregate_models(
     out_int = outputs[0].out_interval
     
     return cls(**aggregated_elements, out_interval=out_int)
+
+def compute_total_log_counts(model_output: ModelOutput) -> torch.Tensor:
+    """
+    Extracts total log counts from the model output.
+    Supports ProfileCountOutput and ProfileLogRates.
+    
+    Args:
+        model_output: The output from the model.
+        
+    Returns:
+        A tensor of shape (batch_size,) containing the total log counts.
+    """
+    if isinstance(model_output, ProfileCountOutput):
+        log_counts = model_output.log_counts
+        if log_counts.ndim == 2 and log_counts.shape[1] > 1:
+            return torch.logsumexp(log_counts, dim=1)
+        else:
+            return log_counts.flatten()
+            
+    elif isinstance(model_output, ProfileLogRates):
+        log_rates = model_output.log_rates
+        if log_rates.shape[1] > 1:
+            return torch.logsumexp(log_rates.flatten(start_dim=1), dim=-1)
+        else:
+            return torch.logsumexp(log_rates, dim=(1,2)).flatten()
+            
+    raise ValueError(f"Model output type {type(model_output)} not supported for total log counts extraction.")
