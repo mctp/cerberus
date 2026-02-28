@@ -49,11 +49,11 @@ def test_save_count_scatter_skips_without_matplotlib():
 class _DummyModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.layer = torch.nn.Linear(10, 1)
+        self.layer = torch.nn.Linear(10, 8)
 
     def forward(self, x):
-        logits = torch.abs(self.layer(x)).unsqueeze(-1)
-        return ProfileLogRates(log_rates=logits)
+        # Output shape: (B, 1, 8) — one channel, profile length 8
+        return ProfileLogRates(log_rates=self.layer(x).unsqueeze(1))
 
 
 @pytest.fixture
@@ -89,7 +89,7 @@ def test_validation_step_accumulates_log_counts(_base_config):
 
     batch = {
         "inputs": torch.randn(4, 10),
-        "targets": torch.abs(torch.randn(4, 1, 1)),
+        "targets": torch.abs(torch.randn(4, 1, 8)),
     }
     module.validation_step(batch, 0)
 
@@ -116,9 +116,12 @@ def test_on_validation_epoch_end_saves_scatter(_base_config):
     mock_trainer.current_epoch = 2
     module._trainer = mock_trainer
 
-    # Pre-populate accumulators as if validation_step was called
-    module._val_log_count_preds = [torch.randn(8)]
-    module._val_log_count_targets = [torch.abs(torch.randn(8))]
+    # Run a validation step to populate both metrics and accumulators
+    batch = {
+        "inputs": torch.randn(4, 10),
+        "targets": torch.abs(torch.randn(4, 1, 8)),
+    }
+    module.validation_step(batch, 0)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         mock_trainer.logger.log_dir = tmp_dir
@@ -147,8 +150,13 @@ def test_on_validation_epoch_end_skips_scatter_during_sanity_check(_base_config)
     mock_trainer.sanity_checking = True  # ← sanity check active
     module._trainer = mock_trainer
 
-    module._val_log_count_preds = [torch.randn(4)]
-    module._val_log_count_targets = [torch.abs(torch.randn(4))]
+    # Run a validation step to populate both metrics and accumulators
+    module.log = MagicMock()
+    batch = {
+        "inputs": torch.randn(4, 10),
+        "targets": torch.abs(torch.randn(4, 1, 8)),
+    }
+    module.validation_step(batch, 0)
 
     with patch("cerberus.plots.save_count_scatter") as mock_save:
         module.on_validation_epoch_end()
