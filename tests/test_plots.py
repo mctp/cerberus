@@ -161,3 +161,39 @@ def test_on_validation_epoch_end_skips_scatter_during_sanity_check(_base_config)
     with patch("cerberus.plots.save_count_scatter") as mock_save:
         module.on_validation_epoch_end()
         mock_save.assert_not_called()
+
+
+def test_on_validation_epoch_end_handles_bfloat16(_base_config):
+    """on_validation_epoch_end must not crash when accumulators hold bfloat16 tensors.
+
+    Mixed-precision training (bf16) produces bfloat16 tensors that numpy cannot
+    convert directly; the module must upcast to float32 before calling .numpy().
+    """
+    module = CerberusModule(
+        _DummyModel(),
+        criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
+        metrics=DefaultMetricCollection(),
+        train_config=_base_config,
+    )
+    module.log = MagicMock()
+    module.log_dict = MagicMock()
+
+    mock_trainer = MagicMock()
+    mock_trainer.is_global_zero = True
+    mock_trainer.sanity_checking = False
+    mock_trainer.current_epoch = 0
+    module._trainer = mock_trainer
+
+    # Directly inject bfloat16 tensors to simulate bf16 training
+    module._val_log_count_preds = [torch.randn(4).to(torch.bfloat16)]
+    module._val_log_count_targets = [torch.abs(torch.randn(4)).to(torch.bfloat16)]
+    # Update metrics with float32 data so compute() doesn't warn
+    dummy_outputs = ProfileLogRates(log_rates=torch.randn(4, 1, 8))
+    dummy_targets = torch.abs(torch.randn(4, 1, 8))
+    module.val_metrics.update(dummy_outputs, dummy_targets)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        mock_trainer.logger.log_dir = tmp_dir
+        module.on_validation_epoch_end()  # must not raise TypeError
+        pngs = list((Path(tmp_dir) / "plots").glob("val_count_scatter_epoch_*.png"))
+        assert len(pngs) == 1

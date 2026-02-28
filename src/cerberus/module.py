@@ -207,8 +207,8 @@ class CerberusModule(pl.LightningModule):
         if (self._val_log_count_preds
                 and self.trainer.is_global_zero
                 and not self.trainer.sanity_checking):
-            all_preds = torch.cat(self._val_log_count_preds).numpy()
-            all_targets = torch.cat(self._val_log_count_targets).numpy()
+            all_preds = torch.cat(self._val_log_count_preds).float().numpy()
+            all_targets = torch.cat(self._val_log_count_targets).float().numpy()
             trainer_log_dir = getattr(self.trainer.logger, "log_dir", None)
             save_dir = trainer_log_dir or self.trainer.default_root_dir or "."
             save_count_scatter(all_preds, all_targets, save_dir, self.current_epoch)
