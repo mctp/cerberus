@@ -46,6 +46,32 @@ BPNet has no normalization layers, so weight decay directly shrinks convolutiona
 | Adam ε | `1e-7` |
 | Scheduler | `default` (constant) |
 
+### Loss: BPNetLoss
+
+`BPNetLoss` computes the sum of a multinomial profile loss and a counts MSE loss:
+
+```
+L = L_profile + alpha * L_counts
+```
+
+The `alpha` parameter balances the two terms. Because the multinomial NLL scales linearly with total signal depth N while the counts MSE scales as `(log N)²`, a fixed alpha cannot stay balanced as dataset depth varies.
+
+**Recommended**: set `alpha="adaptive"` in `ModelConfig.loss_args`. Cerberus will compute `alpha = median_total_counts / 10` from the training set before the module is instantiated, automatically matching the dataset depth:
+
+```python
+model_config = {
+    "name": "BPNet_AR",
+    "model_cls": "cerberus.models.bpnet.BPNet",
+    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
+    "loss_args": {"alpha": "adaptive"},  # resolved from training data at fit time
+    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
+    "metrics_args": {"num_channels": 1},
+    "model_args": {"n_dilated_layers": 8, "output_channels": ["signal"]},
+}
+```
+
+See `docs/internal/adaptive_counts_loss_weight.md` for the full mathematical derivation.
+
 ### Usage
 ```python
 from cerberus.models import BPNet, BPNet1024

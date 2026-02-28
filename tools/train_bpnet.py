@@ -27,6 +27,18 @@ from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
+def _parse_alpha(value: str) -> "float | str":
+    """Accept a float or the literal string 'adaptive' for --alpha."""
+    if value == "adaptive":
+        return "adaptive"
+    try:
+        return float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"--alpha must be a float or 'adaptive', got: {value!r}"
+        )
+
+
 def get_args():
     parser = argparse.ArgumentParser(description="Train BPNet models with Cerberus using any BigWig and BED file")
 
@@ -60,7 +72,9 @@ def get_args():
     parser.add_argument("--input-len", type=int, default=2114, help="Input sequence length (ignored when --1024 is set)")
     parser.add_argument("--output-len", type=int, default=1000, help="Output signal length (ignored when --1024 is set)")
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
-    parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
+    parser.add_argument("--alpha", type=_parse_alpha, default="adaptive",
+                        help="Weight for count loss. Use 'adaptive' (default) to compute from training data "
+                             "(alpha = median_total_counts / 10), or a float to set explicitly.")
     parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson", "nb"], help="Loss function to use")
     parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
     parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
@@ -234,15 +248,16 @@ def main():
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
         loss_args = {"count_weight": args.alpha}
-        logging.info(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
+        logging.info("Using PoissonMultinomialLoss (count_weight=%s)...", args.alpha)
     elif args.loss == "nb":
         loss_cls = "cerberus.loss.NegativeBinomialMultinomialLoss"
         loss_args = {"count_weight": args.alpha, "total_count": args.total_count}
-        logging.info(f"Using NegativeBinomialMultinomialLoss (count_weight={args.alpha}, total_count={args.total_count})...")
+        logging.info("Using NegativeBinomialMultinomialLoss (count_weight=%s, total_count=%s)...",
+                     args.alpha, args.total_count)
     else:
         loss_cls = "cerberus.models.bpnet.BPNetLoss"
         loss_args = {"alpha": args.alpha}
-        logging.info(f"Using BPNetLoss (alpha={args.alpha})...")
+        logging.info("Using BPNetLoss (alpha=%s)...", args.alpha)
 
     model_config: ModelConfig = {
         "name": model_name,

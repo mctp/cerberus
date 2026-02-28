@@ -191,7 +191,14 @@ class ModelConfig(TypedDict):
     # Loss class (fully qualified class name, e.g. "cerberus.loss.MSEMultinomialLoss")
     loss_cls: str
 
-    # Arguments for loss instantiation
+    # Arguments for loss instantiation.
+    # Any value may be set to the string "adaptive" to have cerberus compute it
+    # automatically from the training data before the module is instantiated.
+    # The adaptive value is: median_total_counts / 10, where median_total_counts
+    # is the median summed signal across a sample of training intervals (after
+    # applying target_scale). This is the recommended setting for BPNetLoss.alpha
+    # and similar count-weight parameters in BPNet-style models.
+    # Example: {"alpha": "adaptive"} → alpha is resolved at fit time.
     loss_args: dict[str, Any]
 
     # Metrics class (fully qualified class name, e.g. "torchmetrics.MetricCollection")

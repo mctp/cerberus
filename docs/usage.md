@@ -39,7 +39,8 @@ data_config = {
     "max_jitter": 128,
     "log_transform": True,
     "reverse_complement": True,
-    "use_sequence": True
+    "use_sequence": True,
+    "target_scale": 1.0,  # Multiplicative scale applied to targets before log transform
 }
 
 # 3. Sampler Configuration (Peaks + Negatives)
@@ -95,34 +96,31 @@ train_config = {
     "optimizer": "adamw",
     "scheduler_type": "cosine",
     "scheduler_args": {"warmup_epochs": 5},
-    "filter_bias_and_bn": True
+    "filter_bias_and_bn": True,
+    "reload_dataloaders_every_n_epochs": 0,
+    "adam_eps": 1e-8,
+    "gradient_clip_val": None,
 }
 
 # 5. Model Configuration
 # Uses standard models from cerberus.models or your own importable class path.
-# "model_cls", "loss_cls", and "metrics_cls" must be strings.
+# "model_cls", "loss_cls", and "metrics_cls" must be fully-qualified class strings.
+# input_len, output_len, output_bin_size are automatically passed from DataConfig.
 
 model_config = {
     "name": "my_bpnet",
-    "model_cls": "cerberus.models.BPNet",
-    "loss_cls": "cerberus.loss.MSEMultinomialLoss",
-    "loss_args": {"count_weight": 1.0},
-    "metrics_cls": "torchmetrics.MetricCollection",
-    "metrics_args": {
-        "metrics": {
-            "pearson": "cerberus.metrics.CountProfilePearsonCorrCoef",
-            "mse_profile": "cerberus.metrics.CountProfileMeanSquaredError"
-        }
-    },
+    "model_cls": "cerberus.models.bpnet.BPNet",
+    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
+    # Set alpha="adaptive" to compute the counts loss weight from the training set
+    # automatically (alpha = median_total_counts / 10). This balances the profile
+    # and counts loss terms at the correct scale for the dataset depth.
+    "loss_args": {"alpha": "adaptive"},
+    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
+    "metrics_args": {"num_channels": 1},
     "model_args": {
-        "filters": 64,
-        "n_dilated_layers": 9,
-        # Note: input_channels and output_channels are passed if the model requires them.
-        # BPNet automatically infers input/output dimensions from input_len/output_len/DataConfig,
-        # but explicit channels can be passed if needed by custom models.
-        "input_channels": ["A", "C", "G", "T"],
-        "output_channels": ["AR"]
-    }
+        "n_dilated_layers": 8,
+        "output_channels": ["AR"],
+    },
 }
 
 # Option A: Train a Single Model (Single Split)
