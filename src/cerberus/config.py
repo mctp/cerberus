@@ -764,6 +764,27 @@ def validate_data_and_model_compatibility(
             raise ValueError(f"Data inputs {missing} are not in model input channels")
 
 
+def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) -> None:
+    """
+    Propagate the scaled count_pseudocount from data_config into model_config's
+    loss_args and metrics_args.
+
+    The user specifies count_pseudocount in raw coverage units (e.g. read length);
+    scaling by target_scale converts it to the units that the loss and metrics
+    actually operate on. Uses setdefault so an explicitly provided value in
+    loss_args/metrics_args is never overwritten.
+
+    Args:
+        data_config: Validated data configuration containing count_pseudocount
+            and target_scale.
+        model_config: Model configuration whose loss_args and metrics_args are
+            updated **in place**.
+    """
+    scaled_pseudocount = data_config["count_pseudocount"] * data_config["target_scale"]
+    model_config["loss_args"].setdefault("count_pseudocount", scaled_pseudocount)
+    model_config["metrics_args"].setdefault("count_pseudocount", scaled_pseudocount)
+
+
 def parse_hparams_config(
     path: str | Path, 
     search_paths: list[Path] | None = None
@@ -824,12 +845,7 @@ def parse_hparams_config(
     validate_data_and_sampler_compatibility(data_conf, sampler_conf)
     validate_data_and_model_compatibility(data_conf, model_conf)
 
-    # Propagate scaled count_pseudocount into loss and metrics args.
-    # The user specifies count_pseudocount in raw coverage units; scaling by target_scale
-    # converts it to the units that the loss and metrics actually operate on.
-    scaled_pseudocount = data_conf["count_pseudocount"] * data_conf["target_scale"]
-    model_conf["loss_args"].setdefault("count_pseudocount", scaled_pseudocount)
-    model_conf["metrics_args"].setdefault("count_pseudocount", scaled_pseudocount)
+    propagate_pseudocount(data_conf, model_conf)
 
     config: CerberusConfig = {
         "train_config": train_conf,

@@ -289,18 +289,18 @@ def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseud
         if log_counts.ndim == 2 and log_counts.shape[1] > 1:
             if log_counts_include_pseudocount:
                 # Undo log(x + pseudocount) per channel, sum channels, reapply.
-                total = (torch.exp(log_counts) - pseudocount).clamp_min(0.0).sum(dim=1)
+                total = (torch.exp(log_counts.float()) - pseudocount).clamp_min(0.0).sum(dim=1)
                 return torch.log(total + pseudocount)
             else:
-                return torch.logsumexp(log_counts, dim=1)
+                return torch.logsumexp(log_counts.float(), dim=1)
         else:
             return log_counts.flatten()
             
     elif isinstance(model_output, ProfileLogRates):
         log_rates = model_output.log_rates
         if log_rates.shape[1] > 1:
-            return torch.logsumexp(log_rates.flatten(start_dim=1), dim=-1)
+            return torch.logsumexp(log_rates.float().flatten(start_dim=1), dim=-1)
         else:
-            return torch.logsumexp(log_rates, dim=(1,2)).flatten()
+            return torch.logsumexp(log_rates.float(), dim=(1,2)).flatten()
             
     raise ValueError(f"Model output type {type(model_output)} not supported for total log counts extraction.")

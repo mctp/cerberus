@@ -199,7 +199,7 @@ class CerberusModule(pl.LightningModule):
                 log_counts_include_pseudocount=log_counts_include_pseudocount,
                 pseudocount=pseudocount,
             )                                                                        # (B,)
-            target_lc = torch.log(targets.sum(dim=(1, 2)) + pseudocount)            # (B,)
+            target_lc = torch.log(targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount)            # (B,)
             self._val_log_count_preds.append(pred_lc.cpu())
             self._val_log_count_targets.append(target_lc.cpu())
         except (ValueError, AttributeError, TypeError, IndexError):

@@ -48,6 +48,7 @@ class ProfilePearsonCorrCoef(PearsonCorrCoef):
         
         probs = F.softmax(logits, dim=-1)
 
+        target = target.float()
         if self.log1p_targets:
             target = torch.expm1(target)
             
@@ -97,6 +98,7 @@ class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef):
         # Broadcasting handles (B, 1, 1) * (B, C, L) -> (B, C, L)
         preds_counts = probs * total_counts.unsqueeze(-1)
         
+        target = target.float()
         if self.log1p_targets:
             target = torch.expm1(target)
 
@@ -165,6 +167,7 @@ class ProfileMeanSquaredError(MeanSquaredError):
         
         probs = F.softmax(logits, dim=-1)
         
+        target = target.float()
         if self.log1p_targets:
             target = torch.expm1(target)
 
@@ -195,16 +198,17 @@ class LogCountsMeanSquaredError(MeanSquaredError):
             pred_log_counts = preds.log_counts
             # If we want global count but have per-channel counts, aggregate them
             if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
-                pred_log_counts = torch.logsumexp(pred_log_counts, dim=1)
+                pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
                 
         elif isinstance(preds, ProfileLogRates):
             if self.count_per_channel:
-                pred_log_counts = torch.logsumexp(preds.log_rates, dim=2)
+                pred_log_counts = torch.logsumexp(preds.log_rates.float(), dim=2)
             else:
-                pred_log_counts = torch.logsumexp(preds.log_rates.flatten(start_dim=1), dim=-1)
+                pred_log_counts = torch.logsumexp(preds.log_rates.float().flatten(start_dim=1), dim=-1)
         else:
              raise TypeError("LogCountsMeanSquaredError requires ProfileCountOutput or ProfileLogRates")
         
+        target = target.float()
         if self.log1p_targets:
             target = torch.expm1(target)
             
@@ -242,16 +246,17 @@ class LogCountsPearsonCorrCoef(PearsonCorrCoef):
             pred_log_counts = preds.log_counts
             # If we want global count but have per-channel counts, aggregate them
             if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
-                pred_log_counts = torch.logsumexp(pred_log_counts, dim=1)
+                pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
                 
         elif isinstance(preds, ProfileLogRates):
             if self.count_per_channel:
-                pred_log_counts = torch.logsumexp(preds.log_rates, dim=2)
+                pred_log_counts = torch.logsumexp(preds.log_rates.float(), dim=2)
             else:
-                pred_log_counts = torch.logsumexp(preds.log_rates.flatten(start_dim=1), dim=-1)
+                pred_log_counts = torch.logsumexp(preds.log_rates.float().flatten(start_dim=1), dim=-1)
         else:
              raise TypeError("LogCountsPearsonCorrCoef requires ProfileCountOutput or ProfileLogRates")
         
+        target = target.float()
         if self.log1p_targets:
             target = torch.expm1(target)
             
@@ -352,6 +357,7 @@ class PerExampleCountProfilePearsonCorrCoef(Metric):
 
         preds_counts = probs * total_counts.unsqueeze(-1)  # (B, C, L)
 
+        target = target.float()
         if self.log1p_targets:
             target = torch.expm1(target)
 
@@ -391,15 +397,16 @@ class PerExampleLogCountsPearsonCorrCoef(Metric):
         if isinstance(preds, ProfileCountOutput):
             pred_log_counts = preds.log_counts
             if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
-                pred_log_counts = torch.logsumexp(pred_log_counts, dim=1)
+                pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
         elif isinstance(preds, ProfileLogRates):
             if self.count_per_channel:
-                pred_log_counts = torch.logsumexp(preds.log_rates, dim=2)
+                pred_log_counts = torch.logsumexp(preds.log_rates.float(), dim=2)
             else:
-                pred_log_counts = torch.logsumexp(preds.log_rates.flatten(start_dim=1), dim=-1)
+                pred_log_counts = torch.logsumexp(preds.log_rates.float().flatten(start_dim=1), dim=-1)
         else:
             raise TypeError("PerExampleLogCountsPearsonCorrCoef requires ProfileCountOutput or ProfileLogRates")
 
+        target = target.float()
         if self.log1p_targets:
             target = torch.expm1(target)
 

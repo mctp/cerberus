@@ -16,6 +16,7 @@ from .config import (
     DataConfig,
     GenomeConfig,
     SamplerConfig,
+    propagate_pseudocount,
 )
 from .module import instantiate, configure_callbacks
 from .model_ensemble import update_ensemble_metadata
@@ -210,6 +211,9 @@ def _train(
       2. Adaptive loss weight resolution — any "adaptive" sentinel in loss_args
          is replaced with compute_counts_loss_weight(datamodule.compute_median_counts())
          before the module is instantiated.
+      2b. Pseudocount propagation — count_pseudocount from data_config (scaled by
+          target_scale) is injected into loss_args and metrics_args via
+          propagate_pseudocount().
       3. Module instantiation with the resolved model_config.
       4. trainer.fit().
 
@@ -315,6 +319,11 @@ def _train(
     # Returns a new ModelConfig; the input is not modified so train_multi can
     # safely reuse the same model_config dict across folds.
     model_config = resolve_adaptive_loss_args(model_config, datamodule)
+
+    # 2b. Propagate scaled count_pseudocount from data_config into loss_args
+    # and metrics_args. This is safe after adaptive resolution because
+    # resolve_adaptive_loss_args already returned a new dict.
+    propagate_pseudocount(data_config, model_config)
 
     # 3. Instantiate module with the resolved model_config.
     module = instantiate(
