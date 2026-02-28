@@ -156,9 +156,19 @@ class TrainConfig(TypedDict):
 
     # Reload dataloaders every n epochs (0 to disable). Optional, defaults to 0.
     reload_dataloaders_every_n_epochs: int
+
+    # Epsilon for Adam/AdamW numerical stability (default: 1e-8).
+    # BPNet-style models trained with TensorFlow/Keras conventions should use 1e-7
+    # to match Keras' Adam default. train_bpnet.py defaults to 1e-7 for this reason.
+    adam_eps: float
+
+    # Maximum gradient norm for gradient clipping (default: None = disabled).
+    # Passed directly to pl.Trainer as gradient_clip_val.
+    # A value of 1.0 is a reasonable safeguard for unnormalized networks like BPNet.
+    gradient_clip_val: float | None
 ```
 
-*Note: Runtime parameters like `num_workers`, `in_memory`, `precision`, `matmul_precision`, and `compile` are passed directly to the `train_single`/`train_multi` functions, not included in `TrainConfig`.*
+*Note: Runtime parameters like `num_workers`, `in_memory`, `precision`, `matmul_precision`, `compile`, and `run_test` are passed directly to the `train_single`/`train_multi` functions, not included in `TrainConfig`.*
 
 ## PredictConfig (Runtime)
 

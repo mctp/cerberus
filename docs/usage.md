@@ -98,8 +98,8 @@ train_config = {
     "scheduler_args": {"warmup_epochs": 5},
     "filter_bias_and_bn": True,
     "reload_dataloaders_every_n_epochs": 0,
-    "adam_eps": 1e-8,
-    "gradient_clip_val": None,
+    "adam_eps": 1e-8,           # Use 1e-7 for BPNet-style models (matches TF/Keras default)
+    "gradient_clip_val": None,  # Set to e.g. 1.0 to clip gradients; None = disabled
 }
 
 # 5. Model Configuration
@@ -132,12 +132,13 @@ trainer = train_single(
     sampler_config=sampler_config,
     model_config=model_config,
     train_config=train_config,
-    num_workers=8, 
-    in_memory=False, 
+    num_workers=8,
+    in_memory=False,
     precision="16-mixed",      # Enable Mixed Precision
     matmul_precision="high",   # TensorFloat-32 on Ampere+
     root_dir="logs/single_run",
-    accelerator="gpu", 
+    run_test=True,             # Evaluate on test fold after training (uses best ckpt)
+    accelerator="gpu",
     devices=1
 )
 
@@ -153,16 +154,42 @@ trainers = train_multi(
     precision="16-mixed",
     matmul_precision="high",
     root_dir="logs/cross_val", # Models saved in logs/cross_val/fold_0, fold_1, etc.
+    run_test=True,             # Evaluate on test fold after each fold's training
     accelerator="gpu",
     devices=1
 )
 ```
 
+### Output Files
+
+After training, each fold directory (`fold_0/`, `fold_1/`, …) contains:
+
+| File | Description |
+|------|-------------|
+| `config.json` | All config dicts (model, data, genome, sampler, train) as JSON for reproducibility |
+| `model.pt` | Best checkpoint weights as a plain `state_dict` — load without PyTorch Lightning |
+| `last.ckpt` | Last epoch checkpoint (useful for inspecting final weights) |
+| `checkpoint-epoch=XX-val_loss=Y.ckpt` | Best checkpoint (lowest `val_loss`) |
+| `plots/val_count_scatter_epoch_NNN.png` | Per-epoch scatter of predicted vs. true log-counts |
+| `lightning_logs/version_0/hparams.yaml` | Hyperparameters logged by Lightning |
+| `lightning_logs/version_0/metrics.csv` | Per-step and per-epoch scalar metrics |
+
+To load `model.pt` for inference without Lightning:
+```python
+import torch
+from cerberus.models.bpnet import BPNet
+
+model = BPNet(...)
+model.load_state_dict(torch.load("logs/single_run/fold_0/model.pt", map_location="cpu"))
+model.eval()
+```
+
 ### Logging
 
-Cerberus automatically logs all configuration dictionaries (`genome_config`, `data_config`, `sampler_config`, `model_config`, `train_config`) to the experiment log directory.
-You can find these parameters in:
-`lightning_logs/version_{#}/hparams.yaml`
+Cerberus automatically logs all configuration dictionaries (`genome_config`, `data_config`, `sampler_config`, `model_config`, `train_config`) to two places:
+
+- `config.json` in each fold directory — human-readable JSON written before training starts
+- `lightning_logs/version_{#}/hparams.yaml` — Lightning's hyperparameter log
 
 ## Manual Usage (PyTorch Dataset)
 
@@ -181,8 +208,11 @@ dataset = CerberusDataset(
 
 # Access a single item
 item = dataset[0]
-print(item['inputs'].shape)  # (4, 2114) -> Sequence (one-hot)
-print(item['targets'].shape) # (1, 1000) -> Signal
+print(item['inputs'].shape)   # (4, 2114) -> Sequence (one-hot)
+print(item['targets'].shape)  # (1, 1000) -> Signal
+print(item['intervals'])      # "chr1:1000-3114(+)" -> genomic interval string
+print(item['peak_status'])    # 1 = peak interval, 0 = background
+                              # (always 1 for samplers that don't support labelling)
 
 # Create DataLoader
 loader = DataLoader(dataset, batch_size=32, shuffle=True)

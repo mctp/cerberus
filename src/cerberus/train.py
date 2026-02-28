@@ -1,4 +1,5 @@
 import os
+import json
 import warnings
 import logging
 import torch
@@ -97,6 +98,48 @@ def resolve_adaptive_loss_args(
         for k, v in loss_args.items()
     }
     return {**model_config, "loss_args": resolved_loss_args}
+
+
+def _dump_config(
+    root_dir: str | Path,
+    model_config: "ModelConfig",
+    data_config: "DataConfig",
+    train_config: "TrainConfig",
+    genome_config: "GenomeConfig | None" = None,
+    sampler_config: "SamplerConfig | None" = None,
+) -> None:
+    """
+    Write all configuration dicts to ``<root_dir>/config.json``.
+
+    Records the exact configs used for a training run so they can be inspected
+    without loading a checkpoint. Called once at training start, before
+    ``trainer.fit()``.
+
+    Args:
+        root_dir: Directory in which to write ``config.json``.
+        model_config: Model architecture configuration.
+        data_config: Data inputs/outputs configuration.
+        train_config: Training hyperparameters.
+        genome_config: Genome configuration (optional).
+        sampler_config: Sampler configuration (optional).
+    """
+    config_path = Path(root_dir) / "config.json"
+    payload: dict = {
+        "model_config": model_config,
+        "data_config": data_config,
+        "train_config": train_config,
+    }
+    if genome_config is not None:
+        payload["genome_config"] = genome_config
+    if sampler_config is not None:
+        payload["sampler_config"] = sampler_config
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w") as f:
+            json.dump(payload, f, indent=2, default=str)
+        logger.info(f"Saved training config to {config_path}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Could not write config.json: {exc}")
 
 
 def _save_model_pt(trainer: pl.Trainer, root_dir: str | Path) -> None:
@@ -249,6 +292,17 @@ def _train(
         **trainer_kwargs,
     )
 
+    # 0. Dump configs for reproducibility (rank-0 only, best-effort)
+    if root_dir is not None and trainer.is_global_zero:
+        _dump_config(
+            root_dir,
+            model_config=model_config,
+            data_config=data_config,
+            train_config=train_config,
+            genome_config=genome_config,
+            sampler_config=sampler_config,
+        )
+
     # 1. Setup DataModule — must happen before adaptive resolution and instantiation.
     datamodule.setup(
         batch_size=train_config["batch_size"],
@@ -297,6 +351,7 @@ def train_single(
     precision: str = "32-true",
     root_dir: str | Path = ".",
     val_batch_size: int | None = None,
+    run_test: bool = False,
     **trainer_kwargs,
 ) -> pl.Trainer:
     """
@@ -320,6 +375,9 @@ def train_single(
         matmul_precision: Precision for float32 matrix multiplication.
         precision: Mixed precision setting passed to pl.Trainer.
         root_dir: Root directory for saving logs and checkpoints.
+        run_test: If True, run ``trainer.test()`` on the test fold immediately
+            after training using the best checkpoint. Metrics are logged to the
+            same logger as training (default: False).
         **trainer_kwargs: Additional arguments passed to pl.Trainer.
 
     Returns:
@@ -351,7 +409,7 @@ def train_single(
         genome_config["fold_args"]["val_fold"] = val_fold
 
     # 2. Train (setup → adaptive resolution → instantiate → fit happen inside _train)
-    return _train(
+    trainer = _train(
         model_config=model_config,
         data_config=data_config,
         datamodule=datamodule,
@@ -368,6 +426,24 @@ def train_single(
         **trainer_kwargs,
     )
 
+    # 3. Optionally evaluate on the held-out test fold using the best checkpoint.
+    # The datamodule was set up inside _train() so test_dataloader() is ready.
+    # Guard: skip if no ModelCheckpoint was configured or no checkpoint was saved
+    # (e.g. enable_checkpointing=False), since ckpt_path="best" would raise a
+    # MisconfigurationException in that case.
+    if run_test:
+        ckpt_callback = trainer.checkpoint_callback
+        if isinstance(ckpt_callback, ModelCheckpoint) and ckpt_callback.best_model_path:
+            logger.info(f"Running test evaluation for fold {test_fold} (best checkpoint)...")
+            trainer.test(datamodule=datamodule, ckpt_path="best")
+        else:
+            logger.warning(
+                f"run_test=True but no best checkpoint is available for fold {test_fold}; "
+                "skipping test evaluation. Ensure enable_checkpointing is not disabled."
+            )
+
+    return trainer
+
 
 def train_multi(
     genome_config: GenomeConfig,
@@ -382,6 +458,7 @@ def train_multi(
     precision: str = "32-true",
     root_dir: str | Path = ".",
     val_batch_size: int | None = None,
+    run_test: bool = False,
     **trainer_kwargs,
 ) -> list[pl.Trainer]:
     """
@@ -403,6 +480,8 @@ def train_multi(
         precision: Mixed precision setting passed to pl.Trainer.
         root_dir: Root directory for saving logs and checkpoints.
                   Each fold will be saved in a subdirectory 'fold_{i}'.
+        run_test: If True, run ``trainer.test()`` after each fold's training
+            using the best checkpoint (default: False).
         **trainer_kwargs: Additional arguments passed to pl.Trainer.
 
     Returns:
@@ -432,6 +511,7 @@ def train_multi(
             precision=precision,
             root_dir=root_dir,
             val_batch_size=val_batch_size,
+            run_test=run_test,
             **trainer_kwargs,
         )
 

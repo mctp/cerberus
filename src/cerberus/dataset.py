@@ -334,6 +334,10 @@ class CerberusDataset(Dataset):
                 - 'intervals': String representation of the genomic interval.
                                Note: If random transforms (like Jitter) are active, this string
                                reflects the transformed coordinates, not the original sampler coordinates.
+                - 'peak_status': int — ``1`` if the interval is a positive peak, ``0`` if background.
+                                 Requires the sampler to implement ``get_peak_status()``
+                                 (e.g. :class:`MultiSampler` / :class:`PeakSampler`); defaults to ``1``
+                                 for samplers that do not support labelling.
         
         Raises:
             TypeError: If no sampler is configured for this dataset.
@@ -341,7 +345,13 @@ class CerberusDataset(Dataset):
         if self.sampler is None:
             raise TypeError("Dataset has no sampler configured. Use get_interval() for specific queries.")
         interval = self.sampler[idx]
-        return self._get_interval(interval)
+        result = self._get_interval(interval)
+        result["peak_status"] = (
+            self.sampler.get_peak_status(idx)  # type: ignore[union-attr]
+            if hasattr(self.sampler, "get_peak_status")
+            else 1
+        )
+        return result
 
     def __getitems__(self, indices: list[int]):
         """Batch retrieval optimization (optional)."""

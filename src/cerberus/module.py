@@ -194,7 +194,7 @@ class CerberusModule(pl.LightningModule):
             target_lc = torch.log1p(targets.sum(dim=(1, 2)))  # (B,)
             self._val_log_count_preds.append(pred_lc.cpu())
             self._val_log_count_targets.append(target_lc.cpu())
-        except (ValueError, AttributeError, TypeError):
+        except (ValueError, AttributeError, TypeError, IndexError):
             pass
 
     def on_validation_epoch_end(self):
@@ -252,6 +252,7 @@ def configure_callbacks(
             monitor="val_loss",
             mode="min",
             save_top_k=1,
+            save_last=True,
             filename="checkpoint-{epoch:02d}-{val_loss:.4f}",
         )
 

@@ -3,8 +3,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 from typing import cast
 import torch
-from cerberus.train import _train as train, _save_model_pt
-from cerberus.config import TrainConfig, ModelConfig, DataConfig
+import json
+from cerberus.train import _train as train, _save_model_pt, _dump_config, train_single
+from cerberus.config import TrainConfig, ModelConfig, DataConfig, GenomeConfig, SamplerConfig
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 
@@ -168,6 +169,45 @@ def test_save_model_pt_skips_when_no_checkpoint():
         mock_save.assert_not_called()
 
 
+def test_dump_config_writes_json():
+    """_dump_config writes a readable config.json containing all passed configs."""
+    model_cfg = cast(ModelConfig, {"class_path": "MyModel", "loss_args": {}})
+    data_cfg = cast(DataConfig, {"inputs": [], "targets": []})
+    train_cfg = _make_train_config()
+    genome_cfg = cast(GenomeConfig, {"fasta_path": "/genome.fa"})
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _dump_config(
+            tmp_dir,
+            model_config=model_cfg,
+            data_config=data_cfg,
+            train_config=train_cfg,
+            genome_config=genome_cfg,
+        )
+        config_path = Path(tmp_dir) / "config.json"
+        assert config_path.exists()
+        loaded = json.loads(config_path.read_text())
+
+    assert loaded["model_config"] == model_cfg
+    assert loaded["data_config"] == data_cfg
+    assert "sampler_config" not in loaded
+
+
+def test_dump_config_skips_none_sections():
+    """Sections passed as None are omitted from config.json."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _dump_config(
+            tmp_dir,
+            model_config=cast(ModelConfig, {}),
+            data_config=cast(DataConfig, {}),
+            train_config=_make_train_config(),
+        )
+        loaded = json.loads((Path(tmp_dir) / "config.json").read_text())
+
+    assert "genome_config" not in loaded
+    assert "sampler_config" not in loaded
+
+
 def test_train_wrapper_custom_callbacks():
     mock_module = MagicMock(spec=pl.LightningModule)
     datamodule = MagicMock()
@@ -192,3 +232,85 @@ def test_train_wrapper_custom_callbacks():
 
         call_kwargs = mock_trainer_cls.call_args[1]
         assert custom_cb in call_kwargs["callbacks"]
+
+
+
+def test_train_single_run_test_false():
+    """run_test=False (default) must NOT call trainer.test()."""
+    with patch("cerberus.train._train") as mock_train, \
+         patch("cerberus.train.CerberusDataModule"), \
+         patch("cerberus.train.update_ensemble_metadata"):
+
+        mock_trainer = MagicMock(spec=pl.Trainer)
+        mock_train.return_value = mock_trainer
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            train_single(
+                genome_config=cast(GenomeConfig, {"fold_args": {"k": 3}}),
+                data_config=cast(DataConfig, {}),
+                sampler_config=cast(SamplerConfig, {}),
+                model_config=cast(ModelConfig, {}),
+                train_config=_make_train_config(),
+                test_fold=0,
+                root_dir=tmp_dir,
+                run_test=False,
+            )
+
+        mock_trainer.test.assert_not_called()
+
+
+def test_train_single_run_test_true():
+    """run_test=True calls trainer.test(datamodule=..., ckpt_path='best') when a best checkpoint exists."""
+    with patch("cerberus.train._train") as mock_train, \
+         patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
+         patch("cerberus.train.update_ensemble_metadata"):
+
+        mock_trainer = MagicMock(spec=pl.Trainer)
+        # Simulate a ModelCheckpoint callback with a valid best path
+        mock_ckpt_cb = MagicMock(spec=ModelCheckpoint)
+        mock_ckpt_cb.best_model_path = "/path/to/best.ckpt"
+        mock_trainer.checkpoint_callback = mock_ckpt_cb
+        mock_train.return_value = mock_trainer
+        mock_datamodule = mock_dm_cls.return_value
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            train_single(
+                genome_config=cast(GenomeConfig, {"fold_args": {"k": 3}}),
+                data_config=cast(DataConfig, {}),
+                sampler_config=cast(SamplerConfig, {}),
+                model_config=cast(ModelConfig, {}),
+                train_config=_make_train_config(),
+                test_fold=0,
+                root_dir=tmp_dir,
+                run_test=True,
+            )
+
+        mock_trainer.test.assert_called_once_with(
+            datamodule=mock_datamodule, ckpt_path="best"
+        )
+
+
+def test_train_single_run_test_skips_when_no_checkpoint():
+    """run_test=True with no best checkpoint logs a warning and does not call trainer.test()."""
+    with patch("cerberus.train._train") as mock_train, \
+         patch("cerberus.train.CerberusDataModule"), \
+         patch("cerberus.train.update_ensemble_metadata"):
+
+        mock_trainer = MagicMock(spec=pl.Trainer)
+        # Simulate no ModelCheckpoint (e.g. enable_checkpointing=False)
+        mock_trainer.checkpoint_callback = None
+        mock_train.return_value = mock_trainer
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            train_single(
+                genome_config=cast(GenomeConfig, {"fold_args": {"k": 3}}),
+                data_config=cast(DataConfig, {}),
+                sampler_config=cast(SamplerConfig, {}),
+                model_config=cast(ModelConfig, {}),
+                train_config=_make_train_config(),
+                test_fold=0,
+                root_dir=tmp_dir,
+                run_test=True,
+            )
+
+        mock_trainer.test.assert_not_called()
