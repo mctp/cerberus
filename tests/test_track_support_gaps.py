@@ -84,6 +84,7 @@ def test_dataset_bed_support(dummy_bed, tmp_path):
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": False
     }
     
@@ -133,6 +134,7 @@ def test_dataset_bigbed_support(dummy_bigbed, tmp_path):
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": False
     }
     

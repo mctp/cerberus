@@ -35,7 +35,8 @@ def mock_configs():
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
-        "use_sequence": True
+        "use_sequence": True,
+        "count_pseudocount": 1.0,
     }
     train_config: TrainConfig = {
         "batch_size": 1,

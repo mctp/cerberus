@@ -30,6 +30,7 @@ def minimal_configs():
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
     }
 
     sampler_config: SamplerConfig = {

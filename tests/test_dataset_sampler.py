@@ -39,6 +39,7 @@ def test_dataset_instantiates_interval_sampler(tmp_path):
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     })
     
@@ -99,6 +100,7 @@ def test_dataset_invalid_sampler(tmp_path):
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     })
     sampler_config = cast(SamplerConfig, {

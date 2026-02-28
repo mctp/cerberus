@@ -66,6 +66,7 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
             "log_transform": True,
             "reverse_complement": True,
         "target_scale": 1.0,
+            "count_pseudocount": 1.0,
             "use_sequence": True,
         })
 

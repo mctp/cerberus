@@ -498,10 +498,10 @@ class LyraNetMetricCollection(MetricCollection):
     MetricCollection for LyraNet models.
     Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
     """
-    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
+    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False, count_pseudocount: float = 1.0):
         super().__init__({
-            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
-            "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
+            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
+            "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
+            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
         })

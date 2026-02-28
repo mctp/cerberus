@@ -19,6 +19,7 @@ def _base_config(tmp_path: Path, **overrides) -> DataConfig:
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     }
     config.update(overrides)

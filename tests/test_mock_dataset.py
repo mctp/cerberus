@@ -33,9 +33,10 @@ def test_mock_dataset_end_to_end(mock_files):
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
-        "use_sequence": True
+        "use_sequence": True,
+        "count_pseudocount": 1.0,
     }
-    
+
     sampler_config: SamplerConfig = {
         "sampler_type": "interval", # Ignored by MockSampler
         "padded_size": 200,
@@ -162,9 +163,10 @@ def create_mock_dataset(mock_files, num_samples=100) -> CerberusDataset:
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
-        "use_sequence": True
+        "use_sequence": True,
+        "count_pseudocount": 1.0,
     }
-    
+
     sampler_config: SamplerConfig = {
         "sampler_type": "interval",
         "padded_size": 200,

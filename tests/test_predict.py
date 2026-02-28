@@ -63,9 +63,10 @@ def integration_setup(tmp_path):
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     })
-    
+
     # No sampler needed for prediction integration test
     dataset = CerberusDataset(genome_config, data_config, sampler_config=None)
     

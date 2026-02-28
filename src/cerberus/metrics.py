@@ -71,13 +71,14 @@ class ProfilePearsonCorrCoef(PearsonCorrCoef):
 class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef):
     """
     Pearson Correlation for reconstructed profile counts (BPNet-style).
-    
+
     Reconstructs predicted profile counts from (logits, log_counts) before
     computing correlation.
-    Preds = Softmax(logits) * Exp(log_counts).
+    Preds = Softmax(logits) * (Exp(log_counts) - count_pseudocount).
     """
-    def __init__(self, num_channels=1, implicit_log_targets=False, **kwargs):
+    def __init__(self, num_channels=1, implicit_log_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(num_channels=num_channels, implicit_log_targets=implicit_log_targets, **kwargs)
+        self.count_pseudocount = count_pseudocount
 
     def update(self, preds: ProfileCountOutput, target: torch.Tensor): # type: ignore[override]
         if not isinstance(preds, ProfileCountOutput):
@@ -87,7 +88,7 @@ class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef):
         log_counts = preds.log_counts
 
         probs = F.softmax(logits, dim=-1)
-        total_counts = torch.expm1(log_counts.float()).clamp_min(0.0)
+        total_counts = (torch.exp(log_counts.float()) - self.count_pseudocount).clamp_min(0.0)
         
         # Handle (Batch,) edge case
         if total_counts.dim() == 1:
@@ -109,14 +110,15 @@ class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef):
 class CountProfileMeanSquaredError(MeanSquaredError):
     """
     Mean Squared Error for reconstructed profile counts (BPNet-style).
-    
+
     Reconstructs predicted profile counts from (logits, log_counts) before
     computing MSE against targets.
-    Preds = Softmax(logits) * Exp(log_counts).
+    Preds = Softmax(logits) * (Exp(log_counts) - count_pseudocount).
     """
-    def __init__(self, implicit_log_targets=False, **kwargs):
+    def __init__(self, implicit_log_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(**kwargs)
         self.implicit_log_targets = implicit_log_targets
+        self.count_pseudocount = count_pseudocount
 
     def update(self, preds: ProfileCountOutput, target: torch.Tensor): # type: ignore[override]
         if not isinstance(preds, ProfileCountOutput):
@@ -126,7 +128,7 @@ class CountProfileMeanSquaredError(MeanSquaredError):
         log_counts = preds.log_counts
 
         probs = F.softmax(logits, dim=-1)
-        total_counts = torch.expm1(log_counts.float()).clamp_min(0.0)
+        total_counts = (torch.exp(log_counts.float()) - self.count_pseudocount).clamp_min(0.0)
         
         # Handle (Batch,) edge case
         if total_counts.dim() == 1:
@@ -177,15 +179,16 @@ class ProfileMeanSquaredError(MeanSquaredError):
 class LogCountsMeanSquaredError(MeanSquaredError):
     """
     Mean Squared Error on Log Counts.
-    
+
     Computes MSE between:
     1. Predicted Log Counts (from log_counts or logsumexp of log_rates)
-    2. Target Log Counts (log1p of sum of targets)
+    2. Target Log Counts: log(sum(targets) + count_pseudocount)
     """
-    def __init__(self, count_per_channel=False, implicit_log_targets=False, **kwargs):
+    def __init__(self, count_per_channel=False, implicit_log_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(**kwargs)
         self.count_per_channel = count_per_channel
         self.implicit_log_targets = implicit_log_targets
+        self.count_pseudocount = count_pseudocount
 
     def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
         if isinstance(preds, ProfileCountOutput):
@@ -207,31 +210,32 @@ class LogCountsMeanSquaredError(MeanSquaredError):
             
         if self.count_per_channel:
             target_counts = target.sum(dim=2)
-            target_log_counts = torch.log1p(target_counts)
+            target_log_counts = torch.log(target_counts + self.count_pseudocount)
         else:
             target_global_count = target.sum(dim=(1, 2))
-            target_log_counts = torch.log1p(target_global_count)
-            
+            target_log_counts = torch.log(target_global_count + self.count_pseudocount)
+
         # Ensure dimensions match (flatten to 1D if global)
         if not self.count_per_channel:
             pred_log_counts = pred_log_counts.flatten()
             target_log_counts = target_log_counts.flatten()
-            
+
         super().update(pred_log_counts, target_log_counts)
 
 
 class LogCountsPearsonCorrCoef(PearsonCorrCoef):
     """
     Pearson Correlation on Log Counts.
-    
+
     Computes Correlation between:
     1. Predicted Log Counts (from log_counts or logsumexp of log_rates)
-    2. Target Log Counts (log1p of sum of targets)
+    2. Target Log Counts: log(sum(targets) + count_pseudocount)
     """
-    def __init__(self, count_per_channel=False, implicit_log_targets=False, **kwargs):
+    def __init__(self, count_per_channel=False, implicit_log_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(**kwargs)
         self.count_per_channel = count_per_channel
         self.implicit_log_targets = implicit_log_targets
+        self.count_pseudocount = count_pseudocount
 
     def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
         if isinstance(preds, ProfileCountOutput):
@@ -253,16 +257,16 @@ class LogCountsPearsonCorrCoef(PearsonCorrCoef):
             
         if self.count_per_channel:
             target_counts = target.sum(dim=2)
-            target_log_counts = torch.log1p(target_counts)
+            target_log_counts = torch.log(target_counts + self.count_pseudocount)
         else:
             target_global_count = target.sum(dim=(1, 2))
-            target_log_counts = torch.log1p(target_global_count)
-            
+            target_log_counts = torch.log(target_global_count + self.count_pseudocount)
+
         # Ensure dimensions match (flatten to 1D if global)
         if not self.count_per_channel:
             pred_log_counts = pred_log_counts.flatten()
             target_log_counts = target_log_counts.flatten()
-            
+
         super().update(pred_log_counts, target_log_counts)
 
 
@@ -319,16 +323,17 @@ class PerExampleCountProfilePearsonCorrCoef(Metric):
     Reconstructs predicted profile counts from (logits, log_counts) before
     computing per-example Pearson correlation along the sequence length.
     Numerically stable in float32.
-    Preds = Softmax(logits) * Expm1(log_counts).
+    Preds = Softmax(logits) * (Exp(log_counts) - count_pseudocount).
     """
     full_state_update: bool | None = False
     sum_corr: torch.Tensor
     count: torch.Tensor
 
-    def __init__(self, num_channels=1, implicit_log_targets=False, **kwargs):
+    def __init__(self, num_channels=1, implicit_log_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(**kwargs)
         self.num_channels = num_channels
         self.implicit_log_targets = implicit_log_targets
+        self.count_pseudocount = count_pseudocount
         self.add_state("sum_corr", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("count", default=torch.tensor(0, dtype=torch.long), dist_reduce_fx="sum")
 
@@ -340,7 +345,7 @@ class PerExampleCountProfilePearsonCorrCoef(Metric):
         log_counts = preds.log_counts
 
         probs = F.softmax(logits, dim=-1)
-        total_counts = torch.expm1(log_counts.float()).clamp_min(0.0)
+        total_counts = (torch.exp(log_counts.float()) - self.count_pseudocount).clamp_min(0.0)
 
         if total_counts.dim() == 1:
             total_counts = total_counts.unsqueeze(1)
@@ -374,10 +379,11 @@ class PerExampleLogCountsPearsonCorrCoef(Metric):
     preds_list: list[torch.Tensor]
     targets_list: list[torch.Tensor]
 
-    def __init__(self, count_per_channel=False, implicit_log_targets=False, **kwargs):
+    def __init__(self, count_per_channel=False, implicit_log_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(**kwargs)
         self.count_per_channel = count_per_channel
         self.implicit_log_targets = implicit_log_targets
+        self.count_pseudocount = count_pseudocount
         self.add_state("preds_list", default=[], dist_reduce_fx="cat")
         self.add_state("targets_list", default=[], dist_reduce_fx="cat")
 
@@ -399,10 +405,10 @@ class PerExampleLogCountsPearsonCorrCoef(Metric):
 
         if self.count_per_channel:
             target_counts = target.sum(dim=2)
-            target_log_counts = torch.log1p(target_counts)
+            target_log_counts = torch.log(target_counts + self.count_pseudocount)
         else:
             target_global_count = target.sum(dim=(1, 2))
-            target_log_counts = torch.log1p(target_global_count)
+            target_log_counts = torch.log(target_global_count + self.count_pseudocount)
 
         if not self.count_per_channel:
             pred_log_counts = pred_log_counts.flatten()
@@ -438,12 +444,12 @@ class DefaultMetricCollection(MetricCollection):
     Default MetricCollection used for training/validation.
     Includes Pearson Correlation, Profile MSE, and Log Counts MSE.
     """
-    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
+    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False, count_pseudocount: float = 1.0):
         super().__init__({
             "pearson": ProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
             # MSE is element-wise, so Global MSE is equivalent to Mean Per-Channel MSE
             # (assuming equal number of elements per channel). Thus no custom flattening is needed.
             "mse_profile": ProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
+            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
         })

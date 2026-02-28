@@ -40,6 +40,7 @@ def test_instantiate_model_compile():
         "log_transform": False,
         "reverse_complement": False,
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
     }
 
     with patch("cerberus.module.import_class") as mock_import:

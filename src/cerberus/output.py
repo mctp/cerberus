@@ -262,20 +262,24 @@ def aggregate_models(
     logger.debug(f"Aggregated {len(outputs)} model outputs using '{method}'")
     return cls(**aggregated_elements, out_interval=out_int)
 
-def compute_total_log_counts(model_output: ModelOutput, implicit_log: bool = False) -> torch.Tensor:
+def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseudocount: bool = False, pseudocount: float = 1.0) -> torch.Tensor:
     """
     Extracts total log counts from the model output.
     Supports ProfileCountOutput and ProfileLogRates.
 
     Args:
         model_output: The output from the model.
-        implicit_log: If True, indicates that per-channel log_counts are in log1p space
-            (as trained by MSEMultinomialLoss with count_per_channel=True). In this case,
-            multi-channel counts are aggregated by inverting log1p per channel, summing,
-            then reapplying log1p — giving the correct log1p(total) rather than the
-            incorrect log(n_channels + total) that logsumexp would produce.
+        log_counts_include_pseudocount: If True, indicates that per-channel log_counts
+            are in log(count + pseudocount) space (as trained by MSEMultinomialLoss with
+            count_per_channel=True). In this case, multi-channel counts are aggregated
+            by inverting the log transform per channel, summing, then reapplying it —
+            giving the correct log(total + pseudocount) rather than the incorrect
+            log(n_channels + total) that logsumexp would produce.
             If False (default), log_counts are treated as being in log space (Poisson/NB
             losses), where logsumexp correctly gives log(total).
+        pseudocount: Additive offset used when log_counts_include_pseudocount=True to
+            invert and reapply the log transform. Must match the count_pseudocount used
+            during training. Default 1.0 reproduces the original log1p behaviour.
 
     Returns:
         A tensor of shape (batch_size,) containing the total log counts.
@@ -283,10 +287,10 @@ def compute_total_log_counts(model_output: ModelOutput, implicit_log: bool = Fal
     if isinstance(model_output, ProfileCountOutput):
         log_counts = model_output.log_counts
         if log_counts.ndim == 2 and log_counts.shape[1] > 1:
-            if implicit_log:
-                # log_counts per channel is in log1p space: undo log1p, sum channels, reapply log1p
-                total = torch.expm1(log_counts).sum(dim=1)
-                return torch.log1p(total)
+            if log_counts_include_pseudocount:
+                # Undo log(x + pseudocount) per channel, sum channels, reapply.
+                total = (torch.exp(log_counts) - pseudocount).clamp_min(0.0).sum(dim=1)
+                return torch.log(total + pseudocount)
             else:
                 return torch.logsumexp(log_counts, dim=1)
         else:

@@ -20,7 +20,10 @@ After completing each task, always:
 - Pure computation modules (loss, metrics, layers, transforms, complexity) do **not** need logging.
 - Never use `print()` for diagnostics in library code — always use `logger`.
 
+## Run and fix all tests (after each task)
+
+- pytest -v tests/
+
 ## Run and fix pyright (after each task)
 
-- npx pyright tests/
-- npx pyright src/
+- npx pyright tests/ src/

@@ -121,17 +121,20 @@ def main():
     logger.info("Configuring metrics and loss...")
     metrics, criterion = instantiate_metrics_and_loss(model_config, device=device)
 
-    # MSE losses train log_counts against log1p(total_counts).
+    # MSE losses train log_counts against log(total_counts + pseudocount).
     # Poisson/NB losses use PoissonNLLLoss(log_input=True) against raw counts,
-    # so log_counts ≈ log(total_counts) — not log1p. Using the wrong transform
-    # creates a systematic offset in the predicted vs observed comparison.
-    # implicit_log also controls multi-channel aggregation in compute_total_log_counts:
-    # for MSE with count_per_channel=True, per-channel log_counts are in log1p space
-    # and must be converted back before summing (logsumexp gives log(n_ch + total), not log1p(total)).
-    implicit_log = isinstance(criterion, (MSEMultinomialLoss, CoupledMSEMultinomialLoss))
-    if implicit_log:
-        obs_log_count_fn = torch.log1p
+    # so log_counts ≈ log(total_counts) — not log(counts + pseudocount). Using the
+    # wrong transform creates a systematic offset in the predicted vs observed comparison.
+    # log_counts_include_pseudocount also controls multi-channel aggregation in compute_total_log_counts:
+    # for MSE with count_per_channel=True, per-channel log_counts are in
+    # log(count + pseudocount) space and must be converted back before summing
+    # (logsumexp gives log(n_ch * pseudocount + total), not log(pseudocount + total)).
+    log_counts_include_pseudocount = isinstance(criterion, (MSEMultinomialLoss, CoupledMSEMultinomialLoss))
+    if log_counts_include_pseudocount:
+        count_pseudocount = getattr(criterion, "count_pseudocount", 1.0)
+        obs_log_count_fn = lambda x: torch.log(x + count_pseudocount)
     else:
+        count_pseudocount = 1.0
         obs_log_count_fn = lambda x: torch.log(x.clamp_min(1.0))
 
     total_loss = 0.0
@@ -162,7 +165,11 @@ def main():
 
         # 4a. Get Predicted Log Counts
         try:
-            pred_log_total = compute_total_log_counts(batch_output, implicit_log=implicit_log)
+            pred_log_total = compute_total_log_counts(
+                batch_output,
+                log_counts_include_pseudocount=log_counts_include_pseudocount,
+                pseudocount=count_pseudocount,
+            )
             preds_batch = pred_log_total.cpu().numpy()
         except ValueError:
             logger.warning("Model output does not have log_counts or log_rates. Skipping batch.")

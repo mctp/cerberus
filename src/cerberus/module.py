@@ -190,8 +190,16 @@ class CerberusModule(pl.LightningModule):
             targets: Detached target tensor, shape (B, C, L).
         """
         try:
-            pred_lc = compute_total_log_counts(outputs)       # (B,)
-            target_lc = torch.log1p(targets.sum(dim=(1, 2)))  # (B,)
+            pseudocount = getattr(self.criterion, "count_pseudocount", 1.0)
+            # MSE losses predict log(count + pseudocount); Poisson/NB predict log(count).
+            # Only MSE losses carry count_pseudocount; its presence signals the offset space.
+            log_counts_include_pseudocount = hasattr(self.criterion, "count_pseudocount")
+            pred_lc = compute_total_log_counts(
+                outputs,
+                log_counts_include_pseudocount=log_counts_include_pseudocount,
+                pseudocount=pseudocount,
+            )                                                                        # (B,)
+            target_lc = torch.log(targets.sum(dim=(1, 2)) + pseudocount)            # (B,)
             self._val_log_count_preds.append(pred_lc.cpu())
             self._val_log_count_targets.append(target_lc.cpu())
         except (ValueError, AttributeError, TypeError, IndexError):

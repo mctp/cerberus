@@ -488,12 +488,69 @@ def test_poisson_multinomial_loss_count_component():
 def test_poisson_multinomial_loss_implicit_log_targets():
     """Test implicit log targets handling in PoissonMultinomialLoss"""
     loss_fn = PoissonMultinomialLoss(count_weight=1.0, implicit_log_targets=True)
-    
+
     # Targets are log(x+1)
     targets_raw = torch.tensor([[[10.0]]])
     targets_logged = torch.log1p(targets_raw)
-    
+
     outputs = ProfileCountOutput(logits=torch.zeros(1, 1, 1), log_counts=torch.zeros(1, 1))
-    
+
     loss = loss_fn(outputs, targets_logged)
     assert not torch.isnan(loss)
+
+
+def test_mse_multinomial_loss_count_pseudocount_default_equals_log1p():
+    """count_pseudocount=1.0 must reproduce the original log1p count target."""
+    targets = torch.zeros(1, 1, 10)
+    targets[0, 0, 0] = 50.0
+    total = targets.sum()
+
+    # Perfect prediction using the new formula with pseudocount=1.0
+    perfect_log = torch.log(total + 1.0).reshape(1, 1)
+    loss_fn = MSEMultinomialLoss(count_weight=1.0, count_pseudocount=1.0)
+    outputs = ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=perfect_log)
+    loss = loss_fn(outputs, targets)
+
+    # Count loss should be 0 (profile loss is non-zero but count part is 0)
+    # Verify by checking gradient on log_counts is zero
+    perfect_log.requires_grad_(True)
+    outputs2 = ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=perfect_log)
+    loss2 = loss_fn(outputs2, targets)
+    loss2.backward()
+    assert perfect_log.grad is not None
+    assert torch.allclose(perfect_log.grad, torch.zeros_like(perfect_log.grad), atol=1e-6)
+
+
+def test_mse_multinomial_loss_count_pseudocount_custom():
+    """count_pseudocount=100.0 produces log(count+100) not log(count+1) for targets."""
+    targets = torch.zeros(1, 1, 10)
+    targets[0, 0, 0] = 500.0
+    total = targets.sum()
+
+    # Build predictions that are perfect under each pseudocount
+    pred_pseudo1 = torch.log(total + 1.0).reshape(1, 1).requires_grad_(True)
+    pred_pseudo100 = torch.log(total + 100.0).reshape(1, 1).requires_grad_(True)
+
+    loss_fn_1 = MSEMultinomialLoss(count_weight=1.0, count_pseudocount=1.0)
+    loss_fn_100 = MSEMultinomialLoss(count_weight=1.0, count_pseudocount=100.0)
+
+    # Perfect prediction under its own pseudocount -> zero count-loss gradient
+    loss_fn_1(ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=pred_pseudo1), targets).backward()
+    loss_fn_100(ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=pred_pseudo100), targets).backward()
+
+    assert pred_pseudo1.grad is not None
+    assert pred_pseudo100.grad is not None
+    assert torch.allclose(pred_pseudo1.grad, torch.zeros_like(pred_pseudo1.grad), atol=1e-6)
+    assert torch.allclose(pred_pseudo100.grad, torch.zeros_like(pred_pseudo100.grad), atol=1e-6)
+
+    # Cross-check: prediction that is perfect under pseudo=1 is NOT perfect under pseudo=100
+    pred_wrong = torch.log(total + 1.0).reshape(1, 1).requires_grad_(True)
+    loss_fn_100(ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=pred_wrong), targets).backward()
+    assert pred_wrong.grad is not None
+    assert not torch.allclose(pred_wrong.grad, torch.zeros_like(pred_wrong.grad), atol=1e-6)
+
+
+def test_mse_multinomial_loss_count_pseudocount_stored():
+    """count_pseudocount is stored as an attribute for downstream access (e.g. module.py)."""
+    loss_fn = MSEMultinomialLoss(count_pseudocount=75.0)
+    assert loss_fn.count_pseudocount == 75.0

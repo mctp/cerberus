@@ -128,8 +128,9 @@ def test_instantiate_model_with_strings():
             "log_transform": False,
             "reverse_complement": False,
             "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         }
-        
+
         model = instantiate_model(model_config, data_config) # type: ignore
         
         assert isinstance(model, DummyModel)

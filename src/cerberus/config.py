@@ -96,6 +96,11 @@ class DataConfig(TypedDict):
         reverse_complement: Whether to apply reverse complement augmentation.
         target_scale: Multiplicative scaling factor for targets.
         use_sequence: Whether to use sequence input (default: True).
+        count_pseudocount: Additive offset before log-transforming count targets, specified
+            in raw coverage units (i.e. approximately read_length). parse_hparams_config
+            multiplies this by target_scale before injecting into loss_args and metrics_args
+            so that loss and metrics always receive the value in their native (scaled) units.
+            A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.
     """
 
     inputs: dict[str, Path]
@@ -109,6 +114,7 @@ class DataConfig(TypedDict):
     reverse_complement: bool
     use_sequence: bool
     target_scale: float
+    count_pseudocount: float
 
 
 class TrainConfig(TypedDict):
@@ -381,6 +387,7 @@ def validate_data_config(
         "log_transform",
         "reverse_complement",
         "target_scale",
+        "count_pseudocount",
     }
     
     # Optional with default
@@ -418,6 +425,9 @@ def validate_data_config(
     if not isinstance(config["target_scale"], float) or config["target_scale"] <= 0:
         raise ValueError("target_scale must be a positive number")
 
+    if not isinstance(config["count_pseudocount"], (int, float)) or config["count_pseudocount"] <= 0:
+        raise ValueError("count_pseudocount must be a positive number")
+
     if not isinstance(use_sequence, bool):
         raise TypeError("use_sequence must be a boolean")
 
@@ -432,6 +442,7 @@ def validate_data_config(
         "log_transform": config["log_transform"],
         "reverse_complement": config["reverse_complement"],
         "target_scale": config["target_scale"],
+        "count_pseudocount": float(config["count_pseudocount"]),
         "use_sequence": use_sequence,
     }
 
@@ -812,7 +823,14 @@ def parse_hparams_config(
     # Cross-validation
     validate_data_and_sampler_compatibility(data_conf, sampler_conf)
     validate_data_and_model_compatibility(data_conf, model_conf)
-    
+
+    # Propagate scaled count_pseudocount into loss and metrics args.
+    # The user specifies count_pseudocount in raw coverage units; scaling by target_scale
+    # converts it to the units that the loss and metrics actually operate on.
+    scaled_pseudocount = data_conf["count_pseudocount"] * data_conf["target_scale"]
+    model_conf["loss_args"].setdefault("count_pseudocount", scaled_pseudocount)
+    model_conf["metrics_args"].setdefault("count_pseudocount", scaled_pseudocount)
+
     config: CerberusConfig = {
         "train_config": train_conf,
         "genome_config": genome_conf,
