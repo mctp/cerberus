@@ -308,7 +308,7 @@ class PerExampleProfilePearsonCorrCoef(Metric):
 
     def compute(self):
         if self.count == 0:
-            return torch.tensor(float("nan"))
+            return torch.tensor(float("nan"), device=self.sum_corr.device)
         return (self.sum_corr / self.count).float()
 
 
@@ -358,7 +358,7 @@ class PerExampleCountProfilePearsonCorrCoef(Metric):
 
     def compute(self):
         if self.count == 0:
-            return torch.tensor(float("nan"))
+            return torch.tensor(float("nan"), device=self.sum_corr.device)
         return (self.sum_corr / self.count).float()
 
 
@@ -418,18 +418,18 @@ class PerExampleLogCountsPearsonCorrCoef(Metric):
             all_preds = cast(torch.Tensor, self.preds_list)
             all_targets = cast(torch.Tensor, self.targets_list)
         elif len(self.preds_list) == 0:
-            return torch.tensor(float("nan"))
+            return torch.tensor(float("nan"), device=self.device)
         else:
             all_preds = torch.cat(self.preds_list)
             all_targets = torch.cat(self.targets_list)
         if all_preds.numel() < 2:
-            return torch.tensor(float("nan"))
+            return torch.tensor(float("nan"), device=all_preds.device)
         preds_c = all_preds - all_preds.mean()
         target_c = all_targets - all_targets.mean()
         cov = (preds_c * target_c).sum()
         denom = preds_c.pow(2).sum().sqrt() * target_c.pow(2).sum().sqrt()
         if denom < 1e-8:
-            return torch.tensor(float("nan"))
+            return torch.tensor(float("nan"), device=all_preds.device)
         return (cov / denom).float()
 
 
