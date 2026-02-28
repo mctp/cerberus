@@ -48,6 +48,8 @@ def mock_configs():
         "scheduler_type": "default",
         "scheduler_args": {},
         "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
     genome_config: GenomeConfig = {
         "name": "test",

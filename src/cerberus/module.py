@@ -89,7 +89,8 @@ class CerberusModule(pl.LightningModule):
             opt=self.train_config["optimizer"],
             lr=self.train_config["learning_rate"],
             weight_decay=self.train_config["weight_decay"],
-            filter_bias_and_bn=self.train_config["filter_bias_and_bn"]
+            filter_bias_and_bn=self.train_config["filter_bias_and_bn"],
+            eps=self.train_config["adam_eps"],
         )
         
         optim_conf = {

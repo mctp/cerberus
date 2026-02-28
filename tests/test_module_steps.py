@@ -28,6 +28,8 @@ def base_config():
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
 
 def test_training_step(base_config):

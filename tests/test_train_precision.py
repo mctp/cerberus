@@ -20,6 +20,8 @@ def test_train_wrapper_matmul_precision():
         "scheduler_args": {},
         "filter_bias_and_bn": True,
         "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     })
     
     # Test default (highest)

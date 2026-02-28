@@ -121,8 +121,13 @@ class TrainConfig(TypedDict):
         learning_rate: Base learning rate.
         weight_decay: Weight decay for optimizer.
         patience: Patience for early stopping.
-        optimizer: Optimizer name (e.g., 'adamw', 'sgd').
+        optimizer: Optimizer name (e.g., 'adam', 'adamw', 'sgd').
         filter_bias_and_bn: Whether to exclude bias and batch norm parameters from weight decay.
+        adam_eps: Epsilon for Adam/AdamW optimizer numerical stability (default: 1e-8).
+            chrombpnet-pytorch uses 1e-7 for BPNet-style models.
+        gradient_clip_val: Maximum gradient norm for gradient clipping (default: None = disabled).
+            Passed to pl.Trainer as gradient_clip_val. A value of 1.0 is a reasonable
+            safeguard for unnormalized networks like BPNet.
     """
 
     batch_size: int
@@ -135,6 +140,8 @@ class TrainConfig(TypedDict):
     scheduler_args: dict[str, Any]
     filter_bias_and_bn: bool
     reload_dataloaders_every_n_epochs: int
+    adam_eps: float
+    gradient_clip_val: float | None
 
 
 class ModelConfig(TypedDict):
@@ -597,6 +604,13 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
     if not isinstance(reload_dataloaders, int) or reload_dataloaders < 0:
         raise ValueError("reload_dataloaders_every_n_epochs must be a non-negative integer")
 
+    if not isinstance(config["adam_eps"], float) or config["adam_eps"] <= 0:
+        raise ValueError("adam_eps must be a positive float")
+
+    gradient_clip_val = config["gradient_clip_val"]
+    if gradient_clip_val is not None and (not isinstance(gradient_clip_val, float) or gradient_clip_val <= 0):
+        raise ValueError("gradient_clip_val must be a positive float or None")
+
     return {
         "batch_size": config["batch_size"],
         "max_epochs": config["max_epochs"],
@@ -608,6 +622,8 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
         "scheduler_args": scheduler_args,
         "filter_bias_and_bn": config["filter_bias_and_bn"],
         "reload_dataloaders_every_n_epochs": reload_dataloaders,
+        "adam_eps": config["adam_eps"],
+        "gradient_clip_val": config["gradient_clip_val"],
     }
 
 

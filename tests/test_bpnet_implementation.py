@@ -7,6 +7,36 @@ from cerberus.loss import PoissonMultinomialLoss, MSEMultinomialLoss, CoupledMSE
 from cerberus.metrics import PerExampleCountProfilePearsonCorrCoef, CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
 from cerberus.output import ProfileCountOutput, ProfileLogRates
 
+def test_bpnet_xavier_init():
+    """BPNet must initialize conv/linear weights with Xavier uniform and biases to zero.
+
+    This matches the TensorFlow/Keras default used by the original BPNet and
+    chrombpnet-pytorch. The test checks both the statistical properties of the
+    weight distribution and that all biases are exactly zero.
+    """
+    model = BPNet(
+        input_len=1000,
+        output_len=800,
+        filters=64,
+        n_dilated_layers=3,
+    )
+    for name, m in model.named_modules():
+        if isinstance(m, (nn.Conv1d, nn.Linear)):
+            # Biases must be exactly zero
+            if m.bias is not None:
+                assert m.bias.data.eq(0).all(), f"{name}.bias not zero-initialized"
+            # Weights must be non-trivially initialized (not all zeros or all same)
+            assert m.weight.data.std() > 0, f"{name}.weight has zero variance after init"
+            # Xavier uniform bound: sqrt(6 / (fan_in + fan_out))
+            # Weights must not exceed a generous multiple of that bound
+            fan_in = m.weight.data.shape[1] * (m.weight.data.shape[2] if m.weight.data.dim() == 3 else 1)
+            fan_out = m.weight.data.shape[0] * (m.weight.data.shape[2] if m.weight.data.dim() == 3 else 1)
+            bound = (6 / (fan_in + fan_out)) ** 0.5
+            assert m.weight.data.abs().max().item() <= bound + 1e-5, (
+                f"{name}.weight exceeds Xavier uniform bound {bound:.4f}"
+            )
+
+
 def test_bpnet_residual_block_cropping():
     filters = 16
     kernel_size = 3

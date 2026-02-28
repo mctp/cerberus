@@ -148,7 +148,9 @@ def main():
             "num_epochs": args.max_epochs,
             "warmup_epochs": 10,
             "min_lr": 1e-5
-        }
+        },
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
 
     # Model Config for LyraNet

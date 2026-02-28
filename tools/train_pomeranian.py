@@ -188,7 +188,9 @@ def main():
             "num_epochs": args.max_epochs,
             "warmup_epochs": args.warmup_epochs,
             "min_lr": args.min_lr
-        }
+        },
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
 
     # Model Config

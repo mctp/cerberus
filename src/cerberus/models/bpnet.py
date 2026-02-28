@@ -89,6 +89,23 @@ class BPNet(nn.Module):
         num_count_outputs = 1 if self.predict_total_count else self.n_output_channels
         self.count_dense = nn.Linear(filters, num_count_outputs)
 
+        self._tf_style_reinit()
+
+    def _tf_style_reinit(self):
+        """Re-initialize weights using Xavier uniform (Glorot) and zero biases.
+
+        Matches the TensorFlow/Keras default initialization used by the original
+        BPNet implementation and chrombpnet-pytorch. Without this, PyTorch defaults
+        to Kaiming uniform which is calibrated for deeper ReLU networks and produces
+        different activation scales at initialization.
+        """
+        for m in self.modules():
+            if isinstance(m, (nn.Conv1d, nn.Linear)):
+                if m.weight is not None:
+                    nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
     def forward(self, x) -> ProfileCountOutput:
         """
         Forward pass.

@@ -96,7 +96,9 @@ def integration_setup(tmp_path):
         "optimizer": "adam",
         "filter_bias_and_bn": False,
         "scheduler_type": "default",
-        "scheduler_args": {}
+        "scheduler_args": {},
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     })
     
     # Use ModelEnsemble directly

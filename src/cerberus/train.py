@@ -100,6 +100,7 @@ def _train(
         callbacks=current_callbacks,
         precision=precision,
         reload_dataloaders_every_n_epochs=train_config["reload_dataloaders_every_n_epochs"],
+        gradient_clip_val=train_config["gradient_clip_val"],
         **trainer_kwargs,
     )
 

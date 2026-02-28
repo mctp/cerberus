@@ -23,7 +23,9 @@ def test_parse_hparams_config_generated_success(tmp_path):
             "optimizer": "adamw",
             "filter_bias_and_bn": True,
             "scheduler_type": "default",
-            "scheduler_args": {}
+            "scheduler_args": {},
+            "adam_eps": 1e-8,
+            "gradient_clip_val": None,
         },
         "genome_config": {
             "name": "test_genome",

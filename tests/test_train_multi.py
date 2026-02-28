@@ -38,6 +38,8 @@ def test_train_multi_loop():
         "optimizer": "adamw",
         "filter_bias_and_bn": True,
         "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     })
 
     # Patches

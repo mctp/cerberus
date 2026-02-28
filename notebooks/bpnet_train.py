@@ -115,7 +115,9 @@ train_config: TrainConfig = {
         "num_epochs": 2, # Must match max_epochs
         "warmup_epochs": 0,
         "min_lr": 1e-5
-    }
+    },
+    "adam_eps": 1e-7,
+    "gradient_clip_val": None,
 }
 
 print("Genome Config:")

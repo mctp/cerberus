@@ -63,6 +63,8 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
         "scheduler_args": {},
         "filter_bias_and_bn": False,
         "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
 
     # Prepare trainer_kwargs

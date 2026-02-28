@@ -182,7 +182,9 @@ train_config: TrainConfig = {
         "num_epochs": 20,
         "warmup_epochs": 2,
         "min_lr": 1e-5
-    }
+    },
+    "adam_eps": 1e-8,
+    "gradient_clip_val": None,
 }
 
 # %% [markdown]

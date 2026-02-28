@@ -307,10 +307,13 @@ class TestPerExampleLogCountsPearsonCorrCoef:
 
     def test_reset_clears_state(self):
         """After reset(), metric should start fresh."""
+        import warnings
         preds, targets = self._make_batch([10, 20, 30, 40, 50])
         metric = PerExampleLogCountsPearsonCorrCoef()
         metric.update(preds, targets)
         metric.reset()
-        # After reset with no updates, compute should return NaN
-        val = metric.compute()
+        # After reset with no updates, compute() before update() is expected here
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            val = metric.compute()
         assert torch.isnan(val)

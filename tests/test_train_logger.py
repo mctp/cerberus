@@ -20,8 +20,10 @@ def test_train_wrapper_logger_setup():
         "scheduler_args": {},
         "filter_bias_and_bn": True,
         "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     })
-    
+
     # Patch pl.Trainer and CSVLogger
     # Since CSVLogger is imported inside the function, we patch the source where it comes from.
     with patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
@@ -61,17 +63,19 @@ def test_train_wrapper_logger_setup_default_dir():
         "scheduler_args": {},
         "filter_bias_and_bn": True,
         "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     })
-    
+
     with patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
          patch("pytorch_lightning.loggers.CSVLogger") as mock_csv_logger_cls:
-        
+
         train(
-            model, 
-            datamodule, 
-            train_config, 
-            num_workers=0, 
-            in_memory=False, 
+            model,
+            datamodule,
+            train_config,
+            num_workers=0,
+            in_memory=False,
             logger=True
         )
         

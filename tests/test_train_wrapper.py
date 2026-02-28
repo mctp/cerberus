@@ -21,6 +21,8 @@ def test_train_wrapper_calls_trainer_fit():
         "scheduler_args": {},
         "filter_bias_and_bn": True,
         "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     })
     
     # Patch pl.Trainer
@@ -70,6 +72,8 @@ def test_train_wrapper_custom_callbacks():
         "scheduler_args": {},
         "filter_bias_and_bn": True,
         "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     })
     
     custom_cb = MagicMock(spec=pl.Callback)

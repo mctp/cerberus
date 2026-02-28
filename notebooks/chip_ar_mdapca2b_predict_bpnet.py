@@ -126,7 +126,9 @@ train_config: TrainConfig = {
     "filter_bias_and_bn": True,
     "reload_dataloaders_every_n_epochs": 0,
     "scheduler_type": "cosine",
-    "scheduler_args": {}
+    "scheduler_args": {},
+    "adam_eps": 1e-7,
+    "gradient_clip_val": None,
 }
 
 # Model Config for BPNet

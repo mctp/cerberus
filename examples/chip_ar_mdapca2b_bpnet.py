@@ -132,21 +132,25 @@ def main():
     }
 
     # Train Config
+    # Notes on BPNet-specific choices:
+    # - weight_decay=0: BPNet has no normalization layers, so L2 regularization on conv
+    #   weights directly shrinks activations. The original BPNet and chrombpnet-pytorch
+    #   use plain Adam with no weight decay.
+    # - scheduler_type="default": Constant LR matching chrombpnet-pytorch. Cosine decay
+    #   with warmup can drop the LR before the un-normalized network has settled.
     train_config: TrainConfig = {
         "batch_size": args.batch_size,
         "max_epochs": args.max_epochs,
         "learning_rate": 1e-3,
-        "weight_decay": 0.01,
+        "weight_decay": 0,
         "patience": 10,
-        "optimizer": "adamw",
+        "optimizer": "adam",
         "filter_bias_and_bn": True,
         "reload_dataloaders_every_n_epochs": 0,
-        "scheduler_type": "cosine",
-        "scheduler_args": {
-            "num_epochs": args.max_epochs,
-            "warmup_epochs": 10,
-            "min_lr": 1e-5
-        }
+        "scheduler_type": "default",
+        "scheduler_args": {},
+        "adam_eps": 1e-7,
+        "gradient_clip_val": None,
     }
 
     # Model Config for BPNet
