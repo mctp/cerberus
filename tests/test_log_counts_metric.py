@@ -84,9 +84,9 @@ def test_log_counts_mse_from_log_rates():
     expected_diff = (torch.log1p(torch.tensor(30.0)) - torch.log(torch.tensor(30.0))) ** 2
     assert torch.isclose(val, expected_diff, atol=1e-6)
 
-def test_log_counts_implicit_log_targets():
-    """Test with implicit_log_targets=True."""
-    metric = LogCountsMeanSquaredError(implicit_log_targets=True)
+def test_log_counts_log1p_targets():
+    """Test with log1p_targets=True."""
+    metric = LogCountsMeanSquaredError(log1p_targets=True)
     
     # Raw target total = 10.
     # Input target is log1p(raw)
@@ -94,7 +94,7 @@ def test_log_counts_implicit_log_targets():
     input_target = torch.log1p(raw_target)
     
     # Pred: log(11).
-    # If implicit_log_targets is True, metric un-logs input_target -> 10.
+    # If log1p_targets is True, metric un-logs input_target -> 10.
     # Then sums -> 10. Then takes log1p -> log(11).
     # So if pred is log(11), MSE is 0.
     

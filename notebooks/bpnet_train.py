@@ -84,6 +84,7 @@ data_config: DataConfig = {
     "log_transform": False, # BPNet uses raw counts for multinomial loss
     "reverse_complement": True, # Augmentation
         "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 

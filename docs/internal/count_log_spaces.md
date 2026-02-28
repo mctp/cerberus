@@ -8,7 +8,7 @@ correct multi-channel aggregation, metric computation, and count reconstruction.
 
 This document defines the two spaces, explains how `target_scale` and
 `count_pseudocount` interact, and proposes a naming convention for the
-`implicit_log` flag that currently distinguishes them.
+`log_counts_include_pseudocount` flag that currently distinguishes them.
 
 ---
 
@@ -61,18 +61,18 @@ There is no pseudocount offset.
 
 ---
 
-## The `implicit_log` Flag
+## The `log_counts_include_pseudocount` Flag
 
 ### Current name and locations
 
-The flag is called `implicit_log` in:
+The flag is called `log_counts_include_pseudocount` in:
 
 | Location | Purpose |
 |---|---|
-| `output.compute_total_log_counts(implicit_log=...)` | Multi-channel aggregation |
+| `output.compute_total_log_counts(log_counts_include_pseudocount=...)` | Multi-channel aggregation |
 | `tools/export_predictions.py` (local variable) | Observed-count log transform |
 
-The name `implicit_log` is misleading because *both* spaces are "log" spaces.
+The name `log_counts_include_pseudocount` is misleading because *both* spaces are "log" spaces.
 What the flag actually means is: **"the log-count values include a pseudocount
 offset"**.
 
@@ -81,7 +81,7 @@ offset"**.
 When aggregating **multi-channel** `ProfileCountOutput.log_counts` into a
 single total:
 
-| `implicit_log` | Aggregation | Correct for |
+| `log_counts_include_pseudocount` | Aggregation | Correct for |
 |---|---|---|
 | `False` (default) | `logsumexp(log_counts)` = `log(sum(counts))` | Pure-log (Poisson/NB) |
 | `True` | `log(sum(exp(lc) - p) + p)` | Offset-log (MSE) |
@@ -116,7 +116,7 @@ never define `count_pseudocount`.
 
 ### Proposed rename
 
-The name `implicit_log` should eventually be renamed to something that conveys
+The name `log_counts_include_pseudocount` should eventually be renamed to something that conveys
 "the log-counts include a pseudocount offset".  Candidates:
 
 | Name | Pros | Cons |
@@ -137,7 +137,7 @@ When renaming, update:
 - `output.compute_total_log_counts` parameter
 - `tools/export_predictions.py` local variable
 - `module.py._accumulate_log_counts` local variable
-- All test files referencing `implicit_log` in `compute_total_log_counts` calls
+- All test files referencing `log_counts_include_pseudocount` in `compute_total_log_counts` calls
 
 ---
 
@@ -197,7 +197,7 @@ log(2.0)` — a very different value that would dominate small counts.
 | `LogCountsMeanSquaredError` target | `metrics.py` | `log(target_count + self.count_pseudocount)` |
 | `LogCountsPearsonCorrCoef` target | `metrics.py` | Same |
 | `PerExampleLogCountsPearsonCorrCoef` target | `metrics.py` | Same |
-| `compute_total_log_counts` (implicit_log=True) | `output.py` | Inverts per-channel, sums, reapplies |
+| `compute_total_log_counts` (log_counts_include_pseudocount=True) | `output.py` | Inverts per-channel, sums, reapplies |
 | `CountProfile*` metrics (reconstruction) | `metrics.py` | `exp(log_counts) - count_pseudocount` |
 | `module._accumulate_log_counts` target | `module.py` | `log(sum + pseudocount)` |
 | `export_predictions` observed counts | `export_predictions.py` | `log(obs + pseudocount)` |
@@ -210,12 +210,12 @@ log(2.0)` — a very different value that would dominate small counts.
 | `CoupledPoissonMultinomialLoss` | `loss.py` | Same, counts derived via logsumexp |
 | `NegativeBinomialMultinomialLoss` | `loss.py` | NB distribution with `log_counts - log(r)` |
 | `CoupledNegativeBinomialMultinomialLoss` | `loss.py` | Same, counts derived via logsumexp |
-| `compute_total_log_counts` (implicit_log=False) | `output.py` | `logsumexp(log_counts)` |
+| `compute_total_log_counts` (log_counts_include_pseudocount=False) | `output.py` | `logsumexp(log_counts)` |
 | `export_predictions` observed counts | `export_predictions.py` | `log(obs.clamp_min(1))` |
 
 ### Neither space (per-position target transform)
 
-The `implicit_log_targets` flag is **unrelated** to `count_pseudocount`.  It
+The `log_counts_include_pseudocount_targets` flag is **unrelated** to `count_pseudocount`.  It
 indicates that per-position target values are stored as `log1p(count)` (a
 dataset-level transform).  All loss/metric classes that support it invert via
 `torch.expm1(target).clamp_min(0.0)`.  This is always `expm1` regardless of
@@ -225,10 +225,10 @@ dataset-level transform).  All loss/metric classes that support it invert via
 
 ## Common Pitfalls
 
-1. **Confusing `implicit_log_targets` with `implicit_log`.**
-   - `implicit_log_targets`: per-position values stored as `log1p(count)`.
+1. **Confusing `log_counts_include_pseudocount_targets` with `log_counts_include_pseudocount`.**
+   - `log_counts_include_pseudocount_targets`: per-position values stored as `log1p(count)`.
      Always inverted with `expm1`.
-   - `implicit_log`: count-head values include a pseudocount offset.
+   - `log_counts_include_pseudocount`: count-head values include a pseudocount offset.
      Inverted with `exp(x) - pseudocount`.
 
 2. **Using `expm1` to invert log-counts.**

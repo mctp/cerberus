@@ -98,6 +98,7 @@ data_config: DataConfig = {
     "log_transform": log_transform,
     "reverse_complement": True, # Matches training config (ignored if is_train=False)
         "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 

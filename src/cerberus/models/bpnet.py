@@ -249,7 +249,7 @@ class BPNetLoss(MSEMultinomialLoss):
         kwargs.pop("average_channels", None)
         kwargs.pop("flatten_channels", None)
         kwargs.pop("count_per_channel", None)
-        kwargs.pop("implicit_log_targets", None)
+        kwargs.pop("log1p_targets", None)
         kwargs.pop("count_weight", None)
         kwargs.pop("profile_weight", None)
 
@@ -262,7 +262,7 @@ class BPNetLoss(MSEMultinomialLoss):
             average_channels=True, 
             flatten_channels=False,
             count_per_channel=False,
-            implicit_log_targets=False,
+            log1p_targets=False,
             **kwargs
         )
 
@@ -272,10 +272,10 @@ class BPNetMetricCollection(MetricCollection):
     MetricCollection for BPNet models.
     Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
     """
-    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False, count_pseudocount: float = 1.0):
+    def __init__(self, num_channels: int = 1, log1p_targets: bool = False, count_pseudocount: float = 1.0):
         super().__init__({
-            "pearson": PerExampleCountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
-            "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
-            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
-            "pearson_log_counts": PerExampleLogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
+            "pearson": PerExampleCountProfilePearsonCorrCoef(num_channels=num_channels, log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_profile": CountProfileMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "pearson_log_counts": PerExampleLogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
         })

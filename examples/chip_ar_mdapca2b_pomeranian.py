@@ -116,6 +116,7 @@ def main():
         "log_transform": False, # Uses raw counts for multinomial loss
         "reverse_complement": True, # Augmentation
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     }
 

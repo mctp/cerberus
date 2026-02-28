@@ -96,14 +96,14 @@ class TestPerExampleProfilePearsonCorrCoef:
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-4)
 
-    def test_implicit_log_targets(self):
-        """With implicit_log_targets=True, targets should be expm1'd."""
+    def test_log1p_targets(self):
+        """With log1p_targets=True, targets should be expm1'd."""
         L = 16
         logits = torch.randn(2, 1, L)
         raw_target = F.softmax(logits, dim=-1) * 10
         log_target = torch.log1p(raw_target)
 
-        metric = PerExampleProfilePearsonCorrCoef(num_channels=1, implicit_log_targets=True)
+        metric = PerExampleProfilePearsonCorrCoef(num_channels=1, log1p_targets=True)
         metric.update(ProfileLogRates(log_rates=logits), log_target)
         val = metric.compute()
         # Pearson is scale-invariant, so softmax vs softmax*10 gives same result
@@ -191,7 +191,7 @@ class TestPerExampleCountProfilePearsonCorrCoef:
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-3)
 
-    def test_implicit_log_targets(self):
+    def test_log1p_targets(self):
         L = 16
         target_raw = torch.arange(1, float(L + 1)).unsqueeze(0).unsqueeze(0)
         target_log = torch.log1p(target_raw)
@@ -201,7 +201,7 @@ class TestPerExampleCountProfilePearsonCorrCoef:
         log_counts = torch.log1p(total).reshape(1, 1)
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-        metric = PerExampleCountProfilePearsonCorrCoef(num_channels=1, implicit_log_targets=True)
+        metric = PerExampleCountProfilePearsonCorrCoef(num_channels=1, log1p_targets=True)
         metric.update(preds, target_log)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-3)
@@ -285,8 +285,8 @@ class TestPerExampleLogCountsPearsonCorrCoef:
                 torch.zeros(1, 1, 4),
             )
 
-    def test_implicit_log_targets(self):
-        """With implicit_log_targets, targets are expm1'd before summing."""
+    def test_log1p_targets(self):
+        """With log1p_targets, targets are expm1'd before summing."""
         counts = [10.0, 20.0, 30.0, 40.0, 50.0]
         B, L = len(counts), 10
 
@@ -300,7 +300,7 @@ class TestPerExampleLogCountsPearsonCorrCoef:
         logits = torch.zeros(B, 1, L)
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
 
-        metric = PerExampleLogCountsPearsonCorrCoef(implicit_log_targets=True)
+        metric = PerExampleLogCountsPearsonCorrCoef(log1p_targets=True)
         metric.update(preds, targets_log)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-4)

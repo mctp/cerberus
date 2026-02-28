@@ -21,10 +21,10 @@ def shapes():
         "minimal": {"batch": 1, "channels": 1, "length": 1},
     }
 
-# --- Implicit Log Targets Equivalence Tests ---
+# --- Log1p Targets Equivalence Tests ---
 
-def test_bpnet_loss_implicit_log_equivalence():
-    """Verify MSEMultinomialLoss(implicit_log=True) with log-targets equals MSEMultinomialLoss(implicit_log=False) with raw-targets."""
+def test_bpnet_loss_log1p_targets_equivalence():
+    """Verify MSEMultinomialLoss(log1p_targets=True) with log-targets equals MSEMultinomialLoss(log1p_targets=False) with raw-targets."""
     torch.manual_seed(42)
     B, C, L = 2, 2, 50
     
@@ -38,15 +38,15 @@ def test_bpnet_loss_implicit_log_equivalence():
     preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
     
     # 1. Standard Loss
-    loss_std = MSEMultinomialLoss(implicit_log_targets=False)(preds, targets_raw)
+    loss_std = MSEMultinomialLoss(log1p_targets=False)(preds, targets_raw)
     
     # 2. Implicit Log Loss
-    loss_impl = MSEMultinomialLoss(implicit_log_targets=True)(preds, targets_log)
+    loss_impl = MSEMultinomialLoss(log1p_targets=True)(preds, targets_log)
     
     assert torch.isclose(loss_std, loss_impl, atol=1e-5)
 
-def test_poisson_loss_implicit_log_equivalence():
-    """Verify PoissonMultinomialLoss implicit log equivalence."""
+def test_poisson_loss_log1p_targets_equivalence():
+    """Verify PoissonMultinomialLoss log1p_targets equivalence."""
     torch.manual_seed(42)
     B, C, L = 2, 1, 50
     
@@ -57,13 +57,13 @@ def test_poisson_loss_implicit_log_equivalence():
     log_counts = torch.randn(B, 1, requires_grad=True)
     preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
     
-    loss_std = PoissonMultinomialLoss(implicit_log_targets=False)(preds, targets_raw)
-    loss_impl = PoissonMultinomialLoss(implicit_log_targets=True)(preds, targets_log)
+    loss_std = PoissonMultinomialLoss(log1p_targets=False)(preds, targets_raw)
+    loss_impl = PoissonMultinomialLoss(log1p_targets=True)(preds, targets_log)
     
     assert torch.isclose(loss_std, loss_impl, atol=1e-5)
 
-def test_metrics_implicit_log_equivalence():
-    """Verify all metrics handle implicit log targets correctly."""
+def test_metrics_log1p_targets_equivalence():
+    """Verify all metrics handle log1p targets correctly."""
     torch.manual_seed(42)
     B, C, L = 2, 2, 50
     
@@ -89,7 +89,7 @@ def test_metrics_implicit_log_equivalence():
         metric_name = metric_cls.__class__.__name__
         
         # 1. Standard Update
-        m_std = metric_cls.__class__(implicit_log_targets=False, **_get_init_kwargs(metric_cls))
+        m_std = metric_cls.__class__(log1p_targets=False, **_get_init_kwargs(metric_cls))
         if isinstance(m_std, ProfilePoissonNLLLoss):
             val_std = m_std(preds, targets_raw)
         else:
@@ -97,7 +97,7 @@ def test_metrics_implicit_log_equivalence():
             val_std = m_std.compute()
             
         # 2. Implicit Log Update
-        m_impl = metric_cls.__class__(implicit_log_targets=True, **_get_init_kwargs(metric_cls))
+        m_impl = metric_cls.__class__(log1p_targets=True, **_get_init_kwargs(metric_cls))
         if isinstance(m_impl, ProfilePoissonNLLLoss):
             val_impl = m_impl(preds, targets_log)
         else:

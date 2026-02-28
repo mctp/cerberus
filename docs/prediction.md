@@ -187,15 +187,15 @@ You typically need to detach and post-process these (e.g., applying Softmax or E
 ```python
 from cerberus.output import compute_total_log_counts
 
-# implicit_log=True for MSEMultinomialLoss / CoupledMSEMultinomialLoss
-# implicit_log=False (default) for Poisson / NB losses
-log_counts = compute_total_log_counts(batch_output, implicit_log=True)
+# log_counts_include_pseudocount=True for MSEMultinomialLoss / CoupledMSEMultinomialLoss
+# log_counts_include_pseudocount=False (default) for Poisson / NB losses
+log_counts = compute_total_log_counts(batch_output, log_counts_include_pseudocount=True)
 # → tensor of shape (batch_size,)
 ```
 
-The `implicit_log` parameter matters only for multi-channel `ProfileCountOutput` (i.e. `count_per_channel=True`):
+The `log_counts_include_pseudocount` parameter matters only for multi-channel `ProfileCountOutput` (i.e. `count_per_channel=True`):
 
-- **`implicit_log=False`** (default): assumes `log_counts` per channel is in natural-log space (Poisson/NB losses). Uses `logsumexp` to sum across channels: `log(Σ exp(log_counts_c))`.
-- **`implicit_log=True`**: assumes `log_counts` per channel is in `log1p` space (MSE loss). Inverts `log1p` per channel, sums, then reapplies `log1p`: `log1p(Σ expm1(log_counts_c))`.
+- **`log_counts_include_pseudocount=False`** (default): assumes `log_counts` per channel is in natural-log space (Poisson/NB losses). Uses `logsumexp` to sum across channels: `log(Σ exp(log_counts_c))`.
+- **`log_counts_include_pseudocount=True`**: assumes `log_counts` per channel is in `log(count + pseudocount)` space (MSE loss). Inverts per channel, sums, then reapplies: `log(Σ(exp(lc) - p) + p)`.
 
-Using the wrong value with a multi-channel MSE model would give `log(n_channels + total_counts)` instead of `log1p(total_counts)`.
+Using the wrong value with a multi-channel MSE model would give `log(n_channels * pseudocount + total_counts)` instead of `log(pseudocount + total_counts)`.

@@ -113,6 +113,7 @@ def main():
         "log_transform": True, # Gopher often trains on log(x+1) data
         "reverse_complement": True, # Augmentation
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     }
 
@@ -157,7 +158,7 @@ def main():
         "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
         "loss_args": {
             "log_input": True,
-            "implicit_log_targets": True,
+            "log1p_targets": True,
         },
         "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
         "metrics_args": {},

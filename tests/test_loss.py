@@ -28,27 +28,27 @@ def test_default_metric_collection():
     assert isinstance(metrics["mse_profile"], ProfileMeanSquaredError)
     assert isinstance(metrics["mse_log_counts"], LogCountsMeanSquaredError)
 
-def test_default_metric_collection_implicit_log_targets():
-    """Test that DefaultMetricCollection propagates implicit_log_targets flag."""
-    metrics = DefaultMetricCollection(num_channels=3, implicit_log_targets=True)
-    assert metrics["pearson"].implicit_log_targets is True
-    assert metrics["mse_profile"].implicit_log_targets is True
-    assert metrics["mse_log_counts"].implicit_log_targets is True
+def test_default_metric_collection_log1p_targets():
+    """Test that DefaultMetricCollection propagates log1p_targets flag."""
+    metrics = DefaultMetricCollection(num_channels=3, log1p_targets=True)
+    assert metrics["pearson"].log1p_targets is True
+    assert metrics["mse_profile"].log1p_targets is True
+    assert metrics["mse_log_counts"].log1p_targets is True
 
-    metrics_false = DefaultMetricCollection(num_channels=3, implicit_log_targets=False)
-    assert metrics_false["pearson"].implicit_log_targets is False
-    assert metrics_false["mse_profile"].implicit_log_targets is False
-    assert metrics_false["mse_log_counts"].implicit_log_targets is False
+    metrics_false = DefaultMetricCollection(num_channels=3, log1p_targets=False)
+    assert metrics_false["pearson"].log1p_targets is False
+    assert metrics_false["mse_profile"].log1p_targets is False
+    assert metrics_false["mse_log_counts"].log1p_targets is False
 
-def test_bpnet_metric_collection_implicit_log_targets():
-    """Test that BPNetMetricCollection propagates implicit_log_targets flag."""
-    metrics = BPNetMetricCollection(num_channels=3, implicit_log_targets=True)
-    assert metrics["pearson"].implicit_log_targets is True
-    assert metrics["mse_profile"].implicit_log_targets is True
-    assert metrics["mse_log_counts"].implicit_log_targets is True
+def test_bpnet_metric_collection_log1p_targets():
+    """Test that BPNetMetricCollection propagates log1p_targets flag."""
+    metrics = BPNetMetricCollection(num_channels=3, log1p_targets=True)
+    assert metrics["pearson"].log1p_targets is True
+    assert metrics["mse_profile"].log1p_targets is True
+    assert metrics["mse_log_counts"].log1p_targets is True
 
-def test_profile_mse_implicit_log_targets():
-    """Test ProfileMeanSquaredError with implicit_log_targets."""
+def test_profile_mse_log1p_targets():
+    """Test ProfileMeanSquaredError with log1p_targets."""
     # Setup: Logits that imply Prob(0.5, 0.5)
     logits = torch.tensor([[[0.0, 0.0]]]) # Softmax -> [0.5, 0.5]
     
@@ -56,14 +56,14 @@ def test_profile_mse_implicit_log_targets():
     raw_targets = torch.tensor([[[10.0, 10.0]]])
     
     # 1. Test with raw targets (standard)
-    mse_std = ProfileMeanSquaredError(implicit_log_targets=False)
+    mse_std = ProfileMeanSquaredError(log1p_targets=False)
     mse_std.update(ProfileLogits(logits=logits), raw_targets)
     val_std = mse_std.compute()
     assert torch.isclose(val_std, torch.tensor(0.0), atol=1e-6)
     
     # 2. Test with log targets without flag (Should fail/be high)
     log_targets = torch.log1p(raw_targets)
-    mse_wrong = ProfileMeanSquaredError(implicit_log_targets=False)
+    mse_wrong = ProfileMeanSquaredError(log1p_targets=False)
     mse_wrong.update(ProfileLogits(logits=logits), log_targets)
     val_wrong = mse_wrong.compute()
     # Log targets: log(11) approx 2.4. Probs: 2.4/4.8 = 0.5.
@@ -87,20 +87,20 @@ def test_profile_mse_implicit_log_targets():
     log_targets = torch.log1p(raw_targets)
     
     # Correct config with log targets
-    mse_correct = ProfileMeanSquaredError(implicit_log_targets=True)
+    mse_correct = ProfileMeanSquaredError(log1p_targets=True)
     mse_correct.update(ProfileLogits(logits=logits_perfect_raw), log_targets)
     val_correct = mse_correct.compute()
     assert torch.isclose(val_correct, torch.tensor(0.0), atol=1e-5)
     
     # Incorrect config with log targets (using normalized log counts as ground truth)
-    mse_incorrect = ProfileMeanSquaredError(implicit_log_targets=False)
+    mse_incorrect = ProfileMeanSquaredError(log1p_targets=False)
     mse_incorrect.update(ProfileLogits(logits=logits_perfect_raw), log_targets)
     val_incorrect = mse_incorrect.compute()
     
     assert val_incorrect > 0.01 # Should be significantly different
 
-def test_decoupled_mse_implicit_log_targets():
-    """Test CountProfileMeanSquaredError with implicit_log_targets."""
+def test_decoupled_mse_log1p_targets():
+    """Test CountProfileMeanSquaredError with log1p_targets."""
     # Raw: [10.0]. Log: [2.39]
     raw_targets = torch.tensor([[[10.0]]])
     log_targets = torch.log1p(raw_targets)
@@ -111,21 +111,21 @@ def test_decoupled_mse_implicit_log_targets():
     preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
     
     # Correct config
-    mse_correct = CountProfileMeanSquaredError(implicit_log_targets=True)
+    mse_correct = CountProfileMeanSquaredError(log1p_targets=True)
     mse_correct.update(preds, log_targets)
     val_correct = mse_correct.compute()
     assert torch.isclose(val_correct, torch.tensor(0.0), atol=1e-5)
     
     # Incorrect config (compares Raw Preds [10] vs Log Targets [2.4])
-    mse_incorrect = CountProfileMeanSquaredError(implicit_log_targets=False)
+    mse_incorrect = CountProfileMeanSquaredError(log1p_targets=False)
     mse_incorrect.update(preds, log_targets)
     val_incorrect = mse_incorrect.compute()
     
     expected_diff = (10.0 - 2.397895) ** 2
     assert torch.isclose(val_incorrect, torch.tensor(expected_diff), atol=0.1)
 
-def test_flattened_pearson_implicit_log_targets():
-    """Test ProfilePearsonCorrCoef with implicit_log_targets."""
+def test_flattened_pearson_log1p_targets():
+    """Test ProfilePearsonCorrCoef with log1p_targets."""
     # Raw: [10, 100]. Probs: [0.09, 0.91]
     # Log: [2.4, 4.6]. Probs: [0.34, 0.66]
     
@@ -136,7 +136,7 @@ def test_flattened_pearson_implicit_log_targets():
     log_targets = torch.log1p(raw_targets)
     
     # Correct config: Un-logs targets -> gets raw counts -> correlation 1.0
-    corr_correct = ProfilePearsonCorrCoef(num_channels=1, implicit_log_targets=True)
+    corr_correct = ProfilePearsonCorrCoef(num_channels=1, log1p_targets=True)
     corr_correct.update(ProfileLogits(logits=logits), log_targets)
     val_correct = corr_correct.compute()
     assert torch.isclose(val_correct, torch.tensor(1.0), atol=1e-5)
@@ -154,12 +154,12 @@ def test_flattened_pearson_implicit_log_targets():
     raw_targets_3 = torch.tensor([[[10.0, 100.0, 1000.0]]])
     log_targets_3 = torch.log1p(raw_targets_3)
     
-    corr_correct_3 = ProfilePearsonCorrCoef(num_channels=1, implicit_log_targets=True)
+    corr_correct_3 = ProfilePearsonCorrCoef(num_channels=1, log1p_targets=True)
     corr_correct_3.update(ProfileLogits(logits=logits_3), log_targets_3)
     val_correct_3 = corr_correct_3.compute()
     assert torch.isclose(val_correct_3, torch.tensor(1.0), atol=1e-5)
     
-    corr_incorrect_3 = ProfilePearsonCorrCoef(num_channels=1, implicit_log_targets=False)
+    corr_incorrect_3 = ProfilePearsonCorrCoef(num_channels=1, log1p_targets=False)
     corr_incorrect_3.update(ProfileLogits(logits=logits_3), log_targets_3)
     val_incorrect_3 = corr_incorrect_3.compute()
     
@@ -335,17 +335,17 @@ def test_bpnet_loss_with_log_transform():
     loss_fn_std = MSEMultinomialLoss(count_weight=1.0)
     loss_std = loss_fn_std(ProfileCountOutput(logits=logits, log_counts=pred_log_counts), targets_raw)
     
-    # 3. Loss with logged targets, implicit_log_targets=False (Should be WRONG)
-    loss_fn_wrong = MSEMultinomialLoss(count_weight=1.0, implicit_log_targets=False)
+    # 3. Loss with logged targets, log1p_targets=False (Should be WRONG)
+    loss_fn_wrong = MSEMultinomialLoss(count_weight=1.0, log1p_targets=False)
     loss_wrong = loss_fn_wrong(ProfileCountOutput(logits=logits, log_counts=pred_log_counts), targets_logged)
     
     assert not torch.isclose(loss_std, loss_wrong), "Loss should differ when targets are logged but not handled"
     
-    # 4. Loss with logged targets, implicit_log_targets=True (Should match std)
-    loss_fn_fixed = MSEMultinomialLoss(count_weight=1.0, implicit_log_targets=True)
+    # 4. Loss with logged targets, log1p_targets=True (Should match std)
+    loss_fn_fixed = MSEMultinomialLoss(count_weight=1.0, log1p_targets=True)
     loss_fixed = loss_fn_fixed(ProfileCountOutput(logits=logits, log_counts=pred_log_counts), targets_logged)
     
-    assert torch.isclose(loss_std, loss_fixed, atol=1e-5), "Loss should match when implicit_log_targets is True"
+    assert torch.isclose(loss_std, loss_fixed, atol=1e-5), "Loss should match when log1p_targets is True"
 
 def test_flattened_pearson_single_channel():
     """Test ProfilePearsonCorrCoef with single channel input"""
@@ -485,9 +485,9 @@ def test_poisson_multinomial_loss_count_component():
     
     assert loss2 > loss1
 
-def test_poisson_multinomial_loss_implicit_log_targets():
+def test_poisson_multinomial_loss_log1p_targets():
     """Test implicit log targets handling in PoissonMultinomialLoss"""
-    loss_fn = PoissonMultinomialLoss(count_weight=1.0, implicit_log_targets=True)
+    loss_fn = PoissonMultinomialLoss(count_weight=1.0, log1p_targets=True)
 
     # Targets are log(x+1)
     targets_raw = torch.tensor([[[10.0]]])

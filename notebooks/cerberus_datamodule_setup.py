@@ -113,6 +113,7 @@ data_config: DataConfig = {
     "log_transform": True,
     "reverse_complement": True,
         "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 print("Data Config Created:")

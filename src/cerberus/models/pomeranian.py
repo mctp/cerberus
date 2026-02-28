@@ -256,10 +256,10 @@ class PomeranianMetricCollection(MetricCollection):
     """
     MetricCollection for Pomeranian models.
     """
-    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False, count_pseudocount: float = 1.0):
+    def __init__(self, num_channels: int = 1, log1p_targets: bool = False, count_pseudocount: float = 1.0):
         super().__init__({
-            "pearson": PerExampleCountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
-            "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
-            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
-            "pearson_log_counts": PerExampleLogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets, count_pseudocount=count_pseudocount),
+            "pearson": PerExampleCountProfilePearsonCorrCoef(num_channels=num_channels, log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_profile": CountProfileMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "pearson_log_counts": PerExampleLogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
         })

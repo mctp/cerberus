@@ -84,6 +84,7 @@ data_config: DataConfig = {
     "log_transform": True, # Log(x+1) transform targets
     "reverse_complement": True, # Augmentation
         "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 

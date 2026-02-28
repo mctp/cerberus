@@ -204,31 +204,31 @@ alpha = compute_counts_loss_weight(datamodule.compute_median_counts())
 
 ---
 
-## Complicating Factor 2: `implicit_log_targets`
+## Complicating Factor 2: `log1p_targets`
 
-`implicit_log_targets=True` signals that the dataset stores targets in `log1p` space
+`log1p_targets=True` signals that the dataset stores targets in `log1p` space
 and the loss should recover raw counts via `expm1` before computing the loss:
 
 ```python
 # In MSEMultinomialLoss.forward():
-if self.implicit_log_targets:
+if self.log1p_targets:
     targets = torch.expm1(targets).clamp_min(0.0)   # recover raw counts
 ```
 
-After `expm1`, the loss sees the same raw counts as when `implicit_log_targets=False`.
+After `expm1`, the loss sees the same raw counts as when `log1p_targets=False`.
 The count loss target is still `log1p(raw_counts * target_scale)`. Therefore:
 
-**`implicit_log_targets` does not change the alpha formula.** The same
+**`log1p_targets` does not change the alpha formula.** The same
 `compute_median_counts()` (which reads raw signal and applies `target_scale`) gives the
 correct statistics in both cases.
 
 The data flow in both configurations:
 
 ```
-implicit_log_targets=False:
+log1p_targets=False:
   dataset → raw_counts × target_scale → loss (L_count on log1p(scaled_raw))
 
-implicit_log_targets=True:
+log1p_targets=True:
   dataset → log1p(raw_counts × target_scale) → expm1() in loss → raw_counts × target_scale
           → loss (L_count on log1p(scaled_raw))
 ```
@@ -309,7 +309,7 @@ parser.add_argument(
 |---|---|---|
 | Peak depth (`N̄`) | `alpha` scales linearly with `N̄` | Sampled directly from training intervals |
 | `target_scale` | `alpha` scales linearly with `target_scale` | Multiplied into returned median |
-| `implicit_log_targets` | No effect on alpha | Loss recovers raw counts; formula unchanged |
+| `log1p_targets` | No effect on alpha | Loss recovers raw counts; formula unchanged |
 | `count_per_channel=True` | Per-channel counts used | `compute_median_counts` sums all channels; divide by `n_channels` if per-channel loss |
 
 The only case where `compute_median_counts` is insufficient is when targets undergo

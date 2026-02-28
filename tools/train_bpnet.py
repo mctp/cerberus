@@ -79,6 +79,7 @@ def get_args():
     parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
     parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
     parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets (e.g., 1000 for fractional BigWig values)")
+    parser.add_argument("--count-pseudocount", type=float, default=1.0, help="Additive offset before log-transforming count targets (in raw coverage units)")
 
     # Training parameters
     # BPNet defaults: plain Adam with no weight decay, constant LR, eps=1e-7 (matching TF/Keras defaults).
@@ -180,6 +181,7 @@ def main():
         "reverse_complement": True,  # Augmentation
         "use_sequence": True,
         "target_scale": args.target_scale,
+        "count_pseudocount": args.count_pseudocount,
     }
 
     # Sampler Config - Peak Intervals

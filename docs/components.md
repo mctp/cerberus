@@ -206,7 +206,7 @@ Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).
 *   **Args**:
     *   `count_weight`: Weight for the count loss component (default: 1.0).
     *   `flatten_channels` (default: `False`): If `False`, computes Multinomial NLL independently per channel. If `True`, flattens all channels and length into a single dimension.
-    *   `implicit_log_targets`: If targets are already log-transformed, reverses them before loss calculation.
+    *   `log1p_targets`: If targets are already log-transformed, reverses them before loss calculation.
 *   **Inputs**: `ProfileCountOutput`.
 
 ### CoupledMSEMultinomialLoss
@@ -221,7 +221,7 @@ Combines Poisson NLL for total counts and Multinomial (Cross-Entropy) for profil
 *   **Count Loss**: Poisson Negative Log-Likelihood.
 *   **Profile Loss**: Multinomial Negative Log-Likelihood (Cross-Entropy form).
 *   **Inputs**: `ProfileCountOutput`.
-*   **Args**: `count_weight` (default: 0.2), `flatten_channels` (default: `False`), `average_channels` (default: `True`), `implicit_log_targets`.
+*   **Args**: `count_weight` (default: 0.2), `flatten_channels` (default: `False`), `average_channels` (default: `True`), `log1p_targets`.
 
 ### CoupledPoissonMultinomialLoss
 Coupled version of `PoissonMultinomialLoss` for models predicting log-rates.

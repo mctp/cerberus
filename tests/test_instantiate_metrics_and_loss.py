@@ -48,7 +48,7 @@ class TestInstantiateMetricsAndLoss:
         """Should work with BPNet metric collection."""
         config = _make_model_config(
             metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-            metrics_args={"num_channels": 1, "implicit_log_targets": False},
+            metrics_args={"num_channels": 1, "log1p_targets": False},
             loss_cls="cerberus.loss.MSEMultinomialLoss",
             loss_args={},
         )
@@ -59,7 +59,7 @@ class TestInstantiateMetricsAndLoss:
         """Should work with Pomeranian metric collection."""
         config = _make_model_config(
             metrics_cls="cerberus.models.pomeranian.PomeranianMetricCollection",
-            metrics_args={"num_channels": 1, "implicit_log_targets": False},
+            metrics_args={"num_channels": 1, "log1p_targets": False},
             loss_cls="cerberus.loss.MSEMultinomialLoss",
             loss_args={},
         )
