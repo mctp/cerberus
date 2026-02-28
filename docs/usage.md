@@ -224,17 +224,43 @@ The `notebooks/` directory contains complete examples:
 
 ## Generic Training Tools
 
-For quick training on custom data, you can use generic scripts in the `tools/` directory:
+For quick training on custom data, use the model-specific scripts in the `tools/` directory. Both scripts accept any BigWig signal and BED/narrowPeak file and share the same CLI structure.
 
-*   `tools/train_pomeranian.py`: Train a Pomeranian model on any BigWig and BED (narrowPeak) file.
+*   `tools/train_bpnet.py`: Train a BPNet model.
     ```bash
-    # Basic usage
+    # Standard BPNet (2114bp -> 1000bp, canonical chrombpnet-pytorch settings)
+    python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet
+
+    # BPNet1024 variant (2112bp -> 1024bp, comparable I/O to Pomeranian)
+    python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --1024
+
+    # Multi-fold cross-validation
+    python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --multi
+    ```
+
+*   `tools/train_pomeranian.py`: Train a Pomeranian model (2112bp → 1024bp).
+    ```bash
+    # Default Pomeranian (Kernel=9)
     python tools/train_pomeranian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_pomeranian
 
-    # Customized training (adjust learning rate, patience, background ratio)
+    # PomeranianK5 variant (Kernel=5)
+    python tools/train_pomeranian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_pomeranian --k5
+
+    # Customized training
     python tools/train_pomeranian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_pomeranian \
         --learning-rate 0.001 --patience 15 --background-ratio 2.0
     ```
+
+Both tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
+
+| Flag | `train_bpnet.py` | `train_pomeranian.py` |
+|---|---|---|
+| `--optimizer` | `adam` | `adamw` |
+| `--learning-rate` | `1e-3` | `5e-4` |
+| `--weight-decay` | `0.0` | `0.01` |
+| `--scheduler-type` | `default` (constant) | `cosine` |
+| `--input-len` | `2114` | `2112` |
+| `--output-len` | `1000` | `1024` |
 
 ## Next Steps
 

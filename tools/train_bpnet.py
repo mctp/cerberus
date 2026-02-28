@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 """
-Pomeranian Training Tool.
+BPNet Training Tool.
 
-This script implements a generic training tool for Pomeranian models, allowing
+This script implements a generic training tool for BPNet models, allowing
 users to provide any BigWig and BED file for training.
 
 Models:
-- Pomeranian (Default): Large Kernel (9), Factorized Stem. Input 2112bp.
-- PomeranianK5 (--k5): Medium Kernel (5), Factorized Stem. Input 2112bp.
+- BPNet (Default): Standard BPNet (Kernel 21, dilations 2^1..2^8). Input 2114bp → Output 1000bp.
+- BPNet1024 (--1024): Tuned variant matching Pomeranian I/O dimensions. Input 2112bp → Output 1024bp.
 
 Usage:
-    python tools/train_pomeranian.py --bigwig path/to/signal.bw --peaks path/to/peaks.narrowPeak --output-dir models/my_model
+    python tools/train_bpnet.py --bigwig path/to/signal.bw --peaks path/to/peaks.narrowPeak --output-dir models/my_model
 """
 
 import argparse
@@ -28,53 +28,56 @@ from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Train Pomeranian models with Cerberus using any BigWig and BED file")
-    
+    parser = argparse.ArgumentParser(description="Train BPNet models with Cerberus using any BigWig and BED file")
+
     # Input files
     parser.add_argument("--bigwig", type=str, required=True, help="Path to the BigWig file (signal)")
     parser.add_argument("--peaks", type=str, required=True, help="Path to the BED/narrowPeak file (training regions)")
-    
+
     # Genome arguments
     parser.add_argument("--genome", type=str, default="hg38", help="Genome name (default: hg38)")
     parser.add_argument("--species", type=str, default="human", help="Species (default: human)")
     parser.add_argument("--fasta", type=str, help="Path to genome FASTA file (if not provided, will try to download for hg38)")
     parser.add_argument("--blacklist", type=str, help="Path to blacklist file")
     parser.add_argument("--gaps", type=str, help="Path to gaps file")
-    
+
     # Script arguments
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data (e.g., genome reference)")
     parser.add_argument("--output-dir", type=str, required=True, help="Root directory for logs and checkpoints")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
     parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
-    
+
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
     parser.add_argument("--val-fold", type=int, default=1, help="Validation fold (for single-fold training)")
     parser.add_argument("--test-fold", type=int, default=0, help="Test fold")
-    
+
     # Model variants
-    parser.add_argument("--k5", action="store_true", help="Use PomeranianK5 (Medium Kernel Variant)")
+    parser.add_argument("--1024", dest="use_1024", action="store_true", help="Use BPNet1024 (2112bp → 1024bp, tuned kernels and filters)")
 
     # Hyperparameters
-    parser.add_argument("--input-len", type=int, default=2112, help="Input sequence length")
-    parser.add_argument("--output-len", type=int, default=1024, help="Output signal length")
+    parser.add_argument("--input-len", type=int, default=2114, help="Input sequence length (ignored when --1024 is set)")
+    parser.add_argument("--output-len", type=int, default=1000, help="Output signal length (ignored when --1024 is set)")
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
     parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
     parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson", "nb"], help="Loss function to use")
     parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
     parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
     parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets (e.g., 1000 for fractional BigWig values)")
-    
+
     # Training parameters
-    parser.add_argument("--learning-rate", type=float, default=5e-4, help="Learning rate")
-    parser.add_argument("--weight-decay", type=float, default=0.01, help="Weight decay")
+    # BPNet defaults: plain Adam with no weight decay, constant LR, eps=1e-7 (matching TF/Keras defaults).
+    # Cosine decay with warmup is generally not used for BPNet since the un-normalized network needs
+    # a stable LR to settle. Set --scheduler-type cosine to override if desired.
+    parser.add_argument("--learning-rate", type=float, default=1e-3, help="Learning rate")
+    parser.add_argument("--weight-decay", type=float, default=0.0, help="Weight decay (default 0: BPNet has no normalization layers)")
     parser.add_argument("--patience", type=int, default=10, help="Patience for early stopping")
-    parser.add_argument("--optimizer", type=str, default="adamw", help="Optimizer type")
-    parser.add_argument("--scheduler-type", type=str, default="cosine", help="Learning rate scheduler type")
-    parser.add_argument("--warmup-epochs", type=int, default=10, help="Number of warmup epochs")
-    parser.add_argument("--min-lr", type=float, default=5e-6, help="Minimum learning rate")
-    
+    parser.add_argument("--optimizer", type=str, default="adam", help="Optimizer type")
+    parser.add_argument("--scheduler-type", type=str, default="default", help="Learning rate scheduler type")
+    parser.add_argument("--warmup-epochs", type=int, default=0, help="Number of warmup epochs (for cosine scheduler)")
+    parser.add_argument("--min-lr", type=float, default=1e-6, help="Minimum learning rate (for cosine scheduler)")
+
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
     parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
@@ -82,27 +85,27 @@ def get_args():
                         help="Precision strategy: 'bf16' for NVIDIA bf16-mixed (default), "
                              "'mps' for Apple Silicon fp16-mixed, "
                              "'full' for safest float32 (32-true, matmul=highest, no compile)")
-    
+
     return parser.parse_args()
 
 def main():
     # Setup logging
     cerberus.setup_logging()
-    logging.info("Starting Generic Pomeranian training tool...")
+    logging.info("Starting Generic BPNet training tool...")
 
     args = get_args()
-    
+
     # Setup directories
     data_dir = Path(args.data_dir).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
-    
+
     output_dir = Path(args.output_dir).resolve()
     if args.multi:
         output_dir = output_dir / "multi-fold"
     else:
         output_dir = output_dir / "single-fold"
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     logging.info(f"Data Directory: {data_dir}")
     logging.info(f"Output Directory: {output_dir}")
 
@@ -122,7 +125,7 @@ def main():
         gaps_path = Path(args.gaps) if args.gaps else None
 
     # 2. Configuration
-    
+
     # Build exclude_intervals dict, filtering out None values
     exclude_intervals = {}
     if blacklist_path:
@@ -141,21 +144,26 @@ def main():
     )
 
     # Data Config
-    input_len = args.input_len
-    output_len = args.output_len
+    # When --1024 is set, use BPNet1024 fixed dimensions; otherwise use CLI args.
+    if args.use_1024:
+        input_len = 2112
+        output_len = 1024
+    else:
+        input_len = args.input_len
+        output_len = args.output_len
     output_bin_size = 1
     max_jitter = args.jitter
 
     data_config: DataConfig = {
-        "inputs": {}, 
+        "inputs": {},
         "targets": {"signal": args.bigwig},
         "input_len": input_len,
-        "output_len": output_len, 
+        "output_len": output_len,
         "max_jitter": max_jitter,
         "output_bin_size": output_bin_size,
         "encoding": "ACGT",
-        "log_transform": False, # Uses raw counts for multinomial loss
-        "reverse_complement": True, # Augmentation
+        "log_transform": False,  # BPNet uses raw counts for multinomial loss
+        "reverse_complement": True,  # Augmentation
         "use_sequence": True,
         "target_scale": args.target_scale,
     }
@@ -163,7 +171,7 @@ def main():
     # Sampler Config - Peak Intervals
     padded_size = input_len + 2 * max_jitter
     logging.info(f"Using Peak Sampler (Positives + Negatives) with padded_size={padded_size}...")
-    
+
     sampler_config: SamplerConfig = {
         "sampler_type": "peak",
         "padded_size": padded_size,
@@ -187,50 +195,41 @@ def main():
         "scheduler_args": {
             "num_epochs": args.max_epochs,
             "warmup_epochs": args.warmup_epochs,
-            "min_lr": args.min_lr
+            "min_lr": args.min_lr,
         },
-        "adam_eps": 1e-8,
+        "adam_eps": 1e-7,  # Matches TensorFlow/Keras default epsilon
         "gradient_clip_val": None,
     }
 
     # Model Config
-    if args.k5:
-        logging.info(f"Using PomeranianK5 (Medium Kernel) Model...")
+    if args.use_1024:
+        logging.info("Using BPNet1024 (2112bp -> 1024bp) Model...")
         model_args = {
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
-            "filters": 64,
+            "filters": 77,
             "n_dilated_layers": 8,
-            "conv_kernel_size": [11, 11],
-            "dil_kernel_size": 5,
+            "conv_kernel_size": 21,
+            "dil_kernel_size": 3,
             "profile_kernel_size": 49,
-            "expansion": 1,
-            "dropout": 0.1,
             "predict_total_count": True,
-            "stem_expansion": 2,
-            "dilations": [1, 2, 4, 8, 16, 32, 64, 128],
         }
-        model_cls_name = "cerberus.models.pomeranian.PomeranianK5"
-        model_name = "PomeranianK5"
+        model_cls_name = "cerberus.models.bpnet.BPNet1024"
+        model_name = "BPNet1024"
     else:
-        # Default to Pomeranian (K9 Config)
-        logging.info(f"Using Pomeranian (Default) Model...")
+        logging.info("Using BPNet (Standard, 2114bp -> 1000bp) Model...")
         model_args = {
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
             "filters": 64,
             "n_dilated_layers": 8,
-            "conv_kernel_size": [11, 11],
-            "dil_kernel_size": 9,
-            "profile_kernel_size": 45,
-            "expansion": 1,
-            "dropout": 0.1,
+            "conv_kernel_size": 21,
+            "dil_kernel_size": 3,
+            "profile_kernel_size": 75,
             "predict_total_count": True,
-            "stem_expansion": 2,
-            "dilations": [1, 1, 2, 4, 8, 16, 32, 64],
         }
-        model_cls_name = "cerberus.models.pomeranian.Pomeranian"
-        model_name = "Pomeranian"
+        model_cls_name = "cerberus.models.bpnet.BPNet"
+        model_name = "BPNet"
 
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
@@ -250,9 +249,9 @@ def main():
         "model_cls": model_cls_name,
         "loss_cls": loss_cls,
         "loss_args": loss_args,
-        "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
+        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "metrics_args": {},
-        "model_args": model_args
+        "model_args": model_args,
     }
 
     # 3. Training
@@ -276,7 +275,7 @@ def main():
         logging.info("Using Apple Silicon (MPS) acceleration.")
         if num_workers > 0:
             logging.warning("num_workers=%d may cause instability on MPS. Recommend setting --num-workers 0.", num_workers)
-    
+
     # Precision settings
     if args.precision == "full":
         # Safest full float32 — no reduced precision, no compile, no cuDNN benchmark.
@@ -317,7 +316,6 @@ def main():
     logging.info("Train Config:\n%s", pformat(train_config))
     logging.info("Model Config:\n%s", pformat(model_config))
     logging.info("Precision and Hardware Args:\n%s", pformat(precision_args))
-
 
     if args.multi:
         logging.info("Starting Multi-Fold Training (train_multi)...")

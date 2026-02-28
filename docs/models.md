@@ -19,30 +19,53 @@ A lightweight, efficient model (~150k params) mirroring BPNet's valid-padding pa
 
 ## BPNet
 
-**Implementation**: `cerberus.models.BPNet`  
+**Implementation**: `cerberus.models.BPNet` (Standard) / `BPNet1024`
 **Source**: `src/cerberus/models/bpnet.py`
 
-An implementation of the BPNet architecture (Avsec et al., 2021) following the "Consensus" specification (Post-Activation Residual Blocks). It is designed for base-resolution profile prediction.
+An implementation of the BPNet architecture (Avsec et al., 2021) following the "Consensus" specification (Post-Activation Residual Blocks). It is designed for base-resolution profile prediction. Weights are initialized with Xavier uniform (Glorot) to match the TensorFlow/Keras defaults used by the original BPNet and chrombpnet-pytorch.
 
 ### Key Features
+*   **Valid Padding**: Uses `'valid'` padding throughout; excess length is center-cropped at the profile head.
 *   **Dual Heads**:
-    *   **Profile Head**: Predicts the shape of the signal distribution (logits).
-    *   **Count Head**: Predicts the total read count (log-transformed).
-*   **Dilated Convolutions**: Uses exponentially increasing dilation rates to capture long-range interactions.
-*   **Padding**: Supports `'same'` padding to maintain input resolution.
-*   **Binning**: Optional output binning via average pooling.
+    *   **Profile Head**: Conv1D over the tower output → logits for the profile distribution.
+    *   **Count Head**: Global average pool → Linear → log(total counts).
+*   **Dilated Residual Tower**: 8 blocks with exponentially increasing dilations (2¹..2⁸).
+*   **Binning**: Optional output binning via average pooling (`output_bin_size > 1`).
+*   **Variants**:
+    *   **BPNet** (Default): Canonical dimensions (2114bp → 1000bp), 64 filters, `profile_kernel_size=75`.
+    *   **BPNet1024**: Tuned for 2112bp → 1024bp with no center-cropping; 77 filters, `profile_kernel_size=49`. Receptive-field shrinkage is exactly 1088bp (20 + 1020 + 48).
+
+### Recommended Training Settings
+BPNet has no normalization layers, so weight decay directly shrinks convolutional activations. Use plain Adam with no weight decay and a constant learning rate (matching chrombpnet-pytorch):
+
+| Parameter | Value |
+|---|---|
+| Optimizer | `adam` |
+| Learning rate | `1e-3` |
+| Weight decay | `0` |
+| Adam ε | `1e-7` |
+| Scheduler | `default` (constant) |
 
 ### Usage
 ```python
-from cerberus.models import BPNet
+from cerberus.models import BPNet, BPNet1024
 
+# Standard BPNet: 2114bp -> 1000bp
 model = BPNet(
     input_len=2114,
     output_len=1000,
     filters=64,
-    n_dilated_layers=9
+    n_dilated_layers=8,
+    input_channels=["A", "C", "G", "T"],
+    output_channels=["signal"],
 )
-# Returns (profile_logits, log_counts)
+
+# BPNet1024: 2112bp -> 1024bp (no center-cropping, comparable to Pomeranian)
+model = BPNet1024(
+    input_channels=["A", "C", "G", "T"],
+    output_channels=["signal"],
+)
+# Both return ProfileCountOutput(logits=..., log_counts=...)
 ```
 
 ## GemiNet
