@@ -8,6 +8,8 @@ from typing import Callable, Any
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
+from cerberus.output import compute_total_log_counts
+from cerberus.plots import save_count_scatter
 from cerberus.config import (
     TrainConfig,
     validate_train_config,
@@ -76,7 +78,12 @@ class CerberusModule(pl.LightningModule):
         
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")
-        
+
+        # Accumulators for the per-epoch validation scatter plot.
+        # Populated in _shared_step (val only, rank 0) and cleared in on_validation_epoch_end.
+        self._val_log_count_preds: list[torch.Tensor] = []
+        self._val_log_count_targets: list[torch.Tensor] = []
+
         logger.info(f"Initialized CerberusModule with model: {model.__class__.__name__}")
 
     def configure_optimizers(self): # type: ignore[override]
@@ -152,7 +159,11 @@ class CerberusModule(pl.LightningModule):
             outputs_detached = outputs.detach()
             
         metric_collection.update(outputs_detached, targets.detach())
-        
+
+        # Accumulate log counts for the validation scatter plot (rank 0 only)
+        if prefix == "val_" and self.trainer.is_global_zero:
+            self._accumulate_log_counts(outputs_detached, targets.detach())
+
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -167,11 +178,42 @@ class CerberusModule(pl.LightningModule):
         self.log_dict(metrics, sync_dist=True)
         self.train_metrics.reset()
         
+    def _accumulate_log_counts(self, outputs: Any, targets: torch.Tensor) -> None:
+        """
+        Accumulate predicted and target log counts for the epoch-end scatter plot.
+
+        Silently skips output types not supported by compute_total_log_counts
+        (e.g. raw-tensor or tuple outputs from non-standard models).
+
+        Args:
+            outputs: Detached model output (ModelOutput subclass or other).
+            targets: Detached target tensor, shape (B, C, L).
+        """
+        try:
+            pred_lc = compute_total_log_counts(outputs)       # (B,)
+            target_lc = torch.log1p(targets.sum(dim=(1, 2)))  # (B,)
+            self._val_log_count_preds.append(pred_lc.cpu())
+            self._val_log_count_targets.append(target_lc.cpu())
+        except (ValueError, AttributeError, TypeError):
+            pass
+
     def on_validation_epoch_end(self):
         # Log aggregated metrics
         metrics = self.val_metrics.compute()
         self.log_dict(metrics, sync_dist=True)
         self.val_metrics.reset()
+
+        # Generate count scatter plot (rank 0 only; skip Lightning's 2-batch sanity check)
+        if (self._val_log_count_preds
+                and self.trainer.is_global_zero
+                and not self.trainer.sanity_checking):
+            all_preds = torch.cat(self._val_log_count_preds).numpy()
+            all_targets = torch.cat(self._val_log_count_targets).numpy()
+            trainer_log_dir = getattr(self.trainer.logger, "log_dir", None)
+            save_dir = trainer_log_dir or self.trainer.default_root_dir or "."
+            save_count_scatter(all_preds, all_targets, save_dir, self.current_epoch)
+        self._val_log_count_preds = []
+        self._val_log_count_targets = []
 
 
 def configure_callbacks(
