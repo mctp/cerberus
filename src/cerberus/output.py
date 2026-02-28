@@ -262,21 +262,33 @@ def aggregate_models(
     logger.debug(f"Aggregated {len(outputs)} model outputs using '{method}'")
     return cls(**aggregated_elements, out_interval=out_int)
 
-def compute_total_log_counts(model_output: ModelOutput) -> torch.Tensor:
+def compute_total_log_counts(model_output: ModelOutput, implicit_log: bool = False) -> torch.Tensor:
     """
     Extracts total log counts from the model output.
     Supports ProfileCountOutput and ProfileLogRates.
-    
+
     Args:
         model_output: The output from the model.
-        
+        implicit_log: If True, indicates that per-channel log_counts are in log1p space
+            (as trained by MSEMultinomialLoss with count_per_channel=True). In this case,
+            multi-channel counts are aggregated by inverting log1p per channel, summing,
+            then reapplying log1p — giving the correct log1p(total) rather than the
+            incorrect log(n_channels + total) that logsumexp would produce.
+            If False (default), log_counts are treated as being in log space (Poisson/NB
+            losses), where logsumexp correctly gives log(total).
+
     Returns:
         A tensor of shape (batch_size,) containing the total log counts.
     """
     if isinstance(model_output, ProfileCountOutput):
         log_counts = model_output.log_counts
         if log_counts.ndim == 2 and log_counts.shape[1] > 1:
-            return torch.logsumexp(log_counts, dim=1)
+            if implicit_log:
+                # log_counts per channel is in log1p space: undo log1p, sum channels, reapply log1p
+                total = torch.expm1(log_counts).sum(dim=1)
+                return torch.log1p(total)
+            else:
+                return torch.logsumexp(log_counts, dim=1)
         else:
             return log_counts.flatten()
             

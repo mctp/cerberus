@@ -14,6 +14,7 @@ from cerberus.dataset import CerberusDataset
 from cerberus.samplers import IntervalSampler
 from cerberus.output import compute_total_log_counts
 from cerberus.module import instantiate_metrics_and_loss
+from cerberus.loss import MSEMultinomialLoss, CoupledMSEMultinomialLoss
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def main():
                 use_folds.extend(["train", "test", "val"])
             else:
                 use_folds.append(p)
-        use_folds = list(set(use_folds))
+        use_folds = list(dict.fromkeys(use_folds))
         
     logger.info(f"Using folds configuration: {use_folds if use_folds else 'Default'}")
 
@@ -120,6 +121,19 @@ def main():
     logger.info("Configuring metrics and loss...")
     metrics, criterion = instantiate_metrics_and_loss(model_config, device=device)
 
+    # MSE losses train log_counts against log1p(total_counts).
+    # Poisson/NB losses use PoissonNLLLoss(log_input=True) against raw counts,
+    # so log_counts ≈ log(total_counts) — not log1p. Using the wrong transform
+    # creates a systematic offset in the predicted vs observed comparison.
+    # implicit_log also controls multi-channel aggregation in compute_total_log_counts:
+    # for MSE with count_per_channel=True, per-channel log_counts are in log1p space
+    # and must be converted back before summing (logsumexp gives log(n_ch + total), not log1p(total)).
+    implicit_log = isinstance(criterion, (MSEMultinomialLoss, CoupledMSEMultinomialLoss))
+    if implicit_log:
+        obs_log_count_fn = torch.log1p
+    else:
+        obs_log_count_fn = lambda x: torch.log(x.clamp_min(1.0))
+
     total_loss = 0.0
     total_samples = 0
 
@@ -148,7 +162,7 @@ def main():
 
         # 4a. Get Predicted Log Counts
         try:
-            pred_log_total = compute_total_log_counts(batch_output)
+            pred_log_total = compute_total_log_counts(batch_output, implicit_log=implicit_log)
             preds_batch = pred_log_total.cpu().numpy()
         except ValueError:
             logger.warning("Model output does not have log_counts or log_rates. Skipping batch.")
@@ -169,20 +183,20 @@ def main():
             
         targets = torch.stack(targets_list)
         
-        # Calculate observed total from RAW counts
+        # Calculate observed total from RAW counts, in the same log-space as the loss.
+        # Apply target_scale so the observed is on the same scale as the training targets.
         raw_obs = torch.stack(raw_obs_list)
-        obs_total = raw_obs.sum(dim=(1, 2))
-        obs_log_total = torch.log1p(obs_total)
+        obs_total = raw_obs.sum(dim=(1, 2)) * data_config["target_scale"]
+        obs_log_total = obs_log_count_fn(obs_total)
         obs_batch = obs_log_total.numpy()
         
         # 4c. Update Metrics and Loss
         targets_device = targets.to(device)
-        metrics.update(batch_output, targets_device)
-        
         with torch.no_grad():
-             batch_loss = criterion(batch_output, targets_device)
-             total_loss += batch_loss.item() * targets.size(0)
-             total_samples += targets.size(0)
+            metrics.update(batch_output, targets_device)
+            batch_loss = criterion(batch_output, targets_device)
+            total_loss += batch_loss.item() * targets.size(0)
+            total_samples += targets.size(0)
         
         # 4d. Collect Metadata
         for i, interval in enumerate(batch_intervals):
@@ -241,7 +255,7 @@ def main():
         "metrics": summary_metrics
     }
     
-    summary_path = str(output_path) + ".metrics.json"
+    summary_path = output_path.with_suffix("").with_suffix(".metrics.json")
     logger.info(f"Writing metrics to {summary_path}...")
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
