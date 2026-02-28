@@ -1,4 +1,5 @@
 import os
+import warnings
 import logging
 import torch
 import pytorch_lightning as pl
@@ -156,6 +157,14 @@ def _train(
     Returns:
         The fitted PyTorch Lightning Trainer object.
     """
+
+    # Suppress spurious PL model summary warning for mixed precision modes.
+    # The summary uses 32-bit for size estimation regardless — training is unaffected.
+    warnings.filterwarnings(
+        "ignore",
+        message="Precision .* is not supported by the model summary",
+        module="pytorch_lightning",
+    )
 
     # Set float32 matmul precision
     torch.set_float32_matmul_precision(matmul_precision)
