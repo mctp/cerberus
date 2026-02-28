@@ -250,6 +250,8 @@ class CerberusDataModule(pl.LightningDataModule):
                 "Call datamodule.setup() first."
             )
         dataset = self.train_dataset
+        if dataset.sampler is None:
+            raise RuntimeError("train_dataset has no sampler; cannot compute median counts.")
         n = len(dataset)
         indices = random.sample(range(n), min(n_samples, n))
         counts = []
