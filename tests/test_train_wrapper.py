@@ -1,6 +1,9 @@
-from unittest.mock import MagicMock, patch
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch, call
 from typing import cast
-from cerberus.train import _train as train
+import torch
+from cerberus.train import _train as train, _save_model_pt
 from cerberus.config import TrainConfig, ModelConfig, DataConfig
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
@@ -101,6 +104,68 @@ def test_train_wrapper_calls_trainer_fit():
 
         # Verify instantiate was called with the resolved model_config
         mock_instantiate.assert_called_once()
+
+
+def test_save_model_pt_strips_prefix():
+    """_save_model_pt writes model.pt with 'model.' prefix stripped."""
+    fake_state = {
+        "model.conv.weight": torch.zeros(4, 4),
+        "model.conv.bias": torch.zeros(4),
+        "criterion.weight": torch.ones(1),  # non-model key — should be excluded
+    }
+    fake_ckpt = {"state_dict": fake_state}
+
+    ckpt_callback = MagicMock(spec=ModelCheckpoint)
+    ckpt_callback.best_model_path = "/fake/path/best.ckpt"
+
+    trainer = MagicMock(spec=pl.Trainer)
+    trainer.checkpoint_callback = ckpt_callback
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with patch("cerberus.train.torch.load", return_value=fake_ckpt), \
+             patch("cerberus.train.torch.save") as mock_save:
+            _save_model_pt(trainer, tmp_dir)
+
+        mock_save.assert_called_once()
+        saved_sd, saved_path = mock_save.call_args[0]
+        assert saved_path == Path(tmp_dir) / "model.pt"
+        assert set(saved_sd.keys()) == {"conv.weight", "conv.bias"}
+
+
+def test_save_model_pt_strips_compile_prefix():
+    """_save_model_pt strips _orig_mod. prefix when model was torch.compiled."""
+    fake_state = {
+        "model._orig_mod.layer.weight": torch.zeros(2, 2),
+        "model._orig_mod.layer.bias": torch.zeros(2),
+    }
+    fake_ckpt = {"state_dict": fake_state}
+
+    ckpt_callback = MagicMock(spec=ModelCheckpoint)
+    ckpt_callback.best_model_path = "/fake/path/best.ckpt"
+
+    trainer = MagicMock(spec=pl.Trainer)
+    trainer.checkpoint_callback = ckpt_callback
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with patch("cerberus.train.torch.load", return_value=fake_ckpt), \
+             patch("cerberus.train.torch.save") as mock_save:
+            _save_model_pt(trainer, tmp_dir)
+
+        saved_sd, _ = mock_save.call_args[0]
+        assert set(saved_sd.keys()) == {"layer.weight", "layer.bias"}
+
+
+def test_save_model_pt_skips_when_no_checkpoint():
+    """_save_model_pt logs a warning and exits when best_model_path is empty."""
+    ckpt_callback = MagicMock(spec=ModelCheckpoint)
+    ckpt_callback.best_model_path = ""
+
+    trainer = MagicMock(spec=pl.Trainer)
+    trainer.checkpoint_callback = ckpt_callback
+
+    with patch("cerberus.train.torch.save") as mock_save:
+        _save_model_pt(trainer, "/some/dir")
+        mock_save.assert_not_called()
 
 
 def test_train_wrapper_custom_callbacks():

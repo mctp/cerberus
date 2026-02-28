@@ -4,6 +4,7 @@ import logging
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
+from pytorch_lightning.callbacks import ModelCheckpoint
 from typing import Any
 from pathlib import Path
 
@@ -96,6 +97,49 @@ def resolve_adaptive_loss_args(
         for k, v in loss_args.items()
     }
     return {**model_config, "loss_args": resolved_loss_args}
+
+
+def _save_model_pt(trainer: pl.Trainer, root_dir: str | Path) -> None:
+    """
+    Save the best model weights as a plain PyTorch state dict (.pt file).
+
+    Loads the best checkpoint written by ModelCheckpoint and strips the
+    ``model.`` prefix added by CerberusModule, producing a file that can
+    be loaded with ``model.load_state_dict(torch.load("model.pt"))``
+    without requiring PyTorch Lightning.
+
+    If the model was compiled with ``torch.compile``, the internal
+    ``_orig_mod.`` prefix is also stripped so the output matches the
+    original uncompiled module's state dict.
+
+    Args:
+        trainer: Fitted Trainer whose checkpoint_callback holds the best path.
+        root_dir: Directory in which to write ``model.pt``.
+    """
+    ckpt_callback = trainer.checkpoint_callback
+    if not isinstance(ckpt_callback, ModelCheckpoint) or not ckpt_callback.best_model_path:
+        logger.warning("No best checkpoint found; skipping model.pt export.")
+        return
+
+    best_path = ckpt_callback.best_model_path
+    ckpt = torch.load(best_path, map_location="cpu", weights_only=False)
+
+    # CerberusModule stores the backbone under self.model → keys are "model.*"
+    prefix = "model."
+    state_dict = {
+        k[len(prefix):]: v
+        for k, v in ckpt["state_dict"].items()
+        if k.startswith(prefix)
+    }
+
+    # torch.compile wraps the module and adds an internal "_orig_mod." prefix
+    compile_prefix = "_orig_mod."
+    if state_dict and all(k.startswith(compile_prefix) for k in state_dict):
+        state_dict = {k[len(compile_prefix):]: v for k, v in state_dict.items()}
+
+    pt_path = Path(root_dir) / "model.pt"
+    torch.save(state_dict, pt_path)
+    logger.info(f"Saved model state dict (best checkpoint) to {pt_path}")
 
 
 def _train(
@@ -230,6 +274,10 @@ def _train(
 
     # 4. Train
     trainer.fit(module, datamodule=datamodule)
+
+    # 5. Save clean state dict for inference (best checkpoint, no Lightning overhead)
+    if root_dir is not None and trainer.is_global_zero:
+        _save_model_pt(trainer, root_dir)
 
     return trainer
 
