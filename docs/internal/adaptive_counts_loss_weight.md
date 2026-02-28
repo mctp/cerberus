@@ -111,6 +111,32 @@ Both are data-adaptive; the chrombpnet formula is more conservative.
 alpha = median_total_counts / 10.0
 ```
 
+### Why Linear Scaling, Not sqrt or log
+
+The right functional form for `alpha` follows from the goal of balancing the two loss
+terms: `alpha ~ L_profile / L_count`. From the scaling analysis:
+
+```
+alpha_ideal ~ N * log(L) / (log N)^2
+```
+
+Over practical depth ranges (N = 100–2000), the growth of `(log N)^2` is weak enough
+that `alpha_ideal` is close to linear in N. Comparing the growth of candidate formulas
+as N increases 20× from 100 to 2000:
+
+| Formula        | Growth (100 → 2000) | Notes |
+|----------------|--------------------:|-------|
+| `N / c`        | **20×**             | Matches growth of `L_profile`. Recommended. |
+| `N / (log N)²` | ~7×                 | Theoretically precise but close to linear in practice. |
+| `sqrt(N) / c`  | 4.5×                | Under-compensates at high depth. |
+| `log(N) / c`   | 1.65×               | Severely under-compensates at high depth. |
+
+`sqrt` and `log` both fail to track the linear growth of `L_profile`: at high depths the
+profile term dominates increasingly, defeating the purpose of adaptive weighting.
+`N / (log N)²` is theoretically the most precise but indistinguishable from linear over
+practical ranges — the empirical constant `scale=10` absorbs the difference. Linear
+scaling (`N / scale`) is therefore the right choice.
+
 ---
 
 ## When to Apply

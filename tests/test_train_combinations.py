@@ -1,10 +1,12 @@
 
 import pytest
 import torch
+from typing import cast
+from unittest.mock import patch
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint
 from cerberus.train import _train as train
-from cerberus.config import TrainConfig
+from cerberus.config import TrainConfig, ModelConfig, DataConfig
 
 class MockDataModule(LightningDataModule):
     def __init__(self):
@@ -79,14 +81,31 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
         "log_every_n_steps": 1,
     }
 
-    # Call train
+    model_config = cast(ModelConfig, {
+        "name": "Test",
+        "model_cls": "cerberus.models.bpnet.BPNet",
+        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
+        "loss_args": {"alpha": 1.0},
+        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
+        "metrics_args": {},
+        "model_args": {},
+    })
+    data_config = cast(DataConfig, {
+        "input_len": 2114, "output_len": 1000, "output_bin_size": 1,
+        "targets": [], "inputs": [], "use_sequence": True,
+        "target_scale": 1.0, "jitter": 0,
+    })
+
+    # Call train — mock instantiate so the generic MockModule is used directly
     try:
-        trainer = train(
-            module=mock_module,
-            datamodule=mock_datamodule,
-            train_config=train_config,
-            **trainer_kwargs
-        )
+        with patch("cerberus.train.instantiate", return_value=mock_module):
+            trainer = train(
+                model_config=model_config,
+                data_config=data_config,
+                datamodule=mock_datamodule,
+                train_config=train_config,
+                **trainer_kwargs
+            )
     except Exception as e:
         pytest.fail(f"train() failed with enable_checkpointing={enable_checkpointing}, logger={use_logger}. Error: {e}")
 

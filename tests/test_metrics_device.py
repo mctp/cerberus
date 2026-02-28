@@ -43,6 +43,7 @@ DEVICES = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
 # PerExampleProfilePearsonCorrCoef
 # ---------------------------------------------------------------------------
 
+@pytest.mark.filterwarnings("ignore:The ``compute`` method of metric.*was called before the ``update`` method")
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_profile_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
@@ -67,6 +68,7 @@ def test_per_example_profile_pearson_normal_compute_device(device):
 # PerExampleCountProfilePearsonCorrCoef
 # ---------------------------------------------------------------------------
 
+@pytest.mark.filterwarnings("ignore:The ``compute`` method of metric.*was called before the ``update`` method")
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_count_profile_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
@@ -91,6 +93,7 @@ def test_per_example_count_profile_pearson_normal_compute_device(device):
 # PerExampleLogCountsPearsonCorrCoef
 # ---------------------------------------------------------------------------
 
+@pytest.mark.filterwarnings("ignore:The ``compute`` method of metric.*was called before the ``update`` method")
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_log_counts_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""

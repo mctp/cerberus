@@ -15,6 +15,7 @@ from .download import (
     download_human_reference,
 )
 from .logging import setup_logging
+from .train import compute_counts_loss_weight, resolve_adaptive_loss_args
 
 __all__ = [
     # Core
@@ -35,4 +36,7 @@ __all__ = [
     "download_human_reference",
     # Logging
     "setup_logging",
+    # Training utilities
+    "compute_counts_loss_weight",
+    "resolve_adaptive_loss_args",
 ]

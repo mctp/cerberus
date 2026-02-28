@@ -221,3 +221,48 @@ class CerberusDataModule(pl.LightningDataModule):
             persistent_workers=(self.persistent_workers and self.num_workers > 0),
             multiprocessing_context=self.multiprocessing_context,
         )
+
+    def compute_median_counts(self, n_samples: int = 2000) -> float:
+        """
+        Compute the median total signal count per peak from the training fold.
+
+        Samples up to n_samples intervals from the training dataset, sums raw target
+        signal over all channels and positions to get total counts per peak, and
+        returns the median multiplied by target_scale. The result represents the
+        effective count magnitude that the loss function sees during training.
+
+        Used to compute a data-adaptive count loss weight (alpha) for BPNet-style
+        models via compute_counts_loss_weight(). See docs/internal/adaptive_counts_loss_weight.md.
+
+        Args:
+            n_samples: Number of intervals to sample. If the training dataset has
+                fewer intervals, all are used.
+
+        Returns:
+            Median total raw counts per peak scaled by data_config["target_scale"].
+
+        Raises:
+            RuntimeError: If setup() has not been called yet.
+        """
+        if not self._is_initialized or self.train_dataset is None:
+            raise RuntimeError(
+                "DataModule must be setup before computing statistics. "
+                "Call datamodule.setup() first."
+            )
+        dataset = self.train_dataset
+        n = len(dataset)
+        indices = random.sample(range(n), min(n_samples, n))
+        counts = []
+        for i in indices:
+            interval = dataset.sampler[i]
+            raw = dataset.get_raw_targets(interval)  # (C, L), bypasses transforms
+            counts.append(float(raw.sum()))
+        raw_median = float(np.median(counts))
+        target_scale = self.data_config["target_scale"]
+        scaled_median = raw_median * target_scale
+        logger.info(
+            f"Computed median_counts={scaled_median:.1f} "
+            f"(raw={raw_median:.1f} × target_scale={target_scale}) "
+            f"from {len(indices)} training intervals."
+        )
+        return scaled_median
