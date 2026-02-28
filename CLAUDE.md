@@ -19,3 +19,8 @@ After completing each task, always:
 - Use `logger.debug()` for detailed operational info: lazy-loading, file routing decisions, interval counts, fallback-to-zeros.
 - Pure computation modules (loss, metrics, layers, transforms, complexity) do **not** need logging.
 - Never use `print()` for diagnostics in library code — always use `logger`.
+
+## Run and fix pyright (after each task)
+
+- npx pyright tests/
+- npx pyright src/
