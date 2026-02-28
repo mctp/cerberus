@@ -137,26 +137,41 @@ def test_compute_median_counts_requires_setup():
         CerberusDataModule.compute_median_counts(dm)
 
 
+def _make_mock_dataset(data_config: dict, n: int = 5):
+    """Helper: mock CerberusDataset for compute_median_counts tests."""
+    mock_dataset = MagicMock()
+    mock_dataset.__len__ = MagicMock(return_value=n)
+    mock_dataset.sampler = MagicMock()
+    mock_dataset.sampler.__getitem__ = MagicMock(return_value="interval")
+    mock_dataset.data_config = data_config
+    # target_signal_extractor starts with no open handles (mimics reality)
+    mock_dataset.target_signal_extractor = MagicMock()
+    mock_dataset.target_signal_extractor._bigwig_files = None
+    return mock_dataset
+
+
 def test_compute_median_counts_applies_target_scale():
     from cerberus.datamodule import CerberusDataModule
 
-    # Build a mock datamodule that looks initialized
     dm = MagicMock(spec=CerberusDataModule)
     dm._is_initialized = True
     dm.data_config = {"target_scale": 2.0}
 
-    # Mock training dataset: 5 intervals each with a tensor summing to 100
-    mock_dataset = MagicMock()
-    mock_dataset.__len__ = MagicMock(return_value=5)
-    mock_dataset.sampler = MagicMock()
-    mock_dataset.sampler.__getitem__ = MagicMock(return_value="interval")
-    mock_dataset.get_raw_targets = MagicMock(
-        return_value=torch.ones(1, 100)  # sum = 100 per interval
-    )
+    data_config = {
+        "targets": {"sig": "sig.bw"},
+        "input_len": 100,
+        "output_len": 100,
+    }
+    mock_dataset = _make_mock_dataset(data_config, n=5)
     dm.train_dataset = mock_dataset
 
-    with patch("random.sample", return_value=list(range(5))):
-        result = CerberusDataModule.compute_median_counts(dm)
+    # Patch UniversalExtractor so no real files are opened
+    mock_extractor = MagicMock()
+    mock_extractor.extract.return_value = torch.ones(1, 100)  # sum = 100
+
+    with patch("cerberus.datamodule.UniversalExtractor", return_value=mock_extractor):
+        with patch("random.sample", return_value=list(range(5))):
+            result = CerberusDataModule.compute_median_counts(dm)
 
     # raw_median = 100, target_scale = 2.0 → scaled_median = 200
     assert result == pytest.approx(200.0)
@@ -172,16 +187,54 @@ def test_compute_median_counts_uses_median_not_mean():
 
     raw_counts = [10.0, 20.0, 1000.0]  # mean=343, median=20
 
-    mock_dataset = MagicMock()
-    mock_dataset.__len__ = MagicMock(return_value=3)
-    mock_dataset.sampler = MagicMock()
-    mock_dataset.sampler.__getitem__ = MagicMock(return_value="interval")
-
-    side_effects = [torch.tensor([[c]]) for c in raw_counts]
-    mock_dataset.get_raw_targets = MagicMock(side_effect=side_effects)
+    data_config = {
+        "targets": {"sig": "sig.bw"},
+        "input_len": 100,
+        "output_len": 100,
+    }
+    mock_dataset = _make_mock_dataset(data_config, n=3)
     dm.train_dataset = mock_dataset
 
-    with patch("random.sample", return_value=[0, 1, 2]):
-        result = CerberusDataModule.compute_median_counts(dm)
+    mock_extractor = MagicMock()
+    side_effects = [torch.tensor([[c]]) for c in raw_counts]
+    mock_extractor.extract.side_effect = side_effects
+
+    with patch("cerberus.datamodule.UniversalExtractor", return_value=mock_extractor):
+        with patch("random.sample", return_value=[0, 1, 2]):
+            result = CerberusDataModule.compute_median_counts(dm)
 
     assert result == pytest.approx(float(np.median(raw_counts)))
+
+
+def test_compute_median_counts_does_not_open_dataset_extractor():
+    """Fork-safety: compute_median_counts must not open handles on the dataset's
+    own target_signal_extractor.  If it did, forked DataLoader workers would
+    inherit the shared file descriptor and produce BadData panics."""
+    from cerberus.datamodule import CerberusDataModule
+    from cerberus.signal import SignalExtractor
+    from pathlib import Path
+
+    dm = MagicMock(spec=CerberusDataModule)
+    dm._is_initialized = True
+    dm.data_config = {"target_scale": 1.0}
+
+    data_config = {
+        "targets": {"sig": "sig.bw"},
+        "input_len": 100,
+        "output_len": 100,
+    }
+    mock_dataset = _make_mock_dataset(data_config, n=3)
+    # Give the dataset a real SignalExtractor with no handles open
+    real_extractor = SignalExtractor({"sig": Path("sig.bw")})
+    mock_dataset.target_signal_extractor = real_extractor
+    dm.train_dataset = mock_dataset
+
+    mock_tmp = MagicMock()
+    mock_tmp.extract.return_value = torch.ones(1, 100)
+
+    with patch("cerberus.datamodule.UniversalExtractor", return_value=mock_tmp):
+        with patch("random.sample", return_value=[0, 1, 2]):
+            CerberusDataModule.compute_median_counts(dm)
+
+    # The dataset's own extractor must never have been loaded
+    assert real_extractor._bigwig_files is None

@@ -5,6 +5,7 @@ import numpy as np
 import logging
 from torch.utils.data import DataLoader
 from .dataset import CerberusDataset
+from .signal import UniversalExtractor
 from .config import (
     GenomeConfig,
     DataConfig,
@@ -254,10 +255,29 @@ class CerberusDataModule(pl.LightningDataModule):
             raise RuntimeError("train_dataset has no sampler; cannot compute median counts.")
         n = len(dataset)
         indices = random.sample(range(n), min(n_samples, n))
+
+        # Use a short-lived temporary extractor so the dataset's own handles are
+        # never opened in the main process.  On Linux, DataLoader workers are
+        # forked and inherit open file descriptors; workers sharing the same
+        # kernel open-file description interleave seeks and corrupt bigtools
+        # B-tree reads (BadData / Unexpected isleaf panics).  The tmp_extractor
+        # is garbage-collected when this method returns, leaving the dataset
+        # extractor at _bigwig_files=None so each worker opens its own fd.
+        tmp_extractor = UniversalExtractor(
+            paths=dataset.data_config["targets"],
+            in_memory=False,
+        )
+        output_len = dataset.data_config["output_len"]
+        input_len = dataset.data_config["input_len"]
+        crop_start = (input_len - output_len) // 2
+        crop_end = crop_start + output_len
+
         counts = []
         for i in indices:
             interval = dataset.sampler[i]
-            raw = dataset.get_raw_targets(interval)  # (C, L), bypasses transforms
+            raw = tmp_extractor.extract(interval)   # (C, input_len), no transforms
+            if raw.shape[-1] > output_len:
+                raw = raw[..., crop_start:crop_end]
             counts.append(float(raw.sum()))
         raw_median = float(np.median(counts))
         target_scale = self.data_config["target_scale"]

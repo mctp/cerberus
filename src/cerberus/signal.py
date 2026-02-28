@@ -95,7 +95,11 @@ class SignalExtractor(BaseSignalExtractor):
                 # Chromosome not found or other read error -> zeros
                 logger.debug(f"Chrom {interval.chrom} not found in BigWig '{name}', returning zeros")
                 vals = np.zeros(length, dtype=np.float32)
-            except Exception:
+            except (Exception, BaseException) as e:
+                if isinstance(e, (KeyboardInterrupt, SystemExit, GeneratorExit)):
+                    raise
+                # pyo3_runtime.PanicException (Rust panics from bigtools) inherits from
+                # BaseException, not Exception, so it must be caught here explicitly.
                 logger.debug(f"Error reading BigWig '{name}' at {interval}, returning zeros")
                 vals = np.zeros(length, dtype=np.float32)
 
