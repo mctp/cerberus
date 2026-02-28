@@ -11,7 +11,8 @@ observable non-zero count is approximately ``read_length``, not 1.  Using ``log1
 
 The ``count_pseudocount`` parameter replaces the hard-coded ``+1`` with a configurable
 offset set once in ``DataConfig`` and automatically propagated (after scaling by
-``target_scale``) into ``loss_args`` and ``metrics_args`` by ``parse_hparams_config``.
+``target_scale``) into ``loss_args`` and ``metrics_args`` by ``propagate_pseudocount``
+(called from both ``_train`` during training and ``parse_hparams_config`` at prediction time).
 """
 
 import math

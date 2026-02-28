@@ -13,6 +13,8 @@ def test_train_multi_loop():
         if k == "input_len": return 10
         if k == "output_len": return 10
         if k == "output_bin_size": return 1
+        if k == "count_pseudocount": return 1.0
+        if k == "target_scale": return 1.0
         return None
     data_config.__getitem__.side_effect = data_config_getitem
     

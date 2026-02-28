@@ -51,6 +51,7 @@ def _make_data_config() -> DataConfig:
         "inputs": [],
         "use_sequence": True,
         "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "jitter": 0,
     })
 
