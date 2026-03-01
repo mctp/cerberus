@@ -3,7 +3,7 @@
 # Implementation Plan - Pomeranian Model
 
 ## Overview
-We will implement `Pomeranian`, a new model in `src/cerberus/models/pomeranian.py`. This model combines the architectural advancements of `GemiNet` (ConvNeXtV2 stem, PGC tower) with the `padding='valid'` paradigm of `BPNet`. It is designed to be a lightweight model (~150k parameters) suitable for input sequences of ~2kb yielding output predictions of ~1kb.
+We will implement `Pomeranian`, a new model in `src/cerberus/models/pomeranian.py`. This model uses a ConvNeXtV2 stem with a PGC tower combined with the `padding='valid'` paradigm of `BPNet`. It is designed to be a lightweight model (~150k parameters) suitable for input sequences of ~2kb yielding output predictions of ~1kb.
 
 ## Key Changes
 - **New Model File**: `src/cerberus/models/pomeranian.py`
@@ -38,7 +38,7 @@ We will implement `Pomeranian`, a new model in `src/cerberus/models/pomeranian.p
     - (Estimate: ~142k params, as calculated).
 
 4.  **Tests**:
-    - Create `tests/test_pomeranian.py` mirroring `tests/test_geminet.py` and `tests/test_bpnet_implementation.py`.
+    - Create `tests/test_pomeranian.py` mirroring `tests/test_bpnet_implementation.py`.
     - Verify output shapes and parameter counts.
 
 ## Technical Considerations

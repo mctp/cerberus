@@ -94,31 +94,6 @@ model = BPNet1024(
 # Both return ProfileCountOutput(logits=..., log_counts=...)
 ```
 
-## GemiNet
-
-**Implementation**: `cerberus.models.GemiNet`
-**Source**: `src/cerberus/models/geminet.py`
-
-A modern profile prediction architecture using Pointwise-Gated Convolutions (PGC) for efficient long-range context modeling.
-
-### Key Features
-*   **PGC Blocks**: Uses depthwise-separable convolutions with gating mechanisms.
-*   **Efficiency**: Higher throughput than BPNet with comparable or better performance.
-*   **Output**: Dual-head (Profile + Counts) similar to BPNet.
-
-## LyraNet
-
-**Implementation**: `cerberus.models.LyraNet`
-**Source**: `src/cerberus/models/lyra.py`
-
-A hybrid architecture combining PGC blocks for local context and S4D layers (State Space Models) for efficient global context modeling.
-
-### Key Features
-*   **Hybrid Stem/Body**: Uses Convolutional Stem, PGC layers for local interactions, and S4D layers for global sequence modeling.
-*   **State Space Models (S4D)**: Efficiently models very long-range dependencies.
-*   **Variants**: `LyraNet`, `LyraNetMedium`, `LyraNetLarge`, `LyraNetExtraLarge` scaling from ~140k to ~5.4M parameters.
-*   **Output**: Dual-head (Profile + Counts).
-
 ## ConvNeXtDCNN (ASAP)
 
 **Implementation**: `cerberus.models.ConvNeXtDCNN`
@@ -130,13 +105,64 @@ An architecture leveraging ConvNeXtV2 blocks for hierarchical feature extraction
 *   **ConvNeXtV2 Blocks**: Modern CNN building blocks with LayerScale and GRN (Global Response Normalization).
 *   **Output**: Predicts log-rates (ProfileLogRates).
 
-## GlobalProfileCNN (Baseline)
+## GlobalProfileCNN (Gopher)
 
-**Implementation**: `cerberus.models.GlobalProfileCNN`  
+**Implementation**: `cerberus.models.GlobalProfileCNN`
 **Source**: `src/cerberus/models/gopher.py`
 
-A baseline architecture based on the "Gopher" model (ResNet-style CNN with global pooling).
+A baseline architecture corresponding to the "Baseline CNN" from the Gopher manuscript (`conv_profile_all_base`). It uses a standard convolutional body followed by a global dense bottleneck that compresses the full sequence into a fixed-size representation, then projects back to a spatial grid.
 
 ### Key Features
-*   **Structure**: 3 Convolutional Blocks -> Global Dense Bottleneck -> Global Projection -> Final Conv.
-*   **Output**: Predicts signal profiles directly (Single Head). Returns `ProfileLogRates(log_rates=...)`.
+*   **3 Convolutional Blocks**: Conv1D → BatchNorm → ReLU → MaxPool (pooling factors: 8×, 4×, 4× = 128× total), with increasing filter counts (192, 256, 512).
+*   **Global Dense Bottleneck**: Flattens the pooled feature map into a single vector (Dense → BN → ReLU → Dropout).
+*   **Global Projection**: Projects the bottleneck to `output_bins × bottleneck_channels`, then reshapes back to a spatial feature map.
+*   **Final Conv Head**: Conv1D(256) → Conv1D(output_channels) producing log-rate logits.
+*   **Output**: Returns `ProfileLogRates(log_rates=...)` — log rates consumed by `ProfilePoissonNLLLoss`.
+*   **I/O**: 2048bp → 1024bp at 4bp resolution (256 prediction bins). Input length must be divisible by 128.
+
+### Recommended Training Settings
+
+| Parameter | Value |
+|---|---|
+| Optimizer | `adamw` |
+| Learning rate | `1e-3` |
+| Weight decay | `0.01` |
+| Scheduler | `cosine` with 10 warmup epochs |
+| Min LR | `1e-5` |
+| Loss | `ProfilePoissonNLLLoss(log_input=True, log1p_targets=True)` |
+
+### Loss: ProfilePoissonNLLLoss
+
+Gopher outputs log-rates and is trained with Poisson NLL directly on the profile (no separate count head). The data config should set `log_transform=True` so targets are log1p-transformed before computing the loss:
+
+```python
+model_config = {
+    "name": "GlobalProfileCNN",
+    "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
+    "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
+    "loss_args": {"log_input": True, "log1p_targets": True},
+    "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
+    "metrics_args": {},
+    "model_args": {
+        "input_channels": ["A", "C", "G", "T"],
+        "output_channels": ["signal"],
+        "bottleneck_channels": 8,
+    },
+}
+```
+
+### Usage
+```python
+from cerberus.models import GlobalProfileCNN
+
+# Default: 2048bp -> 256 bins (1024bp at 4bp resolution)
+model = GlobalProfileCNN(
+    input_len=2048,
+    output_len=1024,
+    output_bin_size=4,
+    input_channels=["A", "C", "G", "T"],
+    output_channels=["signal"],
+    bottleneck_channels=8,
+)
+# Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 256)
+```

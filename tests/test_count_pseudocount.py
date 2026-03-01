@@ -32,8 +32,6 @@ from cerberus.output import (
 )
 from cerberus.models.bpnet import BPNetLoss, BPNetMetricCollection
 from cerberus.models.pomeranian import PomeranianMetricCollection
-from cerberus.models.geminet import GemiNetMetricCollection
-from cerberus.models.lyra import LyraNetMetricCollection
 
 
 # ---------------------------------------------------------------------------
@@ -276,8 +274,6 @@ class TestMetricCollectionPropagation:
         (DefaultMetricCollection, {}),
         (BPNetMetricCollection, {}),
         (PomeranianMetricCollection, {}),
-        (GemiNetMetricCollection, {}),
-        (LyraNetMetricCollection, {}),
     ])
     def test_default_pseudocount(self, cls, kwargs):
         mc = cls(**kwargs)
@@ -291,8 +287,6 @@ class TestMetricCollectionPropagation:
         (DefaultMetricCollection, {}),
         (BPNetMetricCollection, {}),
         (PomeranianMetricCollection, {}),
-        (GemiNetMetricCollection, {}),
-        (LyraNetMetricCollection, {}),
     ])
     def test_custom_pseudocount_propagated(self, cls, kwargs):
         mc = cls(**kwargs, count_pseudocount=100.0)

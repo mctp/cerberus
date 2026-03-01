@@ -20,7 +20,7 @@ In `_load_model`, the parameter `key` (the model name, e.g. `"fold_0"`) is overw
 
 ### 4. BUG: `BPNet` counts head uses uncropped feature map (`models/bpnet.py:157`) (ORIGINAL, NOT FIXED)
 
-`BPNet.forward` pools over the full `x` tensor for counts (`x.mean(dim=-1)`) without cropping to `target_len` first. All other models (`GemiNet`, `LyraNet`, `Pomeranian`) crop before pooling. BPNet's count prediction includes flanking context excluded from the profile, creating an inconsistency that may affect training.
+`BPNet.forward` pools over the full `x` tensor for counts (`x.mean(dim=-1)`) without cropping to `target_len` first. Other models (e.g. `Pomeranian`) crop before pooling. BPNet's count prediction includes flanking context excluded from the profile, creating an inconsistency that may affect training.
 
 ### 5. `BPNetLoss` silently discards caller-provided arguments (`models/bpnet.py:249-254`) (FIXED)
 
@@ -38,11 +38,7 @@ In `_load_model`, the parameter `key` (the model name, e.g. `"fold_0"`) is overw
 
 `Pomeranian`, `PomeranianK5`, `ConvNeXtDCNN`, `BPNet1024`, all `MetricCollection` and `Loss` subclasses are not exported. The `pomeranian` module is entirely invisible from the public API.
 
-### 9. `PGC` layers in `LyraNet` have no residual connection (`models/lyra.py:290-291`) (ORIGINAL, NOT FIXED)
-
-PGC layers are applied sequentially without residuals: `for pgc in self.pgc_layers: x = pgc(x)`. The `PGC` class itself has no residual. Meanwhile, S4D layers in the same model use explicit residuals. Missing residual connections in 4-7 stacked PGC layers may cause gradient flow problems.
-
-### 10. Missing required keys cause raw `KeyError` (`config.py:618,621`) (FIXED)
+### 9. Missing required keys cause raw `KeyError` (`config.py:618,621`) (FIXED)
 
 `adam_eps` and `gradient_clip_val` are not in `required_keys` for `validate_train_config`, so their absence produces a raw `KeyError` instead of the helpful "missing required keys" `ValueError`.
 
@@ -54,13 +50,13 @@ PGC layers are applied sequentially without residuals: `for pgc in self.pgc_laye
 
 6 loss classes with massive duplication. The `Coupled*` variants differ only in how `pred_log_counts` is derived. `_compute_profile_loss` is duplicated between `MSEMultinomialLoss` and `PoissonMultinomialLoss` with subtle mathematical differences (full multinomial NLL vs. cross-entropy) hidden behind identical method names.
 
-### 12. Duplicated `MetricCollection` subclasses across 4 model files
+### 12. Duplicated `MetricCollection` subclasses across model files
 
-`GemiNetMetricCollection`, `LyraNetMetricCollection`, `BPNetMetricCollection`, `PomeranianMetricCollection` are byte-for-byte identical except for the class name. Should be a single shared class.
+`BPNetMetricCollection`, `PomeranianMetricCollection` are byte-for-byte identical except for the class name. Should be a single shared class.
 
 ### 13. Size-variant model subclasses are pure boilerplate (~350 lines)
 
-`GemiNetMedium`, `GemiNetLarge`, `GemiNetExtraLarge`, `LyraNetMedium`/`Large`/`ExtraLarge`/`ExtraExtraLarge`, `BPNet1024` do nothing except change default argument values. Each is a verbatim copy of the parent's `__init__` signature. Factory functions or class methods would eliminate this.
+`BPNet1024` does nothing except change default argument values. Each is a verbatim copy of the parent's `__init__` signature. Factory functions or class methods would eliminate this.
 
 ### 14. Redundant validation across the entire call chain (`config.py`, `dataset.py`, `datamodule.py`, `module.py`, `train.py`) (PARTIALLY FIXED)
 
@@ -85,17 +81,13 @@ Called in both `parse_hparams_config` and `_train`. Since it uses `setdefault`, 
 
 Modifies `model_config["loss_args"]` and `model_config["metrics_args"]` dicts in-place via `setdefault`. Combined with `resolve_adaptive_loss_args` (which creates a new top-level dict but shares nested dicts), mutation can affect the original `model_config` across folds. Fixed by making `propagate_pseudocount` return a new `ModelConfig` with shallow-copied `loss_args` and `metrics_args` dicts, matching the pattern used by `resolve_adaptive_loss_args`.
 
-### 18. Duplicated `PGC` class (`lyra.py:132-175` vs `layers.py:101-206`) (ORIGINAL, NOT FIXED)
-
-Two similarly-named PGC implementations exist: `PGC` in lyra.py operates in `(B, L, D)` format with `nn.Linear`; `PGCBlock` in layers.py operates in `(B, D, L)` format with `nn.Conv1d`. Confusing and increases maintenance burden.
-
-### 19. `config.get()` violations of project convention (FIXED)
+### 18. `config.get()` violations of project convention (FIXED)
 
 All `config.get()` calls replaced with bracket access. Keys `use_sequence`, `scheduler_type`, `scheduler_args`, `reload_dataloaders_every_n_epochs` made required in validators. `fold_args["test_fold"]` and `fold_args["val_fold"]` now use bracket access. All test configs updated with required keys (`test_fold`/`val_fold` in fold_args, `max_jitter` replacing `jitter`, `use_sequence` added where missing).
 
 ### 20. Mutable default arguments (systemic across all models) (FIXED)
 
-All mutable list defaults in `__init__` signatures changed to `None` with defaults set in the method body. Affected files: `asap.py`, `bpnet.py`, `geminet.py`, `gopher.py`, `lyra.py`, `pomeranian.py`, `predict_bigwig.py`, `samplers.py`. Uses `_UNSET` sentinel in `pomeranian.py` where `None` has a separate semantic meaning (auto-compute dilations).
+All mutable list defaults in `__init__` signatures changed to `None` with defaults set in the method body. Affected files: `asap.py`, `bpnet.py`, `gopher.py`, `pomeranian.py`, `predict_bigwig.py`, `samplers.py`. Uses `_UNSET` sentinel in `pomeranian.py` where `None` has a separate semantic meaning (auto-compute dilations).
 
 ### 21. Broad `try/except` swallowing errors (PARTIALLY FIXED)
 
@@ -111,7 +103,7 @@ Multiple locations silently catch and discard exceptions. Added `logger.warning`
 
 The center-crop-with-error-check pattern is copy-pasted in:
 - `layers.py:89-96, 173-180, 197-204, 230-237`
-- `geminet.py:109-129`, `lyra.py:320-340`, `bpnet.py:131-152`, `pomeranian.py:169-186`
+- `bpnet.py:131-152`, `pomeranian.py:169-186`
 
 Should be a shared utility function.
 
@@ -121,13 +113,7 @@ Should be a shared utility function.
 - Lazy-loading + pickle (`_load`, `__getstate__`) copy-pasted across `SignalExtractor`, `BigBedMaskExtractor`, `InMemoryBigBedMaskExtractor`
 - BED file reading duplicated between `samplers.py:708-722`, `mask.py:210+`, and `exclude.py`
 
-### 24. Dead parameters and dead code in LyraNet
-
-- `s4_lr` parameter documented as "Ignored" but still accepted and passed through (`lyra.py:210,227,265`)
-- `self.prenorm = True` hardcoded, `if not self.prenorm:` branch is unreachable (`lyra.py:237,300,312-314`)
-- `return_embeddings` parameter accepted but never referenced (`lyra.py:281`)
-
-### 25. `num_channels` parameter stored but never used in metrics (`metrics.py:42-44, 87-89`) (FIXED)
+### 24. `num_channels` parameter stored but never used in metrics (`metrics.py:42-44, 87-89`) (FIXED)
 
 `ProfilePearsonCorrCoef` and `CountProfilePearsonCorrCoef` accept and store `self.num_channels` but never use it. Misleads users. Fixed by removing `num_channels` from both metric classes, all MetricCollection subclasses, and all callers.
 

@@ -5,7 +5,7 @@ Guide for diagnosing why `chip_ar_mdapca2b_bpnet.py` (or similar BPNet training 
 ## Key Architectural Difference: BPNet Has No Normalization
 
 BPNet is the only model in Cerberus without normalization layers.
-Pomeranian, GemiNet, and LyraNet all use RMSNorm throughout their architectures.
+Pomeranian uses RMSNorm throughout its architecture.
 BPNet uses raw `Conv1d -> ReLU -> residual add` in its dilated tower.
 
 This has concrete consequences that have been verified experimentally:
@@ -360,7 +360,7 @@ Compared to the original bpnet-lite / chrombpnet-pytorch implementations:
 
 The original BPNet implementations train successfully with **flat LR ~4e-4, no warmup,
 no scheduler, fp32 precision**. The Cerberus defaults were designed for the newer
-normalized architectures (Pomeranian, GemiNet) and may not be optimal for BPNet.
+normalized architectures (Pomeranian) and may not be optimal for BPNet.
 
 ---
 

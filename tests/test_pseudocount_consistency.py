@@ -560,8 +560,6 @@ class TestMetricCollectionPropagation:
 
     @pytest.mark.parametrize("collection_cls_path", [
         "cerberus.models.bpnet.BPNetMetricCollection",
-        "cerberus.models.geminet.GemiNetMetricCollection",
-        "cerberus.models.lyra.LyraNetMetricCollection",
         "cerberus.models.pomeranian.PomeranianMetricCollection",
     ])
     def test_pseudocount_reaches_all_submetrics(self, collection_cls_path):

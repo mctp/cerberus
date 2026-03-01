@@ -60,7 +60,7 @@ Cerberus follows a layered architecture with clear separation of concerns:
 │  (CerberusModule + CerberusDataModule)  │
 ├─────────────────────────────────────────┤
 │           Model Layer                   │
-│   (BPNet, Gopher, Geminet, etc.)        │
+│   (BPNet, Gopher, Pomeranian, etc.)      │
 ├─────────────────────────────────────────┤
 │        Data Processing Layer            │
 │  (Transforms, Samplers, Extractors)     │
@@ -529,41 +529,15 @@ Cerberus includes a diverse collection of model architectures, ranging from refe
 Models are organized by output type and architectural paradigm:
 
 **By Output Type:**
-- **Decoupled (ProfileCountOutput)**: Separate profile and count heads (BPNet, GemiNet, Pomeranian, LyraNet)
+- **Decoupled (ProfileCountOutput)**: Separate profile and count heads (BPNet, Pomeranian)
 - **Coupled (ProfileLogRates)**: Derive counts from profile (Gopher, ConvNeXtDCNN)
 
 **By Architectural Paradigm:**
-- **Dilated Residual**: BPNet, GemiNet, Pomeranian
+- **Dilated Residual**: BPNet, Pomeranian
 - **Global Bottleneck**: Gopher (GlobalProfileCNN)
 - **Basenji-style**: ConvNeXtDCNN (ASAP)
-- **Hybrid (SSM + Conv)**: LyraNet (PGC + S4D)
 
-### 5.2 GemiNet: Modern BPNet Replacement
-
-**Architecture Philosophy**: GemiNet replaces BPNet's dilated residual blocks with Projected Gated Convolutions (PGC), offering better parameter efficiency and training stability.
-
-**Structure:**
-```
-Input (B, 4, L)
-  ↓
-Stem: Conv1d(K=21, same padding) + ReLU
-  ↓
-Body: 8x PGC Blocks (dilations: 2, 4, 8, ..., 256)
-  ↓              ↓
-Profile Head    Counts Head
-Conv1d(K=75)    GlobalAvgPool + Linear
-  ↓              ↓
-Logits          Log(Counts)
-```
-
-**Key Differences from BPNet:**
-- Uses **same padding** (simpler than valid padding)
-- PGC blocks with gating mechanism (more expressive than plain residual)
-- ~100k parameters (baseline), 600k (medium), 2.2M (large), 5M (XL)
-
-**Design Insight:** The PGC block combines depthwise convolution with gating, similar to gated linear units, providing better gradient flow than standard residual connections.
-
-### 5.3 Pomeranian: Lightweight Valid-Padding Model
+### 5.2 Pomeranian: Lightweight Valid-Padding Model
 
 **Architecture Philosophy**: Mirrors BPNet's valid padding strategy but uses modern components (ConvNeXt, PGC) for better expressiveness per parameter.
 
@@ -724,12 +698,6 @@ Many models provide size variants with consistent scaling:
 3. **Expansion**: Increase bottleneck capacity (1 → 2 → 4)
 4. **Dropout**: Higher dropout for larger models (0.1 → 0.35)
 
-**Example (GemiNet family):**
-- **GemiNet**: 64 filters, 8 layers, expansion=1, dropout=0.1 (~100k params)
-- **GemiNetMedium**: 128 filters, 11 layers, expansion=1, dropout=0.15 (~600k params)
-- **GemiNetLarge**: 128 filters, 11 layers, expansion=4, dropout=0.2 (~2.2M params)
-- **GemiNetExtraLarge**: 224 filters, 11 layers, expansion=3, dropout=0.35 (~5M params)
-
 **Design Rationale:** Provides a smooth capacity ladder for different dataset sizes and computational budgets while maintaining the same architectural principles.
 
 ### 5.8 Custom Metric Collections
@@ -737,8 +705,8 @@ Many models provide size variants with consistent scaling:
 Each model family defines its own MetricCollection matching its output type:
 
 ```python
-class GemiNetMetricCollection(MetricCollection):
-    def __init__(self, num_channels: int = 1, log1p_targets: bool = False):
+class BPNetMetricCollection(MetricCollection):
+    def __init__(self, **kwargs):
         super().__init__({
             "pearson": CountProfilePearsonCorrCoef(...),
             "mse_profile": CountProfileMeanSquaredError(...),

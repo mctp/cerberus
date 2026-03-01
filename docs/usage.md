@@ -246,14 +246,36 @@ Ensuring reproducibility in training runs involves two levels of randomness cont
 
 ## Examples
 
-The `notebooks/` directory contains complete examples:
+The `examples/` directory contains ready-to-run shell scripts covering all model × dataset combinations. Each script defines dataset-specific variables at the top and forwards any extra arguments to the underlying tool.
+
+| Script | Model | Dataset |
+|---|---|---|
+| `examples/chip_ar_mdapca2b_bpnet.sh` | BPNet | MDA-PCA-2b AR (auto-downloaded) |
+| `examples/chip_ar_mdapca2b_pomeranian.sh` | Pomeranian | MDA-PCA-2b AR (auto-downloaded) |
+| `examples/chip_ar_mdapca2b_gopher.sh` | Gopher | MDA-PCA-2b AR (auto-downloaded) |
+| `examples/chip_prox1_tc32_bpnet.sh` | BPNet | TC32 PROX1 (local paths) |
+| `examples/chip_prox1_tc32_pomeranian.sh` | Pomeranian | TC32 PROX1 (local paths) |
+| `examples/chip_prox1_tc32_gopher.sh` | Gopher | TC32 PROX1 (local paths) |
+
+```bash
+# Run single-fold training (default)
+bash examples/chip_ar_mdapca2b_bpnet.sh
+
+# Run multi-fold cross-validation
+bash examples/chip_ar_mdapca2b_pomeranian.sh --multi
+
+# Use PomeranianK5 variant
+bash examples/chip_ar_mdapca2b_pomeranian.sh --k5
+```
+
+The `notebooks/` directory contains lower-level walkthroughs:
 
 *   `notebooks/cerberus_basics.py`: A step-by-step walkthrough of the library components (Configuration, Samplers, Datasets, Transforms).
 *   `notebooks/baseline_cnn_train.py`: A complete training example using the `GlobalProfileCNN` model to predict BigWig tracks from DNA sequence.
 
 ## Generic Training Tools
 
-For quick training on custom data, use the model-specific scripts in the `tools/` directory. Both scripts accept any BigWig signal and BED/narrowPeak file and share the same CLI structure.
+For quick training on custom data, use the model-specific scripts in the `tools/` directory. All scripts accept any BigWig signal and BED/narrowPeak file and share the same CLI structure.
 
 *   `tools/train_bpnet.py`: Train a BPNet model.
     ```bash
@@ -280,16 +302,31 @@ For quick training on custom data, use the model-specific scripts in the `tools/
         --learning-rate 0.001 --patience 15 --background-ratio 2.0
     ```
 
-Both tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
+*   `tools/train_gopher.py`: Train a Gopher (GlobalProfileCNN) model (2048bp → 1024bp at 4bp resolution).
+    ```bash
+    # Standard Gopher
+    python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher
 
-| Flag | `train_bpnet.py` | `train_pomeranian.py` |
-|---|---|---|
-| `--optimizer` | `adam` | `adamw` |
-| `--learning-rate` | `1e-3` | `5e-4` |
-| `--weight-decay` | `0.0` | `0.01` |
-| `--scheduler-type` | `default` (constant) | `cosine` |
-| `--input-len` | `2114` | `2112` |
-| `--output-len` | `1000` | `1024` |
+    # Custom bottleneck size
+    python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher \
+        --bottleneck-channels 16
+
+    # Multi-fold cross-validation
+    python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher --multi
+    ```
+
+All tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
+
+| Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_gopher.py` |
+|---|---|---|---|
+| `--optimizer` | `adam` | `adamw` | `adamw` |
+| `--learning-rate` | `1e-3` | `5e-4` | `1e-3` |
+| `--weight-decay` | `0.0` | `0.01` | `0.01` |
+| `--scheduler-type` | `default` (constant) | `cosine` | `cosine` |
+| `--input-len` | `2114` | `2112` | `2048` |
+| `--output-len` | `1000` | `1024` | `1024` |
+| `--output-bin-size` | `1` | `1` | `4` |
+| `--alpha` / loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | — (ProfilePoissonNLLLoss) |
 
 ## Next Steps
 
