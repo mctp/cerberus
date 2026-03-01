@@ -36,7 +36,9 @@ An implementation of the BPNet architecture (Avsec et al., 2021) following the "
     *   **BPNet1024**: Tuned for 2112bp → 1024bp with no center-cropping; 77 filters, `profile_kernel_size=49`. Receptive-field shrinkage is exactly 1088bp (20 + 1020 + 48).
 
 ### Recommended Training Settings
-BPNet has no normalization layers, so weight decay directly shrinks convolutional activations. Use plain Adam with no weight decay and a constant learning rate (matching chrombpnet-pytorch):
+
+#### Baseline (chrombpnet-compatible)
+BPNet has no normalization layers in its default configuration, so weight decay directly shrinks convolutional activations. Use plain Adam with no weight decay and a constant learning rate (matching chrombpnet-pytorch):
 
 | Parameter | Value |
 |---|---|
@@ -45,6 +47,39 @@ BPNet has no normalization layers, so weight decay directly shrinks convolutiona
 | Weight decay | `0` |
 | Adam ε | `1e-7` |
 | Scheduler | `default` (constant) |
+
+#### Stable Training Mode
+For improved training stability with AdamW and cosine LR scheduling, enable `weight_norm=True` and `activation="gelu"` via the `--stable` flag or model arguments. These changes are **fully compatible with DeepLIFT/DeepSHAP via captum**:
+
+- **Weight normalization** (`weight_norm=True`): Reparameterizes Conv1d weights as `weight = weight_g / ‖weight_v‖ × weight_v`. This is applied at the parameter level, not the activation level — captum's DeepLIFT still treats Conv1d as a linear passthrough. The decoupling of magnitude and direction stabilises gradient norms across the deep dilated tower and enables effective AdamW weight decay.
+- **GELU activation** (`activation="gelu"`): Smooth gradients at zero prevent dying neurons in deep dilated stacks and work better with the low-LR phase of cosine schedules. captum has a registered rule for GELU.
+
+| Parameter | Stable Mode |
+|---|---|
+| `weight_norm` | `True` |
+| `activation` | `"gelu"` |
+| Optimizer | `adamw` |
+| Learning rate | `1e-3` |
+| Weight decay | `0.01` |
+| Adam ε | `1e-7` |
+| Scheduler | `cosine` |
+| Warmup epochs | `5` |
+| Min LR | `1e-5` |
+
+From the training script:
+```bash
+python tools/train_bpnet.py --stable --bigwig signal.bw --peaks peaks.bed --output-dir models/my_model
+```
+
+From Python:
+```python
+model = BPNet(
+    input_len=2114, output_len=1000, filters=64, n_dilated_layers=8,
+    input_channels=["A", "C", "G", "T"], output_channels=["signal"],
+    activation="gelu",
+    weight_norm=True,
+)
+```
 
 ### Loss: BPNetLoss
 

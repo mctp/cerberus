@@ -94,6 +94,17 @@ def get_args():
     parser.add_argument("--warmup-epochs", type=int, default=0, help="Number of warmup epochs (for cosine scheduler)")
     parser.add_argument("--min-lr", type=float, default=1e-6, help="Minimum learning rate (for cosine scheduler)")
 
+    # Stable training mode
+    parser.add_argument(
+        "--stable",
+        action="store_true",
+        help=(
+            "Enable stable training mode: weight normalization + GELU activation in the "
+            "dilated tower (AdamW optimizer and cosine LR schedule are set as defaults). "
+            "Compatible with DeepLIFT/DeepSHAP via captum."
+        ),
+    )
+
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
     parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
@@ -110,6 +121,26 @@ def main():
     logging.info("Starting Generic BPNet training tool...")
 
     args = get_args()
+
+    # Stable mode: override optimizer/scheduler defaults when user has not set them explicitly.
+    # Individual flags still take precedence (e.g. --optimizer sgd --stable keeps sgd).
+    if args.stable:
+        if args.optimizer == "adam":
+            args.optimizer = "adamw"
+        if args.weight_decay == 0.0:
+            args.weight_decay = 0.01
+        if args.scheduler_type == "default":
+            args.scheduler_type = "cosine"
+        if args.warmup_epochs == 0:
+            args.warmup_epochs = 5
+        if args.min_lr == 1e-6:
+            args.min_lr = 1e-5
+        logging.info(
+            "Stable mode enabled: weight_norm=True, activation=gelu, "
+            "optimizer=%s, weight_decay=%s, scheduler=%s, warmup_epochs=%d, min_lr=%s",
+            args.optimizer, args.weight_decay, args.scheduler_type,
+            args.warmup_epochs, args.min_lr,
+        )
 
     # Setup directories
     data_dir = Path(args.data_dir).resolve()
@@ -219,6 +250,9 @@ def main():
     }
 
     # Model Config
+    activation = "gelu" if args.stable else "relu"
+    use_weight_norm = args.stable
+
     if args.use_1024:
         logging.info("Using BPNet1024 (2112bp -> 1024bp) Model...")
         model_args = {
@@ -230,6 +264,8 @@ def main():
             "dil_kernel_size": 3,
             "profile_kernel_size": 49,
             "predict_total_count": True,
+            "activation": activation,
+            "weight_norm": use_weight_norm,
         }
         model_cls_name = "cerberus.models.bpnet.BPNet1024"
         model_name = "BPNet1024"
@@ -244,6 +280,8 @@ def main():
             "dil_kernel_size": 3,
             "profile_kernel_size": 75,
             "predict_total_count": True,
+            "activation": activation,
+            "weight_norm": use_weight_norm,
         }
         model_cls_name = "cerberus.models.bpnet.BPNet"
         model_name = "BPNet"

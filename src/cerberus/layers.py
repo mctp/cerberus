@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
 
 class GRN1d(nn.Module):
     """ 
@@ -208,32 +208,51 @@ class PGCBlock(nn.Module):
 class DilatedResidualBlock(nn.Module):
     """
     Dilated Residual Block for BPNet.
-    Structure: Input -> Dilated Conv -> ReLU -> Add to Input
+
+    Structure: Input -> Dilated Conv -> Activation -> Add to cropped Input
+
+    Args:
+        filters (int): Number of input and output channels.
+        kernel_size (int): Kernel size for the dilated convolution.
+        dilation (int): Dilation rate.
+        activation (str): Activation function. One of ``"relu"`` or ``"gelu"``.
+            Default: ``"relu"``.
+        weight_norm (bool): If True, applies :func:`torch.nn.utils.weight_norm`
+            to the convolution. Decouples weight magnitude from direction, which
+            stabilizes gradient norms across deep dilated stacks and enables
+            effective AdamW weight decay. Safe for DeepLIFT/DeepSHAP: weight
+            normalization is a weight reparameterization, not an activation
+            nonlinearity, so the Conv1d linear passthrough rule is unchanged.
+            Default: ``False``.
     """
-    def __init__(self, filters, kernel_size, dilation):
+    def __init__(self, filters: int, kernel_size: int, dilation: int,
+                 activation: str = "relu", weight_norm: bool = False):
         super().__init__()
-        self.conv = nn.Conv1d(
-            filters, filters, 
-            kernel_size=kernel_size, 
-            dilation=dilation, 
+        conv = nn.Conv1d(
+            filters, filters,
+            kernel_size=kernel_size,
+            dilation=dilation,
             padding='valid'
         )
-        
+        if weight_norm:
+            _apply_weight_norm(conv)
+        self.conv = conv
+        if activation == "relu":
+            self.act: nn.Module = nn.ReLU()
+        elif activation == "gelu":
+            self.act = nn.GELU()
+        else:
+            raise ValueError(
+                f"DilatedResidualBlock: unsupported activation {activation!r}. "
+                "Must be 'relu' or 'gelu'."
+            )
+
     def forward(self, x):
-        # Post-Activation Residual Block
-        # 1. Dilated Conv
-        out = self.conv(x)
-        # 2. ReLU
-        out = F.relu(out)
-        # 3. Residual Connection
-        # Center crop x to match out
+        out = self.act(self.conv(x))
+        # Center crop x to match out due to 'valid' padding shrinking the sequence.
         diff = x.shape[-1] - out.shape[-1]
         if diff > 0:
-            # Crop the input to match the output size because the convolution
-            # used 'valid' padding, shrinking the sequence. We crop from the
-            # center to maintain alignment.
             crop_l = diff // 2
             crop_r = diff - crop_l
             x = x[..., crop_l:-crop_r]
-                
         return x + out
