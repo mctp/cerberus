@@ -18,6 +18,14 @@ def test_profile_poisson_nll_loss():
     assert loss.log_input is True
     assert loss.full is False
 
+
+def test_profile_poisson_nll_loss_accepts_count_pseudocount():
+    """Regression: propagate_pseudocount injects count_pseudocount into loss_args for all
+    loss types; ProfilePoissonNLLLoss must absorb it without forwarding it to
+    nn.PoissonNLLLoss (which would raise TypeError)."""
+    loss = ProfilePoissonNLLLoss(log_input=True, full=False, count_pseudocount=0.5)
+    assert isinstance(loss, nn.PoissonNLLLoss)
+
 def test_default_metric_collection():
     metrics = DefaultMetricCollection()
     assert "pearson" in metrics

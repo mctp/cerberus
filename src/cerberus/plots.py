@@ -19,7 +19,7 @@ def save_count_scatter(
 
     Args:
         pred_log_counts: 1-D array of predicted log counts for all validation examples.
-        target_log_counts: 1-D array of true log1p(counts) for all validation examples.
+        target_log_counts: 1-D array of true log counts for all validation examples.
         save_dir: Root directory under which the ``plots/`` subdirectory is created.
         epoch: Current epoch index, used in the filename and plot title.
     """
@@ -32,7 +32,7 @@ def save_count_scatter(
 
     fig, ax = plt.subplots(figsize=(5, 5))
     hb = ax.hexbin(target_log_counts, pred_log_counts, gridsize=50, mincnt=1, cmap="viridis")
-    ax.set_xlabel("True log1p(counts)")
+    ax.set_xlabel("True log counts")
     ax.set_ylabel("Predicted log counts")
     ax.set_title(f"Val counts — epoch {epoch}")
     fig.colorbar(hb, ax=ax, label="n")

@@ -36,6 +36,7 @@ class TestSetupLogging:
             setup_logging(level=logging.DEBUG)
             assert cerberus_logger.level == logging.DEBUG
             assert len(cerberus_logger.handlers) == 1
+            assert cerberus_logger.propagate is False
         finally:
             # Restore
             cerberus_logger.handlers = original_handlers

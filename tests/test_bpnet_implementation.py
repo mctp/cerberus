@@ -40,20 +40,21 @@ def test_bpnet_xavier_init():
 def test_bpnet_residual_block_cropping():
     filters = 16
     kernel_size = 3
-    dilation = 2 
+    dilation = 2
     block = DilatedResidualBlock(filters, kernel_size, dilation)
     length = 20
     x = torch.randn(1, filters, length)
-    out = block(x)
+    with torch.no_grad():
+        out = block(x)
     assert out.shape == (1, filters, 16)
 
 def test_bpnet_architecture_defaults():
     batch_size = 2
     input_len = 1200
     output_len = 1000
-    filters = 16 
+    filters = 16
     n_dilated_layers = 2
-    
+
     model = BPNet(
         input_len=input_len,
         output_len=output_len,
@@ -63,8 +64,9 @@ def test_bpnet_architecture_defaults():
         output_channels=["pos", "neg"]
     )
     x = torch.randn(batch_size, 4, input_len)
-    out = model(x)
-    
+    with torch.no_grad():
+        out = model(x)
+
     assert out.logits.shape == (batch_size, 2, output_len)
     assert out.log_counts.shape == (batch_size, 1)
 
@@ -74,7 +76,9 @@ def test_bpnet_counts_head_dimensionality_param():
     output_len = 1000
     filters = 16
     n_dilated_layers = 2
-    
+
+    x = torch.randn(batch_size, 4, input_len)
+
     model_total = BPNet(
         input_len=input_len,
         output_len=output_len,
@@ -83,10 +87,10 @@ def test_bpnet_counts_head_dimensionality_param():
         output_channels=["pos", "neg"],
         predict_total_count=True
     )
-    x = torch.randn(batch_size, 4, input_len)
-    out = model_total(x)
+    with torch.no_grad():
+        out = model_total(x)
     assert out.log_counts.shape == (batch_size, 1)
-    
+
     model_per_channel = BPNet(
         input_len=input_len,
         output_len=output_len,
@@ -95,7 +99,8 @@ def test_bpnet_counts_head_dimensionality_param():
         output_channels=["pos", "neg"],
         predict_total_count=False
     )
-    out_pc = model_per_channel(x)
+    with torch.no_grad():
+        out_pc = model_per_channel(x)
     assert out_pc.log_counts.shape == (batch_size, 2)
 
 def test_poisson_multinomial_loss_bpnet_input():
@@ -223,7 +228,7 @@ def test_bpnet_compilation():
 
 def test_bpnet_loss_integration():
     model = BPNet(
-        input_len=1000, 
+        input_len=1000,
         output_len=500,
         filters=8,
         n_dilated_layers=1,
@@ -231,9 +236,10 @@ def test_bpnet_loss_integration():
     )
     loss_fn = BPNetLoss()
     x = torch.randn(2, 4, 1000)
-    out = model(x)
+    with torch.no_grad():
+        out = model(x)
     targets = torch.randint(0, 10, (2, 1, 500)).float()
-    
+
     loss = loss_fn(out, targets)
     assert not torch.isnan(loss)
     assert loss.dim() == 0
@@ -246,16 +252,17 @@ def test_bpnet_loss_integration():
         filters=8,
         n_dilated_layers=1,
         output_channels=["plus", "minus"],
-        predict_total_count=False # per-channel counts
+        predict_total_count=False  # per-channel counts
     )
-    out_m = model_multi(x)
+    with torch.no_grad():
+        out_m = model_multi(x)
     targets_m = torch.randint(0, 10, (2, 2, 500)).float()
-    
+
     # Treat BPNet logits as log-rates for the purpose of testing coupled loss mechanics
     out_profile_only = ProfileLogRates(log_rates=out_m.logits)
     loss_c = loss_coupled(out_profile_only, targets_m)
     assert not torch.isnan(loss_c)
-    
+
     with pytest.raises(TypeError, match="does not accept ProfileCountOutput"):
         loss_coupled(out_m, targets_m)
 

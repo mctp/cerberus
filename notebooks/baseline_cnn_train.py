@@ -172,9 +172,9 @@ model_config: ModelConfig = {
     "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
     "model_args": {},  # input_len/output_len/output_bin_size come from data_config
     "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
-    "loss_args": {"log_input": True, "full": False, "implicit_log_targets": False},
+    "loss_args": {"log_input": True, "full": False, "log1p_targets": False},
     "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
-    "metrics_args": {"implicit_log_targets": False},
+    "metrics_args": {"log1p_targets": False},
 }
 
 # %% [markdown]

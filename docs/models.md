@@ -99,11 +99,64 @@ model = BPNet1024(
 **Implementation**: `cerberus.models.ConvNeXtDCNN`
 **Source**: `src/cerberus/models/asap.py`
 
-An architecture leveraging ConvNeXtV2 blocks for hierarchical feature extraction.
+A large-capacity architecture combining a ConvNeXtV2 stem with a Basenji-style dilated residual tower (DCNN). Designed for high-resolution profile prediction over a wide genomic context.
 
 ### Key Features
-*   **ConvNeXtV2 Blocks**: Modern CNN building blocks with LayerScale and GRN (Global Response Normalization).
-*   **Output**: Predicts log-rates (ProfileLogRates).
+*   **ConvNeXtV2 Stem**: Modern CNN building block with LayerScale and Global Response Normalization (GRN) for initial feature extraction.
+*   **MaxPool Downsampling**: 2× stride after the stem to halve the spatial resolution before the residual tower.
+*   **Basenji Dilated Residual Tower**: Stack of residual blocks with exponentially increasing dilations (`rate_mult=1.5`), each consisting of a dilated convolution followed by a pointwise convolution with a zero-initialized BN gamma (enabling smooth residual learning from initialization).
+*   **Configurable Depth and Width**: `residual_blocks` (default 11), `filters0` (default 256), `filters1` (default 128).
+*   **Output**: Returns `ProfileLogRates(log_rates=...)` consumed by `ProfilePoissonNLLLoss`.
+*   **I/O**: Default 2048bp → 512 bins at 4bp resolution (2048bp coverage). Output bins = `input_len / output_bin_size`.
+
+### Recommended Training Settings
+
+| Parameter | Value |
+|---|---|
+| Optimizer | `adamw` |
+| Learning rate | `1e-3` |
+| Weight decay | `0.01` |
+| Scheduler | `cosine` with 10 warmup epochs |
+| Min LR | `1e-5` |
+| Loss | `ProfilePoissonNLLLoss(log_input=True, log1p_targets=True)` |
+
+### Loss: ProfilePoissonNLLLoss
+
+ASAP outputs log-rates and is trained with Poisson NLL directly on the profile (no separate count head). The data config sets `log_transform=True` so targets are log1p-transformed before computing the loss:
+
+```python
+model_config = {
+    "name": "ConvNeXtDCNN",
+    "model_cls": "cerberus.models.asap.ConvNeXtDCNN",
+    "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
+    "loss_args": {"log_input": True, "log1p_targets": True},
+    "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
+    "metrics_args": {},
+    "model_args": {
+        "input_channels": ["A", "C", "G", "T"],
+        "output_channels": ["signal"],
+        "residual_blocks": 11,
+        "filters0": 256,
+        "filters1": 128,
+        "dropout": 0.3,
+    },
+}
+```
+
+### Usage
+```python
+from cerberus.models.asap import ConvNeXtDCNN
+
+# Default: 2048bp -> 512 bins (2048bp at 4bp resolution)
+model = ConvNeXtDCNN(
+    input_len=2048,
+    output_len=2048,
+    output_bin_size=4,
+    input_channels=["A", "C", "G", "T"],
+    output_channels=["signal"],
+)
+# Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 512)
+```
 
 ## GlobalProfileCNN (Gopher)
 

@@ -13,6 +13,7 @@ def test_setup_logging_basic():
     assert len(logger.handlers) == 1
     assert isinstance(logger.handlers[0], logging.StreamHandler)
     assert logger.level == logging.INFO
+    assert logger.propagate is False
 
 def test_setup_logging_idempotent():
     """Test that setup_logging doesn't add duplicate handlers."""
@@ -24,6 +25,7 @@ def test_setup_logging_idempotent():
     setup_logging()
 
     assert len(logger.handlers) == 1
+    assert logger.propagate is False
 
 def test_setup_logging_level():
     """Test setting a custom logging level."""

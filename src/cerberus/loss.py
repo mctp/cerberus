@@ -7,13 +7,20 @@ from cerberus.output import ProfileCountOutput, ProfileLogRates
 class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     """
     Poisson NLL Loss on Profile LogRates.
-    
+
     Interprets input as unnormalized log-counts (log-intensity).
     Computes Poisson NLL between exp(log_rates) and targets.
+
+    Args:
+        log1p_targets (bool): If True, assumes targets are log1p transformed.
+        count_pseudocount (float): Accepted for compatibility with propagate_pseudocount.
+            Not used (PoissonNLLLoss handles count loss directly).
     """
-    def __init__(self, log1p_targets=False, **kwargs):
+    def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
+        # count_pseudocount is accepted for compatibility with propagate_pseudocount
+        # but not used (PoissonNLLLoss handles count loss directly).
 
     def forward(self, log_input, target):
         target = target.float()

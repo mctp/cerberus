@@ -6,9 +6,9 @@ def setup_logging(level: int = logging.INFO) -> None:
     Configures the ``cerberus`` logger hierarchy.
 
     Sets up a StreamHandler on the ``cerberus`` library logger so that all
-    ``cerberus.*`` module loggers emit formatted output.  Does **not** touch
-    the root logger, avoiding interference with the host application's
-    logging configuration.
+    ``cerberus.*`` module loggers emit formatted output.  Disables propagation
+    to the root logger so that messages are not duplicated when the host
+    application (e.g. PyTorch Lightning, pytest) installs its own root handler.
 
     Checks if handlers already exist to avoid duplication.
 
@@ -36,3 +36,4 @@ def setup_logging(level: int = logging.INFO) -> None:
     handler.setFormatter(formatter)
 
     logger.addHandler(handler)
+    logger.propagate = False

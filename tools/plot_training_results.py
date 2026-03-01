@@ -7,18 +7,23 @@ plots for Loss, Pearson Correlation, and MSE.
 
 Usage:
     python tools/plot_training_results.py [RUN_DIR]
-    
+
     e.g.
     python tools/plot_training_results.py tests/data/models/chip_ar_mdapca2b_bpnet/single-fold
 """
 
 import argparse
-import polars as pl
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pathlib import Path
+import logging
 import os
 import sys
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import polars as pl
+import seaborn as sns
+
+logger = logging.getLogger(__name__)
+
 
 def get_args():
     parser = argparse.ArgumentParser(description="Plot training results from PyTorch Lightning logs")
@@ -33,24 +38,24 @@ def plot_metrics(metrics_path, output_dir):
             if col not in ["step", "epoch"] and df[col].dtype == pl.String:
                 df = df.with_columns(pl.col(col).cast(pl.Float64, strict=False))
     except Exception as e:
-        print(f"Error reading {metrics_path}: {e}")
+        logger.error(f"Error reading {metrics_path}: {e}")
         return
 
     if df.height == 0:
-        print(f"Warning: {metrics_path} is empty.")
+        logger.warning(f"{metrics_path} is empty.")
         return
 
     # Create output directory for plots
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Set style
     sns.set_style("whitegrid")
 
     # Get step range for consistent x-axis
     step_min = df["step"].min()
     step_max = df["step"].max()
-    
+
     # 1. Training Loss (step-wise)
     if "train_loss" in df.columns:
         plt.figure(figsize=(10, 6))
@@ -64,13 +69,13 @@ def plot_metrics(metrics_path, output_dir):
                     pl.col("train_loss").rolling_mean(window_size=10).alias("train_loss_smooth")
                 )
                 sns.lineplot(data=train_df.to_pandas(), x="step", y="train_loss_smooth", label="Train Loss (Smoothed)", linewidth=2)
-        
+
         # Add validation loss if available
         if "val_loss" in df.columns:
             val_df = df.filter(pl.col("val_loss").is_not_null() & pl.col("val_loss").is_not_nan())
             if val_df.height > 0:
                 sns.lineplot(data=val_df.to_pandas(), x="step", y="val_loss", label="Validation Loss", marker="o", markersize=6, linewidth=2)
-        
+
         plt.title("Training and Validation Loss")
         plt.xlabel("Step")
         plt.ylabel("Loss")
@@ -80,45 +85,44 @@ def plot_metrics(metrics_path, output_dir):
         plt.savefig(plots_dir / "loss_curve.png", dpi=300)
         plt.close()
 
-    # 2. Metrics (Pearson)
-    metrics_to_plot = []
+    # 2. Profile Pearson Correlation
+    pearson_metrics = []
     if "train_pearson" in df.columns:
-        metrics_to_plot.append("train_pearson")
+        pearson_metrics.append("train_pearson")
     if "val_pearson" in df.columns:
-        metrics_to_plot.append("val_pearson")
-        
-    if metrics_to_plot:
+        pearson_metrics.append("val_pearson")
+
+    if pearson_metrics:
         plt.figure(figsize=(10, 6))
-        for metric in metrics_to_plot:
+        for metric in pearson_metrics:
             metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
             if metric_df.height > 0:
-                label = "Train Pearson" if "train" in metric else "Validation Pearson"
-                # Use step for x-axis
+                label = "Train Pearson (Profile)" if "train" in metric else "Validation Pearson (Profile)"
                 sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
-        
-        plt.title("Pearson Correlation")
+
+        plt.title("Profile Pearson Correlation")
         plt.xlabel("Step")
-        plt.ylabel("Pearson Correlation")
+        plt.ylabel("Pearson r")
         plt.xlim(step_min, step_max)
         plt.legend()
         plt.tight_layout()
         plt.savefig(plots_dir / "pearson_curve.png", dpi=300)
         plt.close()
 
-    # 3. MSE (Profile)
+    # 3. Profile MSE
     mse_profile_metrics = []
     if "train_mse_profile" in df.columns:
         mse_profile_metrics.append("train_mse_profile")
     if "val_mse_profile" in df.columns:
         mse_profile_metrics.append("val_mse_profile")
-    
+
     # Backward compatibility
     if not mse_profile_metrics:
         if "train_mse" in df.columns:
             mse_profile_metrics.append("train_mse")
         if "val_mse" in df.columns:
             mse_profile_metrics.append("val_mse")
-        
+
     if mse_profile_metrics:
         plt.figure(figsize=(10, 6))
         for metric in mse_profile_metrics:
@@ -126,23 +130,23 @@ def plot_metrics(metrics_path, output_dir):
             if metric_df.height > 0:
                 label = "Train MSE (Profile)" if "train" in metric else "Validation MSE (Profile)"
                 sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
-        
+
         plt.title("Profile Mean Squared Error")
         plt.xlabel("Step")
-        plt.ylabel("MSE")
+        plt.ylabel("Profile MSE")
         plt.xlim(step_min, step_max)
         plt.legend()
         plt.tight_layout()
         plt.savefig(plots_dir / "mse_profile_curve.png", dpi=300)
         plt.close()
 
-    # 4. MSE (Log Counts)
+    # 4. Log Counts MSE
     mse_counts_metrics = []
     if "train_mse_log_counts" in df.columns:
         mse_counts_metrics.append("train_mse_log_counts")
     if "val_mse_log_counts" in df.columns:
         mse_counts_metrics.append("val_mse_log_counts")
-        
+
     if mse_counts_metrics:
         plt.figure(figsize=(10, 6))
         for metric in mse_counts_metrics:
@@ -150,23 +154,23 @@ def plot_metrics(metrics_path, output_dir):
             if metric_df.height > 0:
                 label = "Train MSE (Log Counts)" if "train" in metric else "Validation MSE (Log Counts)"
                 sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
-        
+
         plt.title("Log Counts Mean Squared Error")
         plt.xlabel("Step")
-        plt.ylabel("MSE")
+        plt.ylabel("Log Counts MSE")
         plt.xlim(step_min, step_max)
         plt.legend()
         plt.tight_layout()
         plt.savefig(plots_dir / "mse_log_counts_curve.png", dpi=300)
         plt.close()
 
-    # 5. Pearson (Log Counts)
+    # 5. Log Counts Pearson Correlation
     pearson_counts_metrics = []
     if "train_pearson_log_counts" in df.columns:
         pearson_counts_metrics.append("train_pearson_log_counts")
     if "val_pearson_log_counts" in df.columns:
         pearson_counts_metrics.append("val_pearson_log_counts")
-        
+
     if pearson_counts_metrics:
         plt.figure(figsize=(10, 6))
         for metric in pearson_counts_metrics:
@@ -174,54 +178,47 @@ def plot_metrics(metrics_path, output_dir):
             if metric_df.height > 0:
                 label = "Train Pearson (Log Counts)" if "train" in metric else "Validation Pearson (Log Counts)"
                 sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
-        
+
         plt.title("Log Counts Pearson Correlation")
         plt.xlabel("Step")
-        plt.ylabel("Pearson Correlation")
+        plt.ylabel("Pearson r (log counts)")
         plt.xlim(step_min, step_max)
         plt.legend()
         plt.tight_layout()
         plt.savefig(plots_dir / "pearson_log_counts_curve.png", dpi=300)
         plt.close()
 
-    print(f"Plots saved to {plots_dir}")
+    logger.info(f"Plots saved to {plots_dir}")
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = get_args()
     base_path = Path(args.run_dir).resolve()
-    
+
     if not base_path.exists():
-        print(f"Error: Directory {base_path} does not exist.")
+        logger.error(f"Directory {base_path} does not exist.")
         return
 
-    # Find all metrics.csv files
-    # If the path itself points to a directory containing metrics.csv, use it.
-    # Otherwise, walk logs.
-    
     metrics_files = []
-    
+
     # Check if base_path is directly a version directory (has metrics.csv)
     if (base_path / "metrics.csv").exists():
         metrics_files.append(base_path / "metrics.csv")
     else:
-        # Search for lightning_logs
-        # Look for metrics.csv in immediate subdirectories or recursively
         for root, dirs, files in os.walk(base_path):
             if "metrics.csv" in files:
                 metrics_files.append(Path(root) / "metrics.csv")
-    
+
     if not metrics_files:
-        print(f"No metrics.csv files found in {base_path}")
-        print("Please check if the training run has generated logs.")
+        logger.error(f"No metrics.csv files found in {base_path}")
         return
-        
-    print(f"Found {len(metrics_files)} metrics files.")
-    
+
+    logger.info(f"Found {len(metrics_files)} metrics file(s).")
+
     for metrics_file in metrics_files:
-        # Identify version name
         version_name = metrics_file.parent.name
         parent_name = metrics_file.parent.parent.name
-        print(f"\nProcessing {parent_name}/{version_name}...")
+        logger.info(f"Processing {parent_name}/{version_name}...")
         plot_metrics(metrics_file, metrics_file.parent)
 
 if __name__ == "__main__":

@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 """
-Gopher Training Tool.
+ASAP Training Tool.
 
-This script implements a generic training tool for Gopher (GlobalProfileCNN) models,
+This script implements a generic training tool for ASAP (ConvNeXtDCNN) models,
 allowing users to provide any BigWig and BED file for training.
 
 Models:
-- GlobalProfileCNN (Default): 3-block CNN with global dense bottleneck.
-  Input 2048bp → Output 1024bp at 4bp resolution (256 bins).
+- ConvNeXtDCNN (Default): ConvNeXtV2 stem + Basenji-style dilated residual tower.
+  Input 2048bp → Output 512 bins at 4bp resolution (2048bp coverage).
 
 Usage:
-    python tools/train_gopher.py --bigwig path/to/signal.bw --peaks path/to/peaks.narrowPeak --output-dir models/my_model
+    python tools/train_asap.py --bigwig path/to/signal.bw --peaks path/to/peaks.narrowPeak --output-dir models/my_model
 """
 
 import argparse
@@ -29,7 +29,7 @@ from cerberus.train import train_single, train_multi
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Train Gopher (GlobalProfileCNN) models with Cerberus using any BigWig and BED file")
+    parser = argparse.ArgumentParser(description="Train ASAP (ConvNeXtDCNN) models with Cerberus using any BigWig and BED file")
 
     # Input files
     parser.add_argument("--bigwig", type=str, required=True, help="Path to the BigWig file (signal)")
@@ -56,14 +56,19 @@ def get_args():
     parser.add_argument("--test-fold", type=int, default=0, help="Test fold")
 
     # Hyperparameters
-    parser.add_argument("--input-len", type=int, default=2048, help="Input sequence length")
-    parser.add_argument("--output-len", type=int, default=1024, help="Output profile length in base pairs")
+    parser.add_argument("--input-len", type=int, default=2048, help="Input sequence length (must be divisible by output_bin_size)")
+    parser.add_argument("--output-len", type=int, default=2048, help="Output profile length in base pairs")
     parser.add_argument("--output-bin-size", type=int, default=4, help="Output bin size in base pairs (output_len must be divisible by this)")
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
-    parser.add_argument("--bottleneck-channels", type=int, default=8, help="Number of channels in the global dense bottleneck")
     parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
     parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets")
     parser.add_argument("--count-pseudocount", type=float, default=1.0, help="Additive offset before log-transforming count targets (in raw coverage units)")
+
+    # Architecture arguments
+    parser.add_argument("--residual-blocks", type=int, default=11, help="Number of dilated residual blocks in the Basenji core (default: 11)")
+    parser.add_argument("--filters0", type=int, default=256, help="Number of filters after the ConvNeXtV2 stem and throughout the residual tower (default: 256)")
+    parser.add_argument("--filters1", type=int, default=128, help="Number of filters in the dilated convolution inside each residual block (default: 128)")
+    parser.add_argument("--dropout", type=float, default=0.3, help="Dropout rate within residual blocks (default: 0.3)")
 
     # Training parameters
     parser.add_argument("--learning-rate", type=float, default=1e-3, help="Learning rate")
@@ -88,7 +93,7 @@ def get_args():
 def main():
     # Setup logging
     cerberus.setup_logging()
-    logging.info("Starting Generic Gopher training tool...")
+    logging.info("Starting Generic ASAP training tool...")
 
     args = get_args()
 
@@ -154,7 +159,7 @@ def main():
         "max_jitter": max_jitter,
         "output_bin_size": output_bin_size,
         "encoding": "ACGT",
-        "log_transform": True,  # Gopher trains on log(x+1) data
+        "log_transform": True,  # ASAP trains on log(x+1) data
         "reverse_complement": True,  # Augmentation
         "use_sequence": True,
         "target_scale": args.target_scale,
@@ -195,10 +200,10 @@ def main():
     }
 
     # Model Config
-    logging.info("Using GlobalProfileCNN (Gopher) Model...")
+    logging.info("Using ConvNeXtDCNN (ASAP) Model...")
     model_config: ModelConfig = {
-        "name": "GlobalProfileCNN",
-        "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
+        "name": "ConvNeXtDCNN",
+        "model_cls": "cerberus.models.asap.ConvNeXtDCNN",
         "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
         "loss_args": {
             "log_input": True,
@@ -209,7 +214,10 @@ def main():
         "model_args": {
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
-            "bottleneck_channels": args.bottleneck_channels,
+            "residual_blocks": args.residual_blocks,
+            "filters0": args.filters0,
+            "filters1": args.filters1,
+            "dropout": args.dropout,
         }
     }
 

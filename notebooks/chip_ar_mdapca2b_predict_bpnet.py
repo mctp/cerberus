@@ -139,7 +139,7 @@ model_config: ModelConfig = {
     "loss_cls": "cerberus.models.bpnet.BPNetLoss",
     "loss_args": {
         "alpha": 1.0, 
-        "implicit_log_targets": log_transform
+        "log1p_targets": log_transform
     },
     "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
     "metrics_args": {},
@@ -190,7 +190,8 @@ model_ensemble = ModelEnsemble(
     model_config=model_config,
     data_config=data_config,
     genome_config=genome_config,
-    device=device
+    device=device,
+    search_paths=[project_root],
 )
 
 # %% [markdown]
