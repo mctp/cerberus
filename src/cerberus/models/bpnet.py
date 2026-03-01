@@ -1,8 +1,12 @@
+import logging
+
 import torch.nn as nn
 import torch.nn.functional as F
 from torchmetrics import MetricCollection
 
 from cerberus.loss import MSEMultinomialLoss
+
+logger = logging.getLogger(__name__)
 from cerberus.output import ProfileCountOutput
 from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, LogCountsPearsonCorrCoef
 from cerberus.layers import DilatedResidualBlock
@@ -245,13 +249,23 @@ class BPNetLoss(MSEMultinomialLoss):
             beta (float): Weight for profile loss. Default: 1.0.
             **kwargs: Other arguments passed to MSEMultinomialLoss.
         """
-        # Remove constrained arguments from kwargs if they exist to avoid multiple values error
-        kwargs.pop("average_channels", None)
-        kwargs.pop("flatten_channels", None)
-        kwargs.pop("count_per_channel", None)
-        kwargs.pop("log1p_targets", None)
-        kwargs.pop("count_weight", None)
-        kwargs.pop("profile_weight", None)
+        # BPNetLoss enforces fixed values for chrombpnet compatibility.
+        # Warn if the caller explicitly passed conflicting values.
+        _fixed = {
+            "average_channels": True,
+            "flatten_channels": False,
+            "count_per_channel": False,
+            "log1p_targets": False,
+            "count_weight": alpha,
+            "profile_weight": beta,
+        }
+        for key, fixed_val in _fixed.items():
+            caller_val = kwargs.pop(key, None)
+            if caller_val is not None and caller_val != fixed_val:
+                logger.warning(
+                    f"BPNetLoss: ignoring {key}={caller_val!r}, "
+                    f"using fixed value {fixed_val!r} for chrombpnet compatibility"
+                )
 
         # chrombpnet: loss = beta * profile + alpha * count
         # MSEMultinomialLoss: loss = profile_weight * profile + count_weight * count

@@ -97,9 +97,10 @@ class DataConfig(TypedDict):
         target_scale: Multiplicative scaling factor for targets.
         use_sequence: Whether to use sequence input (default: True).
         count_pseudocount: Additive offset before log-transforming count targets, specified
-            in raw coverage units (i.e. approximately read_length). parse_hparams_config
-            multiplies this by target_scale before injecting into loss_args and metrics_args
-            so that loss and metrics always receive the value in their native (scaled) units.
+            in raw coverage units (i.e. approximately read_length). propagate_pseudocount
+            (called from instantiate()) multiplies this by target_scale before injecting
+            into loss_args and metrics_args so that loss and metrics always receive the
+            value in their native (scaled) units.
             A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.
     """
 
@@ -576,6 +577,8 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
         "patience",
         "optimizer",
         "filter_bias_and_bn",
+        "adam_eps",
+        "gradient_clip_val",
     }
     # Optional: scheduler_type, scheduler_args
     if not all(key in config for key in required_keys):
@@ -844,8 +847,6 @@ def parse_hparams_config(
     # Cross-validation
     validate_data_and_sampler_compatibility(data_conf, sampler_conf)
     validate_data_and_model_compatibility(data_conf, model_conf)
-
-    propagate_pseudocount(data_conf, model_conf)
 
     config: CerberusConfig = {
         "train_config": train_conf,

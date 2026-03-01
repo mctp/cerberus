@@ -23,6 +23,7 @@ from cerberus.config import (
     validate_genome_config,
     validate_sampler_config,
     import_class,
+    propagate_pseudocount,
 )
 
 logger = logging.getLogger(__name__)
@@ -202,8 +203,14 @@ class CerberusModule(pl.LightningModule):
             target_lc = torch.log(targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount)            # (B,)
             self._val_log_count_preds.append(pred_lc.cpu())
             self._val_log_count_targets.append(target_lc.cpu())
-        except (ValueError, AttributeError, TypeError, IndexError):
-            pass
+        # TODO: consider restricting to ValueError only — AttributeError,
+        # TypeError, and IndexError may indicate real bugs that should surface.
+        except (ValueError, AttributeError, TypeError, IndexError) as e:
+            if not getattr(self, "_log_count_warning_emitted", False):
+                logger.debug(
+                    f"Skipping log-count accumulation: {type(e).__name__}: {e}"
+                )
+                self._log_count_warning_emitted = True
 
     def on_validation_epoch_end(self):
         # Log aggregated metrics
@@ -343,11 +350,18 @@ def instantiate(
     if sampler_config is not None:
         sampler_config = validate_sampler_config(sampler_config)
     
-    # model_config and data_config validated in instantiate_model
-    model = instantiate_model(model_config, data_config, compile)
-    
-    # Ensure model_config is validated version for subsequent use
+    # Validate model_config before instantiate_model so the validated version
+    # is available for instantiate_metrics_and_loss below. instantiate_model
+    # also validates internally (for standalone use), but that is idempotent.
     model_config = validate_model_config(model_config)
+
+    # Propagate scaled count_pseudocount from data_config into loss_args and
+    # metrics_args. This is the single call site — neither parse_hparams_config
+    # nor _train call propagate_pseudocount, keeping ownership here where the
+    # loss and metrics are actually constructed.
+    propagate_pseudocount(data_config, model_config)
+
+    model = instantiate_model(model_config, data_config, compile)
 
     # Instantiate criterion and metrics
     metrics, criterion = instantiate_metrics_and_loss(model_config)

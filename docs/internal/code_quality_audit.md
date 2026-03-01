@@ -10,19 +10,19 @@ Comprehensive audit of `src/cerberus/` for code complexity, bugs, dead code, poo
 
 In `_load_model`, the parameter `key` (the model name, e.g. `"fold_0"`) is overwritten inside the state_dict processing loop: `key = k[6:]`. After the loop, `self.cache[key]` uses the last loop value of `key`, not the original model identifier. The cache stores models under wrong keys, so `if key in self.cache` never matches and models are reloaded every time.
 
-### 2. BUG: `.bed.gz` detection is broken (`signal.py:137`)
+### 2. BUG: `.bed.gz` detection is broken (`signal.py:137`) (FIXED)
 
 `path.suffix.lower()` returns only the last suffix (`.gz` for `file.bed.gz`), never `.bed.gz`. The `.bed.gz` string in the suffix tuple is dead code. Furthermore, bare `.gz` files that are not BED files are incorrectly routed to `BedMaskExtractor`.
 
-### 3. BUG: `PoissonMultinomialLoss` / `NegativeBinomialMultinomialLoss` crash with `propagate_pseudocount` (`loss.py`, `config.py`)
+### 3. BUG: `PoissonMultinomialLoss` / `NegativeBinomialMultinomialLoss` crash with `propagate_pseudocount` (`loss.py`, `config.py`) (FIXED)
 
 `propagate_pseudocount` always injects `count_pseudocount` into `loss_args` via `setdefault`. But only `MSEMultinomialLoss` accepts this kwarg. Using Poisson or NegativeBinomial loss classes with pseudocount propagation will crash with `TypeError` at module instantiation.
 
-### 4. BUG: `BPNet` counts head uses uncropped feature map (`models/bpnet.py:157`)
+### 4. BUG: `BPNet` counts head uses uncropped feature map (`models/bpnet.py:157`) (ORIGINAL, NOT FIXED)
 
 `BPNet.forward` pools over the full `x` tensor for counts (`x.mean(dim=-1)`) without cropping to `target_len` first. All other models (`GemiNet`, `LyraNet`, `Pomeranian`) crop before pooling. BPNet's count prediction includes flanking context excluded from the profile, creating an inconsistency that may affect training.
 
-### 5. `BPNetLoss` silently discards caller-provided arguments (`models/bpnet.py:249-254`)
+### 5. `BPNetLoss` silently discards caller-provided arguments (`models/bpnet.py:249-254`) (FIXED)
 
 `BPNetLoss.__init__` pops `average_channels`, `flatten_channels`, `count_per_channel`, `log1p_targets`, `count_weight`, and `profile_weight` from `**kwargs` without warning. A caller who passes `log1p_targets=True` gets `False` silently. Configuration errors are swallowed.
 
@@ -30,11 +30,11 @@ In `_load_model`, the parameter `key` (the model name, e.g. `"fold_0"`) is overw
 
 `except (Exception, BaseException)` is redundant (`BaseException` already covers `Exception`) and dangerous. Can silently swallow unexpected fatal errors. The re-raise logic for `KeyboardInterrupt`/`SystemExit`/`GeneratorExit` is correct in intent but the broad catch is fragile.
 
-### 7. Silent exception swallowing in `_accumulate_log_counts` (`module.py:192-206`)
+### 7. Silent exception swallowing in `_accumulate_log_counts` (`module.py:192-206`) (PARTIALLY FIXED)
 
 `except (ValueError, AttributeError, TypeError, IndexError): pass` silently swallows five exception types. Bugs in `compute_total_log_counts` or `self.criterion` will produce no scatter plot with zero indication of why.
 
-### 8. Missing model exports (`models/__init__.py`)
+### 8. Missing model exports (`models/__init__.py`) (FIXED)
 
 `Pomeranian`, `PomeranianK5`, `ConvNeXtDCNN`, `BPNet1024`, all `MetricCollection` and `Loss` subclasses are not exported. The `pomeranian` module is entirely invisible from the public API.
 
@@ -42,7 +42,7 @@ In `_load_model`, the parameter `key` (the model name, e.g. `"fold_0"`) is overw
 
 PGC layers are applied sequentially without residuals: `for pgc in self.pgc_layers: x = pgc(x)`. The `PGC` class itself has no residual. Meanwhile, S4D layers in the same model use explicit residuals. Missing residual connections in 4-7 stacked PGC layers may cause gradient flow problems.
 
-### 10. Missing required keys cause raw `KeyError` (`config.py:618,621`)
+### 10. Missing required keys cause raw `KeyError` (`config.py:618,621`) (FIXED)
 
 `adam_eps` and `gradient_clip_val` are not in `required_keys` for `validate_train_config`, so their absence produces a raw `KeyError` instead of the helpful "missing required keys" `ValueError`.
 
@@ -62,7 +62,7 @@ PGC layers are applied sequentially without residuals: `for pgc in self.pgc_laye
 
 `GemiNetMedium`, `GemiNetLarge`, `GemiNetExtraLarge`, `LyraNetMedium`/`Large`/`ExtraLarge`/`ExtraExtraLarge`, `BPNet1024` do nothing except change default argument values. Each is a verbatim copy of the parent's `__init__` signature. Factory functions or class methods would eliminate this.
 
-### 14. Redundant validation across the entire call chain (`config.py`, `dataset.py`, `datamodule.py`, `module.py`, `train.py`)
+### 14. Redundant validation across the entire call chain (`config.py`, `dataset.py`, `datamodule.py`, `module.py`, `train.py`) (PARTIALLY FIXED)
 
 Configs are validated 3-4 times redundantly during a standard training flow:
 1. `parse_hparams_config` validates everything
@@ -77,9 +77,9 @@ Unclear ownership of validation responsibility. Wasted computation (includes fil
 
 All five `validate_*_config` functions follow an identical pattern (check dict, compute required_keys, check presence, validate types, return). Could be a generic schema-driven validator.
 
-### 16. `propagate_pseudocount` called in two different places (`config.py:848`, `train.py:326`)
+### 16. `propagate_pseudocount` called in two different places (`config.py:848`, `train.py:326`) (FIXED)
 
-Called in both `parse_hparams_config` and `_train`. Since it uses `setdefault`, the second call is a no-op if the first already ran. Unclear ownership. Modifying `count_pseudocount` between the two calls silently keeps the stale value.
+Called in both `parse_hparams_config` and `_train`. Since it uses `setdefault`, the second call is a no-op if the first already ran. Unclear ownership. Modifying `count_pseudocount` between the two calls silently keeps the stale value. Fixed by moving the single call into `instantiate()` where the loss and metrics are actually constructed.
 
 ### 17. `propagate_pseudocount` mutates argument in-place (`config.py:767-785`)
 

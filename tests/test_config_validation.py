@@ -279,8 +279,8 @@ def test_validate_data_config_count_pseudocount_stored_as_float():
 # --- count_pseudocount injection from data_config into loss/metrics args ---
 
 def test_count_pseudocount_injection_into_loss_and_metrics_args():
-    """parse_hparams_config injects count_pseudocount*target_scale into loss_args and metrics_args."""
-    # Simulate the injection logic from parse_hparams_config.
+    """propagate_pseudocount injects count_pseudocount*target_scale into loss_args and metrics_args."""
+    # Simulate the injection logic from propagate_pseudocount.
     data_conf = cast(DataConfig, _minimal_raw_data_config(count_pseudocount=100.0, target_scale=2.0))
     model_conf = cast(ModelConfig, {
         "name": "m", "model_cls": "torch.nn.Linear",

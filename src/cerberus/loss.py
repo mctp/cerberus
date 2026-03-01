@@ -65,7 +65,7 @@ class MSEMultinomialLoss(nn.Module):
                 targets: log(count + count_pseudocount). Prevents log(0) for silent regions
                 and encodes the minimum meaningful count. Must be in the same units as the
                 scaled targets. Set via data_config.count_pseudocount in hparams (propagated
-                automatically by parse_hparams_config). Default 1.0 reproduces log1p behaviour.
+                automatically by propagate_pseudocount in instantiate()). Default 1.0 reproduces log1p behaviour.
         """
         super().__init__()
         self.count_weight = count_weight
@@ -197,7 +197,7 @@ class PoissonMultinomialLoss(nn.Module):
       
     Requires ProfileCountOutput.
     """
-    def __init__(self, count_weight=0.2, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=True, log1p_targets=False, epsilon=1e-8):
+    def __init__(self, count_weight=0.2, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=True, log1p_targets=False, epsilon=1e-8, count_pseudocount=1.0):
         """
         Args:
             count_weight (float): Weight for the count loss component.
@@ -205,7 +205,7 @@ class PoissonMultinomialLoss(nn.Module):
             flatten_channels (bool): Controls how profile loss is computed across channels.
                 - If False (default): Computes Cross Entropy independently for each channel.
                   (Softmax over Length). Summed across channels.
-                - If True: Flattens channels and length. Computes Cross Entropy over 
+                - If True: Flattens channels and length. Computes Cross Entropy over
                   (Channels x Length). (Softmax over Channels * Length).
             count_per_channel (bool): Controls how count loss is computed.
                 - If False (default): Computes count loss on global count (sum over channels and length).
@@ -214,6 +214,8 @@ class PoissonMultinomialLoss(nn.Module):
                                      If False, sums profile loss across channels.
             log1p_targets (bool): If True, assumes targets are log1p transformed.
             epsilon (float): Small constant for numerical stability.
+            count_pseudocount (float): Accepted for compatibility with propagate_pseudocount.
+                Not used by Poisson count loss (which uses PoissonNLLLoss directly).
         """
         super().__init__()
         self.count_weight = count_weight

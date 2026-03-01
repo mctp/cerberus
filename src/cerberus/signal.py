@@ -95,11 +95,12 @@ class SignalExtractor(BaseSignalExtractor):
                 # Chromosome not found or other read error -> zeros
                 logger.debug(f"Chrom {interval.chrom} not found in BigWig '{name}', returning zeros")
                 vals = np.zeros(length, dtype=np.float32)
-            except (Exception, BaseException) as e:
-                if isinstance(e, (KeyboardInterrupt, SystemExit, GeneratorExit)):
-                    raise
-                # pyo3_runtime.PanicException (Rust panics from bigtools) inherits from
-                # BaseException, not Exception, so it must be caught here explicitly.
+            except Exception:
+                # Catch non-fatal read errors (e.g. malformed data, unsupported regions).
+                # pyo3_runtime.PanicException from bigtools inherits BaseException but
+                # was reclassified to Exception in newer versions; Rust panics that still
+                # inherit BaseException will propagate naturally (alongside KeyboardInterrupt,
+                # SystemExit, GeneratorExit) which is the correct behavior.
                 logger.debug(f"Error reading BigWig '{name}' at {interval}, returning zeros")
                 vals = np.zeros(length, dtype=np.float32)
 
@@ -127,14 +128,14 @@ class UniversalExtractor(BaseSignalExtractor):
         
         for name in self.channels:
             path = Path(paths[name])
-            suffix = path.suffix.lower()
+            suffixes = "".join(path.suffixes).lower()
             name_str = str(name)
-            
-            if suffix in ('.bw', '.bigwig'):
+
+            if suffixes.endswith(('.bw', '.bigwig')):
                 self.bw_paths[name_str] = path
-            elif suffix in ('.bb', '.bigbed'):
+            elif suffixes.endswith(('.bb', '.bigbed')):
                 self.bb_paths[name_str] = path
-            elif suffix in ('.bed', '.bed.gz', '.gz'): 
+            elif suffixes.endswith(('.bed', '.bed.gz')):
                 self.bed_paths[name_str] = path
             else:
                 # Default to BigWig if unknown

@@ -32,7 +32,9 @@ def test_validate_train_config_invalid_types():
         "weight_decay": 1e-4,
         "patience": 5,
         "optimizer": "adam",
-        "filter_bias_and_bn": True
+        "filter_bias_and_bn": True,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
     with pytest.raises(ValueError, match="batch_size must be a positive integer"):
         validate_train_config(config) # type: ignore
@@ -45,7 +47,9 @@ def test_validate_train_config_invalid_values():
         "weight_decay": 1e-4,
         "patience": 5,
         "optimizer": "adam",
-        "filter_bias_and_bn": True
+        "filter_bias_and_bn": True,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
     with pytest.raises(ValueError, match="batch_size must be a positive integer"):
         validate_train_config(config) # type: ignore
@@ -113,6 +117,38 @@ def test_validate_train_config_gradient_clip_val_invalid():
     }
     with pytest.raises(ValueError, match="gradient_clip_val must be a positive float or None"):
         validate_train_config(config) # type: ignore
+
+def test_validate_train_config_missing_adam_eps():
+    """Regression: missing adam_eps must raise ValueError, not KeyError."""
+    config = {
+        "batch_size": 32,
+        "max_epochs": 10,
+        "learning_rate": 1e-3,
+        "weight_decay": 1e-4,
+        "patience": 5,
+        "optimizer": "adam",
+        "filter_bias_and_bn": True,
+        "gradient_clip_val": None,
+        # adam_eps intentionally missing
+    }
+    with pytest.raises(ValueError, match="missing required keys"):
+        validate_train_config(config)  # type: ignore
+
+def test_validate_train_config_missing_gradient_clip_val():
+    """Regression: missing gradient_clip_val must raise ValueError, not KeyError."""
+    config = {
+        "batch_size": 32,
+        "max_epochs": 10,
+        "learning_rate": 1e-3,
+        "weight_decay": 1e-4,
+        "patience": 5,
+        "optimizer": "adam",
+        "filter_bias_and_bn": True,
+        "adam_eps": 1e-8,
+        # gradient_clip_val intentionally missing
+    }
+    with pytest.raises(ValueError, match="missing required keys"):
+        validate_train_config(config)  # type: ignore
 
 def test_validate_train_config_gradient_clip_val_valid_float():
     config: TrainConfig = {

@@ -12,7 +12,7 @@ observable non-zero count is approximately ``read_length``, not 1.  Using ``log1
 The ``count_pseudocount`` parameter replaces the hard-coded ``+1`` with a configurable
 offset set once in ``DataConfig`` and automatically propagated (after scaling by
 ``target_scale``) into ``loss_args`` and ``metrics_args`` by ``propagate_pseudocount``
-(called from both ``_train`` during training and ``parse_hparams_config`` at prediction time).
+(called from ``instantiate()`` where the loss and metrics are constructed).
 """
 
 import math
@@ -362,15 +362,15 @@ class TestComputeTotalLogCountsPseudocount:
 # ===========================================================================
 
 class TestConfigInjection:
-    """Verify the setdefault injection logic used in parse_hparams_config.
+    """Verify the setdefault injection logic used in propagate_pseudocount.
 
-    The full parse_hparams_config requires real files and many config sections.
+    The full instantiate() requires model classes and many config sections.
     These tests exercise the injection logic in isolation by simulating the
-    relevant part of parse_hparams_config.
+    relevant part of propagate_pseudocount.
     """
 
     def _inject(self, count_pseudocount, target_scale, loss_args=None, metrics_args=None):
-        """Reproduce the injection done by parse_hparams_config."""
+        """Reproduce the injection done by propagate_pseudocount."""
         if loss_args is None:
             loss_args = {}
         if metrics_args is None:

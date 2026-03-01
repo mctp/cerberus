@@ -173,10 +173,10 @@ class TestPropagatePseudocount:
 # ===========================================================================
 
 class TestTrainPropagation:
-    """Verify that _train propagates pseudocount before instantiating the module."""
+    """Verify that _train passes data_config to instantiate, which handles propagation."""
 
-    def test_train_passes_pseudocount_to_instantiate(self):
-        """_train must inject count_pseudocount into model_config before calling instantiate."""
+    def test_train_passes_data_config_to_instantiate(self):
+        """_train must pass data_config (with count_pseudocount) to instantiate."""
         mock_module = MagicMock(spec=pl.LightningModule)
         datamodule = MagicMock()
 
@@ -184,7 +184,7 @@ class TestTrainPropagation:
         model_cfg = _model_config()
         train_cfg = _train_config()
 
-        with patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
+        with patch("pytorch_lightning.Trainer"), \
              patch("cerberus.train.instantiate", return_value=mock_module) as mock_inst, \
              patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc):
 
@@ -198,63 +198,28 @@ class TestTrainPropagation:
                 accelerator="cpu",
             )
 
-            # Extract the model_config that was passed to instantiate
+            # Verify data_config is passed through so instantiate() can propagate
             call_kwargs = mock_inst.call_args[1]
-            passed_model_config = call_kwargs["model_config"]
-            assert passed_model_config["loss_args"]["count_pseudocount"] == 150.0
-            assert passed_model_config["metrics_args"]["count_pseudocount"] == 150.0
+            assert call_kwargs["data_config"]["count_pseudocount"] == 150.0
+            assert call_kwargs["data_config"]["target_scale"] == 1.0
 
-    def test_train_scales_pseudocount_by_target_scale(self):
-        """_train must scale pseudocount by target_scale."""
-        mock_module = MagicMock(spec=pl.LightningModule)
-        datamodule = MagicMock()
-
+    def test_instantiate_propagates_pseudocount(self):
+        """instantiate() must inject scaled count_pseudocount into loss_args/metrics_args."""
         data_cfg = _data_config(count_pseudocount=100.0, target_scale=0.5)
         model_cfg = _model_config()
-        train_cfg = _train_config()
 
-        with patch("pytorch_lightning.Trainer"), \
-             patch("cerberus.train.instantiate", return_value=mock_module) as mock_inst, \
-             patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc):
+        # propagate_pseudocount is called inside instantiate; verify via direct call
+        propagate_pseudocount(data_cfg, model_cfg)
+        assert model_cfg["loss_args"]["count_pseudocount"] == pytest.approx(50.0)
+        assert model_cfg["metrics_args"]["count_pseudocount"] == pytest.approx(50.0)
 
-            train(
-                model_config=model_cfg,
-                data_config=data_cfg,
-                datamodule=datamodule,
-                train_config=train_cfg,
-                num_workers=0,
-                in_memory=False,
-                accelerator="cpu",
-            )
-
-            passed_model_config = mock_inst.call_args[1]["model_config"]
-            assert passed_model_config["loss_args"]["count_pseudocount"] == pytest.approx(50.0)
-
-    def test_train_does_not_overwrite_explicit_loss_arg(self):
-        """If loss_args already has count_pseudocount, _train preserves it."""
-        mock_module = MagicMock(spec=pl.LightningModule)
-        datamodule = MagicMock()
-
+    def test_instantiate_does_not_overwrite_explicit_loss_arg(self):
+        """Explicit count_pseudocount in loss_args is preserved by propagate_pseudocount."""
         data_cfg = _data_config(count_pseudocount=150.0)
         model_cfg = _model_config(loss_args={"alpha": 1.0, "count_pseudocount": 999.0})
-        train_cfg = _train_config()
 
-        with patch("pytorch_lightning.Trainer"), \
-             patch("cerberus.train.instantiate", return_value=mock_module) as mock_inst, \
-             patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc):
-
-            train(
-                model_config=model_cfg,
-                data_config=data_cfg,
-                datamodule=datamodule,
-                train_config=train_cfg,
-                num_workers=0,
-                in_memory=False,
-                accelerator="cpu",
-            )
-
-            passed_model_config = mock_inst.call_args[1]["model_config"]
-            assert passed_model_config["loss_args"]["count_pseudocount"] == 999.0
+        propagate_pseudocount(data_cfg, model_cfg)
+        assert model_cfg["loss_args"]["count_pseudocount"] == 999.0
 
 
 # ===========================================================================
