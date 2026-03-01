@@ -1,8 +1,6 @@
 import logging
 
-import torch
 import torch.nn as nn
-import torch.nn.utils.parametrize as nn_parametrize
 import torch.nn.functional as F
 from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
 from torchmetrics import MetricCollection
