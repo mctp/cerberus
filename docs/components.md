@@ -264,25 +264,13 @@ Models return standardized dataclasses (defined in `cerberus.output`) to ensure 
 ### ProfilePearsonCorrCoef
 Pearson Correlation Coefficient for profile probabilities.
 
-*   **Behavior**: Flattens batch and length dimensions per channel to compute correlation, then averages across channels. Operates on probabilities (Softmax of logits or log_rates).
-*   **Inputs**: `ProfileLogRates` or `ProfileLogits`.
-
-### PerExampleProfilePearsonCorrCoef
-Per-example Pearson Correlation for profile probabilities.
-
-*   **Behavior**: Computes Pearson correlation per (example, channel) pair along the sequence length dimension, then averages. Numerically stable — avoids cross-batch accumulation artifacts from summing high-dimensional vectors.
+*   **Behavior**: Computes Pearson correlation per (example, channel) pair along the sequence length dimension, then averages across channels and examples. Numerically stable in float32. Operates on probabilities (Softmax of logits or log_rates).
 *   **Inputs**: `ProfileLogRates` or `ProfileLogits`.
 
 ### CountProfilePearsonCorrCoef
 Pearson Correlation for models with separate profile logits and counts (BPNet-style).
 
-*   **Behavior**: Reconstructs predicted counts (`Softmax(logits) * Exp(log_counts)`) before computing correlation.
-*   **Inputs**: `ProfileCountOutput`.
-
-### PerExampleCountProfilePearsonCorrCoef
-Per-example Pearson Correlation for reconstructed profile counts (BPNet-style).
-
-*   **Behavior**: Per-example version of `CountProfilePearsonCorrCoef`. Numerically stable.
+*   **Behavior**: Reconstructs predicted counts (`Softmax(logits) * (Exp(log_counts) - count_pseudocount)`) before computing per-example Pearson correlation along the sequence length. Numerically stable in float32.
 *   **Inputs**: `ProfileCountOutput`.
 
 ### ProfileMeanSquaredError
@@ -304,15 +292,9 @@ MSE on log counts.
 *   **Inputs**: `ProfileCountOutput` (uses `log_counts`) or `ProfileLogRates` (uses `logsumexp(log_rates)`).
 
 ### LogCountsPearsonCorrCoef
-Pearson Correlation on log counts (cross-batch accumulation).
+Pearson Correlation on log counts.
 
-*   **Behavior**: Computes correlation between predicted log counts and `log1p(target_counts)`.
-*   **Inputs**: `ProfileCountOutput` or `ProfileLogRates`.
-
-### PerExampleLogCountsPearsonCorrCoef
-Pearson Correlation on log counts, accumulated as scalar pairs per example.
-
-*   **Behavior**: Collects per-example (pred, target) log-count scalar pairs and computes a single Pearson correlation at epoch end. More numerically stable than `LogCountsPearsonCorrCoef` for long training runs.
+*   **Behavior**: Collects per-example (pred, target) log-count scalar pairs and computes a single Pearson correlation at epoch end. Numerically stable.
 *   **Inputs**: `ProfileCountOutput` or `ProfileLogRates`.
 
 ### DefaultMetricCollection

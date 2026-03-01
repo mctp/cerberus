@@ -23,7 +23,6 @@ from cerberus.loss import MSEMultinomialLoss, CoupledMSEMultinomialLoss
 from cerberus.metrics import (
     LogCountsMeanSquaredError,
     LogCountsPearsonCorrCoef,
-    PerExampleLogCountsPearsonCorrCoef,
     DefaultMetricCollection,
 )
 from cerberus.output import (
@@ -194,7 +193,7 @@ class TestBPNetLoss:
 # ===========================================================================
 
 class TestLogCountsPearsonCorrCoef:
-    """LogCountsPearsonCorrCoef uses log(count + count_pseudocount) for targets."""
+    """LogCountsPearsonCorrCoef collects scalar pairs per example."""
 
     def test_default_pseudocount_stored(self):
         m = LogCountsPearsonCorrCoef()
@@ -205,40 +204,8 @@ class TestLogCountsPearsonCorrCoef:
         assert m.count_pseudocount == 100.0
 
     def test_correlation_is_one_with_perfect_predictions(self):
-        """Pearson r=1 when predictions exactly match log(count + pseudocount)."""
-        m = LogCountsPearsonCorrCoef(count_pseudocount=100.0)
-        totals = [100.0, 200.0, 300.0]  # 3 examples
-        for total in totals:
-            target = torch.zeros(1, 1, 10)
-            target[0, 0, 0] = total
-            pred_lc = torch.log(torch.tensor([[total + 100.0]]))
-            out = _make_count_output(log_counts=pred_lc)
-            m.update(out, target)
-        val = m.compute()
-        # Single channel, 3 pairs with perfect ordering → r should be 1 or nan
-        # (3 pairs with different values → r=1)
-        assert torch.isfinite(val)
-        assert val.item() == pytest.approx(1.0, abs=1e-4)
-
-
-# ===========================================================================
-# 5. PerExampleLogCountsPearsonCorrCoef — pseudocount
-# ===========================================================================
-
-class TestPerExampleLogCountsPearsonCorrCoef:
-    """PerExampleLogCountsPearsonCorrCoef collects scalar pairs per example."""
-
-    def test_default_pseudocount_stored(self):
-        m = PerExampleLogCountsPearsonCorrCoef()
-        assert m.count_pseudocount == 1.0
-
-    def test_custom_pseudocount_stored(self):
-        m = PerExampleLogCountsPearsonCorrCoef(count_pseudocount=100.0)
-        assert m.count_pseudocount == 100.0
-
-    def test_correlation_is_one_with_perfect_predictions(self):
         """Pearson r=1 when all pred/target log-count pairs are perfectly aligned."""
-        m = PerExampleLogCountsPearsonCorrCoef(count_pseudocount=100.0)
+        m = LogCountsPearsonCorrCoef(count_pseudocount=100.0)
         totals = [100.0, 300.0, 600.0]
         for total in totals:
             target = torch.zeros(1, 1, 10)
@@ -252,7 +219,7 @@ class TestPerExampleLogCountsPearsonCorrCoef:
 
     def test_per_channel_pseudocount(self):
         """count_per_channel=True collects per-channel log-count pairs."""
-        m = PerExampleLogCountsPearsonCorrCoef(count_pseudocount=50.0, count_per_channel=True)
+        m = LogCountsPearsonCorrCoef(count_pseudocount=50.0, count_per_channel=True)
         totals_ch = [[100.0, 200.0], [300.0, 400.0], [500.0, 600.0]]
         for totals in totals_ch:
             target = torch.zeros(1, 2, 10)
@@ -480,8 +447,8 @@ class TestZeroCountEdgeCases:
         assert m.compute().item() == pytest.approx(0.0, abs=1e-5)
 
     def test_per_example_log_counts_pearson_zero_target(self):
-        """PerExampleLogCountsPearsonCorrCoef handles all-zero targets gracefully."""
-        m = PerExampleLogCountsPearsonCorrCoef(count_pseudocount=100.0)
+        """LogCountsPearsonCorrCoef handles all-zero targets gracefully."""
+        m = LogCountsPearsonCorrCoef(count_pseudocount=100.0)
         for total in [0.0, 200.0, 500.0]:
             target = torch.zeros(1, 1, 10)
             target[0, 0, 0] = total

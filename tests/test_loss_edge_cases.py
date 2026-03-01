@@ -140,13 +140,10 @@ def test_dimension_minimal(shapes):
     # We need at least 2 samples.
     
     pearson = ProfilePearsonCorrCoef(num_channels=C)
-    # This should probably produce NaN or raise error or handle gracefully
-    # torchmetrics Pearson often returns NaN for insufficient data
-    
-    with pytest.warns(UserWarning, match="variance.*close to zero"):
-        pearson.update(ProfileLogits(logits=logits), targets)
-        val_p = pearson.compute()
-    
+    # With Length=1, softmax gives constant 1.0 → zero variance → NaN correlation
+    pearson.update(ProfileLogits(logits=logits), targets)
+    val_p = pearson.compute()
+
     # Pearson on 1 sample is undefined/NaN
     assert torch.isnan(val_p)
 
@@ -159,15 +156,9 @@ def test_dimension_single_length(shapes):
     targets = torch.randn(B, C, L).abs()
     
     pearson = ProfilePearsonCorrCoef(num_channels=C)
-    # Flattening: (B, C, L) -> (B*L, C) -> (4, 2).
-    # However, Softmax is applied along dim=-1 (Length).
-    # With Length=1, Softmax([x]) = [1.0].
-    # So all predictions are exactly 1.0. Variance is 0.
-    # Pearson Correlation should be NaN (or raise warning).
-    
-    with pytest.warns(UserWarning, match="variance.*close to zero"):
-        pearson.update(ProfileLogits(logits=logits), targets)
-        val = pearson.compute()
+    # With Length=1, Softmax([x]) = [1.0] → zero variance → NaN correlation
+    pearson.update(ProfileLogits(logits=logits), targets)
+    val = pearson.compute()
     assert torch.isnan(val), "Length=1 should result in NaN correlation due to Softmax normalization (constant 1.0 predictions)"
 
 # --- Numerical Stability ---

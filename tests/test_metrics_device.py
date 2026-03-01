@@ -10,9 +10,9 @@ import pytest
 import torch
 
 from cerberus.metrics import (
-    PerExampleProfilePearsonCorrCoef,
-    PerExampleCountProfilePearsonCorrCoef,
-    PerExampleLogCountsPearsonCorrCoef,
+    ProfilePearsonCorrCoef,
+    CountProfilePearsonCorrCoef,
+    LogCountsPearsonCorrCoef,
 )
 from cerberus.output import ProfileCountOutput, ProfileLogRates
 
@@ -40,14 +40,14 @@ DEVICES = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
 
 
 # ---------------------------------------------------------------------------
-# PerExampleProfilePearsonCorrCoef
+# ProfilePearsonCorrCoef
 # ---------------------------------------------------------------------------
 
 @pytest.mark.filterwarnings("ignore:The ``compute`` method of metric.*was called before the ``update`` method")
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_profile_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
-    metric = PerExampleProfilePearsonCorrCoef(num_channels=1).to(device)
+    metric = ProfilePearsonCorrCoef(num_channels=1).to(device)
     result = metric.compute()
     assert result.device.type == device
     assert torch.isnan(result)
@@ -56,7 +56,7 @@ def test_per_example_profile_pearson_empty_compute_device(device):
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_profile_pearson_normal_compute_device(device):
     """compute() after updates returns a value on the correct device."""
-    metric = PerExampleProfilePearsonCorrCoef(num_channels=1).to(device)
+    metric = ProfilePearsonCorrCoef(num_channels=1).to(device)
     preds = _make_log_rates_output(device=device)
     target = _make_target(device=device)
     metric.update(preds, target)
@@ -65,14 +65,14 @@ def test_per_example_profile_pearson_normal_compute_device(device):
 
 
 # ---------------------------------------------------------------------------
-# PerExampleCountProfilePearsonCorrCoef
+# CountProfilePearsonCorrCoef
 # ---------------------------------------------------------------------------
 
 @pytest.mark.filterwarnings("ignore:The ``compute`` method of metric.*was called before the ``update`` method")
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_count_profile_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
-    metric = PerExampleCountProfilePearsonCorrCoef(num_channels=1).to(device)
+    metric = CountProfilePearsonCorrCoef(num_channels=1).to(device)
     result = metric.compute()
     assert result.device.type == device
     assert torch.isnan(result)
@@ -81,7 +81,7 @@ def test_per_example_count_profile_pearson_empty_compute_device(device):
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_count_profile_pearson_normal_compute_device(device):
     """compute() after updates returns a value on the correct device."""
-    metric = PerExampleCountProfilePearsonCorrCoef(num_channels=1).to(device)
+    metric = CountProfilePearsonCorrCoef(num_channels=1).to(device)
     preds = _make_profile_count_output(device=device)
     target = _make_target(device=device)
     metric.update(preds, target)
@@ -90,14 +90,14 @@ def test_per_example_count_profile_pearson_normal_compute_device(device):
 
 
 # ---------------------------------------------------------------------------
-# PerExampleLogCountsPearsonCorrCoef
+# LogCountsPearsonCorrCoef
 # ---------------------------------------------------------------------------
 
 @pytest.mark.filterwarnings("ignore:The ``compute`` method of metric.*was called before the ``update`` method")
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_log_counts_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
-    metric = PerExampleLogCountsPearsonCorrCoef().to(device)
+    metric = LogCountsPearsonCorrCoef().to(device)
     result = metric.compute()
     assert result.device.type == device
     assert torch.isnan(result)
@@ -106,7 +106,7 @@ def test_per_example_log_counts_pearson_empty_compute_device(device):
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_log_counts_pearson_single_example_device(device):
     """compute() with only one example (numel < 2) returns nan on the correct device."""
-    metric = PerExampleLogCountsPearsonCorrCoef().to(device)
+    metric = LogCountsPearsonCorrCoef().to(device)
     preds = _make_profile_count_output(batch=1, device=device)
     target = _make_target(batch=1, device=device)
     metric.update(preds, target)
@@ -119,7 +119,7 @@ def test_per_example_log_counts_pearson_single_example_device(device):
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_log_counts_pearson_constant_preds_device(device):
     """compute() when denom < 1e-8 (constant preds) returns nan on the correct device."""
-    metric = PerExampleLogCountsPearsonCorrCoef().to(device)
+    metric = LogCountsPearsonCorrCoef().to(device)
     # All examples have identical log_counts -> zero variance -> denom == 0
     log_counts = torch.log1p(torch.tensor([[5.0], [5.0]], device=device))
     logits = torch.zeros(2, 1, 10, device=device)
@@ -133,7 +133,7 @@ def test_per_example_log_counts_pearson_constant_preds_device(device):
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_log_counts_pearson_normal_compute_device(device):
     """compute() with varying log counts returns a value on the correct device."""
-    metric = PerExampleLogCountsPearsonCorrCoef().to(device)
+    metric = LogCountsPearsonCorrCoef().to(device)
     # Use different log_counts per example to ensure non-zero variance
     log_counts = torch.tensor([[1.0], [3.0]], device=device)
     logits = torch.zeros(2, 1, 10, device=device)

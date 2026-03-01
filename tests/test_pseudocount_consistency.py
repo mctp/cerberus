@@ -36,8 +36,6 @@ from cerberus.metrics import (
     LogCountsPearsonCorrCoef,
     CountProfilePearsonCorrCoef,
     CountProfileMeanSquaredError,
-    PerExampleCountProfilePearsonCorrCoef,
-    PerExampleLogCountsPearsonCorrCoef,
 )
 
 
@@ -165,7 +163,7 @@ class TestLogCountsMetricsPseudocount:
         B = len(counts)
         L = 4
 
-        metric = PerExampleLogCountsPearsonCorrCoef(count_pseudocount=pseudocount)
+        metric = LogCountsPearsonCorrCoef(count_pseudocount=pseudocount)
 
         for c in counts:
             targets = torch.zeros(1, 1, L)
@@ -203,7 +201,7 @@ class TestLogCountsMetricsPseudocount:
 class TestCountReconstructionPseudocount:
     """
     CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, and
-    PerExampleCountProfilePearsonCorrCoef reconstruct counts from log_counts
+    CountProfilePearsonCorrCoef reconstruct counts from log_counts
     via exp(log_counts) - pseudocount. Verify correctness for non-default pseudocounts.
     """
 
@@ -256,7 +254,7 @@ class TestCountReconstructionPseudocount:
         log_counts = torch.log(total + pseudocount).reshape(1, 1)
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-        metric = PerExampleCountProfilePearsonCorrCoef(
+        metric = CountProfilePearsonCorrCoef(
             num_channels=C, count_pseudocount=pseudocount
         )
         metric.update(preds, target)

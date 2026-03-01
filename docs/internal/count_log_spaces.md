@@ -196,7 +196,6 @@ log(2.0)` — a very different value that would dominate small counts.
 | `CoupledMSEMultinomialLoss` count target | `loss.py` | Same |
 | `LogCountsMeanSquaredError` target | `metrics.py` | `log(target_count + self.count_pseudocount)` |
 | `LogCountsPearsonCorrCoef` target | `metrics.py` | Same |
-| `PerExampleLogCountsPearsonCorrCoef` target | `metrics.py` | Same |
 | `compute_total_log_counts` (log_counts_include_pseudocount=True) | `output.py` | Inverts per-channel, sums, reapplies |
 | `CountProfile*` metrics (reconstruction) | `metrics.py` | `exp(log_counts) - count_pseudocount` |
 | `module._accumulate_log_counts` target | `module.py` | `log(sum + pseudocount)` |
