@@ -64,7 +64,7 @@ class TestProfilePearsonCorrCoef:
         probs = F.softmax(logits, dim=-1)
         target = probs.clone()  # exact match
 
-        metric = ProfilePearsonCorrCoef(num_channels=1)
+        metric = ProfilePearsonCorrCoef()
         metric.update(ProfileLogRates(log_rates=logits), target)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-5)
@@ -75,13 +75,13 @@ class TestProfilePearsonCorrCoef:
         logits = torch.randn(2, 1, L)
         target = F.softmax(logits, dim=-1)
 
-        metric = ProfilePearsonCorrCoef(num_channels=1)
+        metric = ProfilePearsonCorrCoef()
         metric.update(ProfileLogits(logits=logits), target)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-5)
 
     def test_rejects_invalid_type(self):
-        metric = ProfilePearsonCorrCoef(num_channels=1)
+        metric = ProfilePearsonCorrCoef()
         with pytest.raises(TypeError):
             metric.update(torch.zeros(1, 1, 4), torch.zeros(1, 1, 4))  # type: ignore
 
@@ -91,7 +91,7 @@ class TestProfilePearsonCorrCoef:
         logits = torch.randn(B, C, L)
         probs = F.softmax(logits, dim=-1)
 
-        metric = ProfilePearsonCorrCoef(num_channels=C)
+        metric = ProfilePearsonCorrCoef()
         metric.update(ProfileLogRates(log_rates=logits), probs)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-4)
@@ -103,7 +103,7 @@ class TestProfilePearsonCorrCoef:
         raw_target = F.softmax(logits, dim=-1) * 10
         log_target = torch.log1p(raw_target)
 
-        metric = ProfilePearsonCorrCoef(num_channels=1, log1p_targets=True)
+        metric = ProfilePearsonCorrCoef(log1p_targets=True)
         metric.update(ProfileLogRates(log_rates=logits), log_target)
         val = metric.compute()
         # Pearson is scale-invariant, so softmax vs softmax*10 gives same result
@@ -112,7 +112,7 @@ class TestProfilePearsonCorrCoef:
     def test_multi_batch_accumulation(self):
         """Accumulating across multiple update() calls should work."""
         L = 16
-        metric = ProfilePearsonCorrCoef(num_channels=1)
+        metric = ProfilePearsonCorrCoef()
         for _ in range(5):
             logits = torch.randn(4, 1, L)
             target = F.softmax(logits, dim=-1)
@@ -127,7 +127,7 @@ class TestProfilePearsonCorrCoef:
         # but softmax of zeros is 1/L everywhere, which IS zero variance
         target = torch.randn(2, 1, L).abs()
 
-        metric = ProfilePearsonCorrCoef(num_channels=1)
+        metric = ProfilePearsonCorrCoef()
         metric.update(ProfileLogRates(log_rates=logits), target)
         val = metric.compute()
         # Should be NaN (all examples skipped) — but should NOT crash
@@ -149,13 +149,13 @@ class TestCountProfilePearsonCorrCoef:
         log_counts = torch.log1p(total).reshape(1, 1)
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-        metric = CountProfilePearsonCorrCoef(num_channels=1)
+        metric = CountProfilePearsonCorrCoef()
         metric.update(preds, target)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-4)
 
     def test_rejects_invalid_type(self):
-        metric = CountProfilePearsonCorrCoef(num_channels=1)
+        metric = CountProfilePearsonCorrCoef()
         with pytest.raises(TypeError):
             metric.update(
                 ProfileLogRates(log_rates=torch.zeros(1, 1, 4)),  # type: ignore[arg-type]
@@ -171,7 +171,7 @@ class TestCountProfilePearsonCorrCoef:
         target = torch.randn(2, 1, L).abs()
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-        metric = CountProfilePearsonCorrCoef(num_channels=1)
+        metric = CountProfilePearsonCorrCoef()
         metric.update(preds, target)
         val = metric.compute()
         # All examples have zero preds → NaN, all skipped
@@ -186,7 +186,7 @@ class TestCountProfilePearsonCorrCoef:
         log_counts = torch.log1p(total.squeeze(-1))  # (B, C)
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-        metric = CountProfilePearsonCorrCoef(num_channels=C)
+        metric = CountProfilePearsonCorrCoef()
         metric.update(preds, target)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-3)
@@ -201,7 +201,7 @@ class TestCountProfilePearsonCorrCoef:
         log_counts = torch.log1p(total).reshape(1, 1)
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-        metric = CountProfilePearsonCorrCoef(num_channels=1, log1p_targets=True)
+        metric = CountProfilePearsonCorrCoef(log1p_targets=True)
         metric.update(preds, target_log)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-3)

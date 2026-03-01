@@ -64,11 +64,11 @@ class CerberusDataModule(pl.LightningDataModule):
         self.num_workers = 0
         self.in_memory = False
 
-        # Resolve fold indices: argument > config > default
+        # Resolve fold indices: argument > config
         if test_fold is None:
-            test_fold = self.genome_config["fold_args"].get("test_fold", 0)
+            test_fold = self.genome_config["fold_args"]["test_fold"]
         if val_fold is None:
-            val_fold = self.genome_config["fold_args"].get("val_fold", 1)
+            val_fold = self.genome_config["fold_args"]["val_fold"]
         
         self.test_fold = test_fold
         self.val_fold = val_fold
@@ -175,9 +175,8 @@ class CerberusDataModule(pl.LightningDataModule):
                 base_seed = self.seed if self.seed is not None else 0
                 seed = base_seed + (epoch * world_size) + rank
                 self.train_dataset.resample(seed=seed)
-            except (AttributeError, RuntimeError):
-                # Trainer not fully initialized or in testing
-                pass
+            except (AttributeError, RuntimeError) as exc:
+                logger.warning("Could not resample train dataset: %s", exc)
 
         return DataLoader(
             self.train_dataset,

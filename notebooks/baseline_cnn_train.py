@@ -174,7 +174,7 @@ model_config: ModelConfig = {
     "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
     "loss_args": {"log_input": True, "full": False, "implicit_log_targets": False},
     "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
-    "metrics_args": {"num_channels": 1, "implicit_log_targets": False},
+    "metrics_args": {"implicit_log_targets": False},
 }
 
 # %% [markdown]

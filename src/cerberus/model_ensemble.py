@@ -590,7 +590,7 @@ def update_ensemble_metadata(root_dir: Path | str, fold: int):
     path.mkdir(parents=True, exist_ok=True)
     meta_path = path / "ensemble_metadata.yaml"
     
-    existing_folds = set()
+    existing_folds: set[int] = set()
     if meta_path.exists():
         with open(meta_path, "r") as f:
             try:
@@ -598,7 +598,10 @@ def update_ensemble_metadata(root_dir: Path | str, fold: int):
                 if meta and "folds" in meta:
                      existing_folds = set(meta["folds"])
             except yaml.YAMLError:
-                pass
+                logger.warning(
+                    f"Corrupt ensemble metadata at {meta_path}; "
+                    "existing fold information will be lost"
+                )
     
     existing_folds.add(fold)
     

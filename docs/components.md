@@ -202,7 +202,7 @@ Standard Poisson NLL loss for models predicting log-rates (log-intensities).
 Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).
 
 *   **Profile Loss**: Penalizes the shape of the predicted signal distribution (exact Multinomial NLL).
-*   **Count Loss**: Penalizes the total count prediction (MSE on `log(1+x)`).
+*   **Count Loss**: Penalizes the total count prediction (MSE on `log(x + count_pseudocount)`).
 *   **Args**:
     *   `count_weight`: Weight for the count loss component (default: 1.0).
     *   `flatten_channels` (default: `False`): If `False`, computes Multinomial NLL independently per channel. If `True`, flattens all channels and length into a single dimension.
@@ -282,13 +282,13 @@ MSE on profile probabilities.
 ### CountProfileMeanSquaredError
 MSE on reconstructed profile counts (BPNet-style).
 
-*   **Behavior**: Reconstructs predicted counts (`Softmax(logits) * Exp(log_counts)`) before computing MSE against targets.
+*   **Behavior**: Reconstructs predicted counts (`Softmax(logits) * (Exp(log_counts) - count_pseudocount)`) before computing MSE against targets.
 *   **Inputs**: `ProfileCountOutput`.
 
 ### LogCountsMeanSquaredError
 MSE on log counts.
 
-*   **Behavior**: Computes MSE between predicted log counts and `log1p(target_counts)`.
+*   **Behavior**: Computes MSE between predicted log counts and `log(target_counts + count_pseudocount)`.
 *   **Inputs**: `ProfileCountOutput` (uses `log_counts`) or `ProfileLogRates` (uses `logsumexp(log_rates)`).
 
 ### LogCountsPearsonCorrCoef

@@ -91,7 +91,7 @@ class TestInstantiateMetricsAndLoss:
             "loss_cls": "cerberus.loss.MSEMultinomialLoss",
             "loss_args": {},
             "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
-            "metrics_args": {"num_channels": 1},
+            "metrics_args": {},
             "model_args": {},
         })
 
@@ -121,7 +121,7 @@ class TestLrSchedulerStep:
 
         model = nn.Linear(10, 10)
         criterion = MSEMultinomialLoss()
-        metrics = DefaultMetricCollection(num_channels=1)
+        metrics = DefaultMetricCollection()
         module = CerberusModule(model=model, criterion=criterion, metrics=metrics)
         return module
 

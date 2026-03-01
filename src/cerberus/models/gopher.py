@@ -56,15 +56,20 @@ class GlobalProfileCNN(nn.Module):
         bottleneck_channels (int): Number of channels in the reshaped feature map. Defaults to 8.
     """
     def __init__(
-        self, 
-        input_len=2048, 
-        output_len=1024, 
-        output_bin_size=4, 
-        input_channels=["A", "C", "G", "T"], 
-        output_channels=["signal"],
+        self,
+        input_len=2048,
+        output_len=1024,
+        output_bin_size=4,
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         bottleneck_channels=8
     ):
         super().__init__()
+
+        if input_channels is None:
+            input_channels = ["A", "C", "G", "T"]
+        if output_channels is None:
+            output_channels = ["signal"]
 
         num_input_channels = len(input_channels)
         num_output_channels = len(output_channels)

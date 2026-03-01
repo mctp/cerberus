@@ -18,7 +18,7 @@ def test_datamodule_hardware_settings():
          patch('cerberus.datamodule.validate_data_and_sampler_compatibility') as mock_compat, \
          patch('cerberus.datamodule.CerberusDataset') as mock_dataset_cls:
         
-        mock_genome.return_value = {"fold_args": {}}
+        mock_genome.return_value = {"fold_args": {"test_fold": 0, "val_fold": 1}}
         mock_data.return_value = {}
         mock_sampler.return_value = {}
         

@@ -93,7 +93,7 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
     data_config = cast(DataConfig, {
         "input_len": 2114, "output_len": 1000, "output_bin_size": 1,
         "targets": [], "inputs": [], "use_sequence": True,
-        "target_scale": 1.0, "count_pseudocount": 1.0, "jitter": 0,
+        "target_scale": 1.0, "count_pseudocount": 1.0, "max_jitter": 0,
     })
 
     # Call train — mock instantiate so the generic MockModule is used directly

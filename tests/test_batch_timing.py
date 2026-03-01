@@ -26,7 +26,7 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
         species="human",
         exclude_intervals={"blacklist": blacklist_path},
         fold_type="chrom_partition",
-        fold_args={"k": 5}
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1}
     )
 
     # 4. Sampler Configuration

@@ -969,7 +969,7 @@ class ComplexityMatchedSampler(ProxySampler):
         exclude_intervals: dict[str, InterLap] | None = None,
         bins: int = 20,
         candidate_ratio: float = 1.0,
-        metrics: list[str] = ["gc", "dust", "cpg"],
+        metrics: list[str] | None = None,
         seed: int | None = None,
         generate_on_init: bool = True,
         metrics_cache: dict[str, np.ndarray] | None = None,
@@ -1001,7 +1001,9 @@ class ComplexityMatchedSampler(ProxySampler):
         self.candidate_ratio = candidate_ratio
         self.seed = seed
         self.rng = random.Random(seed)
-        
+
+        if metrics is None:
+            metrics = ["gc", "dust", "cpg"]
         self.metrics = metrics
         self.metrics_cache = metrics_cache if metrics_cache is not None else {}
 

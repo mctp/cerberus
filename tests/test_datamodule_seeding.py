@@ -14,7 +14,7 @@ class TestDataModuleSeeding(unittest.TestCase):
             "chrom_sizes": {"chr1": 1000},
             "exclude_intervals": {},
             "fold_type": "chrom_partition",
-            "fold_args": {"k": 5}
+            "fold_args": {"k": 5, "test_fold": 0, "val_fold": 1}
         } # type: ignore
         self.data_config = {
             "inputs": {},

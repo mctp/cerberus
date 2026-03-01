@@ -25,7 +25,7 @@ def test_count_profile_pearson_expm1():
     preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
     
     # Initialize metric
-    metric = CountProfilePearsonCorrCoef(num_channels=channels)
+    metric = CountProfilePearsonCorrCoef()
     
     # We want to check what total_counts is used inside update.
     # We create a target that matches preds_counts exactly if total_counts is 10.

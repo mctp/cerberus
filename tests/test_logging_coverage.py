@@ -7,37 +7,36 @@ class TestSetupLogging:
 
     def test_handlers_already_exist(self):
         """When handlers already exist, setup_logging only updates the level."""
-        root = logging.getLogger()
-        original_handlers = list(root.handlers)
-        original_count = len(original_handlers)
+        cerberus_logger = logging.getLogger("cerberus")
+        original_handlers = list(cerberus_logger.handlers)
 
-        # Ensure at least one handler exists
-        if not root.hasHandlers():
-            root.addHandler(logging.NullHandler())
+        # Ensure at least one handler exists on the cerberus logger
+        if not cerberus_logger.handlers:
+            cerberus_logger.addHandler(logging.NullHandler())
 
-        handler_count_before = len(root.handlers)
+        handler_count_before = len(cerberus_logger.handlers)
         setup_logging(level=logging.WARNING)
         # No new handler should be added
-        assert len(root.handlers) == handler_count_before
-        assert root.level == logging.WARNING
+        assert len(cerberus_logger.handlers) == handler_count_before
+        assert cerberus_logger.level == logging.WARNING
 
         # Restore
-        root.setLevel(logging.WARNING)
-        root.handlers = original_handlers
+        cerberus_logger.setLevel(logging.WARNING)
+        cerberus_logger.handlers = original_handlers
 
     def test_custom_log_level(self):
-        """setup_logging with custom level sets it on the root logger."""
-        root = logging.getLogger()
-        original_handlers = list(root.handlers)
-        original_level = root.level
+        """setup_logging with custom level sets it on the cerberus logger."""
+        cerberus_logger = logging.getLogger("cerberus")
+        original_handlers = list(cerberus_logger.handlers)
+        original_level = cerberus_logger.level
 
         # Remove handlers to trigger full setup
-        root.handlers = []
+        cerberus_logger.handlers = []
         try:
             setup_logging(level=logging.DEBUG)
-            assert root.level == logging.DEBUG
-            assert len(root.handlers) == 1
+            assert cerberus_logger.level == logging.DEBUG
+            assert len(cerberus_logger.handlers) == 1
         finally:
             # Restore
-            root.handlers = original_handlers
-            root.setLevel(original_level)
+            cerberus_logger.handlers = original_handlers
+            cerberus_logger.setLevel(original_level)

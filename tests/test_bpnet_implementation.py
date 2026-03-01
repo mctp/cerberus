@@ -137,7 +137,7 @@ def test_poisson_multinomial_loss_bpnet_flattened():
     loss.backward()
 
 def test_decoupled_pearson_metric():
-    metric = CountProfilePearsonCorrCoef(num_channels=2)
+    metric = CountProfilePearsonCorrCoef()
     batch_size = 2
     channels = 2
     length = 50
@@ -153,7 +153,7 @@ def test_decoupled_pearson_metric():
     assert result.dim() == 0
 
 def test_bpnet_metric_collection():
-    metrics = BPNetMetricCollection(num_channels=1)
+    metrics = BPNetMetricCollection()
     assert "pearson" in metrics
     assert isinstance(metrics["pearson"], CountProfilePearsonCorrCoef)
     assert "mse_profile" in metrics

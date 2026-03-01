@@ -35,8 +35,10 @@ class GenomeConfig(TypedDict):
         chrom_sizes: Dictionary mapping chromosome names to their lengths.
         fold_type: Strategy for creating folds. Currently only 'chrom_partition' is supported.
         fold_args: Arguments for the folding strategy.
-                   For 'chrom_partition', required keys: 'k' (int).
-                   Optional keys: 'test_fold' (int), 'val_fold' (int).
+                   For 'chrom_partition', required keys: 'k' (int),
+                   'test_fold' (int), 'val_fold' (int).
+                   test_fold and val_fold can be omitted if passed directly
+                   to CerberusDataModule or train_single.
     """
 
     name: str
@@ -389,11 +391,9 @@ def validate_data_config(
         "reverse_complement",
         "target_scale",
         "count_pseudocount",
+        "use_sequence",
     }
-    
-    # Optional with default
-    use_sequence = config.get("use_sequence", True)
-    
+
     if not all(key in config for key in required_keys):
         missing = required_keys - config.keys()
         raise ValueError(f"Data config missing required keys: {missing}")
@@ -429,7 +429,7 @@ def validate_data_config(
     if not isinstance(config["count_pseudocount"], (int, float)) or config["count_pseudocount"] <= 0:
         raise ValueError("count_pseudocount must be a positive number")
 
-    if not isinstance(use_sequence, bool):
+    if not isinstance(config["use_sequence"], bool):
         raise TypeError("use_sequence must be a boolean")
 
     return {
@@ -444,7 +444,7 @@ def validate_data_config(
         "reverse_complement": config["reverse_complement"],
         "target_scale": config["target_scale"],
         "count_pseudocount": float(config["count_pseudocount"]),
-        "use_sequence": use_sequence,
+        "use_sequence": config["use_sequence"],
     }
 
 
@@ -579,8 +579,10 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
         "filter_bias_and_bn",
         "adam_eps",
         "gradient_clip_val",
+        "scheduler_type",
+        "scheduler_args",
+        "reload_dataloaders_every_n_epochs",
     }
-    # Optional: scheduler_type, scheduler_args
     if not all(key in config for key in required_keys):
         missing = required_keys - config.keys()
         raise ValueError(f"Train config missing required keys: {missing}")
@@ -606,16 +608,13 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
     if not isinstance(config["filter_bias_and_bn"], bool):
         raise TypeError("filter_bias_and_bn must be a boolean")
 
-    scheduler_type = config.get("scheduler_type", "default")
-    if not isinstance(scheduler_type, str):
+    if not isinstance(config["scheduler_type"], str):
         raise TypeError("scheduler_type must be a string")
 
-    scheduler_args = config.get("scheduler_args", {})
-    if not isinstance(scheduler_args, dict):
+    if not isinstance(config["scheduler_args"], dict):
         raise TypeError("scheduler_args must be a dictionary")
 
-    reload_dataloaders = config.get("reload_dataloaders_every_n_epochs", 0)
-    if not isinstance(reload_dataloaders, int) or reload_dataloaders < 0:
+    if not isinstance(config["reload_dataloaders_every_n_epochs"], int) or config["reload_dataloaders_every_n_epochs"] < 0:
         raise ValueError("reload_dataloaders_every_n_epochs must be a non-negative integer")
 
     if not isinstance(config["adam_eps"], float) or config["adam_eps"] <= 0:
@@ -632,10 +631,10 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
         "weight_decay": config["weight_decay"],
         "patience": config["patience"],
         "optimizer": config["optimizer"],
-        "scheduler_type": scheduler_type,
-        "scheduler_args": scheduler_args,
+        "scheduler_type": config["scheduler_type"],
+        "scheduler_args": config["scheduler_args"],
         "filter_bias_and_bn": config["filter_bias_and_bn"],
-        "reload_dataloaders_every_n_epochs": reload_dataloaders,
+        "reload_dataloaders_every_n_epochs": config["reload_dataloaders_every_n_epochs"],
         "adam_eps": config["adam_eps"],
         "gradient_clip_val": config["gradient_clip_val"],
     }
@@ -767,7 +766,7 @@ def validate_data_and_model_compatibility(
             raise ValueError(f"Data inputs {missing} are not in model input channels")
 
 
-def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) -> None:
+def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) -> ModelConfig:
     """
     Propagate the scaled count_pseudocount from data_config into model_config's
     loss_args and metrics_args.
@@ -777,15 +776,23 @@ def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) ->
     actually operate on. Uses setdefault so an explicitly provided value in
     loss_args/metrics_args is never overwritten.
 
+    Returns a new ModelConfig; the input is not modified so callers can safely
+    reuse the same model_config dict across folds.
+
     Args:
         data_config: Validated data configuration containing count_pseudocount
             and target_scale.
-        model_config: Model configuration whose loss_args and metrics_args are
-            updated **in place**.
+        model_config: Model configuration containing loss_args and metrics_args.
+
+    Returns:
+        A new ModelConfig with count_pseudocount set in loss_args and metrics_args.
     """
     scaled_pseudocount = data_config["count_pseudocount"] * data_config["target_scale"]
-    model_config["loss_args"].setdefault("count_pseudocount", scaled_pseudocount)
-    model_config["metrics_args"].setdefault("count_pseudocount", scaled_pseudocount)
+    loss_args = {**model_config["loss_args"]}
+    loss_args.setdefault("count_pseudocount", scaled_pseudocount)
+    metrics_args = {**model_config["metrics_args"]}
+    metrics_args.setdefault("count_pseudocount", scaled_pseudocount)
+    return {**model_config, "loss_args": loss_args, "metrics_args": metrics_args}
 
 
 def parse_hparams_config(

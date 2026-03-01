@@ -359,7 +359,7 @@ def instantiate(
     # metrics_args. This is the single call site — neither parse_hparams_config
     # nor _train call propagate_pseudocount, keeping ownership here where the
     # loss and metrics are actually constructed.
-    propagate_pseudocount(data_config, model_config)
+    model_config = propagate_pseudocount(data_config, model_config)
 
     model = instantiate_model(model_config, data_config, compile)
 

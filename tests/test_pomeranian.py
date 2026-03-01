@@ -114,3 +114,9 @@ def test_geometric_alignment_k5():
     x = torch.randn(1, 4, 2112)
     output = model(x)
     assert output.logits.shape[-1] == 1024
+
+
+def test_pomeranian_dilations_n_dilated_layers_mismatch():
+    """Regression: n_dilated_layers must match len(dilations) when both are provided."""
+    with pytest.raises(ValueError, match="n_dilated_layers=16 conflicts with len\\(dilations\\)=4"):
+        Pomeranian(n_dilated_layers=16, dilations=[1, 2, 4, 8])

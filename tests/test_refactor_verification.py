@@ -38,7 +38,7 @@ def test_validate_model_config_strings():
     config: ModelConfig = {
         "name": "test_model",
         "model_cls": "cerberus.models.bpnet.BPNet",
-        "loss_cls": "cerberus.loss.PoissonLoss",
+        "loss_cls": "cerberus.loss.PoissonMultinomialLoss",
         "metrics_cls": "torchmetrics.MetricCollection",
         "metrics_args": {},
         "loss_args": {},
@@ -129,6 +129,7 @@ def test_instantiate_model_with_strings():
             "reverse_complement": False,
             "target_scale": 1.0,
         "count_pseudocount": 1.0,
+            "use_sequence": True,
         }
 
         model = instantiate_model(model_config, data_config) # type: ignore

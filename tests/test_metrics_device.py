@@ -47,7 +47,7 @@ DEVICES = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_profile_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
-    metric = ProfilePearsonCorrCoef(num_channels=1).to(device)
+    metric = ProfilePearsonCorrCoef().to(device)
     result = metric.compute()
     assert result.device.type == device
     assert torch.isnan(result)
@@ -56,7 +56,7 @@ def test_per_example_profile_pearson_empty_compute_device(device):
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_profile_pearson_normal_compute_device(device):
     """compute() after updates returns a value on the correct device."""
-    metric = ProfilePearsonCorrCoef(num_channels=1).to(device)
+    metric = ProfilePearsonCorrCoef().to(device)
     preds = _make_log_rates_output(device=device)
     target = _make_target(device=device)
     metric.update(preds, target)
@@ -72,7 +72,7 @@ def test_per_example_profile_pearson_normal_compute_device(device):
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_count_profile_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
-    metric = CountProfilePearsonCorrCoef(num_channels=1).to(device)
+    metric = CountProfilePearsonCorrCoef().to(device)
     result = metric.compute()
     assert result.device.type == device
     assert torch.isnan(result)
@@ -81,7 +81,7 @@ def test_per_example_count_profile_pearson_empty_compute_device(device):
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_count_profile_pearson_normal_compute_device(device):
     """compute() after updates returns a value on the correct device."""
-    metric = CountProfilePearsonCorrCoef(num_channels=1).to(device)
+    metric = CountProfilePearsonCorrCoef().to(device)
     preds = _make_profile_count_output(device=device)
     target = _make_target(device=device)
     metric.update(preds, target)
@@ -152,7 +152,7 @@ def test_bpnet_metric_collection_compute_device():
     """BPNetMetricCollection.compute() returns all metrics on CPU without error."""
     from cerberus.models.bpnet import BPNetMetricCollection
 
-    metrics = BPNetMetricCollection(num_channels=1)
+    metrics = BPNetMetricCollection()
     preds = _make_profile_count_output(batch=4)
     target = _make_target(batch=4)
     metrics.update(preds, target)

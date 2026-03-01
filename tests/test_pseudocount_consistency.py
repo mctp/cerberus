@@ -218,7 +218,7 @@ class TestCountReconstructionPseudocount:
         log_counts = torch.log(total + pseudocount).reshape(1, 1)
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-        metric = CountProfilePearsonCorrCoef(num_channels=C, count_pseudocount=pseudocount)
+        metric = CountProfilePearsonCorrCoef(count_pseudocount=pseudocount)
         metric.update(preds, target)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-3), \
@@ -255,7 +255,7 @@ class TestCountReconstructionPseudocount:
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
         metric = CountProfilePearsonCorrCoef(
-            num_channels=C, count_pseudocount=pseudocount
+            count_pseudocount=pseudocount
         )
         metric.update(preds, target)
         val = metric.compute()
@@ -423,7 +423,7 @@ class TestBackwardCompatibility:
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
 
-        metric = CountProfilePearsonCorrCoef(num_channels=1)  # default pseudocount=1.0
+        metric = CountProfilePearsonCorrCoef()  # default pseudocount=1.0
         metric.update(preds, target)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-3)
@@ -572,7 +572,7 @@ class TestMetricCollectionPropagation:
         cls = getattr(mod, cls_name)
 
         pseudocount = 42.0
-        collection = cls(num_channels=1, count_pseudocount=pseudocount)
+        collection = cls(count_pseudocount=pseudocount)
 
         for name, metric in collection.items():
             if hasattr(metric, "count_pseudocount"):
@@ -699,7 +699,7 @@ class TestMultiChannelReconstruction:
         log_counts = torch.log(per_ch_total + pseudocount)
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-        metric = CountProfilePearsonCorrCoef(num_channels=C, count_pseudocount=pseudocount)
+        metric = CountProfilePearsonCorrCoef(count_pseudocount=pseudocount)
         metric.update(preds, target)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-2), \

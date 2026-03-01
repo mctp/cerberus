@@ -85,7 +85,7 @@ genome_config: GenomeConfig = create_genome_config(
     exclude_intervals={"blacklist": blacklist_path},
     # Use chromosome partitioning for train/val/test splits
     fold_type="chrom_partition",
-    fold_args={"k": 5}
+    fold_args={"k": 5, "test_fold": 0, "val_fold": 1}
 )
 
 print("Genome Config Created:")

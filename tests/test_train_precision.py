@@ -32,7 +32,7 @@ def _make_configs():
     data_config = cast(DataConfig, {
         "input_len": 2114, "output_len": 1000, "output_bin_size": 1,
         "targets": [], "inputs": [], "use_sequence": True,
-        "target_scale": 1.0, "count_pseudocount": 1.0, "jitter": 0,
+        "target_scale": 1.0, "count_pseudocount": 1.0, "max_jitter": 0,
     })
     return train_config, model_config, data_config
 

@@ -176,7 +176,8 @@ class CerberusDataset(Dataset):
                 "Both 'transforms' and 'deterministic_transforms' must be provided, or neither (to use defaults)."
             )
 
-        if transforms and deterministic_transforms:
+        if transforms is not None:
+            assert deterministic_transforms is not None  # guaranteed by check above
             self.transforms = Compose(transforms)
             self.deterministic_transforms = Compose(deterministic_transforms)
         else:
@@ -301,17 +302,16 @@ class CerberusDataset(Dataset):
         else:
             targets = torch.empty(0)
 
-        # Apply transforms
+        # Apply transforms (self.transforms and self.deterministic_transforms
+        # are always Compose objects, possibly wrapping an empty list)
         if self.is_train:
-            if self.transforms:
-                inputs, targets, interval = self.transforms(
-                    inputs, targets, interval
-                )
+            inputs, targets, interval = self.transforms(
+                inputs, targets, interval
+            )
         else:
-            if self.deterministic_transforms:
-                inputs, targets, interval = self.deterministic_transforms(
-                    inputs, targets, interval
-                )
+            inputs, targets, interval = self.deterministic_transforms(
+                inputs, targets, interval
+            )
 
         return {
             "inputs": inputs,
@@ -382,10 +382,8 @@ class CerberusDataset(Dataset):
             target_signal_extractor=self.target_signal_extractor,
             sampler=sampler,
             exclude_intervals=self.exclude_intervals,
-            transforms=(
-                self.transforms.transforms if self.transforms else None),
-            deterministic_transforms=(
-                self.deterministic_transforms.transforms if self.deterministic_transforms else None),
+            transforms=self.transforms.transforms,
+            deterministic_transforms=self.deterministic_transforms.transforms,
             in_memory=self.in_memory,
             is_train=is_train,
             seed=self.seed,

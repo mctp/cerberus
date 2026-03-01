@@ -177,7 +177,7 @@ model_config: ModelConfig = {
     "loss_cls": "cerberus.models.bpnet.BPNetLoss",
     "loss_args": {"alpha": "adaptive"},  # computed from training data at fit time
     "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {"num_channels": 1},
+    "metrics_args": {},
 }
 
 # %% [markdown]

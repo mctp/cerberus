@@ -19,30 +19,30 @@ def test_profile_poisson_nll_loss():
     assert loss.full is False
 
 def test_default_metric_collection():
-    metrics = DefaultMetricCollection(num_channels=3)
+    metrics = DefaultMetricCollection()
     assert "pearson" in metrics
     assert "mse_profile" in metrics
     assert "mse_log_counts" in metrics
     assert isinstance(metrics["pearson"], ProfilePearsonCorrCoef)
-    assert metrics["pearson"].num_channels == 3
+    assert not hasattr(metrics["pearson"], "num_channels")
     assert isinstance(metrics["mse_profile"], ProfileMeanSquaredError)
     assert isinstance(metrics["mse_log_counts"], LogCountsMeanSquaredError)
 
 def test_default_metric_collection_log1p_targets():
     """Test that DefaultMetricCollection propagates log1p_targets flag."""
-    metrics = DefaultMetricCollection(num_channels=3, log1p_targets=True)
+    metrics = DefaultMetricCollection(log1p_targets=True)
     assert metrics["pearson"].log1p_targets is True
     assert metrics["mse_profile"].log1p_targets is True
     assert metrics["mse_log_counts"].log1p_targets is True
 
-    metrics_false = DefaultMetricCollection(num_channels=3, log1p_targets=False)
+    metrics_false = DefaultMetricCollection(log1p_targets=False)
     assert metrics_false["pearson"].log1p_targets is False
     assert metrics_false["mse_profile"].log1p_targets is False
     assert metrics_false["mse_log_counts"].log1p_targets is False
 
 def test_bpnet_metric_collection_log1p_targets():
     """Test that BPNetMetricCollection propagates log1p_targets flag."""
-    metrics = BPNetMetricCollection(num_channels=3, log1p_targets=True)
+    metrics = BPNetMetricCollection(log1p_targets=True)
     assert metrics["pearson"].log1p_targets is True
     assert metrics["mse_profile"].log1p_targets is True
     assert metrics["mse_log_counts"].log1p_targets is True
@@ -136,7 +136,7 @@ def test_flattened_pearson_log1p_targets():
     log_targets = torch.log1p(raw_targets)
     
     # Correct config: Un-logs targets -> gets raw counts -> correlation 1.0
-    corr_correct = ProfilePearsonCorrCoef(num_channels=1, log1p_targets=True)
+    corr_correct = ProfilePearsonCorrCoef(log1p_targets=True)
     corr_correct.update(ProfileLogits(logits=logits), log_targets)
     val_correct = corr_correct.compute()
     assert torch.isclose(val_correct, torch.tensor(1.0), atol=1e-5)
@@ -154,12 +154,12 @@ def test_flattened_pearson_log1p_targets():
     raw_targets_3 = torch.tensor([[[10.0, 100.0, 1000.0]]])
     log_targets_3 = torch.log1p(raw_targets_3)
     
-    corr_correct_3 = ProfilePearsonCorrCoef(num_channels=1, log1p_targets=True)
+    corr_correct_3 = ProfilePearsonCorrCoef(log1p_targets=True)
     corr_correct_3.update(ProfileLogits(logits=logits_3), log_targets_3)
     val_correct_3 = corr_correct_3.compute()
     assert torch.isclose(val_correct_3, torch.tensor(1.0), atol=1e-5)
     
-    corr_incorrect_3 = ProfilePearsonCorrCoef(num_channels=1, log1p_targets=False)
+    corr_incorrect_3 = ProfilePearsonCorrCoef(log1p_targets=False)
     corr_incorrect_3.update(ProfileLogits(logits=logits_3), log_targets_3)
     val_incorrect_3 = corr_incorrect_3.compute()
     
@@ -349,7 +349,7 @@ def test_bpnet_loss_with_log_transform():
 
 def test_flattened_pearson_single_channel():
     """Test ProfilePearsonCorrCoef with single channel input"""
-    metric = ProfilePearsonCorrCoef(num_channels=1)
+    metric = ProfilePearsonCorrCoef()
     
     # Random logits
     logits = torch.randn(2, 1, 10)
@@ -374,7 +374,7 @@ def test_flattened_pearson_single_channel():
 def test_flattened_pearson_multi_channel():
     """Test ProfilePearsonCorrCoef with multiple channels"""
     num_channels = 2
-    metric = ProfilePearsonCorrCoef(num_channels=num_channels)
+    metric = ProfilePearsonCorrCoef()
     
     # Batch=1, Len=100
     # Create logits that result in known correlation patterns after softmax
@@ -396,7 +396,7 @@ def test_flattened_pearson_multi_channel():
 
 def test_flattened_pearson_vs_global():
     """Verify that per-channel mean is NOT equivalent to global correlation"""
-    metric_channel = ProfilePearsonCorrCoef(num_channels=2)
+    metric_channel = ProfilePearsonCorrCoef()
     metric_global = PearsonCorrCoef(num_outputs=1) # Treat everything as one vector
     
     # Using fixed seed for reproducibility

@@ -95,7 +95,8 @@ def compute_intervals_gc(intervals: Iterable[Interval], fasta_path: Path | str) 
             seq_obj = fasta[interval.chrom][interval.start : interval.end]
             seq = str(seq_obj)
             gc_values.append(calculate_gc_content(seq))
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to compute GC content for %s: %s", interval, exc)
             gc_values.append(0.0)
 
     return gc_values

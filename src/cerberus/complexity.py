@@ -1,3 +1,4 @@
+import logging
 import math
 from typing import Iterable
 from pathlib import Path
@@ -6,6 +7,8 @@ import pyfaidx
 from collections import defaultdict
 
 from cerberus.interval import Interval
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_gc_content(sequence: str) -> float:
@@ -200,7 +203,8 @@ def compute_intervals_complexity(
                 results.append(row)
             else:
                 results.append([np.nan] * len(metrics))
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to extract complexity metrics for %s: %s", interval, exc)
             results.append([np.nan] * len(metrics))
 
     if not results:

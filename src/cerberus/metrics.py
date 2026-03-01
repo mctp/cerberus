@@ -39,9 +39,8 @@ class ProfilePearsonCorrCoef(Metric):
     sum_corr: torch.Tensor
     count: torch.Tensor
 
-    def __init__(self, num_channels=1, log1p_targets=False, **kwargs):
+    def __init__(self, log1p_targets=False, **kwargs):
         super().__init__(**kwargs)
-        self.num_channels = num_channels
         self.log1p_targets = log1p_targets
         self.add_state("sum_corr", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("count", default=torch.tensor(0, dtype=torch.long), dist_reduce_fx="sum")
@@ -84,9 +83,8 @@ class CountProfilePearsonCorrCoef(Metric):
     sum_corr: torch.Tensor
     count: torch.Tensor
 
-    def __init__(self, num_channels=1, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(**kwargs)
-        self.num_channels = num_channels
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
         self.add_state("sum_corr", default=torch.tensor(0.0), dist_reduce_fx="sum")
@@ -319,9 +317,9 @@ class DefaultMetricCollection(MetricCollection):
     Default MetricCollection used for training/validation.
     Includes Pearson Correlation, Profile MSE, and Log Counts MSE.
     """
-    def __init__(self, num_channels: int = 1, log1p_targets: bool = False, count_pseudocount: float = 1.0):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0):
         super().__init__({
-            "pearson": ProfilePearsonCorrCoef(num_channels=num_channels, log1p_targets=log1p_targets),
+            "pearson": ProfilePearsonCorrCoef(log1p_targets=log1p_targets),
             # MSE is element-wise, so Global MSE is equivalent to Mean Per-Channel MSE
             # (assuming equal number of elements per channel). Thus no custom flattening is needed.
             "mse_profile": ProfileMeanSquaredError(log1p_targets=log1p_targets),

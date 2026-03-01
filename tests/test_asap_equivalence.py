@@ -314,5 +314,17 @@ def disabled_test_convnext_dcnn_equivalence():
     
     assert np.isclose(diff, 0, atol=1e-5), f"Outputs do not match. Max diff: {diff}"
 
+def test_convnext_dcnn_unknown_kwargs():
+    """Regression: unknown kwargs must raise ValueError, not be silently ignored."""
+    import pytest
+    with pytest.raises(ValueError, match="Unknown ConvNeXtDCNN arguments"):
+        CerberusConvNeXtDCNN(
+            input_len=2048,
+            output_len=512,
+            output_bin_size=4,
+            filtr0=256,  # typo for filters0
+        )
+
+
 if __name__ == "__main__":
     disabled_test_convnext_dcnn_equivalence()

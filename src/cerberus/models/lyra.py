@@ -213,8 +213,8 @@ class LyraNet(nn.Module):
         self,
         input_len: int,
         output_len: int,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 64,
         pgc_layers: int = 4,
         s4_layers: int = 3,
@@ -227,7 +227,11 @@ class LyraNet(nn.Module):
         s4_lr: float = 0.001, # ignored unless optimizer is made aware of this
     ):
         super().__init__()
-        
+        if input_channels is None:
+            input_channels = ["A", "C", "G", "T"]
+        if output_channels is None:
+            output_channels = ["signal"]
+
         self.input_len = input_len
         self.output_len = output_len
         self.output_bin_size = output_bin_size
@@ -370,8 +374,8 @@ class LyraNetMedium(LyraNet):
         self,
         input_len: int,
         output_len: int,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 128,
         pgc_layers: int = 6,
         s4_layers: int = 4,
@@ -416,8 +420,8 @@ class LyraNetLarge(LyraNet):
         self,
         input_len: int,
         output_len: int,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 192,
         pgc_layers: int = 6,
         s4_layers: int = 6,
@@ -462,8 +466,8 @@ class LyraNetExtraLarge(LyraNet):
         self,
         input_len: int,
         output_len: int,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 256,
         pgc_layers: int = 7,
         s4_layers: int = 7,
@@ -498,9 +502,9 @@ class LyraNetMetricCollection(MetricCollection):
     MetricCollection for LyraNet models.
     Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
     """
-    def __init__(self, num_channels: int = 1, log1p_targets: bool = False, count_pseudocount: float = 1.0):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0):
         super().__init__({
-            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "pearson": CountProfilePearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
             "mse_profile": CountProfileMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
             "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
             "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),

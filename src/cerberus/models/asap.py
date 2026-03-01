@@ -108,12 +108,16 @@ class ConvNeXtDCNN(nn.Module):
         input_len: int,
         output_len: int,
         output_bin_size: int = 4,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         **kwargs
     ):
         super().__init__()
-        
+        if input_channels is None:
+            input_channels = ["A", "C", "G", "T"]
+        if output_channels is None:
+            output_channels = ["signal"]
+
         # Default config from original model
         config = {
             'window_size': input_len,
@@ -129,6 +133,12 @@ class ConvNeXtDCNN(nn.Module):
             'dropout': 0.3,
             'final_dropout': 0.05,
         }
+        unknown = set(kwargs) - set(config)
+        if unknown:
+            raise ValueError(
+                f"Unknown ConvNeXtDCNN arguments: {sorted(unknown)}. "
+                f"Valid arguments: {sorted(config)}"
+            )
         config.update(kwargs)
         
         # Determine number of input channels

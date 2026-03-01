@@ -142,7 +142,7 @@ model_config: ModelConfig = {
         "implicit_log_targets": log_transform
     },
     "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {"num_channels": 1},
+    "metrics_args": {},
     "model_args": {
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],

@@ -190,6 +190,12 @@ def test_bin_sum(dummy_interval):
     expected = torch.tensor([[2., 4.]])
     assert torch.equal(out_target, expected)
 
+def test_bin_invalid_method():
+    """Regression: Bin must reject invalid method at init, not silently no-op."""
+    with pytest.raises(ValueError, match="Bin method must be one of"):
+        Bin(bin_size=2, method="median")
+
+
 def test_compose(dummy_interval):
     # Chain: Jitter -> TargetCrop
     inputs = torch.randn(4, 100)

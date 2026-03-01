@@ -25,7 +25,7 @@ genome_config = create_genome_config(
     # Exclude blacklist regions
     exclude_intervals={"blacklist": blacklist_path},
     fold_type="chrom_partition",
-    fold_args={"k": 5}
+    fold_args={"k": 5, "test_fold": 0, "val_fold": 1}
 )
 
 # 2. Data Configuration
@@ -41,6 +41,7 @@ data_config = {
     "reverse_complement": True,
     "use_sequence": True,
     "target_scale": 1.0,  # Multiplicative scale applied to targets before log transform
+    "count_pseudocount": 1.0,  # Additive offset before log-transforming count targets
 }
 
 # 3. Sampler Configuration (Peaks + Negatives)
@@ -116,7 +117,7 @@ model_config = {
     # and counts loss terms at the correct scale for the dataset depth.
     "loss_args": {"alpha": "adaptive"},
     "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {"num_channels": 1},
+    "metrics_args": {},
     "model_args": {
         "n_dilated_layers": 8,
         "output_channels": ["AR"],
@@ -125,7 +126,7 @@ model_config = {
 
 # Option A: Train a Single Model (Single Split)
 # Uses the high-level API to handle instantiation and output structure (creates fold_0)
-# (test_fold defaults to 0, val_fold defaults to 1)
+# (test_fold and val_fold are read from fold_args, or can be overridden here)
 trainer = train_single(
     genome_config=genome_config,
     data_config=data_config,

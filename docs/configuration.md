@@ -25,8 +25,9 @@ class GenomeConfig(TypedDict):
     fold_type: str  # e.g., "chrom_partition"
 
     # Arguments for the fold strategy.
-    # For 'chrom_partition', required key: 'k' (int, number of folds).
-    # Optional keys: 'test_fold' (int), 'val_fold' (int).
+    # For 'chrom_partition', required keys: 'k' (int, number of folds),
+    # 'test_fold' (int, fold index for test set), 'val_fold' (int, fold index for validation set).
+    # test_fold and val_fold can be omitted if passed directly to CerberusDataModule or train_single.
     fold_args: dict[str, Any]
 
     # List of chromosome names to include (e.g., ["chr1", ..., "chrX"])
@@ -75,6 +76,14 @@ class DataConfig(TypedDict):
     # Useful for rescaling normalized BigWig values to integer-like counts.
     # Set to 1.0 to disable.
     target_scale: float
+
+    # Additive offset before log-transforming count targets, specified in raw
+    # coverage units (i.e. approximately read_length). propagate_pseudocount
+    # (called from instantiate()) multiplies this by target_scale before injecting
+    # into loss_args and metrics_args so that loss and metrics always receive the
+    # value in their native (scaled) units.
+    # A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.
+    count_pseudocount: float
 
     # Whether to include DNA sequence as an input channel (default: True)
     use_sequence: bool
@@ -141,11 +150,10 @@ class TrainConfig(TypedDict):
     # Optimizer name (e.g. "adamw")
     optimizer: str
 
-    # Scheduler type (e.g. "default", "cosine"). Optional, defaults to "default".
+    # Scheduler type (e.g. "default", "cosine").
     scheduler_type: str
 
     # Arguments for scheduler (passed to timm.scheduler.create_scheduler_v2).
-    # Optional, defaults to {}.
     scheduler_args: dict[str, Any]
 
     # Whether to exclude bias and batch norm from weight decay
@@ -154,7 +162,7 @@ class TrainConfig(TypedDict):
     # Patience for EarlyStopping
     patience: int
 
-    # Reload dataloaders every n epochs (0 to disable). Optional, defaults to 0.
+    # Reload dataloaders every n epochs (0 to disable).
     reload_dataloaders_every_n_epochs: int
 
     # Epsilon for Adam/AdamW numerical stability (default: 1e-8).

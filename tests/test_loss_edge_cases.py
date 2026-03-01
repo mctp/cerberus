@@ -78,8 +78,8 @@ def test_metrics_log1p_targets_equivalence():
     preds_rates = ProfileLogRates(log_rates=logits) # For Poisson loss which strictly requires rates
     
     metrics_to_test = [
-        (ProfilePearsonCorrCoef(num_channels=C), preds_prof),
-        (CountProfilePearsonCorrCoef(num_channels=C), preds_count),
+        (ProfilePearsonCorrCoef(), preds_prof),
+        (CountProfilePearsonCorrCoef(), preds_count),
         (CountProfileMeanSquaredError(), preds_count),
         (ProfileMeanSquaredError(), preds_prof),
         (ProfilePoissonNLLLoss(), preds_rates) # It's a loss but also used as metric sometimes
@@ -109,8 +109,6 @@ def test_metrics_log1p_targets_equivalence():
 def _get_init_kwargs(metric_instance):
     """Helper to extract init args that need to be passed back."""
     kwargs = {}
-    if hasattr(metric_instance, "num_channels"):
-        kwargs["num_channels"] = metric_instance.num_channels
     if isinstance(metric_instance, (ProfilePoissonNLLLoss, torch.nn.PoissonNLLLoss)):
         kwargs["log_input"] = True
         kwargs["full"] = False
@@ -139,7 +137,7 @@ def test_dimension_minimal(shapes):
     # Or if we flatten over B*L = 1*1 = 1 sample, correlation is definitely undefined.
     # We need at least 2 samples.
     
-    pearson = ProfilePearsonCorrCoef(num_channels=C)
+    pearson = ProfilePearsonCorrCoef()
     # With Length=1, softmax gives constant 1.0 → zero variance → NaN correlation
     pearson.update(ProfileLogits(logits=logits), targets)
     val_p = pearson.compute()
@@ -155,7 +153,7 @@ def test_dimension_single_length(shapes):
     logits = torch.randn(B, C, L)
     targets = torch.randn(B, C, L).abs()
     
-    pearson = ProfilePearsonCorrCoef(num_channels=C)
+    pearson = ProfilePearsonCorrCoef()
     # With Length=1, Softmax([x]) = [1.0] → zero variance → NaN correlation
     pearson.update(ProfileLogits(logits=logits), targets)
     val = pearson.compute()

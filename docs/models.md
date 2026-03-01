@@ -65,7 +65,7 @@ model_config = {
     "loss_cls": "cerberus.models.bpnet.BPNetLoss",
     "loss_args": {"alpha": "adaptive"},  # resolved from training data at fit time
     "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {"num_channels": 1},
+    "metrics_args": {},
     "model_args": {"n_dilated_layers": 8, "output_channels": ["signal"]},
 }
 ```
@@ -139,4 +139,4 @@ A baseline architecture based on the "Gopher" model (ResNet-style CNN with globa
 
 ### Key Features
 *   **Structure**: 3 Convolutional Blocks -> Global Dense Bottleneck -> Global Projection -> Final Conv.
-*   **Output**: Predicts signal profiles directly (Single Head). Returns a tuple containing the profile tensor.
+*   **Output**: Predicts signal profiles directly (Single Head). Returns `ProfileLogRates(log_rates=...)`.

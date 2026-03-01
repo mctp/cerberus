@@ -273,11 +273,11 @@ class TestMetricCollectionPropagation:
     """Verify count_pseudocount is stored on each inner LogCounts* metric."""
 
     @pytest.mark.parametrize("cls,kwargs", [
-        (DefaultMetricCollection, {"num_channels": 1}),
-        (BPNetMetricCollection, {"num_channels": 1}),
-        (PomeranianMetricCollection, {"num_channels": 1}),
-        (GemiNetMetricCollection, {"num_channels": 1}),
-        (LyraNetMetricCollection, {"num_channels": 1}),
+        (DefaultMetricCollection, {}),
+        (BPNetMetricCollection, {}),
+        (PomeranianMetricCollection, {}),
+        (GemiNetMetricCollection, {}),
+        (LyraNetMetricCollection, {}),
     ])
     def test_default_pseudocount(self, cls, kwargs):
         mc = cls(**kwargs)
@@ -288,11 +288,11 @@ class TestMetricCollectionPropagation:
                 )
 
     @pytest.mark.parametrize("cls,kwargs", [
-        (DefaultMetricCollection, {"num_channels": 1}),
-        (BPNetMetricCollection, {"num_channels": 1}),
-        (PomeranianMetricCollection, {"num_channels": 1}),
-        (GemiNetMetricCollection, {"num_channels": 1}),
-        (LyraNetMetricCollection, {"num_channels": 1}),
+        (DefaultMetricCollection, {}),
+        (BPNetMetricCollection, {}),
+        (PomeranianMetricCollection, {}),
+        (GemiNetMetricCollection, {}),
+        (LyraNetMetricCollection, {}),
     ])
     def test_custom_pseudocount_propagated(self, cls, kwargs):
         mc = cls(**kwargs, count_pseudocount=100.0)

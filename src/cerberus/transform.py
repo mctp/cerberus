@@ -292,6 +292,11 @@ class Bin:
             method: Pooling method: 'max', 'avg', or 'sum'.
             apply_to: Which tensor to apply transform to: 'inputs', 'targets', or 'both'.
         """
+        valid_methods = ("max", "avg", "sum")
+        if method not in valid_methods:
+            raise ValueError(
+                f"Bin method must be one of {valid_methods}, got {method!r}"
+            )
         self.bin_size = bin_size
         self.method = method
         self.apply_to = apply_to

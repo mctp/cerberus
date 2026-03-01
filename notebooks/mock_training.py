@@ -145,7 +145,7 @@ genome_config: GenomeConfig = {
     "allowed_chroms": ["chr1"],
     "chrom_sizes": {"chr1": 1_000_000},
     "fold_type": "chrom_partition",
-    "fold_args": {"k": 5}
+    "fold_args": {"k": 5, "test_fold": 0, "val_fold": 1}
 }
 
 data_config: DataConfig = {
@@ -207,7 +207,7 @@ model = GlobalProfileCNN(input_len=2048, output_len=2048, output_bin_size=1)
 
 # Initialize Lightning Module
 criterion = ProfilePoissonNLLLoss(log_input=True, full=False)
-metrics = DefaultMetricCollection(num_channels=1)
+metrics = DefaultMetricCollection()
 
 module = CerberusModule(
     model=model,

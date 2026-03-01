@@ -38,7 +38,7 @@ In `_load_model`, the parameter `key` (the model name, e.g. `"fold_0"`) is overw
 
 `Pomeranian`, `PomeranianK5`, `ConvNeXtDCNN`, `BPNet1024`, all `MetricCollection` and `Loss` subclasses are not exported. The `pomeranian` module is entirely invisible from the public API.
 
-### 9. `PGC` layers in `LyraNet` have no residual connection (`models/lyra.py:290-291`)
+### 9. `PGC` layers in `LyraNet` have no residual connection (`models/lyra.py:290-291`) (ORIGINAL, NOT FIXED)
 
 PGC layers are applied sequentially without residuals: `for pgc in self.pgc_layers: x = pgc(x)`. The `PGC` class itself has no residual. Meanwhile, S4D layers in the same model use explicit residuals. Missing residual connections in 4-7 stacked PGC layers may cause gradient flow problems.
 
@@ -81,39 +81,31 @@ All five `validate_*_config` functions follow an identical pattern (check dict, 
 
 Called in both `parse_hparams_config` and `_train`. Since it uses `setdefault`, the second call is a no-op if the first already ran. Unclear ownership. Modifying `count_pseudocount` between the two calls silently keeps the stale value. Fixed by moving the single call into `instantiate()` where the loss and metrics are actually constructed.
 
-### 17. `propagate_pseudocount` mutates argument in-place (`config.py:767-785`)
+### 17. `propagate_pseudocount` mutates argument in-place (`config.py:767-785`) (FIXED)
 
-Modifies `model_config["loss_args"]` and `model_config["metrics_args"]` dicts in-place via `setdefault`. Combined with `resolve_adaptive_loss_args` (which creates a new top-level dict but shares nested dicts), mutation can affect the original `model_config` across folds.
+Modifies `model_config["loss_args"]` and `model_config["metrics_args"]` dicts in-place via `setdefault`. Combined with `resolve_adaptive_loss_args` (which creates a new top-level dict but shares nested dicts), mutation can affect the original `model_config` across folds. Fixed by making `propagate_pseudocount` return a new `ModelConfig` with shallow-copied `loss_args` and `metrics_args` dicts, matching the pattern used by `resolve_adaptive_loss_args`.
 
-### 18. Duplicated `PGC` class (`lyra.py:132-175` vs `layers.py:101-206`)
+### 18. Duplicated `PGC` class (`lyra.py:132-175` vs `layers.py:101-206`) (ORIGINAL, NOT FIXED)
 
 Two similarly-named PGC implementations exist: `PGC` in lyra.py operates in `(B, L, D)` format with `nn.Linear`; `PGCBlock` in layers.py operates in `(B, D, L)` format with `nn.Conv1d`. Confusing and increases maintenance burden.
 
-### 19. `config.get()` violations of project convention
+### 19. `config.get()` violations of project convention (FIXED)
 
-The CLAUDE.md says never use `config.get("key", default)`. Violations exist at:
-- `config.py:394` — `config.get("use_sequence", True)`
-- `config.py:606,610,614` — scheduler_type, scheduler_args, reload_dataloaders
-- `datamodule.py:69,71` — `fold_args.get("test_fold", 0)`, `.get("val_fold", 1)`
+All `config.get()` calls replaced with bracket access. Keys `use_sequence`, `scheduler_type`, `scheduler_args`, `reload_dataloaders_every_n_epochs` made required in validators. `fold_args["test_fold"]` and `fold_args["val_fold"]` now use bracket access. All test configs updated with required keys (`test_fold`/`val_fold` in fold_args, `max_jitter` replacing `jitter`, `use_sequence` added where missing).
 
-### 20. Mutable default arguments (systemic across all models)
+### 20. Mutable default arguments (systemic across all models) (FIXED)
 
-Lists used as default arguments in `__init__` signatures:
-- `gopher.py:64-65` — `input_channels=["A","C","G","T"]`, `output_channels=["signal"]`
-- `asap.py:111`, `geminet.py:44/162/199/245`, `lyra.py:216/373/419/465`
-- `bpnet.py:43/184`, `pomeranian.py:55/222`, `predict_bigwig.py:21`
+All mutable list defaults in `__init__` signatures changed to `None` with defaults set in the method body. Affected files: `asap.py`, `bpnet.py`, `geminet.py`, `gopher.py`, `lyra.py`, `pomeranian.py`, `predict_bigwig.py`, `samplers.py`. Uses `_UNSET` sentinel in `pomeranian.py` where `None` has a separate semantic meaning (auto-compute dilations).
 
-Classic Python anti-pattern. If mutated, corrupts the default for all future instantiations.
+### 21. Broad `try/except` swallowing errors (PARTIALLY FIXED)
 
-### 21. Broad `try/except` swallowing errors
-
-Multiple locations silently catch and discard exceptions:
-- `datamodule.py:170-180` — `except (AttributeError, RuntimeError): pass` during resampling
-- `train.py:142-143` — `except Exception` during config dump
-- `mask.py:101` — `except Exception` returns zeros
-- `complexity.py:186-204` — `except Exception` returns NaN
-- `sequence.py:93-99` — `except Exception` returns 0.0
-- `model_ensemble.py:597-601` — `except yaml.YAMLError: pass` overwrites corrupt metadata
+Multiple locations silently catch and discard exceptions. Added `logger.warning` to the silent ones:
+- `datamodule.py:170-180` — `except (AttributeError, RuntimeError): pass` during resampling (FIXED — now warns)
+- `train.py:142-143` — `except Exception` during config dump (already logged warning)
+- `mask.py:101` — `except Exception` returns zeros (already logged debug)
+- `complexity.py:186-204` — `except Exception` returns NaN (FIXED — now warns)
+- `sequence.py:93-99` — `except Exception` returns 0.0 (FIXED — now warns)
+- `model_ensemble.py:597-601` — `except yaml.YAMLError: pass` overwrites corrupt metadata (FIXED in #38)
 
 ### 22. Duplicated cropping logic across models and layers
 
@@ -135,26 +127,26 @@ Should be a shared utility function.
 - `self.prenorm = True` hardcoded, `if not self.prenorm:` branch is unreachable (`lyra.py:237,300,312-314`)
 - `return_embeddings` parameter accepted but never referenced (`lyra.py:281`)
 
-### 25. `num_channels` parameter stored but never used in metrics (`metrics.py:42-44, 87-89`)
+### 25. `num_channels` parameter stored but never used in metrics (`metrics.py:42-44, 87-89`) (FIXED)
 
-`ProfilePearsonCorrCoef` and `CountProfilePearsonCorrCoef` accept and store `self.num_channels` but never use it. Misleads users.
+`ProfilePearsonCorrCoef` and `CountProfilePearsonCorrCoef` accept and store `self.num_channels` but never use it. Misleads users. Fixed by removing `num_channels` from both metric classes, all MetricCollection subclasses, and all callers.
 
 ### 26. Duplicated Pearson computation and log-count extraction in metrics (`metrics.py`)
 
 - `ProfilePearsonCorrCoef` and `CountProfilePearsonCorrCoef` have identical `update`/`compute` patterns
 - `LogCountsMeanSquaredError` and `LogCountsPearsonCorrCoef` have ~30-line copy-pasted count extraction logic
 
-### 27. Truthiness checks on `Compose` objects and empty lists (`dataset.py:306,311,179`)
+### 27. Truthiness checks on `Compose` objects and empty lists (`dataset.py:306,311,179`) (FIXED)
 
-`if self.transforms:` always evaluates True (non-None object). `if transforms and deterministic_transforms:` would be False for empty lists `[]`, silently creating defaults instead of using the empty list.
+`if self.transforms:` always evaluates True (non-None object). `if transforms and deterministic_transforms:` would be False for empty lists `[]`, silently creating defaults instead of using the empty list. Fixed by using `is not None` for the init check and removing the always-true guards in `__getitem__` and `create_subset`.
 
-### 28. `setup_logging` modifies root logger (`logging.py:14-33`)
+### 28. `setup_logging` modifies root logger (`logging.py:14-33`) (FIXED)
 
-A library should configure its own logger hierarchy (`logging.getLogger("cerberus")`), not the root logger. This interferes with logging configuration of the host application.
+A library should configure its own logger hierarchy (`logging.getLogger("cerberus")`), not the root logger. This interferes with logging configuration of the host application. Fixed by changing to `logging.getLogger("cerberus")` so only the cerberus hierarchy is configured.
 
-### 29. `ConvNeXtDCNN` swallows unknown `**kwargs` silently (`models/asap.py:113,132`)
+### 29. `ConvNeXtDCNN` swallows unknown `**kwargs` silently (`models/asap.py:113,132`) (FIXED)
 
-Any typo in a keyword argument (e.g., `filtr0=256`) is silently ignored.
+Any typo in a keyword argument (e.g., `filtr0=256`) is silently ignored. Fixed by validating kwargs keys against the known config keys before updating, raising `ValueError` for unknown arguments.
 
 ### 30. `LogCountsPearsonCorrCoef` accumulates unbounded lists (`metrics.py:261-262`)
 
@@ -164,17 +156,17 @@ Any typo in a keyword argument (e.g., `filtr0=256`) is silently ignored.
 
 Recursively converts nested dataclasses (including `Interval`) to plain dicts. Callers expecting `Interval` objects get dicts instead.
 
-### 32. `_process_island` only processes first channel (`predict_bigwig.py:145`)
+### 32. `_process_island` only processes first channel (`predict_bigwig.py:145`) (PARTIALLY FIXED)
 
-`values = track_data[0]` silently discards all channels except the first. Multi-channel model outputs are truncated without warning.
+`values = track_data[0]` silently discards all channels except the first. Multi-channel model outputs are truncated without warning. Partially fixed by adding a `logger.warning` when multiple channels are detected. Full fix (adding a `channel` parameter) is tracked as a TODO in the code.
 
-### 33. `n_dilated_layers` parameter ignored when `dilations` is provided (`models/pomeranian.py:58,66`)
+### 33. `n_dilated_layers` parameter ignored when `dilations` is provided (`models/pomeranian.py:58,66`) (FIXED)
 
-When `dilations` is provided (which is the default), `n_dilated_layers` is completely ignored. User could pass `n_dilated_layers=16` and get 8 layers.
+When `dilations` is provided (which is the default), `n_dilated_layers` is completely ignored. User could pass `n_dilated_layers=16` and get 8 layers. Fixed by adding validation that raises `ValueError` when both are provided and disagree on length.
 
-### 34. `Bin._bin` does not validate `method` (`transform.py:299-311`)
+### 34. `Bin._bin` does not validate `method` (`transform.py:299-311`) (FIXED)
 
-If `self.method` is not "max", "avg", or "sum", the method silently returns the tensor without pooling. No validation in `__init__`.
+If `self.method` is not "max", "avg", or "sum", the method silently returns the tensor without pooling. No validation in `__init__`. Fixed by adding validation in `__init__` that raises `ValueError` for invalid methods.
 
 ### 35. `_forward_models` has deeply nested control flow (`model_ensemble.py:185-263`)
 
@@ -188,9 +180,9 @@ Nearly identical functions differing only in filenames, species string, and erro
 
 `bw_keys.index(name)` is O(n) linear search within a loop over all channels. Should use a pre-computed dict.
 
-### 38. `YAML.YAMLError` silently overwrites corrupt metadata (`model_ensemble.py:597-601`)
+### 38. `YAML.YAMLError` silently overwrites corrupt metadata (`model_ensemble.py:597-601`) (FIXED)
 
-`except yaml.YAMLError: pass` silently ignores corrupt metadata files and overwrites them, losing all previously recorded fold information.
+`except yaml.YAMLError: pass` silently ignores corrupt metadata files and overwrites them, losing all previously recorded fold information. Fixed by adding a `logger.warning` that alerts the user their existing fold information will be lost.
 
 ---
 

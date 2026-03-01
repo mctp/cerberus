@@ -103,7 +103,7 @@ class TestLogCountsPearsonPerChannel:
 class TestMetricsWithProfileLogRates:
 
     def test_profile_pearson_with_log_rates(self, targets_2ch, log_rates_2ch):
-        metric = ProfilePearsonCorrCoef(num_channels=2)
+        metric = ProfilePearsonCorrCoef()
         output = ProfileLogRates(log_rates=log_rates_2ch)
         metric.update(output, targets_2ch)
         result = metric.compute()

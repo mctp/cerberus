@@ -66,4 +66,4 @@ Handles the low-level I/O with genomic file formats.
 *   `exclude.py`: Utilities for loading and querying exclusion intervals (blacklists, gaps).
 *   `genome.py`: Helper functions to load chromosome sizes and generate cross-validation folds.
 *   `download.py`: Scripts to fetch public datasets and references, useful for testing and tutorials.
-*   `logging.py`: `setup_logging()` helper for configuring the root logger.
+*   `logging.py`: `setup_logging()` helper for configuring the `cerberus` logger hierarchy.

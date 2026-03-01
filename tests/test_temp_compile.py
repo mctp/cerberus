@@ -41,6 +41,7 @@ def test_instantiate_model_compile():
         "reverse_complement": False,
         "target_scale": 1.0,
         "count_pseudocount": 1.0,
+        "use_sequence": True,
     }
 
     with patch("cerberus.module.import_class") as mock_import:

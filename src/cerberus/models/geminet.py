@@ -38,8 +38,8 @@ class GemiNet(nn.Module):
         input_len: int,
         output_len: int,
         output_bin_size: int = 1,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 64,
         n_dilated_layers: int = 8,
         conv_kernel_size: int = 21,
@@ -50,7 +50,11 @@ class GemiNet(nn.Module):
         predict_total_count: bool = True,
     ):
         super().__init__()
-        
+        if input_channels is None:
+            input_channels = ["A", "C", "G", "T"]
+        if output_channels is None:
+            output_channels = ["signal"]
+
         self.input_len = input_len
         self.output_len = output_len
         self.output_bin_size = output_bin_size
@@ -157,8 +161,8 @@ class GemiNetMedium(GemiNet):
         input_len: int,
         output_len: int,
         output_bin_size: int = 1,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 128,
         n_dilated_layers: int = 11,
         conv_kernel_size: int = 21,
@@ -199,8 +203,8 @@ class GemiNetLarge(GemiNet):
         input_len: int,
         output_len: int,
         output_bin_size: int = 1,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 128,
         n_dilated_layers: int = 11,
         conv_kernel_size: int = 21,
@@ -241,8 +245,8 @@ class GemiNetExtraLarge(GemiNet):
         input_len: int,
         output_len: int,
         output_bin_size: int = 1,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 224,
         n_dilated_layers: int = 11,
         conv_kernel_size: int = 21,
@@ -274,9 +278,9 @@ class GemiNetMetricCollection(MetricCollection):
     MetricCollection for GemiNet models.
     Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
     """
-    def __init__(self, num_channels: int = 1, log1p_targets: bool = False, count_pseudocount: float = 1.0):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0):
         super().__init__({
-            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "pearson": CountProfilePearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
             "mse_profile": CountProfileMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
             "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
             "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),

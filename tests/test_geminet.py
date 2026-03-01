@@ -157,7 +157,7 @@ def test_geminet_loss_integration():
     assert model.profile_conv.weight.grad is not None
 
 def test_geminet_metrics():
-    metrics = GemiNetMetricCollection(num_channels=2)
+    metrics = GemiNetMetricCollection()
     
     # Mock output
     logits = torch.randn(2, 2, 100)

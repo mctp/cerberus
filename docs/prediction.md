@@ -145,7 +145,7 @@ The `predicted_log_count` and `observed_log_count` columns are placed in the sam
 
 | Loss family | Count head trains against | Column space |
 |---|---|---|
-| `MSEMultinomialLoss`, `CoupledMSEMultinomialLoss` | `log1p(total_counts)` | `log1p` |
+| `MSEMultinomialLoss`, `CoupledMSEMultinomialLoss` | `log(total_counts + count_pseudocount)` | `log(x + p)` (defaults to `log1p` when `count_pseudocount=1.0`) |
 | `PoissonMultinomialLoss`, `NegativeBinomialMultinomialLoss`, and their `Coupled` variants | `log(total_counts)` (via `PoissonNLLLoss(log_input=True)`) | `log` |
 
 The tool reads the instantiated loss to determine this automatically — no manual configuration is needed.
@@ -154,13 +154,13 @@ The observed total is computed from raw BigWig signal (bypassing transforms) and
 
 #### Multi-channel models (`count_per_channel=True`)
 
-When the model has multiple output channels and was trained with `count_per_channel=True` under an MSE loss, each channel's `log_counts` is in `log1p` space. The tool correctly aggregates these to a single global log-count via:
+When the model has multiple output channels and was trained with `count_per_channel=True` under an MSE loss, each channel's `log_counts` is in `log(count + count_pseudocount)` space. The tool correctly aggregates these to a single global log-count via:
 
 ```
-log1p(expm1(log_counts_ch0) + expm1(log_counts_ch1) + ...)
+log((exp(lc_ch0) - p) + (exp(lc_ch1) - p) + ... + p)
 ```
 
-rather than the naive `logsumexp`, which would give `log(n_channels + total_counts)`.
+where `p = count_pseudocount`, rather than the naive `logsumexp`, which would give `log(n_channels * p + total_counts)`.
 
 #### Optional arguments
 
@@ -196,6 +196,6 @@ log_counts = compute_total_log_counts(batch_output, log_counts_include_pseudocou
 The `log_counts_include_pseudocount` parameter matters only for multi-channel `ProfileCountOutput` (i.e. `count_per_channel=True`):
 
 - **`log_counts_include_pseudocount=False`** (default): assumes `log_counts` per channel is in natural-log space (Poisson/NB losses). Uses `logsumexp` to sum across channels: `log(Σ exp(log_counts_c))`.
-- **`log_counts_include_pseudocount=True`**: assumes `log_counts` per channel is in `log(count + pseudocount)` space (MSE loss). Inverts per channel, sums, then reapplies: `log(Σ(exp(lc) - p) + p)`.
+- **`log_counts_include_pseudocount=True`**: assumes `log_counts` per channel is in `log(count + count_pseudocount)` space (MSE loss). Inverts per channel, sums, then reapplies: `log(Σ(exp(lc) - p) + p)`.
 
-Using the wrong value with a multi-channel MSE model would give `log(n_channels * pseudocount + total_counts)` instead of `log(pseudocount + total_counts)`.
+Using the wrong value with a multi-channel MSE model would give `log(n_channels * count_pseudocount + total_counts)` instead of `log(count_pseudocount + total_counts)`.
