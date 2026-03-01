@@ -19,7 +19,7 @@ BIGWIG="tmp/SI_38975_TC32_DMSO_PROX1.bw"
 PEAKS="tmp/SI_38975_TC32_DMSO_PROX1.narrowPeak.gz"
 BATCH_SIZE=32
 MAX_EPOCHS=50
-ALPHA=1.0
+ALPHA=adaptive
 LOSS="bpnet"
 
 # --- Train ---

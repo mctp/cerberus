@@ -15,7 +15,7 @@ DATA_DIR="tests/data"
 OUTPUT_DIR="tests/data/models/chip_ar_mdapca2b_bpnet"
 BATCH_SIZE=32
 MAX_EPOCHS=50
-ALPHA=1.0
+ALPHA=adaptive
 LOSS="bpnet"
 
 # --- Download dataset ---
