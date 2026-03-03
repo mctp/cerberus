@@ -1129,7 +1129,8 @@
 </code></pre></div>
 <p>Opens a live-reloading preview at <code>http://127.0.0.1:8000/cerberus/</code>. The browser refreshes automatically on every save.</p>
 <h2 id="deploy">Deploy<a class="headerlink" href="#deploy" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>mkdocs<span class="w"> </span>gh-deploy
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python<span class="w"> </span>tools/generate_llms_txt.py<span class="w">  </span><span class="c1"># regenerate LLM context files</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>mkdocs<span class="w"> </span>gh-deploy
 </code></pre></div>
 <p>This builds the site and pushes it directly to the <code>gh-pages</code> branch on GitHub. The live site at <code>https://mctp.github.io/cerberus/</code> updates within ~1 minute.</p>
 <div class="admonition note">

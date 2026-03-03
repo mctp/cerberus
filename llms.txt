@@ -1,0 +1,235 @@
+# Cerberus
+
+> A PyTorch-based framework for genomic sequence-to-function (S2F) model training.
+
+Cerberus provides modular data loading for genomic intervals, DNA sequences (FASTA), and functional signal tracks (BigWig/BigBed). It supports multiple neural network architectures (BPNet, GemiNet, LyraNet, GlobalProfileCNN) with PyTorch Lightning integration for training, cross-validation, and genome-wide inference.
+
+## Documentation
+
+- [Home](https://mctp.github.io/cerberus/)
+- [Overview](https://mctp.github.io/cerberus/overview/)
+- [Quick Start](https://mctp.github.io/cerberus/usage/)
+- [Workflow](https://mctp.github.io/cerberus/workflow/)
+- [Configuration](https://mctp.github.io/cerberus/configuration/)
+- [Samplers](https://mctp.github.io/cerberus/samplers/)
+- [Core Components](https://mctp.github.io/cerberus/components/)
+- [Prediction](https://mctp.github.io/cerberus/prediction/)
+- [Multi-GPU](https://mctp.github.io/cerberus/multi_gpu/)
+- [Maintaining Docs](https://mctp.github.io/cerberus/contributing/)
+- [Models](https://mctp.github.io/cerberus/models/)
+- [Complexity Metrics](https://mctp.github.io/cerberus/complexity/)
+- [Codebase Structure](https://mctp.github.io/cerberus/structure/)
+- [Model Comparison (K5 vs K9)](https://mctp.github.io/cerberus/model_comparison_k5_vs_k9/)
+
+## API Reference
+
+### `cerberus.config`
+
+- **`import_class()`** — Dynamically imports a class from a module string (e.g., 'package.module.Class').
+- **`class GenomeConfig(TypedDict)`** — Configuration for the genome assembly.
+- **`class SamplerConfig(TypedDict)`** — Configuration for data samplers.
+- **`class DataConfig(TypedDict)`** — Configuration for input/output data handling.
+- **`class TrainConfig(TypedDict)`** — Configuration for training hyperparameters.
+- **`class ModelConfig(TypedDict)`** — Configuration for the model architecture.
+- **`class CerberusConfig(TypedDict)`** — Combined configuration for Cerberus.
+- **`validate_genome_config()`** — Validates the genome configuration and returns a GenomeConfig object.
+- **`validate_data_config()`** — Validates the data configuration dictionary.
+- **`validate_sampler_config()`** — Validates the sampler configuration dictionary.
+- **`validate_data_and_sampler_compatibility()`** — Validates compatibility between data and sampler configurations.
+- **`validate_train_config()`** — Validates the training configuration dictionary.
+- **`validate_model_config()`** — Validates the model configuration dictionary.
+- **`validate_data_and_model_compatibility()`** — Validates compatibility between data and model configurations.
+- **`parse_hparams_config()`** — Parses a hparams.yaml file and returns validated configuration objects.
+
+### `cerberus.interval`
+
+- **`class Interval`** — Represents a genomic interval.
+- **`resolve_interval()`** — Resolves a query into an Interval object.
+- **`parse_intervals()`** — Parses intervals from a list of strings and paths to BED files.
+- **`merge_intervals()`** — Sorts and merges overlapping or adjacent intervals.
+
+### `cerberus.genome`
+
+- **`create_genome_config()`** — Creates a valid GenomeConfig by parsing the FASTA index.
+- **`create_genome_folds()`** — Creates genome folds based on the specified strategy.
+- **`create_human_genome_config()`** — Creates GenomeConfig from a downloaded bundle (specifically for human hg38).
+- **`create_mouse_genome_config()`** — Creates GenomeConfig from a downloaded bundle (specifically for mouse mm10).
+
+### `cerberus.sequence`
+
+- **`encode_dna()`** — One-hot encodes a DNA sequence string into a tensor.
+- **`compute_intervals_gc()`** — Computes GC content for a collection of intervals using a FASTA file.
+- **`class BaseSequenceExtractor(Protocol)`** — Protocol for sequence extractors.
+- **`class SequenceExtractor(BaseSequenceExtractor)`** — Extracts DNA sequence from a FASTA file on-the-fly.
+- **`class InMemorySequenceExtractor(BaseSequenceExtractor)`** — Extracts DNA sequence from memory.
+
+### `cerberus.signal`
+
+- **`class BaseSignalExtractor(Protocol)`** — Protocol for signal extractors.
+- **`class SignalExtractor(BaseSignalExtractor)`** — Extracts raw signal from BigWig files on-the-fly.
+- **`class UniversalExtractor(BaseSignalExtractor)`** — Intelligently routes input channels to the appropriate extractor based on file extension.
+- **`class InMemorySignalExtractor(BaseSignalExtractor)`** — Extracts signal from BigWig files loaded into memory.
+
+### `cerberus.mask`
+
+- **`class BaseMaskExtractor(Protocol)`** — Protocol for mask extractors.
+- **`class BigBedMaskExtractor(BaseMaskExtractor)`** — Extracts binary masks from BigBed files on-the-fly.
+- **`class InMemoryBigBedMaskExtractor(BaseMaskExtractor)`** — Extracts binary masks from BigBed files loaded into memory.
+- **`class BedMaskExtractor(BaseMaskExtractor)`** — Extracts binary masks from text-based BED files.
+
+### `cerberus.complexity`
+
+- **`calculate_gc_content()`** — Calculates the GC content of a DNA sequence.
+- **`calculate_dust_score()`** — Calculates the DUST score for a DNA sequence.
+- **`calculate_log_cpg_ratio()`** — Calculates the log-transformed Observed/Expected CpG ratio.
+- **`compute_intervals_complexity()`** — Computes selected complexity metrics for a collection of intervals.
+- **`get_bin_index()`** — Computes the multi-dimensional bin index for a given metric row.
+- **`compute_hist()`** — Computes a histogram of metric occurrences across defined bins.
+
+### `cerberus.samplers`
+
+- **`generate_sub_seeds()`** — Generates n independent seeds from a master seed.
+- **`match_bin_counts()`** — Selects indices from candidate_metrics to match the distribution of target_metrics.
+- **`partition_intervals_by_fold()`** — Partitions intervals into train, validation, and test lists based on folds.
+- **`class Sampler(Protocol)`** — Protocol for data samplers.
+- **`class BaseSampler(Sampler)`** — Base class for samplers providing common configuration and exclusion logic.
+- **`class ProxySampler(BaseSampler)`** — Base class for samplers that wrap another sampler and provide index-based access.
+- **`class MultiSampler(BaseSampler)`** — Combines multiple samplers into a single stream.
+- **`class ListSampler(BaseSampler)`** — Base class for samplers that store a concrete list of intervals.
+- **`class RandomSampler(BaseSampler)`** — Samples random intervals from the genome, respecting exclusions.
+- **`class IntervalSampler(ListSampler)`** — Samples from a list of genomic intervals provided in a file.
+- **`class SlidingWindowSampler(ListSampler)`** — Generates samples by sliding a window across the genome.
+- **`class ScaledSampler(ProxySampler)`** — Wraps a sampler to resize it (subsample or oversample).
+- **`class ComplexityMatchedSampler(ProxySampler)`** — Selects candidates from a candidate_sampler that match the distributional properties
+- **`class PeakSampler(MultiSampler)`** — A specialized MultiSampler that combines a set of positive intervals (peaks)
+- **`create_sampler()`** — Factory function to create a Sampler from a config.
+
+### `cerberus.transform`
+
+- **`class DataTransform(Protocol)`** — Protocol for data transformations.
+- **`class Compose`** — Composes multiple transforms together.
+- **`class Jitter`** — Randomly crops input/target tensors to input_len.
+- **`class TargetCrop`** — Crops target tensors to the center to match output_len.
+- **`class ReverseComplement`** — Randomly reverse complements the sequence and reverses the signal.
+- **`class Log1p`** — Applies log1p transformation (log(x + 1)).
+- **`class Sqrt`** — Applies sqrt transformation.
+- **`class Arcsinh`** — Applies arcsinh transformation (log(x + sqrt(x^2 + 1))).
+- **`class Bin`** — Bins the signal by pooling.
+- **`create_default_transforms()`** — Creates a list of default transforms based on DataConfig options.
+
+### `cerberus.dataset`
+
+- **`class CerberusDataset(Dataset)`** — A PyTorch Dataset for loading genomic data using the Cerberus framework.
+
+### `cerberus.datamodule`
+
+- **`class CerberusDataModule(pl.LightningDataModule)`** — PyTorch Lightning DataModule for Cerberus.
+
+### `cerberus.module`
+
+- **`class CerberusModule(pl.LightningModule)`** — PyTorch Lightning Module for Sequence-to-Function models.
+- **`configure_callbacks()`** — Helper to configure default callbacks (LearningRateMonitor, ModelCheckpoint, EarlyStopping).
+- **`instantiate_model()`** — Instantiates just the user model (backbone) from configurations.
+- **`instantiate()`** — Factory function to instantiate a CerberusModule from configurations.
+
+### `cerberus.train`
+
+- **`train_single()`** — Train a single model for a specific fold from configurations.
+- **`train_multi()`** — Train multiple models using k-fold cross-validation.
+
+### `cerberus.output`
+
+- **`class ModelOutput`** — Base class for model outputs.
+- **`class ProfileLogits(ModelOutput)`** — Output for models predicting a profile (shape) using unnormalized log-probabilities.
+- **`class ProfileLogRates(ModelOutput)`** — Output for models predicting log-rates (log-intensities).
+- **`class ProfileCountOutput(ProfileLogits)`** — Output for models predicting profile (logits) and total counts.
+- **`unbatch_modeloutput()`** — Splits a batched output (ModelOutput) into a list of individual interval dictionaries.
+- **`aggregate_tensor_track_values()`** — Aggregates a list of tensors into a single merged array.
+- **`aggregate_intervals()`** — Aggregates overlapping predictions into a single merged output.
+- **`aggregate_models()`** — Aggregates a list of model outputs.
+
+### `cerberus.loss`
+
+- **`class ProfilePoissonNLLLoss(nn.PoissonNLLLoss)`** — Poisson NLL Loss on Profile LogRates.
+- **`class MSEMultinomialLoss(nn.Module)`** — Multinomial NLL Profile Loss + MSE Count Loss.
+- **`class CoupledMSEMultinomialLoss(MSEMultinomialLoss)`** — Multinomial NLL Profile Loss + MSE Count Loss (Coupled).
+- **`class PoissonMultinomialLoss(nn.Module)`** — Poisson Multinomial Loss (Global Count).
+- **`class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss)`** — Poisson Multinomial Loss (Coupled/Global Count).
+- **`class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss)`** — Negative Binomial Multinomial Loss.
+- **`class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss)`** — Negative Binomial Multinomial Loss (Coupled).
+
+### `cerberus.metrics`
+
+- **`class ProfilePearsonCorrCoef(PearsonCorrCoef)`** — Pearson Correlation Coefficient for profile probabilities.
+- **`class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef)`** — Pearson Correlation for reconstructed profile counts (BPNet-style).
+- **`class CountProfileMeanSquaredError(MeanSquaredError)`** — Mean Squared Error for reconstructed profile counts (BPNet-style).
+- **`class ProfileMeanSquaredError(MeanSquaredError)`** — Mean Squared Error on Probability Profiles.
+- **`class LogCountsMeanSquaredError(MeanSquaredError)`** — Mean Squared Error on Log Counts.
+- **`class LogCountsPearsonCorrCoef(PearsonCorrCoef)`** — Pearson Correlation on Log Counts.
+- **`class DefaultMetricCollection(MetricCollection)`** — Default MetricCollection used for training/validation.
+
+### `cerberus.layers`
+
+- **`class GRN1d(nn.Module)`** — ConvNeXt v2 GRN (Global Response Normalization) layer, adapted for 1d.
+- **`class ConvNeXtV2Block(nn.Module)`** — ConvNeXt V2 Block adapted for 1D genomic data.
+- **`class PGCBlock(nn.Module)`** — Projected Gated Convolution Block.
+- **`class DilatedResidualBlock(nn.Module)`** — Dilated Residual Block for BPNet.
+
+### `cerberus.model_ensemble`
+
+- **`class ModelEnsemble(nn.ModuleDict)`** — Wraps a dictionary of models (fold_idx -> model) and manages
+- **`update_ensemble_metadata()`** — Updates or creates ensemble_metadata.yaml in the root directory
+
+### `cerberus.predict_bigwig`
+
+- **`predict_to_bigwig()`** — Generates predictions for all chromosomes and writes to a BigWig file.
+
+### `cerberus.download`
+
+- **`download_dataset()`** — Downloads a specified dataset.
+- **`download_reference_genome()`** — Downloads and prepares reference genome resources.
+- **`download_human_reference()`** — Wrapper for download_reference_genome to maintain backward compatibility.
+
+### `cerberus.logging`
+
+- **`setup_logging()`** — Configures the root logger for Cerberus.
+
+### `cerberus.models.gopher`
+
+- **`class GlobalProfileCNN(nn.Module)`** — GlobalProfileCNN (Baseline CNN) for genomic profile prediction.
+
+### `cerberus.models.bpnet`
+
+- **`class BPNet(nn.Module)`** — BPNet: Base-Resolution Prediction Net.
+- **`class BPNet1024(BPNet)`** — BPNet1024: A configuration of BPNet optimized for 2112 -> 1024 prediction without cropping.
+- **`class BPNetLoss(MSEMultinomialLoss)`** — BPNet Loss with parameters fixed to match chrombpnet-pytorch implementation.
+- **`class BPNetMetricCollection(MetricCollection)`** — MetricCollection for BPNet models.
+
+### `cerberus.models.pomeranian`
+
+- **`class Pomeranian(nn.Module)`** — Pomeranian: A lightweight model mirroring BPNet (valid padding) but using modern components.
+- **`class PomeranianK5(Pomeranian)`** — PomeranianK5 (Medium Kernel): K5 body with a 2-layer factorized stem.
+- **`class PomeranianMetricCollection(MetricCollection)`** — MetricCollection for Pomeranian models.
+
+### `cerberus.models.geminet`
+
+- **`class GemiNet(nn.Module)`** — GemiNet: A modern replacement for BPNet using Projected Gated Convolutions.
+- **`class GemiNetMedium(GemiNet)`** — Medium version of GemiNet (~600k params).
+- **`class GemiNetLarge(GemiNet)`** — Large version of GemiNet (~2.2M params).
+- **`class GemiNetExtraLarge(GemiNet)`** — Extra Large version of GemiNet (~5.0M params).
+- **`class GemiNetMetricCollection(MetricCollection)`** — MetricCollection for GemiNet models.
+
+### `cerberus.models.lyra`
+
+- **`class S4DKernel(nn.Module)`** — S4D Kernel: Generates the convolution kernel for the SSM.
+- **`class S4D(nn.Module)`** — S4D Layer: Applies the S4D kernel using FFT convolution.
+- **`class PGC(nn.Module)`** — Projected Gated Convolution (PGC).
+- **`class LyraNet(nn.Module)`** — LyraNet: A profile+counts model using the Lyra architecture (PGC + S4D).
+- **`class LyraNetMedium(LyraNet)`** — Medium version of LyraNet (~670k params).
+- **`class LyraNetLarge(LyraNet)`** — Large version of LyraNet (~2.3M params).
+- **`class LyraNetExtraLarge(LyraNet)`** — Extra Large version of LyraNet (~5.4M params).
+- **`class LyraNetMetricCollection(MetricCollection)`** — MetricCollection for LyraNet models.
+
+### `cerberus.models.asap`
+
+- **`class ConvNeXtDCNN(nn.Module)`**
