@@ -39,6 +39,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`validate_train_config()`** — Validates the training configuration dictionary.
 - **`validate_model_config()`** — Validates the model configuration dictionary.
 - **`validate_data_and_model_compatibility()`** — Validates compatibility between data and model configurations.
+- **`propagate_pseudocount()`** — Propagate the scaled count_pseudocount from data_config into model_config's
 - **`parse_hparams_config()`** — Parses a hparams.yaml file and returns validated configuration objects.
 
 ### `cerberus.interval`
@@ -115,6 +116,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class Log1p`** — Applies log1p transformation (log(x + 1)).
 - **`class Sqrt`** — Applies sqrt transformation.
 - **`class Arcsinh`** — Applies arcsinh transformation (log(x + sqrt(x^2 + 1))).
+- **`class Scale`** — Multiplies targets (or inputs) by a constant factor.
 - **`class Bin`** — Bins the signal by pooling.
 - **`create_default_transforms()`** — Creates a list of default transforms based on DataConfig options.
 
@@ -132,9 +134,12 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`configure_callbacks()`** — Helper to configure default callbacks (LearningRateMonitor, ModelCheckpoint, EarlyStopping).
 - **`instantiate_model()`** — Instantiates just the user model (backbone) from configurations.
 - **`instantiate()`** — Factory function to instantiate a CerberusModule from configurations.
+- **`instantiate_metrics_and_loss()`** — Instantiates metrics and loss functions from model configuration.
 
 ### `cerberus.train`
 
+- **`compute_counts_loss_weight()`** — Compute the count loss weight (alpha) from training data statistics.
+- **`resolve_adaptive_loss_args()`** — Resolve "adaptive" sentinel values in loss_args to data-derived floats.
 - **`train_single()`** — Train a single model for a specific fold from configurations.
 - **`train_multi()`** — Train multiple models using k-fold cross-validation.
 
@@ -148,6 +153,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`aggregate_tensor_track_values()`** — Aggregates a list of tensors into a single merged array.
 - **`aggregate_intervals()`** — Aggregates overlapping predictions into a single merged output.
 - **`aggregate_models()`** — Aggregates a list of model outputs.
+- **`compute_total_log_counts()`** — Extracts total log counts from the model output.
 
 ### `cerberus.loss`
 
@@ -161,12 +167,12 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.metrics`
 
-- **`class ProfilePearsonCorrCoef(PearsonCorrCoef)`** — Pearson Correlation Coefficient for profile probabilities.
-- **`class CountProfilePearsonCorrCoef(ProfilePearsonCorrCoef)`** — Pearson Correlation for reconstructed profile counts (BPNet-style).
+- **`class ProfilePearsonCorrCoef(Metric)`** — Pearson Correlation Coefficient for profile probabilities.
+- **`class CountProfilePearsonCorrCoef(Metric)`** — Pearson Correlation for reconstructed profile counts (BPNet-style).
 - **`class CountProfileMeanSquaredError(MeanSquaredError)`** — Mean Squared Error for reconstructed profile counts (BPNet-style).
 - **`class ProfileMeanSquaredError(MeanSquaredError)`** — Mean Squared Error on Probability Profiles.
 - **`class LogCountsMeanSquaredError(MeanSquaredError)`** — Mean Squared Error on Log Counts.
-- **`class LogCountsPearsonCorrCoef(PearsonCorrCoef)`** — Pearson Correlation on Log Counts.
+- **`class LogCountsPearsonCorrCoef(Metric)`** — Pearson Correlation on Log Counts.
 - **`class DefaultMetricCollection(MetricCollection)`** — Default MetricCollection used for training/validation.
 
 ### `cerberus.layers`
@@ -193,7 +199,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.logging`
 
-- **`setup_logging()`** — Configures the root logger for Cerberus.
+- **`setup_logging()`** — Configures the ``cerberus`` logger hierarchy.
 
 ### `cerberus.models.gopher`
 
@@ -211,25 +217,6 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class Pomeranian(nn.Module)`** — Pomeranian: A lightweight model mirroring BPNet (valid padding) but using modern components.
 - **`class PomeranianK5(Pomeranian)`** — PomeranianK5 (Medium Kernel): K5 body with a 2-layer factorized stem.
 - **`class PomeranianMetricCollection(MetricCollection)`** — MetricCollection for Pomeranian models.
-
-### `cerberus.models.geminet`
-
-- **`class GemiNet(nn.Module)`** — GemiNet: A modern replacement for BPNet using Projected Gated Convolutions.
-- **`class GemiNetMedium(GemiNet)`** — Medium version of GemiNet (~600k params).
-- **`class GemiNetLarge(GemiNet)`** — Large version of GemiNet (~2.2M params).
-- **`class GemiNetExtraLarge(GemiNet)`** — Extra Large version of GemiNet (~5.0M params).
-- **`class GemiNetMetricCollection(MetricCollection)`** — MetricCollection for GemiNet models.
-
-### `cerberus.models.lyra`
-
-- **`class S4DKernel(nn.Module)`** — S4D Kernel: Generates the convolution kernel for the SSM.
-- **`class S4D(nn.Module)`** — S4D Layer: Applies the S4D kernel using FFT convolution.
-- **`class PGC(nn.Module)`** — Projected Gated Convolution (PGC).
-- **`class LyraNet(nn.Module)`** — LyraNet: A profile+counts model using the Lyra architecture (PGC + S4D).
-- **`class LyraNetMedium(LyraNet)`** — Medium version of LyraNet (~670k params).
-- **`class LyraNetLarge(LyraNet)`** — Large version of LyraNet (~2.3M params).
-- **`class LyraNetExtraLarge(LyraNet)`** — Extra Large version of LyraNet (~5.4M params).
-- **`class LyraNetMetricCollection(MetricCollection)`** — MetricCollection for LyraNet models.
 
 ### `cerberus.models.asap`
 
