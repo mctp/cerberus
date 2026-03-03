@@ -6,4 +6,4 @@ Cerberus fully supports multi-GPU training by leveraging PyTorch Lightning.
 *   **Default Strategy**: **DDP (Distributed Data Parallel)** is typically used when multiple devices are provided.
 *   **Usage**: Pass `accelerator="gpu"`, `devices=N`, and optionally `strategy="ddp"` directly to the `cerberus.train.train()` function.
 
-For detailed implementation notes and internal design, see [Internal Multi-GPU Documentation](internal/multi_gpu_support.md).
+For detailed implementation notes and internal design, see `docs/internal/multi_gpu_support.md` in the repository.

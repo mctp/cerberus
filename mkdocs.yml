@@ -1,0 +1,86 @@
+site_name: Cerberus
+site_description: >-
+  A PyTorch-based framework for genomic sequence-to-function model training.
+site_url: https://mctp.github.io/cerberus/
+repo_url: https://github.com/mctp/cerberus
+repo_name: mctp/cerberus
+copyright: Copyright &copy; Marcin Cieslik, University of Michigan
+
+docs_dir: docs
+
+exclude_docs: |
+  internal/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.integrate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search:
+      lang: en
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: date
+
+extra_javascript:
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: README.md
+  - Getting Started:
+    - Overview: overview.md
+    - Quick Start: usage.md
+    - Workflow: workflow.md
+  - User Guide:
+    - Configuration: configuration.md
+    - Samplers: samplers.md
+    - Core Components: components.md
+    - Prediction: prediction.md
+    - Multi-GPU: multi_gpu.md
+  - Reference:
+    - Models: models.md
+    - Complexity Metrics: complexity.md
+    - Codebase Structure: structure.md
+    - Model Comparison (K5 vs K9): model_comparison_k5_vs_k9.md

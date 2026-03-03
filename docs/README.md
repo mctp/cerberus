@@ -1,6 +1,9 @@
 # Cerberus Documentation
 
-Welcome to the Cerberus documentation.
+<img src="cerberus_small.jpg" alt="Cerberus Logo" width="25%">
+
+Cerberus is a PyTorch-based framework for genomic sequence-to-function (S2F) model training. It implements efficient data loading infrastructure for handling genomic intervals, DNA sequences (FASTA), and functional signal tracks (BigWig/BigBed).
+
 
 ## User Guides
 
@@ -12,5 +15,5 @@ Welcome to the Cerberus documentation.
 *   [**Workflow Lifecycle**](workflow.md): High-level overview of Training, Prediction, and Model Exploration.
 *   [**Codebase Structure**](structure.md): Guide to the file organization and module responsibilities.
 
-## Internal Documentation
-Development notes and implementation details can be found in the [internal/](internal/) directory.
+!!! note "Development Notes"
+    Internal implementation notes are maintained in `docs/internal/` in the repository and are not part of the public documentation.
