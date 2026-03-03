@@ -28,6 +28,7 @@ Opens a live-reloading preview at `http://127.0.0.1:8000/cerberus/`. The browser
 ## Deploy
 
 ```bash
+python tools/generate_llms_txt.py  # regenerate LLM context files
 mkdocs gh-deploy
 ```
 
