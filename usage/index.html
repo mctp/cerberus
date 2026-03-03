@@ -582,6 +582,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#output-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#logging" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1195,7 +1206,7 @@
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="c1"># Exclude blacklist regions</span>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">exclude_intervals</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;blacklist&quot;</span><span class="p">:</span> <span class="n">blacklist_path</span><span class="p">},</span>
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="n">fold_type</span><span class="o">=</span><span class="s2">&quot;chrom_partition&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="n">fold_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">}</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="n">fold_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;k&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">&quot;test_fold&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;val_fold&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="p">)</span>
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="c1"># 2. Data Configuration</span>
@@ -1209,18 +1220,20 @@
 <a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    <span class="s2">&quot;max_jitter&quot;</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
 <a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    <span class="s2">&quot;log_transform&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    <span class="s2">&quot;reverse_complement&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="s2">&quot;use_sequence&quot;</span><span class="p">:</span> <span class="kc">True</span>
-<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="p">}</span>
-<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>
-<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="c1"># 3. Sampler Configuration (Peaks + Negatives)</span>
-<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="n">sampler_config</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="s2">&quot;sampler_type&quot;</span><span class="p">:</span> <span class="s2">&quot;peak&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>    <span class="s2">&quot;padded_size&quot;</span><span class="p">:</span> <span class="mi">2114</span><span class="p">,</span>
-<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="s2">&quot;sampler_args&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>        <span class="s2">&quot;intervals_path&quot;</span><span class="p">:</span> <span class="n">peaks_path</span><span class="p">,</span>
-<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>        <span class="s2">&quot;background_ratio&quot;</span><span class="p">:</span> <span class="mf">1.0</span> <span class="c1"># 1:1 ratio of peaks to complexity-matched background</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="p">}</span>
-<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="p">}</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="s2">&quot;use_sequence&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>    <span class="s2">&quot;target_scale&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>  <span class="c1"># Multiplicative scale applied to targets before log transform</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="s2">&quot;count_pseudocount&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>  <span class="c1"># Additive offset before log-transforming count targets</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="p">}</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="c1"># 3. Sampler Configuration (Peaks + Negatives)</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="n">sampler_config</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="s2">&quot;sampler_type&quot;</span><span class="p">:</span> <span class="s2">&quot;peak&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    <span class="s2">&quot;padded_size&quot;</span><span class="p">:</span> <span class="mi">2114</span><span class="p">,</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="s2">&quot;sampler_args&quot;</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>        <span class="s2">&quot;intervals_path&quot;</span><span class="p">:</span> <span class="n">peaks_path</span><span class="p">,</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>        <span class="s2">&quot;background_ratio&quot;</span><span class="p">:</span> <span class="mf">1.0</span> <span class="c1"># 1:1 ratio of peaks to complexity-matched background</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>    <span class="p">}</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="p">}</span>
 </code></pre></div>
 <h2 id="2-instantiate-datamodule">2. Instantiate DataModule<a class="headerlink" href="#2-instantiate-datamodule" title="Permanent link">&para;</a></h2>
 <p>Create the <code>CerberusDataModule</code>. This handles multiprocessing and data splitting.</p>
@@ -1257,93 +1270,145 @@
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="s2">&quot;optimizer&quot;</span><span class="p">:</span> <span class="s2">&quot;adamw&quot;</span><span class="p">,</span>
 <a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="s2">&quot;scheduler_type&quot;</span><span class="p">:</span> <span class="s2">&quot;cosine&quot;</span><span class="p">,</span>
 <a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="s2">&quot;scheduler_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;warmup_epochs&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">},</span>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="s2">&quot;filter_bias_and_bn&quot;</span><span class="p">:</span> <span class="kc">True</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="p">}</span>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="c1"># 5. Model Configuration</span>
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="c1"># Uses standard models from cerberus.models or your own importable class path.</span>
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="c1"># &quot;model_cls&quot;, &quot;loss_cls&quot;, and &quot;metrics_cls&quot; must be strings.</span>
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="n">model_config</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;my_bpnet&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>    <span class="s2">&quot;model_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.models.BPNet&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    <span class="s2">&quot;loss_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.loss.MSEMultinomialLoss&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>    <span class="s2">&quot;loss_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;count_weight&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>    <span class="s2">&quot;metrics_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;torchmetrics.MetricCollection&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>    <span class="s2">&quot;metrics_args&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>        <span class="s2">&quot;metrics&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>            <span class="s2">&quot;pearson&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.metrics.CountProfilePearsonCorrCoef&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>            <span class="s2">&quot;mse_profile&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.metrics.CountProfileMeanSquaredError&quot;</span>
-<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>        <span class="p">}</span>
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    <span class="p">},</span>
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    <span class="s2">&quot;model_args&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>        <span class="s2">&quot;filters&quot;</span><span class="p">:</span> <span class="mi">64</span><span class="p">,</span>
-<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>        <span class="s2">&quot;n_dilated_layers&quot;</span><span class="p">:</span> <span class="mi">9</span><span class="p">,</span>
-<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>        <span class="c1"># Note: input_channels and output_channels are passed if the model requires them.</span>
-<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>        <span class="c1"># BPNet automatically infers input/output dimensions from input_len/output_len/DataConfig,</span>
-<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a>        <span class="c1"># but explicit channels can be passed if needed by custom models.</span>
-<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;AR&quot;</span><span class="p">]</span>
-<a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a>    <span class="p">}</span>
-<a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a><span class="p">}</span>
-<a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a>
-<a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a><span class="c1"># Option A: Train a Single Model (Single Split)</span>
-<a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a><span class="c1"># Uses the high-level API to handle instantiation and output structure (creates fold_0)</span>
-<a id="__codelineno-2-48" name="__codelineno-2-48" href="#__codelineno-2-48"></a><span class="c1"># (test_fold defaults to 0, val_fold defaults to 1)</span>
-<a id="__codelineno-2-49" name="__codelineno-2-49" href="#__codelineno-2-49"></a><span class="n">trainer</span> <span class="o">=</span> <span class="n">train_single</span><span class="p">(</span>
-<a id="__codelineno-2-50" name="__codelineno-2-50" href="#__codelineno-2-50"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">genome_config</span><span class="p">,</span>
-<a id="__codelineno-2-51" name="__codelineno-2-51" href="#__codelineno-2-51"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">data_config</span><span class="p">,</span>
-<a id="__codelineno-2-52" name="__codelineno-2-52" href="#__codelineno-2-52"></a>    <span class="n">sampler_config</span><span class="o">=</span><span class="n">sampler_config</span><span class="p">,</span>
-<a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a>    <span class="n">model_config</span><span class="o">=</span><span class="n">model_config</span><span class="p">,</span>
-<a id="__codelineno-2-54" name="__codelineno-2-54" href="#__codelineno-2-54"></a>    <span class="n">train_config</span><span class="o">=</span><span class="n">train_config</span><span class="p">,</span>
-<a id="__codelineno-2-55" name="__codelineno-2-55" href="#__codelineno-2-55"></a>    <span class="n">num_workers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> 
-<a id="__codelineno-2-56" name="__codelineno-2-56" href="#__codelineno-2-56"></a>    <span class="n">in_memory</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> 
-<a id="__codelineno-2-57" name="__codelineno-2-57" href="#__codelineno-2-57"></a>    <span class="n">precision</span><span class="o">=</span><span class="s2">&quot;16-mixed&quot;</span><span class="p">,</span>      <span class="c1"># Enable Mixed Precision</span>
-<a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a>    <span class="n">matmul_precision</span><span class="o">=</span><span class="s2">&quot;high&quot;</span><span class="p">,</span>   <span class="c1"># TensorFloat-32 on Ampere+</span>
-<a id="__codelineno-2-59" name="__codelineno-2-59" href="#__codelineno-2-59"></a>    <span class="n">root_dir</span><span class="o">=</span><span class="s2">&quot;logs/single_run&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-60" name="__codelineno-2-60" href="#__codelineno-2-60"></a>    <span class="n">accelerator</span><span class="o">=</span><span class="s2">&quot;gpu&quot;</span><span class="p">,</span> 
-<a id="__codelineno-2-61" name="__codelineno-2-61" href="#__codelineno-2-61"></a>    <span class="n">devices</span><span class="o">=</span><span class="mi">1</span>
-<a id="__codelineno-2-62" name="__codelineno-2-62" href="#__codelineno-2-62"></a><span class="p">)</span>
-<a id="__codelineno-2-63" name="__codelineno-2-63" href="#__codelineno-2-63"></a>
-<a id="__codelineno-2-64" name="__codelineno-2-64" href="#__codelineno-2-64"></a><span class="c1"># Option B: Cross-Validation Training (Multi-Fold)</span>
-<a id="__codelineno-2-65" name="__codelineno-2-65" href="#__codelineno-2-65"></a><span class="c1"># Trains k models (where k is defined in genome_config), each with a different test fold.</span>
-<a id="__codelineno-2-66" name="__codelineno-2-66" href="#__codelineno-2-66"></a><span class="n">trainers</span> <span class="o">=</span> <span class="n">train_multi</span><span class="p">(</span>
-<a id="__codelineno-2-67" name="__codelineno-2-67" href="#__codelineno-2-67"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">genome_config</span><span class="p">,</span>
-<a id="__codelineno-2-68" name="__codelineno-2-68" href="#__codelineno-2-68"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">data_config</span><span class="p">,</span>
-<a id="__codelineno-2-69" name="__codelineno-2-69" href="#__codelineno-2-69"></a>    <span class="n">sampler_config</span><span class="o">=</span><span class="n">sampler_config</span><span class="p">,</span>
-<a id="__codelineno-2-70" name="__codelineno-2-70" href="#__codelineno-2-70"></a>    <span class="n">model_config</span><span class="o">=</span><span class="n">model_config</span><span class="p">,</span>
-<a id="__codelineno-2-71" name="__codelineno-2-71" href="#__codelineno-2-71"></a>    <span class="n">train_config</span><span class="o">=</span><span class="n">train_config</span><span class="p">,</span>
-<a id="__codelineno-2-72" name="__codelineno-2-72" href="#__codelineno-2-72"></a>    <span class="n">num_workers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
-<a id="__codelineno-2-73" name="__codelineno-2-73" href="#__codelineno-2-73"></a>    <span class="n">precision</span><span class="o">=</span><span class="s2">&quot;16-mixed&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-74" name="__codelineno-2-74" href="#__codelineno-2-74"></a>    <span class="n">matmul_precision</span><span class="o">=</span><span class="s2">&quot;high&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-75" name="__codelineno-2-75" href="#__codelineno-2-75"></a>    <span class="n">root_dir</span><span class="o">=</span><span class="s2">&quot;logs/cross_val&quot;</span><span class="p">,</span> <span class="c1"># Models saved in logs/cross_val/fold_0, fold_1, etc.</span>
-<a id="__codelineno-2-76" name="__codelineno-2-76" href="#__codelineno-2-76"></a>    <span class="n">accelerator</span><span class="o">=</span><span class="s2">&quot;gpu&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-77" name="__codelineno-2-77" href="#__codelineno-2-77"></a>    <span class="n">devices</span><span class="o">=</span><span class="mi">1</span>
-<a id="__codelineno-2-78" name="__codelineno-2-78" href="#__codelineno-2-78"></a><span class="p">)</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="s2">&quot;filter_bias_and_bn&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="s2">&quot;reload_dataloaders_every_n_epochs&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="s2">&quot;adam_eps&quot;</span><span class="p">:</span> <span class="mf">1e-8</span><span class="p">,</span>           <span class="c1"># Use 1e-7 for BPNet-style models (matches TF/Keras default)</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="s2">&quot;gradient_clip_val&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Set to e.g. 1.0 to clip gradients; None = disabled</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="p">}</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="c1"># 5. Model Configuration</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="c1"># Uses standard models from cerberus.models or your own importable class path.</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="c1"># &quot;model_cls&quot;, &quot;loss_cls&quot;, and &quot;metrics_cls&quot; must be fully-qualified class strings.</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="c1"># input_len, output_len, output_bin_size are automatically passed from DataConfig.</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="n">model_config</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;my_bpnet&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>    <span class="s2">&quot;model_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.models.bpnet.BPNet&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>    <span class="s2">&quot;loss_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.models.bpnet.BPNetLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>    <span class="c1"># Set alpha=&quot;adaptive&quot; to compute the counts loss weight from the training set</span>
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>    <span class="c1"># automatically (alpha = median_total_counts / 10). This balances the profile</span>
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>    <span class="c1"># and counts loss terms at the correct scale for the dataset depth.</span>
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    <span class="s2">&quot;loss_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="s2">&quot;adaptive&quot;</span><span class="p">},</span>
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    <span class="s2">&quot;metrics_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.models.bpnet.BPNetMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>    <span class="s2">&quot;metrics_args&quot;</span><span class="p">:</span> <span class="p">{},</span>
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>    <span class="s2">&quot;model_args&quot;</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>        <span class="s2">&quot;n_dilated_layers&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;AR&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a>    <span class="p">},</span>
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a><span class="p">}</span>
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a>
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a><span class="c1"># Option A: Train a Single Model (Single Split)</span>
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a><span class="c1"># Uses the high-level API to handle instantiation and output structure (creates fold_0)</span>
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a><span class="c1"># (test_fold and val_fold are read from fold_args, or can be overridden here)</span>
+<a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a><span class="n">trainer</span> <span class="o">=</span> <span class="n">train_single</span><span class="p">(</span>
+<a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">genome_config</span><span class="p">,</span>
+<a id="__codelineno-2-48" name="__codelineno-2-48" href="#__codelineno-2-48"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">data_config</span><span class="p">,</span>
+<a id="__codelineno-2-49" name="__codelineno-2-49" href="#__codelineno-2-49"></a>    <span class="n">sampler_config</span><span class="o">=</span><span class="n">sampler_config</span><span class="p">,</span>
+<a id="__codelineno-2-50" name="__codelineno-2-50" href="#__codelineno-2-50"></a>    <span class="n">model_config</span><span class="o">=</span><span class="n">model_config</span><span class="p">,</span>
+<a id="__codelineno-2-51" name="__codelineno-2-51" href="#__codelineno-2-51"></a>    <span class="n">train_config</span><span class="o">=</span><span class="n">train_config</span><span class="p">,</span>
+<a id="__codelineno-2-52" name="__codelineno-2-52" href="#__codelineno-2-52"></a>    <span class="n">num_workers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a>    <span class="n">in_memory</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-2-54" name="__codelineno-2-54" href="#__codelineno-2-54"></a>    <span class="n">precision</span><span class="o">=</span><span class="s2">&quot;16-mixed&quot;</span><span class="p">,</span>      <span class="c1"># Enable Mixed Precision</span>
+<a id="__codelineno-2-55" name="__codelineno-2-55" href="#__codelineno-2-55"></a>    <span class="n">matmul_precision</span><span class="o">=</span><span class="s2">&quot;high&quot;</span><span class="p">,</span>   <span class="c1"># TensorFloat-32 on Ampere+</span>
+<a id="__codelineno-2-56" name="__codelineno-2-56" href="#__codelineno-2-56"></a>    <span class="n">root_dir</span><span class="o">=</span><span class="s2">&quot;logs/single_run&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-57" name="__codelineno-2-57" href="#__codelineno-2-57"></a>    <span class="n">run_test</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>             <span class="c1"># Evaluate on test fold after training (uses best ckpt)</span>
+<a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a>    <span class="n">accelerator</span><span class="o">=</span><span class="s2">&quot;gpu&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-59" name="__codelineno-2-59" href="#__codelineno-2-59"></a>    <span class="n">devices</span><span class="o">=</span><span class="mi">1</span>
+<a id="__codelineno-2-60" name="__codelineno-2-60" href="#__codelineno-2-60"></a><span class="p">)</span>
+<a id="__codelineno-2-61" name="__codelineno-2-61" href="#__codelineno-2-61"></a>
+<a id="__codelineno-2-62" name="__codelineno-2-62" href="#__codelineno-2-62"></a><span class="c1"># Option B: Cross-Validation Training (Multi-Fold)</span>
+<a id="__codelineno-2-63" name="__codelineno-2-63" href="#__codelineno-2-63"></a><span class="c1"># Trains k models (where k is defined in genome_config), each with a different test fold.</span>
+<a id="__codelineno-2-64" name="__codelineno-2-64" href="#__codelineno-2-64"></a><span class="n">trainers</span> <span class="o">=</span> <span class="n">train_multi</span><span class="p">(</span>
+<a id="__codelineno-2-65" name="__codelineno-2-65" href="#__codelineno-2-65"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">genome_config</span><span class="p">,</span>
+<a id="__codelineno-2-66" name="__codelineno-2-66" href="#__codelineno-2-66"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">data_config</span><span class="p">,</span>
+<a id="__codelineno-2-67" name="__codelineno-2-67" href="#__codelineno-2-67"></a>    <span class="n">sampler_config</span><span class="o">=</span><span class="n">sampler_config</span><span class="p">,</span>
+<a id="__codelineno-2-68" name="__codelineno-2-68" href="#__codelineno-2-68"></a>    <span class="n">model_config</span><span class="o">=</span><span class="n">model_config</span><span class="p">,</span>
+<a id="__codelineno-2-69" name="__codelineno-2-69" href="#__codelineno-2-69"></a>    <span class="n">train_config</span><span class="o">=</span><span class="n">train_config</span><span class="p">,</span>
+<a id="__codelineno-2-70" name="__codelineno-2-70" href="#__codelineno-2-70"></a>    <span class="n">num_workers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-2-71" name="__codelineno-2-71" href="#__codelineno-2-71"></a>    <span class="n">precision</span><span class="o">=</span><span class="s2">&quot;16-mixed&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-72" name="__codelineno-2-72" href="#__codelineno-2-72"></a>    <span class="n">matmul_precision</span><span class="o">=</span><span class="s2">&quot;high&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-73" name="__codelineno-2-73" href="#__codelineno-2-73"></a>    <span class="n">root_dir</span><span class="o">=</span><span class="s2">&quot;logs/cross_val&quot;</span><span class="p">,</span> <span class="c1"># Models saved in logs/cross_val/fold_0, fold_1, etc.</span>
+<a id="__codelineno-2-74" name="__codelineno-2-74" href="#__codelineno-2-74"></a>    <span class="n">run_test</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>             <span class="c1"># Evaluate on test fold after each fold&#39;s training</span>
+<a id="__codelineno-2-75" name="__codelineno-2-75" href="#__codelineno-2-75"></a>    <span class="n">accelerator</span><span class="o">=</span><span class="s2">&quot;gpu&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-76" name="__codelineno-2-76" href="#__codelineno-2-76"></a>    <span class="n">devices</span><span class="o">=</span><span class="mi">1</span>
+<a id="__codelineno-2-77" name="__codelineno-2-77" href="#__codelineno-2-77"></a><span class="p">)</span>
 </code></pre></div>
+<h3 id="output-files">Output Files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h3>
+<p>After training, each fold directory (<code>fold_0/</code>, <code>fold_1/</code>, …) contains:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.json</code></td>
+<td>All config dicts (model, data, genome, sampler, train) as JSON for reproducibility</td>
+</tr>
+<tr>
+<td><code>model.pt</code></td>
+<td>Best checkpoint weights as a plain <code>state_dict</code> — load without PyTorch Lightning</td>
+</tr>
+<tr>
+<td><code>last.ckpt</code></td>
+<td>Last epoch checkpoint (useful for inspecting final weights)</td>
+</tr>
+<tr>
+<td><code>checkpoint-epoch=XX-val_loss=Y.ckpt</code></td>
+<td>Best checkpoint (lowest <code>val_loss</code>)</td>
+</tr>
+<tr>
+<td><code>plots/val_count_scatter_epoch_NNN.png</code></td>
+<td>Per-epoch scatter of predicted vs. true log-counts</td>
+</tr>
+<tr>
+<td><code>lightning_logs/version_0/hparams.yaml</code></td>
+<td>Hyperparameters logged by Lightning</td>
+</tr>
+<tr>
+<td><code>lightning_logs/version_0/metrics.csv</code></td>
+<td>Per-step and per-epoch scalar metrics</td>
+</tr>
+</tbody>
+</table>
+<p>To load <code>model.pt</code> for inference without Lightning:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models.bpnet</span><span class="w"> </span><span class="kn">import</span> <span class="n">BPNet</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">model</span><span class="o">.</span><span class="n">load_state_dict</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;logs/single_run/fold_0/model.pt&quot;</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">))</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">model</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+</code></pre></div></p>
 <h3 id="logging">Logging<a class="headerlink" href="#logging" title="Permanent link">&para;</a></h3>
-<p>Cerberus automatically logs all configuration dictionaries (<code>genome_config</code>, <code>data_config</code>, <code>sampler_config</code>, <code>model_config</code>, <code>train_config</code>) to the experiment log directory.
-You can find these parameters in:
-<code>lightning_logs/version_{#}/hparams.yaml</code></p>
+<p>Cerberus automatically logs all configuration dictionaries (<code>genome_config</code>, <code>data_config</code>, <code>sampler_config</code>, <code>model_config</code>, <code>train_config</code>) to two places:</p>
+<ul>
+<li><code>config.json</code> in each fold directory — human-readable JSON written before training starts</li>
+<li><code>lightning_logs/version_{#}/hparams.yaml</code> — Lightning's hyperparameter log</li>
+</ul>
 <h2 id="manual-usage-pytorch-dataset">Manual Usage (PyTorch Dataset)<a class="headerlink" href="#manual-usage-pytorch-dataset" title="Permanent link">&para;</a></h2>
 <p>If you aren't using Lightning, you can use <code>CerberusDataset</code> directly.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus</span><span class="w"> </span><span class="kn">import</span> <span class="n">CerberusDataset</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataLoader</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">dataset</span> <span class="o">=</span> <span class="n">CerberusDataset</span><span class="p">(</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">genome_config</span><span class="p">,</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">data_config</span><span class="p">,</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">sampler_config</span><span class="o">=</span><span class="n">sampler_config</span><span class="p">,</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">seed</span><span class="o">=</span><span class="mi">42</span>  <span class="c1"># Optional seed for deterministic interval selection</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">)</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="c1"># Access a single item</span>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="n">item</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="s1">&#39;inputs&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># (4, 2114) -&gt; Sequence (one-hot)</span>
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="s1">&#39;targets&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="c1"># (1, 1000) -&gt; Signal</span>
-<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
-<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="c1"># Create DataLoader</span>
-<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus</span><span class="w"> </span><span class="kn">import</span> <span class="n">CerberusDataset</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataLoader</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">dataset</span> <span class="o">=</span> <span class="n">CerberusDataset</span><span class="p">(</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">genome_config</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">data_config</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">sampler_config</span><span class="o">=</span><span class="n">sampler_config</span><span class="p">,</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">seed</span><span class="o">=</span><span class="mi">42</span>  <span class="c1"># Optional seed for deterministic interval selection</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="p">)</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="c1"># Access a single item</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="n">item</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="s1">&#39;inputs&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>   <span class="c1"># (4, 2114) -&gt; Sequence (one-hot)</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="s1">&#39;targets&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># (1, 1000) -&gt; Signal</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="s1">&#39;intervals&#39;</span><span class="p">])</span>      <span class="c1"># &quot;chr1:1000-3114(+)&quot; -&gt; genomic interval string</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="nb">print</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="s1">&#39;peak_status&#39;</span><span class="p">])</span>    <span class="c1"># 1 = peak interval, 0 = background</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>                              <span class="c1"># (always 1 for samplers that don&#39;t support labelling)</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="c1"># Create DataLoader</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="reproducibility-and-seeding">Reproducibility and Seeding<a class="headerlink" href="#reproducibility-and-seeding" title="Permanent link">&para;</a></h2>
 <p>Ensuring reproducibility in training runs involves two levels of randomness control:</p>
@@ -1356,37 +1421,179 @@ You can find these parameters in:
 <li>Data shuffling order in DataLoaders (<code>random</code>, <code>numpy</code>).</li>
 <li>Transformations in workers (<code>CerberusDataModule</code> handles worker seeding).</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytorch_lightning</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">pl</span><span class="o">.</span><span class="n">seed_everything</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytorch_lightning</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">pl</span><span class="o">.</span><span class="n">seed_everything</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
 </code></pre></div>
 </li>
 <li>
 <p><strong>Dataset Composition (Samplers)</strong>:
     Some samplers, specifically <code>RandomSampler</code> and <code>ComplexityMatchedSampler</code>, perform random selection logic (e.g., choosing 10,000 random intervals from the whole genome). To ensure that the <strong>same set of intervals</strong> is selected across different runs, you must provide a seed to the <code>CerberusDataModule</code> or <code>CerberusDataset</code> at run-time.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Ensure the sampler picks the same random intervals every time</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">data_module</span> <span class="o">=</span> <span class="n">CerberusDataModule</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Ensure the sampler picks the same random intervals every time</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">data_module</span> <span class="o">=</span> <span class="n">CerberusDataModule</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
 </code></pre></div>
 <p>This seed is passed down to <code>create_sampler</code>, which initializes the samplers deterministically. For complex samplers like <code>MultiSampler</code>, the seed is propagated to all sub-samplers (e.g., seed, seed+1, seed+2) to ensure the entire sampling tree is deterministic.</p>
 </li>
 </ol>
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
-<p>The <code>notebooks/</code> directory contains complete examples:</p>
+<p>The <code>examples/</code> directory contains ready-to-run shell scripts covering all model × dataset combinations. Each script defines dataset-specific variables at the top and forwards any extra arguments to the underlying tool.</p>
+<table>
+<thead>
+<tr>
+<th>Script</th>
+<th>Model</th>
+<th>Dataset</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>examples/chip_ar_mdapca2b_bpnet.sh</code></td>
+<td>BPNet</td>
+<td>MDA-PCA-2b AR (auto-downloaded)</td>
+</tr>
+<tr>
+<td><code>examples/chip_ar_mdapca2b_pomeranian.sh</code></td>
+<td>Pomeranian</td>
+<td>MDA-PCA-2b AR (auto-downloaded)</td>
+</tr>
+<tr>
+<td><code>examples/chip_ar_mdapca2b_gopher.sh</code></td>
+<td>Gopher</td>
+<td>MDA-PCA-2b AR (auto-downloaded)</td>
+</tr>
+<tr>
+<td><code>examples/chip_prox1_tc32_bpnet.sh</code></td>
+<td>BPNet</td>
+<td>TC32 PROX1 (local paths)</td>
+</tr>
+<tr>
+<td><code>examples/chip_prox1_tc32_pomeranian.sh</code></td>
+<td>Pomeranian</td>
+<td>TC32 PROX1 (local paths)</td>
+</tr>
+<tr>
+<td><code>examples/chip_prox1_tc32_gopher.sh</code></td>
+<td>Gopher</td>
+<td>TC32 PROX1 (local paths)</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Run single-fold training (default)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>bash<span class="w"> </span>examples/chip_ar_mdapca2b_bpnet.sh
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Run multi-fold cross-validation</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>bash<span class="w"> </span>examples/chip_ar_mdapca2b_pomeranian.sh<span class="w"> </span>--multi
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># Use PomeranianK5 variant</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>bash<span class="w"> </span>examples/chip_ar_mdapca2b_pomeranian.sh<span class="w"> </span>--k5
+</code></pre></div>
+<p>The <code>notebooks/</code> directory contains lower-level walkthroughs:</p>
 <ul>
 <li><code>notebooks/cerberus_basics.py</code>: A step-by-step walkthrough of the library components (Configuration, Samplers, Datasets, Transforms).</li>
 <li><code>notebooks/baseline_cnn_train.py</code>: A complete training example using the <code>GlobalProfileCNN</code> model to predict BigWig tracks from DNA sequence.</li>
 </ul>
 <h2 id="generic-training-tools">Generic Training Tools<a class="headerlink" href="#generic-training-tools" title="Permanent link">&para;</a></h2>
-<p>For quick training on custom data, you can use generic scripts in the <code>tools/</code> directory:</p>
+<p>For quick training on custom data, use the model-specific scripts in the <code>tools/</code> directory. All scripts accept any BigWig signal and BED/narrowPeak file and share the same CLI structure.</p>
 <ul>
-<li><code>tools/train_pomeranian.py</code>: Train a Pomeranian model on any BigWig and BED (narrowPeak) file.
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Basic usage</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>python<span class="w"> </span>tools/train_pomeranian.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_pomeranian
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Customized training (adjust learning rate, patience, background ratio)</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>python<span class="w"> </span>tools/train_pomeranian.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_pomeranian<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span>--learning-rate<span class="w"> </span><span class="m">0</span>.001<span class="w"> </span>--patience<span class="w"> </span><span class="m">15</span><span class="w"> </span>--background-ratio<span class="w"> </span><span class="m">2</span>.0
-</code></pre></div></li>
+<li>
+<p><code>tools/train_bpnet.py</code>: Train a BPNet model.
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Standard BPNet (2114bp -&gt; 1000bp, canonical chrombpnet-pytorch settings)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_bpnet
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># BPNet1024 variant (2112bp -&gt; 1024bp, comparable I/O to Pomeranian)</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_bpnet<span class="w"> </span>--1024
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># Multi-fold cross-validation</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_bpnet<span class="w"> </span>--multi
+</code></pre></div></p>
+</li>
+<li>
+<p><code>tools/train_pomeranian.py</code>: Train a Pomeranian model (2112bp → 1024bp).
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Default Pomeranian (Kernel=9)</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>python<span class="w"> </span>tools/train_pomeranian.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_pomeranian
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># PomeranianK5 variant (Kernel=5)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>python<span class="w"> </span>tools/train_pomeranian.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_pomeranian<span class="w"> </span>--k5
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># Customized training</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>python<span class="w"> </span>tools/train_pomeranian.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_pomeranian<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">    </span>--learning-rate<span class="w"> </span><span class="m">0</span>.001<span class="w"> </span>--patience<span class="w"> </span><span class="m">15</span><span class="w"> </span>--background-ratio<span class="w"> </span><span class="m">2</span>.0
+</code></pre></div></p>
+</li>
+<li>
+<p><code>tools/train_gopher.py</code>: Train a Gopher (GlobalProfileCNN) model (2048bp → 1024bp at 4bp resolution).
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Standard Gopher</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>python<span class="w"> </span>tools/train_gopher.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_gopher
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Custom bottleneck size</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>python<span class="w"> </span>tools/train_gopher.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_gopher<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span>--bottleneck-channels<span class="w"> </span><span class="m">16</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="c1"># Multi-fold cross-validation</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>python<span class="w"> </span>tools/train_gopher.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_gopher<span class="w"> </span>--multi
+</code></pre></div></p>
+</li>
 </ul>
+<p>All tools support <code>--multi</code> (cross-validation), <code>--precision</code> (<code>bf16</code>/<code>mps</code>/<code>full</code>), <code>--accelerator</code>, <code>--devices</code>, and <code>--fasta</code>/<code>--blacklist</code>/<code>--gaps</code> for custom genome references. Key default differences reflect each model's canonical training recipe:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th><code>train_bpnet.py</code></th>
+<th><code>train_pomeranian.py</code></th>
+<th><code>train_gopher.py</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--optimizer</code></td>
+<td><code>adam</code></td>
+<td><code>adamw</code></td>
+<td><code>adamw</code></td>
+</tr>
+<tr>
+<td><code>--learning-rate</code></td>
+<td><code>1e-3</code></td>
+<td><code>5e-4</code></td>
+<td><code>1e-3</code></td>
+</tr>
+<tr>
+<td><code>--weight-decay</code></td>
+<td><code>0.0</code></td>
+<td><code>0.01</code></td>
+<td><code>0.01</code></td>
+</tr>
+<tr>
+<td><code>--scheduler-type</code></td>
+<td><code>default</code> (constant)</td>
+<td><code>cosine</code></td>
+<td><code>cosine</code></td>
+</tr>
+<tr>
+<td><code>--input-len</code></td>
+<td><code>2114</code></td>
+<td><code>2112</code></td>
+<td><code>2048</code></td>
+</tr>
+<tr>
+<td><code>--output-len</code></td>
+<td><code>1000</code></td>
+<td><code>1024</code></td>
+<td><code>1024</code></td>
+</tr>
+<tr>
+<td><code>--output-bin-size</code></td>
+<td><code>1</code></td>
+<td><code>1</code></td>
+<td><code>4</code></td>
+</tr>
+<tr>
+<td><code>--alpha</code> / loss</td>
+<td><code>adaptive</code> (BPNetLoss)</td>
+<td><code>adaptive</code> (BPNetLoss)</td>
+<td>— (ProfilePoissonNLLLoss)</td>
+</tr>
+</tbody>
+</table>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <p>Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.
 See <a href="../prediction/">Prediction (Inference)</a> for details on <code>ModelEnsemble</code>, <code>predict_intervals_batched</code>, and CLI tools like <code>tools/export_predictions.py</code>.</p>
@@ -1412,7 +1619,7 @@ See <a href="../prediction/">Prediction (Inference)</a> for details on <code>Mod
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="February 7, 2026 05:25:43 UTC">February 7, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 1, 2026 03:29:08 UTC">March 1, 2026</span>
   </span>
 
     

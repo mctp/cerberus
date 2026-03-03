@@ -1039,10 +1039,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#core-logic-datasetpy-datamodulepy-modulepy-entrypointspy" class="md-nav__link">
+  <a href="#core-logic-datasetpy-datamodulepy-modulepy-trainpy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Core Logic (dataset.py, datamodule.py, module.py, entrypoints.py)
+        Core Logic (dataset.py, datamodule.py, module.py, train.py)
       
     </span>
   </a>
@@ -1178,32 +1178,33 @@
 <h2 id="file-organization">File Organization<a class="headerlink" href="#file-organization" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>src/cerberus/
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── __init__.py         # Top-level API exports
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── complexity.py       # Sequence complexity metrics (GC, DUST)
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── config.py           # TypedDict definitions (GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── complexity.py       # Sequence complexity metrics (GC, DUST, CpG)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── config.py           # TypedDict schemas and validation (GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig)
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── datamodule.py       # PyTorch Lightning DataModule implementation
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── dataset.py          # PyTorch Dataset implementation
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── download.py         # Utilities for downloading reference genomes and datasets
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>├── exclude.py          # Logic for handling exclusion intervals (blacklists)
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>├── exclude.py          # Logic for handling exclusion intervals (blacklists, gaps)
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>├── genome.py           # Genome configuration helpers and folding strategies
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>├── interval.py         # Core Interval dataclass
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>├── layers.py           # Neural network building blocks (PGC, S4D, ConvNeXt)
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>├── loss.py             # Loss functions (MSEMultinomialLoss, PoissonMultinomialLoss)
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>├── mask.py             # Extractors for mask data (BigBed)
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>├── metrics.py          # Evaluation metrics (Pearson, MSE)
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>├── model_ensemble.py   # Model loading and ensemble prediction logic
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>├── module.py           # PyTorch Lightning Module wrapper (CerberusModule)
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>├── output.py           # Model output dataclasses (ProfileLogits, etc.)
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>├── predict_bigwig.py   # Genome-wide BigWig generation
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>├── samplers.py         # Sampling logic (Interval, SlidingWindow, MultiSampler)
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>├── sequence.py         # Sequence extraction (FASTA handling)
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>├── signal.py           # Signal extraction (BigWig handling)
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>├── train.py            # High-level training workflows (train_single, train_multi)
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>└── transform.py        # Data augmentation pipelines (Jitter, Crop, etc.)
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>├── layers.py           # Neural network building blocks (PGC, ConvNeXt)
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>├── logging.py          # Logging configuration helper (setup_logging)
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>├── loss.py             # Loss functions (MSEMultinomialLoss, PoissonMultinomialLoss, etc.)
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>├── mask.py             # Extractors for binary mask data (BigBed, BED)
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>├── metrics.py          # Evaluation metrics (Pearson, MSE, log counts)
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>├── model_ensemble.py   # Model loading and ensemble prediction logic
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>├── module.py           # PyTorch Lightning Module wrapper (CerberusModule)
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>├── output.py           # Model output dataclasses (ProfileLogits, ProfileLogRates, ProfileCountOutput)
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>├── predict_bigwig.py   # Genome-wide BigWig generation
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>├── samplers.py         # Sampling logic (IntervalSampler, SlidingWindowSampler, PeakSampler, etc.)
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>├── sequence.py         # DNA sequence extraction from FASTA files
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>├── signal.py           # Signal extraction from BigWig files
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>├── train.py            # High-level training workflows (train_single, train_multi)
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>└── transform.py        # Data augmentation transforms (Jitter, ReverseComplement, Scale, etc.)
 </code></pre></div>
 <h2 id="module-responsibilities">Module Responsibilities<a class="headerlink" href="#module-responsibilities" title="Permanent link">&para;</a></h2>
 <h3 id="configuration-configpy">Configuration (<code>config.py</code>)<a class="headerlink" href="#configuration-configpy" title="Permanent link">&para;</a></h3>
-<p>Defines the "schema" for the application. It ensures that user inputs are validated before they reach the core logic.</p>
-<h3 id="core-logic-datasetpy-datamodulepy-modulepy-entrypointspy">Core Logic (<code>dataset.py</code>, <code>datamodule.py</code>, <code>module.py</code>, <code>entrypoints.py</code>)<a class="headerlink" href="#core-logic-datasetpy-datamodulepy-modulepy-entrypointspy" title="Permanent link">&para;</a></h3>
+<p>Defines the "schema" for the application. It ensures that user inputs are validated before they reach the core logic. All TypedDicts and their <code>validate_*</code> functions live here.</p>
+<h3 id="core-logic-datasetpy-datamodulepy-modulepy-trainpy">Core Logic (<code>dataset.py</code>, <code>datamodule.py</code>, <code>module.py</code>, <code>train.py</code>)<a class="headerlink" href="#core-logic-datasetpy-datamodulepy-modulepy-trainpy" title="Permanent link">&para;</a></h3>
 <p>These are the main entry points.
 *   <code>dataset.py</code>: Ties together the Sampler (where), Extractors (what), and Transforms (how).
 *   <code>datamodule.py</code>: Wraps the dataset for PyTorch Lightning, managing distributed training concerns like worker seeding and splitting.
@@ -1211,10 +1212,11 @@
 *   <code>train.py</code>: High-level training workflows (<code>train_single</code>, <code>train_multi</code>) and orchestration.</p>
 <h3 id="model-training-losspy-metricspy-modulepy-outputpy-layerspy">Model &amp; Training (<code>loss.py</code>, <code>metrics.py</code>, <code>module.py</code>, <code>output.py</code>, <code>layers.py</code>)<a class="headerlink" href="#model-training-losspy-metricspy-modulepy-outputpy-layerspy" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>loss.py</code>: Domain-specific loss functions (e.g., <code>BPNetLoss</code> for profile prediction).</li>
-<li><code>metrics.py</code>: Metrics for evaluation (Pearson Correlation, MSE).</li>
+<li><code>loss.py</code>: Domain-specific loss functions (e.g., <code>MSEMultinomialLoss</code>, <code>PoissonMultinomialLoss</code> for profile prediction).</li>
+<li><code>metrics.py</code>: Metrics for evaluation (Pearson Correlation, MSE, log-count metrics).</li>
 <li><code>output.py</code>: Standardized data structures for model outputs and logic for aggregating/unbatching them.</li>
-<li><code>module.py</code>: <code>CerberusModule</code> (PL wrapper), optimization configuration, and model factory logic (<code>instantiate</code>, <code>instantiate_model</code>).</li>
+<li><code>module.py</code>: <code>CerberusModule</code> (PL wrapper), optimization configuration, and model factory logic (<code>instantiate</code>).</li>
+<li><code>layers.py</code>: Reusable neural network blocks (PGC, ConvNeXtV2, GRN).</li>
 </ul>
 <h3 id="prediction-model_ensemblepy-predict_bigwigpy">Prediction (<code>model_ensemble.py</code>, <code>predict_bigwig.py</code>)<a class="headerlink" href="#prediction-model_ensemblepy-predict_bigwigpy" title="Permanent link">&para;</a></h3>
 <ul>
@@ -1225,12 +1227,14 @@
 <p>Contains the logic for generating lists of <code>Interval</code> objects. This is decoupled from data reading, allowing lightweight iteration and manipulation of genomic regions before any heavy I/O occurs.</p>
 <h3 id="extraction-sequencepy-signalpy-maskpy">Extraction (<code>sequence.py</code>, <code>signal.py</code>, <code>mask.py</code>)<a class="headerlink" href="#extraction-sequencepy-signalpy-maskpy" title="Permanent link">&para;</a></h3>
 <p>Handles the low-level I/O with genomic file formats.
-*   Abstracts away the differences between on-disk reading (via <code>pyfaidx</code>/<code>pybigtools</code>) and in-memory access (via dictionaries/arrays).</p>
+*   Abstracts away the differences between on-disk reading (via <code>pyfaidx</code>/<code>pybigtools</code>) and in-memory access.</p>
 <h3 id="utilities">Utilities<a class="headerlink" href="#utilities" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>complexity.py</code>: Functions for calculating sequence metrics like GC content and DUST scores.</li>
+<li><code>complexity.py</code>: Functions for calculating sequence metrics like GC content, DUST score, and CpG ratio.</li>
+<li><code>exclude.py</code>: Utilities for loading and querying exclusion intervals (blacklists, gaps).</li>
 <li><code>genome.py</code>: Helper functions to load chromosome sizes and generate cross-validation folds.</li>
 <li><code>download.py</code>: Scripts to fetch public datasets and references, useful for testing and tutorials.</li>
+<li><code>logging.py</code>: <code>setup_logging()</code> helper for configuring the <code>cerberus</code> logger hierarchy.</li>
 </ul>
 
 
@@ -1254,7 +1258,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="February 1, 2026 17:21:59 UTC">February 1, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 1, 2026 03:09:28 UTC">March 1, 2026</span>
   </span>
 
     

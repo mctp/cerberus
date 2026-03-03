@@ -982,6 +982,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Transforms">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#default-pipeline-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default Pipeline Order
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1207,10 +1224,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#default-pipeline-order" class="md-nav__link">
+  <a href="#defaultmetriccollection" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Default Pipeline Order
+        DefaultMetricCollection
       
     </span>
   </a>
@@ -1613,9 +1630,9 @@
 </li>
 </ul>
 <h2 id="samplers">Samplers<a class="headerlink" href="#samplers" title="Permanent link">&para;</a></h2>
-<p>Samplers determine <em>where</em> the model looks during training. They yield <code>Interval</code> objects (Chromosome, Start, End, Strand).</p>
+<p>Samplers determine <em>where</em> the model looks during training. They yield <code>Interval</code> objects (chromosome, start, end, strand).</p>
 <h3 id="intervalsampler">IntervalSampler<a class="headerlink" href="#intervalsampler" title="Permanent link">&para;</a></h3>
-<p>Used when you have a specific set of regions of interest, such as ChIP-seq peaks or TSS sites. It reads from BED or narrowPeak files.
+<p>Used when you have a specific set of regions of interest, such as ChIP-seq peaks or TSS sites. Reads from BED or narrowPeak files.
 *   <strong>Use Case</strong>: Training on peaks, fine-tuning on specific loci.
 *   <strong>Behavior</strong>: Centers the window on the interval (or summit for narrowPeak) and pads to <code>padded_size</code>.</p>
 <h3 id="slidingwindowsampler">SlidingWindowSampler<a class="headerlink" href="#slidingwindowsampler" title="Permanent link">&para;</a></h3>
@@ -1643,9 +1660,9 @@
 *   <strong>Behavior</strong>: Pre-computes metrics for all intervals and bins targets. Samples candidates from corresponding bins to match the target distribution.
     *   <strong><code>metrics</code></strong>: List of metrics to match (e.g., <code>["gc"]</code> for GC-matching, <code>["gc", "dust"]</code> for multi-metric matching).
     *   <strong><code>candidate_ratio</code></strong>: Controls the ratio of candidates to targets in each bin (default: 1.0).
-        *   <code>1.0</code>: Selects an equal number of candidates as targets (1:1 balanced).
-        *   <code>&gt; 1.0</code>: Selects more candidates (e.g., <code>2.0</code> for 2:1 negatives to positives).
-        *   <code>&lt; 1.0</code>: Selects fewer candidates.</p>
+        *   <code>1.0</code>: Equal number of candidates as targets (1:1 balanced).
+        *   <code>&gt; 1.0</code>: More candidates (e.g., <code>2.0</code> for 2:1 negatives to positives).
+        *   <code>&lt; 1.0</code>: Fewer candidates.</p>
 <h3 id="peaksampler">PeakSampler<a class="headerlink" href="#peaksampler" title="Permanent link">&para;</a></h3>
 <p>A specialized sampler for training on peaks with a complexity-matched background.
 *   <strong>Use Case</strong>: Standard ChIP-seq/ATAC-seq peak training where you want a balanced set of peaks (positives) and complexity-matched non-peak genomic regions (negatives).
@@ -1655,19 +1672,14 @@
     *   Selects background intervals that match the GC content of the peaks.
     *   Combines them into a single stream.
     *   <strong>Arguments</strong>: <code>intervals_path</code>, <code>background_ratio</code> (default 1.0).
-    *   <strong>Defaults</strong>: <code>background_ratio=1.0</code> ensures a 1:1 ratio between positives (peaks) and negatives (complexity-matched background). <code>background_ratio=0.0</code> disables background sampling.</p>
+    *   Set <code>background_ratio=0.0</code> to disable background sampling.</p>
 <h3 id="resampling">Resampling<a class="headerlink" href="#resampling" title="Permanent link">&para;</a></h3>
-<p>The <code>resample(seed)</code> method allows dynamic samplers to regenerate their internal list of intervals. This is typically called at the start of each training epoch.</p>
+<p>The <code>resample(seed)</code> method allows dynamic samplers to regenerate their internal list of intervals. This is called at the start of each training epoch.</p>
 <ul>
-<li><strong>MultiSampler</strong>: Propagates new seeds to sub-samplers and resamples the indices based on scaling factors. This allows for:<ul>
-<li><strong>Dynamic Subsampling</strong>: Randomly selecting a new subset of negatives each epoch.</li>
-<li><strong>Oversampling</strong>: Re-drawing samples with replacement.</li>
-<li><strong>Shuffling</strong>: Ensuring a new random order of mixed samples.</li>
-</ul>
-</li>
-<li><strong>ComplexityMatchedSampler</strong>: Re-selects candidate intervals from the <code>candidate_sampler</code> to maintain the match with the target. Crucially, it also propagates resampling to the <code>candidate_sampler</code> (e.g., refreshing the pool of random background sites).</li>
+<li><strong>MultiSampler</strong>: Propagates new seeds to sub-samplers and resamples the indices.</li>
+<li><strong>ComplexityMatchedSampler</strong>: Re-selects candidate intervals from the existing candidate pool.</li>
 <li><strong>RandomSampler</strong>: Regenerates its list of random intervals using the new seed.</li>
-<li><strong>Base Samplers</strong>: Static samplers like <code>IntervalSampler</code> and <code>SlidingWindowSampler</code> generally have a no-op <code>resample</code> method, as their interval set is fixed.</li>
+<li><strong>Base Samplers</strong>: Static samplers like <code>IntervalSampler</code> and <code>SlidingWindowSampler</code> have a no-op <code>resample</code> method.</li>
 </ul>
 <h2 id="extractors">Extractors<a class="headerlink" href="#extractors" title="Permanent link">&para;</a></h2>
 <p>Extractors retrieve the actual data for a given <code>Interval</code>.</p>
@@ -1681,10 +1693,9 @@
 <li><code>SequenceExtractor</code>: Reads from disk (using <code>pyfaidx</code>). Low memory, higher I/O.</li>
 <li><code>InMemorySequenceExtractor</code>: Loads entire genome into RAM. High memory, fastest access.</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Example Usage (from tests/test_sequence_retrieval.py)</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">extractor</span> <span class="o">=</span> <span class="n">SequenceExtractor</span><span class="p">(</span><span class="s2">&quot;hg38.fa&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">interval</span> <span class="o">=</span> <span class="n">Interval</span><span class="p">(</span><span class="s2">&quot;chr1&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="s2">&quot;+&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">seq_tensor</span> <span class="o">=</span> <span class="n">extractor</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span> <span class="c1"># Returns (4, 100)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">extractor</span> <span class="o">=</span> <span class="n">SequenceExtractor</span><span class="p">(</span><span class="s2">&quot;hg38.fa&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">interval</span> <span class="o">=</span> <span class="n">Interval</span><span class="p">(</span><span class="s2">&quot;chr1&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="s2">&quot;+&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">seq_tensor</span> <span class="o">=</span> <span class="n">extractor</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span>  <span class="c1"># Returns (4, 100)</span>
 </code></pre></div>
 </li>
 </ul>
@@ -1706,17 +1717,16 @@
 <li><code>SignalExtractor</code>: Reads from disk (using <code>pybigtools</code>).</li>
 <li><code>InMemorySignalExtractor</code>: Loads tracks into RAM.</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Example Usage (from tests/test_signal.py)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">extractor</span> <span class="o">=</span> <span class="n">SignalExtractor</span><span class="p">({</span><span class="s2">&quot;H3K27ac&quot;</span><span class="p">:</span> <span class="s2">&quot;H3K27ac.bw&quot;</span><span class="p">,</span> <span class="s2">&quot;CTCF&quot;</span><span class="p">:</span> <span class="s2">&quot;CTCF.bw&quot;</span><span class="p">})</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">interval</span> <span class="o">=</span> <span class="n">Interval</span><span class="p">(</span><span class="s2">&quot;chr1&quot;</span><span class="p">,</span> <span class="mi">50000000</span><span class="p">,</span> <span class="mi">50000200</span><span class="p">,</span> <span class="s2">&quot;+&quot;</span><span class="p">)</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">signal</span> <span class="o">=</span> <span class="n">extractor</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span> <span class="c1"># Returns (2, 200)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">extractor</span> <span class="o">=</span> <span class="n">SignalExtractor</span><span class="p">({</span><span class="s2">&quot;H3K27ac&quot;</span><span class="p">:</span> <span class="s2">&quot;H3K27ac.bw&quot;</span><span class="p">,</span> <span class="s2">&quot;CTCF&quot;</span><span class="p">:</span> <span class="s2">&quot;CTCF.bw&quot;</span><span class="p">})</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">interval</span> <span class="o">=</span> <span class="n">Interval</span><span class="p">(</span><span class="s2">&quot;chr1&quot;</span><span class="p">,</span> <span class="mi">50000000</span><span class="p">,</span> <span class="mi">50000200</span><span class="p">,</span> <span class="s2">&quot;+&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">signal</span> <span class="o">=</span> <span class="n">extractor</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span>  <span class="c1"># Returns (2, 200)</span>
 </code></pre></div>
 </li>
 </ul>
 <h3 id="maskextractor">MaskExtractor<a class="headerlink" href="#maskextractor" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Source</strong>: BigBed or BED files.</li>
-<li><strong>Output</strong>: Binary or categorical mask tensors indicating regions of interest (e.g., mappability, blacklists).</li>
+<li><strong>Output</strong>: Binary mask tensors indicating regions of interest (e.g., mappability, blacklists).</li>
 <li>
 <p><strong>Modes</strong>:</p>
 <ul>
@@ -1724,117 +1734,112 @@
 <li><code>InMemoryBigBedMaskExtractor</code>: Loads BigBed into RAM.</li>
 <li><code>BedMaskExtractor</code>: Reads BED files (always in-memory using InterLap).</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Example Usage (from tests/test_mask.py)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">extractor</span> <span class="o">=</span> <span class="n">BigBedMaskExtractor</span><span class="p">({</span><span class="s2">&quot;mappability&quot;</span><span class="p">:</span> <span class="s2">&quot;mappability.bb&quot;</span><span class="p">})</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">interval</span> <span class="o">=</span> <span class="n">Interval</span><span class="p">(</span><span class="s2">&quot;chr1&quot;</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">250</span><span class="p">,</span> <span class="s2">&quot;+&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">mask</span> <span class="o">=</span> <span class="n">extractor</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span> <span class="c1"># Returns tensor of shape (1, 100)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">extractor</span> <span class="o">=</span> <span class="n">BigBedMaskExtractor</span><span class="p">({</span><span class="s2">&quot;mappability&quot;</span><span class="p">:</span> <span class="s2">&quot;mappability.bb&quot;</span><span class="p">})</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">interval</span> <span class="o">=</span> <span class="n">Interval</span><span class="p">(</span><span class="s2">&quot;chr1&quot;</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">250</span><span class="p">,</span> <span class="s2">&quot;+&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">mask</span> <span class="o">=</span> <span class="n">extractor</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span>  <span class="c1"># Returns tensor of shape (1, 100)</span>
 </code></pre></div>
 </li>
 </ul>
 <h2 id="sequence-analysis">Sequence Analysis<a class="headerlink" href="#sequence-analysis" title="Permanent link">&para;</a></h2>
-<p>The <code>cerberus.complexity</code> module provides tools for analyzing DNA sequence properties.</p>
+<p>The <code>cerberus.complexity</code> module provides tools for analyzing DNA sequence properties. See <a href="../complexity/">complexity.md</a> for the full API reference.</p>
 <h3 id="gc-content">GC Content<a class="headerlink" href="#gc-content" title="Permanent link">&para;</a></h3>
 <p>Calculates the fraction of G and C nucleotides.
 *   <strong>Function</strong>: <code>calculate_gc_content(sequence)</code>
-*   <strong>Input</strong>: String, List of Strings, or One-Hot Tensor.
 *   <strong>Output</strong>: Float (0.0 to 1.0).</p>
 <h3 id="dust-score">DUST Score<a class="headerlink" href="#dust-score" title="Permanent link">&para;</a></h3>
 <p>Calculates sequence complexity based on k-mer repetition. Higher scores indicate lower complexity (more repetitive).
 *   <strong>Function</strong>: <code>calculate_dust_score(sequence, k=3)</code>
-*   <strong>Input</strong>: String, List of Strings, or One-Hot Tensor.
-*   <strong>Output</strong>: Normalized Float score (0.0 to ~1.0).</p>
+*   <strong>Output</strong>: Normalized float (0.0 to ~1.0).</p>
 <h3 id="normalized-cpg-score">Normalized CpG Score<a class="headerlink" href="#normalized-cpg-score" title="Permanent link">&para;</a></h3>
 <p>Calculates the normalized observed/expected CpG ratio.
 *   <strong>Function</strong>: <code>calculate_log_cpg_ratio(sequence)</code>
-*   <strong>Input</strong>: String, List of Strings, or One-Hot Tensor.
-*   <strong>Output</strong>: Normalized Float score (0.0 to 1.0).</p>
+*   <strong>Output</strong>: Normalized float (0.0 to 1.0).</p>
 <h2 id="transforms">Transforms<a class="headerlink" href="#transforms" title="Permanent link">&para;</a></h2>
 <p>Cerberus provides a composable transformation pipeline via <code>cerberus.transform.Compose</code>.</p>
 <ul>
-<li><strong>Jitter</strong>: Randomly shifts the interval start position to prevent overfitting to exact positioning.</li>
-<li><strong>ReverseComplement</strong>: Randomly flips the sequence and signals (50% probability) to enforce strand invariance.</li>
-<li><strong>TargetCrop</strong>: Centers and crops the target signal to <code>output_len</code> (often smaller than <code>input_len</code> to avoid edge effects).</li>
+<li><strong>Jitter</strong>: Randomly shifts the interval start position to prevent overfitting to exact positioning. Updates interval coordinates to match the cropped region.</li>
+<li><strong>ReverseComplement</strong>: Randomly flips the sequence and signals (50% probability by default) to enforce strand invariance. Updates interval strand.</li>
+<li><strong>TargetCrop</strong>: Centers and crops the target signal to <code>output_len</code> (often smaller than <code>input_len</code> to avoid valid-padding edge effects).</li>
+<li><strong>Scale</strong>: Multiplies targets (or inputs) by a constant factor. Useful for rescaling normalized BigWig values to integer-like counts before log transform.</li>
 <li><strong>Log1p</strong>: Applies <code>log(x + 1)</code> scaling to targets.</li>
 <li><strong>Sqrt</strong>: Applies <code>sqrt(x)</code> scaling to targets.</li>
 <li><strong>Arcsinh</strong>: Applies <code>arcsinh(x)</code> scaling to targets.</li>
 <li>
-<p><strong>Bin</strong>: Downsamples resolution (e.g., max pooling) for lower-resolution predictions.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Example Usage (from tests/test_transforms.py)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">transforms</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">Jitter</span><span class="p">(</span><span class="n">input_len</span><span class="o">=</span><span class="mi">50</span><span class="p">),</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">TargetCrop</span><span class="p">(</span><span class="n">output_len</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">]</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">compose</span> <span class="o">=</span> <span class="n">Compose</span><span class="p">(</span><span class="n">transforms</span><span class="p">)</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># Apply to tensors</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">inputs</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">interval</span> <span class="o">=</span> <span class="n">compose</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">interval</span><span class="p">)</span>
+<p><strong>Bin</strong>: Downsamples resolution via pooling (<code>max</code>, <code>avg</code>, or <code>sum</code>) for lower-resolution predictions.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">transforms</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">Jitter</span><span class="p">(</span><span class="n">input_len</span><span class="o">=</span><span class="mi">50</span><span class="p">),</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">TargetCrop</span><span class="p">(</span><span class="n">output_len</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">]</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">compose</span> <span class="o">=</span> <span class="n">Compose</span><span class="p">(</span><span class="n">transforms</span><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">inputs</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">interval</span> <span class="o">=</span> <span class="n">compose</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">interval</span><span class="p">)</span>
 </code></pre></div>
 </li>
 </ul>
+<h3 id="default-pipeline-order">Default Pipeline Order<a class="headerlink" href="#default-pipeline-order" title="Permanent link">&para;</a></h3>
+<p>When <code>transforms</code> are not explicitly provided to <code>CerberusDataset</code>, they are automatically constructed from <code>DataConfig</code> by <code>create_default_transforms</code> in the following order:</p>
+<ol>
+<li><strong>Jitter</strong>: Crops to <code>input_len</code>, with random offset up to <code>max_jitter</code> (or centered for inference).</li>
+<li><strong>ReverseComplement</strong>: (If <code>reverse_complement=True</code> and not in deterministic/inference mode).</li>
+<li><strong>TargetCrop</strong>: Crops targets to <code>output_len</code> (if <code>output_len &lt; input_len</code>).</li>
+<li><strong>Scale</strong>: Multiplies targets by <code>target_scale</code> (if <code>target_scale != 1.0</code>).</li>
+<li><strong>Bin</strong>: Downsamples targets by <code>output_bin_size</code> (if <code>output_bin_size &gt; 1</code>).</li>
+<li><strong>Log1p</strong>: Applies <code>log(1+x)</code> to targets (if <code>log_transform=True</code>).</li>
+</ol>
 <h2 id="losses">Losses<a class="headerlink" href="#losses" title="Permanent link">&para;</a></h2>
 <p>Cerberus provides specialized loss functions for genomic signal prediction.</p>
 <h3 id="profilepoissonnllloss">ProfilePoissonNLLLoss<a class="headerlink" href="#profilepoissonnllloss" title="Permanent link">&para;</a></h3>
 <p>Standard Poisson NLL loss for models predicting log-rates (log-intensities).</p>
 <ul>
 <li><strong>Behavior</strong>: Computes <code>PoissonNLL(exp(log_rates), targets)</code>.</li>
-<li><strong>Use Case</strong>: Models predicting unnormalized log-counts directly (e.g. <code>ConvNeXtDCNN</code>).</li>
+<li><strong>Use Case</strong>: Models predicting unnormalized log-counts directly (e.g., <code>ConvNeXtDCNN</code>).</li>
 <li><strong>Inputs</strong>: <code>ProfileLogRates</code>.</li>
 </ul>
 <h3 id="msemultinomialloss-bpnetloss">MSEMultinomialLoss (BPNetLoss)<a class="headerlink" href="#msemultinomialloss-bpnetloss" title="Permanent link">&para;</a></h3>
 <p>Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).</p>
 <ul>
-<li><strong>Profile Loss</strong>: Penalizes the shape of the predicted signal distribution (Exact Multinomial NLL).</li>
-<li><strong>Count Loss</strong>: Penalizes the total count prediction (MSE on <code>log(1+x)</code>).</li>
+<li><strong>Profile Loss</strong>: Penalizes the shape of the predicted signal distribution (exact Multinomial NLL).</li>
+<li><strong>Count Loss</strong>: Penalizes the total count prediction (MSE on <code>log(x + count_pseudocount)</code>).</li>
 <li><strong>Args</strong>:<ul>
-<li><code>count_weight</code> (aliases <code>alpha</code>): Weight for the count loss component.</li>
-<li><code>flatten_channels</code>: Whether to compute multinomial over all channels flattened (default: True, typical for BPNet).</li>
-<li><code>implicit_log_targets</code>: If targets are already log-transformed, reverses them for profile loss calculation.</li>
+<li><code>count_weight</code>: Weight for the count loss component (default: 1.0).</li>
+<li><code>flatten_channels</code> (default: <code>False</code>): If <code>False</code>, computes Multinomial NLL independently per channel. If <code>True</code>, flattens all channels and length into a single dimension.</li>
+<li><code>log1p_targets</code>: If targets are already log-transformed, reverses them before loss calculation.</li>
 </ul>
 </li>
+<li><strong>Inputs</strong>: <code>ProfileCountOutput</code>.</li>
 </ul>
 <h3 id="coupledmsemultinomialloss">CoupledMSEMultinomialLoss<a class="headerlink" href="#coupledmsemultinomialloss" title="Permanent link">&para;</a></h3>
-<p>Coupled version of BPNetLoss for models predicting log-rates directly.</p>
+<p>Coupled version of <code>MSEMultinomialLoss</code> for models predicting log-rates directly.</p>
 <ul>
 <li><strong>Behavior</strong>: Derives predicted counts by summing log-rates (LogSumExp) before computing MSE count loss.</li>
-<li><strong>Use Case</strong>: Models that output a single <code>log_rates</code> tensor (ProfileLogRates) instead of separate logits and counts.</li>
+<li><strong>Inputs</strong>: <code>ProfileLogRates</code>.</li>
 </ul>
 <h3 id="poissonmultinomialloss">PoissonMultinomialLoss<a class="headerlink" href="#poissonmultinomialloss" title="Permanent link">&para;</a></h3>
-<p>A flexible loss function combining Poisson NLL for total counts and Multinomial (Cross-Entropy) for profile shape. It unifies the functionality of the deprecated <code>BPNetPoissonLoss</code>.</p>
+<p>Combines Poisson NLL for total counts and Multinomial (Cross-Entropy) for profile shape.</p>
 <ul>
-<li><strong>Ref</strong>: Boshar et al. 2025 (Concept).</li>
 <li><strong>Count Loss</strong>: Poisson Negative Log-Likelihood.</li>
-<li><strong>Profile Loss</strong>: Multinomial Negative Log-Likelihood (Cross-Entropy form, ignoring constants).</li>
-<li><strong>Supported Inputs</strong>: <code>ProfileCountOutput</code> (logits, log_counts).</li>
-<li><strong>Args</strong>:<ul>
-<li><code>count_weight</code>: Weight for the count loss component.</li>
-<li><code>flatten_channels</code>: Whether to flatten channels/length for profile loss (default: False).</li>
-<li><code>implicit_log_targets</code>: Handling of log-transformed targets.</li>
-</ul>
-</li>
+<li><strong>Profile Loss</strong>: Multinomial Negative Log-Likelihood (Cross-Entropy form).</li>
+<li><strong>Inputs</strong>: <code>ProfileCountOutput</code>.</li>
+<li><strong>Args</strong>: <code>count_weight</code> (default: 0.2), <code>flatten_channels</code> (default: <code>False</code>), <code>average_channels</code> (default: <code>True</code>), <code>log1p_targets</code>.</li>
 </ul>
 <h3 id="coupledpoissonmultinomialloss">CoupledPoissonMultinomialLoss<a class="headerlink" href="#coupledpoissonmultinomialloss" title="Permanent link">&para;</a></h3>
-<p>Coupled version of PoissonMultinomialLoss for models predicting log-rates.</p>
+<p>Coupled version of <code>PoissonMultinomialLoss</code> for models predicting log-rates.</p>
 <ul>
-<li><strong>Behavior</strong>: Derives predicted counts by summing log-rates (LogSumExp) before computing Poisson count loss.</li>
-<li><strong>Use Case</strong>: Models that output <code>ProfileLogRates</code>.</li>
+<li><strong>Behavior</strong>: Derives predicted counts via LogSumExp before computing Poisson count loss.</li>
+<li><strong>Inputs</strong>: <code>ProfileLogRates</code>.</li>
 </ul>
 <h3 id="negativebinomialmultinomialloss">NegativeBinomialMultinomialLoss<a class="headerlink" href="#negativebinomialmultinomialloss" title="Permanent link">&para;</a></h3>
 <p>Combines Negative Binomial NLL for total counts and Multinomial (Cross-Entropy) for profile shape.</p>
 <ul>
-<li><strong>Count Loss</strong>: Negative Binomial NLL (using a fixed <code>total_count</code> dispersion parameter).</li>
+<li><strong>Count Loss</strong>: Negative Binomial NLL with fixed <code>total_count</code> dispersion parameter.</li>
 <li><strong>Profile Loss</strong>: Multinomial Negative Log-Likelihood.</li>
-<li><strong>Supported Inputs</strong>: <code>ProfileCountOutput</code>.</li>
-<li><strong>Args</strong>:<ul>
-<li><code>total_count</code>: Fixed dispersion parameter (r) for Negative Binomial.</li>
-</ul>
-</li>
+<li><strong>Inputs</strong>: <code>ProfileCountOutput</code>.</li>
+<li><strong>Args</strong>: <code>total_count</code> (fixed dispersion parameter <code>r</code>).</li>
 </ul>
 <h3 id="couplednegativebinomialmultinomialloss">CoupledNegativeBinomialMultinomialLoss<a class="headerlink" href="#couplednegativebinomialmultinomialloss" title="Permanent link">&para;</a></h3>
-<p>Coupled version of NegativeBinomialMultinomialLoss.</p>
+<p>Coupled version of <code>NegativeBinomialMultinomialLoss</code> for models predicting log-rates.</p>
 <ul>
-<li><strong>Behavior</strong>: Derives predicted counts by summing log-rates (LogSumExp).</li>
-<li><strong>Use Case</strong>: Models that output <code>ProfileLogRates</code>.</li>
-<li><strong>Supported Inputs</strong>: <code>ProfileLogRates</code>.</li>
+<li><strong>Behavior</strong>: Derives predicted counts via LogSumExp.</li>
+<li><strong>Inputs</strong>: <code>ProfileLogRates</code>.</li>
 </ul>
 <h2 id="model-outputs">Model Outputs<a class="headerlink" href="#model-outputs" title="Permanent link">&para;</a></h2>
 <p>Models return standardized dataclasses (defined in <code>cerberus.output</code>) to ensure compatibility with losses and metrics.</p>
@@ -1855,37 +1860,50 @@
 </ul>
 <h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
 <h3 id="profilepearsoncorrcoef">ProfilePearsonCorrCoef<a class="headerlink" href="#profilepearsoncorrcoef" title="Permanent link">&para;</a></h3>
-<p>Computes Pearson Correlation Coefficient per channel on profile probabilities.</p>
+<p>Pearson Correlation Coefficient for profile probabilities.</p>
 <ul>
-<li><strong>Behavior</strong>: Flattens batch and length dimensions to compute correlation between the predicted and target signal vectors for each channel independently, then averages across channels.</li>
-<li><strong>Why</strong>: Standard global Pearson correlation can be misleading if channels have vastly different dynamic ranges.</li>
+<li><strong>Behavior</strong>: Computes Pearson correlation per (example, channel) pair along the sequence length dimension, then averages across channels and examples. Numerically stable in float32. Operates on probabilities (Softmax of logits or log_rates).</li>
+<li><strong>Inputs</strong>: <code>ProfileLogRates</code> or <code>ProfileLogits</code>.</li>
 </ul>
 <h3 id="countprofilepearsoncorrcoef">CountProfilePearsonCorrCoef<a class="headerlink" href="#countprofilepearsoncorrcoef" title="Permanent link">&para;</a></h3>
-<p>Computes Pearson Correlation for models that output separate profile logits and counts (like BPNet).
-*   <strong>Behavior</strong>: Reconstructs predicted counts (<code>Softmax(logits) * Exp(log_counts)</code>) before computing correlation.</p>
+<p>Pearson Correlation for models with separate profile logits and counts (BPNet-style).</p>
+<ul>
+<li><strong>Behavior</strong>: Reconstructs predicted counts (<code>Softmax(logits) * (Exp(log_counts) - count_pseudocount)</code>) before computing per-example Pearson correlation along the sequence length. Numerically stable in float32.</li>
+<li><strong>Inputs</strong>: <code>ProfileCountOutput</code>.</li>
+</ul>
 <h3 id="profilemeansquarederror">ProfileMeanSquaredError<a class="headerlink" href="#profilemeansquarederror" title="Permanent link">&para;</a></h3>
-<p>Computes MSE on probability profiles (Softmax of logits) vs normalized target probabilities.</p>
+<p>MSE on profile probabilities.</p>
+<ul>
+<li><strong>Behavior</strong>: Computes MSE between predicted probabilities (Softmax of logits) and normalized target probabilities.</li>
+<li><strong>Inputs</strong>: <code>ProfileLogRates</code> or <code>ProfileLogits</code>.</li>
+</ul>
 <h3 id="countprofilemeansquarederror">CountProfileMeanSquaredError<a class="headerlink" href="#countprofilemeansquarederror" title="Permanent link">&para;</a></h3>
-<p>Computes MSE on reconstructed counts (<code>Softmax(logits) * Exp(log_counts)</code>) vs target counts.</p>
+<p>MSE on reconstructed profile counts (BPNet-style).</p>
+<ul>
+<li><strong>Behavior</strong>: Reconstructs predicted counts (<code>Softmax(logits) * (Exp(log_counts) - count_pseudocount)</code>) before computing MSE against targets.</li>
+<li><strong>Inputs</strong>: <code>ProfileCountOutput</code>.</li>
+</ul>
 <h3 id="logcountsmeansquarederror">LogCountsMeanSquaredError<a class="headerlink" href="#logcountsmeansquarederror" title="Permanent link">&para;</a></h3>
-<p>Computes MSE on Log Counts.
-*   <strong>Behavior</strong>: Computes MSE between predicted log counts and <code>log1p(target_counts)</code>.
-*   <strong>Inputs</strong>: <code>ProfileCountOutput</code> (uses <code>log_counts</code>) or <code>ProfileLogRates</code> (uses <code>logsumexp(log_rates)</code>).</p>
+<p>MSE on log counts.</p>
+<ul>
+<li><strong>Behavior</strong>: Computes MSE between predicted log counts and <code>log(target_counts + count_pseudocount)</code>.</li>
+<li><strong>Inputs</strong>: <code>ProfileCountOutput</code> (uses <code>log_counts</code>) or <code>ProfileLogRates</code> (uses <code>logsumexp(log_rates)</code>).</li>
+</ul>
 <h3 id="logcountspearsoncorrcoef">LogCountsPearsonCorrCoef<a class="headerlink" href="#logcountspearsoncorrcoef" title="Permanent link">&para;</a></h3>
-<p>Computes Pearson Correlation on Log Counts.
-*   <strong>Behavior</strong>: Computes correlation between predicted log counts and <code>log1p(target_counts)</code>.
-*   <strong>Inputs</strong>: <code>ProfileCountOutput</code> or <code>ProfileLogRates</code>.</p>
-<h3 id="default-pipeline-order">Default Pipeline Order<a class="headerlink" href="#default-pipeline-order" title="Permanent link">&para;</a></h3>
-<p>When <code>transforms</code> are not explicitly provided to <code>CerberusDataset</code>, they are automatically constructed from <code>DataConfig</code> in the following order:
-1.  <strong>Jitter</strong>: Enforce <code>input_len</code> and apply augmentation.
-2.  <strong>ReverseComplement</strong>: (If enabled).
-3.  <strong>TargetCrop</strong>: Enforce <code>output_len</code>.
-4.  <strong>Bin</strong>: (If <code>output_bin_size &gt; 1</code>).
-5.  <strong>Log1p</strong>: (If enabled).</p>
+<p>Pearson Correlation on log counts.</p>
+<ul>
+<li><strong>Behavior</strong>: Collects per-example (pred, target) log-count scalar pairs and computes a single Pearson correlation at epoch end. Numerically stable.</li>
+<li><strong>Inputs</strong>: <code>ProfileCountOutput</code> or <code>ProfileLogRates</code>.</li>
+</ul>
+<h3 id="defaultmetriccollection">DefaultMetricCollection<a class="headerlink" href="#defaultmetriccollection" title="Permanent link">&para;</a></h3>
+<p>A pre-configured <code>MetricCollection</code> used when no custom metrics are specified.</p>
+<ul>
+<li><strong>Includes</strong>: <code>ProfilePearsonCorrCoef</code>, <code>ProfileMeanSquaredError</code>, <code>LogCountsMeanSquaredError</code>, <code>LogCountsPearsonCorrCoef</code>.</li>
+</ul>
 <h2 id="cross-validation-folds">Cross-Validation (Folds)<a class="headerlink" href="#cross-validation-folds" title="Permanent link">&para;</a></h2>
 <p>Cerberus has built-in support for K-fold cross-validation to ensure robust evaluation.
 *   <strong>Chromosomal Partitioning</strong>: Splits data by chromosomes to avoid data leakage (e.g., neighboring correlated regions).
-*   <strong>Config</strong>: Defined in <code>GenomeConfig</code> via <code>fold_type</code>.
+*   <strong>Config</strong>: Defined in <code>GenomeConfig</code> via <code>fold_type</code> and <code>fold_args</code>.
 *   <strong>Samplers</strong>: The <code>split_folds</code> method ensures that training, validation, and test sets are disjoint based on these fold definitions.</p>
 
 

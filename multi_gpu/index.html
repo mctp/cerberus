@@ -1036,7 +1036,7 @@
 <ul>
 <li><strong>Support</strong>: Implicit via <code>pl.Trainer</code>. Any strategy supported by PyTorch Lightning (DDP, DeepSpeed, FSDP) works with Cerberus.</li>
 <li><strong>Default Strategy</strong>: <strong>DDP (Distributed Data Parallel)</strong> is typically used when multiple devices are provided.</li>
-<li><strong>Usage</strong>: Pass <code>accelerator="gpu"</code>, <code>devices=N</code>, and optionally <code>strategy="ddp"</code> directly to the <code>cerberus.train.train()</code> function.</li>
+<li><strong>Usage</strong>: Pass <code>accelerator="gpu"</code>, <code>devices=N</code>, and optionally <code>strategy="ddp"</code> as <code>**trainer_kwargs</code> to <code>cerberus.train.train_single()</code> or <code>cerberus.train.train_multi()</code>.</li>
 </ul>
 <p>For detailed implementation notes and internal design, see <code>docs/internal/multi_gpu_support.md</code> in the repository.</p>
 

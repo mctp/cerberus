@@ -1000,66 +1000,60 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#recommended-training-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended Training Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recommended Training Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#baseline-chrombpnet-compatible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baseline (chrombpnet-compatible)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stable-training-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stable Training Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loss-bpnetloss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loss: BPNetLoss
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#usage" class="md-nav__link">
     <span class="md-ellipsis">
       
         Usage
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#geminet" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        GemiNet
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="GemiNet">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#key-features_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Key Features
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#lyranet" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        LyraNet
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="LyraNet">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#key-features_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Key Features
       
     </span>
   </a>
@@ -1084,10 +1078,43 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#key-features_4" class="md-nav__link">
+  <a href="#key-features_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Key Features
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recommended-training-settings_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended Training Settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loss-profilepoissonnllloss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loss: ProfilePoissonNLLLoss
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
       
     </span>
   </a>
@@ -1100,22 +1127,55 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#globalprofilecnn-baseline" class="md-nav__link">
+  <a href="#globalprofilecnn-gopher" class="md-nav__link">
     <span class="md-ellipsis">
       
-        GlobalProfileCNN (Baseline)
+        GlobalProfileCNN (Gopher)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="GlobalProfileCNN (Baseline)">
+    <nav class="md-nav" aria-label="GlobalProfileCNN (Gopher)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#key-features_5" class="md-nav__link">
+  <a href="#key-features_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Key Features
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recommended-training-settings_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended Training Settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loss-profilepoissonnllloss_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loss: ProfilePoissonNLLLoss
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
       
     </span>
   </a>
@@ -1265,70 +1325,316 @@
 </li>
 </ul>
 <h2 id="bpnet">BPNet<a class="headerlink" href="#bpnet" title="Permanent link">&para;</a></h2>
-<p><strong>Implementation</strong>: <code>cerberus.models.BPNet</code><br />
+<p><strong>Implementation</strong>: <code>cerberus.models.BPNet</code> (Standard) / <code>BPNet1024</code>
 <strong>Source</strong>: <code>src/cerberus/models/bpnet.py</code></p>
-<p>An implementation of the BPNet architecture (Avsec et al., 2021) following the "Consensus" specification (Post-Activation Residual Blocks). It is designed for base-resolution profile prediction.</p>
+<p>An implementation of the BPNet architecture (Avsec et al., 2021) following the "Consensus" specification (Post-Activation Residual Blocks). It is designed for base-resolution profile prediction. Weights are initialized with Xavier uniform (Glorot) to match the TensorFlow/Keras defaults used by the original BPNet and chrombpnet-pytorch.</p>
 <h3 id="key-features_1">Key Features<a class="headerlink" href="#key-features_1" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong>Valid Padding</strong>: Uses <code>'valid'</code> padding throughout; excess length is center-cropped at the profile head.</li>
 <li><strong>Dual Heads</strong>:<ul>
-<li><strong>Profile Head</strong>: Predicts the shape of the signal distribution (logits).</li>
-<li><strong>Count Head</strong>: Predicts the total read count (log-transformed).</li>
+<li><strong>Profile Head</strong>: Conv1D over the tower output → logits for the profile distribution.</li>
+<li><strong>Count Head</strong>: Global average pool → Linear → log(total counts).</li>
 </ul>
 </li>
-<li><strong>Dilated Convolutions</strong>: Uses exponentially increasing dilation rates to capture long-range interactions.</li>
-<li><strong>Padding</strong>: Supports <code>'same'</code> padding to maintain input resolution.</li>
-<li><strong>Binning</strong>: Optional output binning via average pooling.</li>
+<li><strong>Dilated Residual Tower</strong>: 8 blocks with exponentially increasing dilations (2¹..2⁸).</li>
+<li><strong>Binning</strong>: Optional output binning via average pooling (<code>output_bin_size &gt; 1</code>).</li>
+<li><strong>Variants</strong>:<ul>
+<li><strong>BPNet</strong> (Default): Canonical dimensions (2114bp → 1000bp), 64 filters, <code>profile_kernel_size=75</code>.</li>
+<li><strong>BPNet1024</strong>: Tuned for 2112bp → 1024bp with no center-cropping; 77 filters, <code>profile_kernel_size=49</code>. Receptive-field shrinkage is exactly 1088bp (20 + 1020 + 48).</li>
 </ul>
-<h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">BPNet</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet</span><span class="p">(</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2114</span><span class="p">,</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">filters</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">n_dilated_layers</span><span class="o">=</span><span class="mi">9</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">)</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># Returns (profile_logits, log_counts)</span>
+</li>
+</ul>
+<h3 id="recommended-training-settings">Recommended Training Settings<a class="headerlink" href="#recommended-training-settings" title="Permanent link">&para;</a></h3>
+<h4 id="baseline-chrombpnet-compatible">Baseline (chrombpnet-compatible)<a class="headerlink" href="#baseline-chrombpnet-compatible" title="Permanent link">&para;</a></h4>
+<p>BPNet has no normalization layers in its default configuration, so weight decay directly shrinks convolutional activations. Use plain Adam with no weight decay and a constant learning rate (matching chrombpnet-pytorch):</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Optimizer</td>
+<td><code>adam</code></td>
+</tr>
+<tr>
+<td>Learning rate</td>
+<td><code>1e-3</code></td>
+</tr>
+<tr>
+<td>Weight decay</td>
+<td><code>0</code></td>
+</tr>
+<tr>
+<td>Adam ε</td>
+<td><code>1e-7</code></td>
+</tr>
+<tr>
+<td>Scheduler</td>
+<td><code>default</code> (constant)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="stable-training-mode">Stable Training Mode<a class="headerlink" href="#stable-training-mode" title="Permanent link">&para;</a></h4>
+<p>For improved training stability with AdamW and cosine LR scheduling, enable <code>weight_norm=True</code> and <code>activation="gelu"</code> via the <code>--stable</code> flag or model arguments. These changes are <strong>fully compatible with DeepLIFT/DeepSHAP via captum</strong>:</p>
+<ul>
+<li><strong>Weight normalization</strong> (<code>weight_norm=True</code>): Reparameterizes Conv1d weights as <code>weight = weight_g / ‖weight_v‖ × weight_v</code>. This is applied at the parameter level, not the activation level — captum's DeepLIFT still treats Conv1d as a linear passthrough. The decoupling of magnitude and direction stabilises gradient norms across the deep dilated tower and enables effective AdamW weight decay.</li>
+<li><strong>GELU activation</strong> (<code>activation="gelu"</code>): Smooth gradients at zero prevent dying neurons in deep dilated stacks and work better with the low-LR phase of cosine schedules. captum has a registered rule for GELU.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Stable Mode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>weight_norm</code></td>
+<td><code>True</code></td>
+</tr>
+<tr>
+<td><code>activation</code></td>
+<td><code>"gelu"</code></td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td><code>adamw</code></td>
+</tr>
+<tr>
+<td>Learning rate</td>
+<td><code>1e-3</code></td>
+</tr>
+<tr>
+<td>Weight decay</td>
+<td><code>0.01</code></td>
+</tr>
+<tr>
+<td>Adam ε</td>
+<td><code>1e-7</code></td>
+</tr>
+<tr>
+<td>Scheduler</td>
+<td><code>cosine</code></td>
+</tr>
+<tr>
+<td>Warmup epochs</td>
+<td><code>5</code></td>
+</tr>
+<tr>
+<td>Min LR</td>
+<td><code>1e-5</code></td>
+</tr>
+</tbody>
+</table>
+<p>From the training script:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span>--stable<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>peaks.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_model
+</code></pre></div></p>
+<p>From Python:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2114</span><span class="p">,</span> <span class="n">output_len</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">filters</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">n_dilated_layers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span> <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">activation</span><span class="o">=</span><span class="s2">&quot;gelu&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">weight_norm</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">)</span>
+</code></pre></div></p>
+<h3 id="loss-bpnetloss">Loss: BPNetLoss<a class="headerlink" href="#loss-bpnetloss" title="Permanent link">&para;</a></h3>
+<p><code>BPNetLoss</code> computes the sum of a multinomial profile loss and a counts MSE loss:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>L = L_profile + alpha * L_counts
 </code></pre></div>
-<h2 id="geminet">GemiNet<a class="headerlink" href="#geminet" title="Permanent link">&para;</a></h2>
-<p><strong>Implementation</strong>: <code>cerberus.models.GemiNet</code>
-<strong>Source</strong>: <code>src/cerberus/models/geminet.py</code></p>
-<p>A modern profile prediction architecture using Pointwise-Gated Convolutions (PGC) for efficient long-range context modeling.</p>
-<h3 id="key-features_2">Key Features<a class="headerlink" href="#key-features_2" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>PGC Blocks</strong>: Uses depthwise-separable convolutions with gating mechanisms.</li>
-<li><strong>Efficiency</strong>: Higher throughput than BPNet with comparable or better performance.</li>
-<li><strong>Output</strong>: Dual-head (Profile + Counts) similar to BPNet.</li>
-</ul>
-<h2 id="lyranet">LyraNet<a class="headerlink" href="#lyranet" title="Permanent link">&para;</a></h2>
-<p><strong>Implementation</strong>: <code>cerberus.models.LyraNet</code>
-<strong>Source</strong>: <code>src/cerberus/models/lyra.py</code></p>
-<p>A hybrid architecture combining PGC blocks for local context and S4D layers (State Space Models) for efficient global context modeling.</p>
-<h3 id="key-features_3">Key Features<a class="headerlink" href="#key-features_3" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Hybrid Stem/Body</strong>: Uses Convolutional Stem, PGC layers for local interactions, and S4D layers for global sequence modeling.</li>
-<li><strong>State Space Models (S4D)</strong>: Efficiently models very long-range dependencies.</li>
-<li><strong>Variants</strong>: <code>LyraNet</code>, <code>LyraNetMedium</code>, <code>LyraNetLarge</code>, <code>LyraNetExtraLarge</code> scaling from ~140k to ~5.4M parameters.</li>
-<li><strong>Output</strong>: Dual-head (Profile + Counts).</li>
-</ul>
+<p>The <code>alpha</code> parameter balances the two terms. Because the multinomial NLL scales linearly with total signal depth N while the counts MSE scales as <code>(log N)²</code>, a fixed alpha cannot stay balanced as dataset depth varies.</p>
+<p><strong>Recommended</strong>: set <code>alpha="adaptive"</code> in <code>ModelConfig.loss_args</code>. Cerberus will compute <code>alpha = median_total_counts / 10</code> from the training set before the module is instantiated, automatically matching the dataset depth:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">model_config</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;BPNet_AR&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="s2">&quot;model_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.models.bpnet.BPNet&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="s2">&quot;loss_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.models.bpnet.BPNetLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="s2">&quot;loss_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="s2">&quot;adaptive&quot;</span><span class="p">},</span>  <span class="c1"># resolved from training data at fit time</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="s2">&quot;metrics_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.models.bpnet.BPNetMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="s2">&quot;metrics_args&quot;</span><span class="p">:</span> <span class="p">{},</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="s2">&quot;model_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;n_dilated_layers&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">]},</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">}</span>
+</code></pre></div>
+<p>See <code>docs/internal/adaptive_counts_loss_weight.md</code> for the full mathematical derivation.</p>
+<h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">BPNet</span><span class="p">,</span> <span class="n">BPNet1024</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Standard BPNet: 2114bp -&gt; 1000bp</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet</span><span class="p">(</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2114</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">filters</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">n_dilated_layers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="p">)</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="c1"># BPNet1024: 2112bp -&gt; 1024bp (no center-cropping, comparable to Pomeranian)</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet1024</span><span class="p">(</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="p">)</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="c1"># Both return ProfileCountOutput(logits=..., log_counts=...)</span>
+</code></pre></div>
 <h2 id="convnextdcnn-asap">ConvNeXtDCNN (ASAP)<a class="headerlink" href="#convnextdcnn-asap" title="Permanent link">&para;</a></h2>
 <p><strong>Implementation</strong>: <code>cerberus.models.ConvNeXtDCNN</code>
 <strong>Source</strong>: <code>src/cerberus/models/asap.py</code></p>
-<p>An architecture leveraging ConvNeXtV2 blocks for hierarchical feature extraction.</p>
-<h3 id="key-features_4">Key Features<a class="headerlink" href="#key-features_4" title="Permanent link">&para;</a></h3>
+<p>A large-capacity architecture combining a ConvNeXtV2 stem with a Basenji-style dilated residual tower (DCNN). Designed for high-resolution profile prediction over a wide genomic context.</p>
+<h3 id="key-features_2">Key Features<a class="headerlink" href="#key-features_2" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>ConvNeXtV2 Blocks</strong>: Modern CNN building blocks with LayerScale and GRN (Global Response Normalization).</li>
-<li><strong>Output</strong>: Predicts log-rates (ProfileLogRates).</li>
+<li><strong>ConvNeXtV2 Stem</strong>: Modern CNN building block with LayerScale and Global Response Normalization (GRN) for initial feature extraction.</li>
+<li><strong>MaxPool Downsampling</strong>: 2× stride after the stem to halve the spatial resolution before the residual tower.</li>
+<li><strong>Basenji Dilated Residual Tower</strong>: Stack of residual blocks with exponentially increasing dilations (<code>rate_mult=1.5</code>), each consisting of a dilated convolution followed by a pointwise convolution with a zero-initialized BN gamma (enabling smooth residual learning from initialization).</li>
+<li><strong>Configurable Depth and Width</strong>: <code>residual_blocks</code> (default 11), <code>filters0</code> (default 256), <code>filters1</code> (default 128).</li>
+<li><strong>Output</strong>: Returns <code>ProfileLogRates(log_rates=...)</code> consumed by <code>ProfilePoissonNLLLoss</code>.</li>
+<li><strong>I/O</strong>: Default 2048bp → 512 bins at 4bp resolution (2048bp coverage). Output bins = <code>input_len / output_bin_size</code>.</li>
 </ul>
-<h2 id="globalprofilecnn-baseline">GlobalProfileCNN (Baseline)<a class="headerlink" href="#globalprofilecnn-baseline" title="Permanent link">&para;</a></h2>
-<p><strong>Implementation</strong>: <code>cerberus.models.GlobalProfileCNN</code><br />
+<h3 id="recommended-training-settings_1">Recommended Training Settings<a class="headerlink" href="#recommended-training-settings_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Optimizer</td>
+<td><code>adamw</code></td>
+</tr>
+<tr>
+<td>Learning rate</td>
+<td><code>1e-3</code></td>
+</tr>
+<tr>
+<td>Weight decay</td>
+<td><code>0.01</code></td>
+</tr>
+<tr>
+<td>Scheduler</td>
+<td><code>cosine</code> with 10 warmup epochs</td>
+</tr>
+<tr>
+<td>Min LR</td>
+<td><code>1e-5</code></td>
+</tr>
+<tr>
+<td>Loss</td>
+<td><code>ProfilePoissonNLLLoss(log_input=True, log1p_targets=True)</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="loss-profilepoissonnllloss">Loss: ProfilePoissonNLLLoss<a class="headerlink" href="#loss-profilepoissonnllloss" title="Permanent link">&para;</a></h3>
+<p>ASAP outputs log-rates and is trained with Poisson NLL directly on the profile (no separate count head). The data config sets <code>log_transform=True</code> so targets are log1p-transformed before computing the loss:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">model_config</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;ConvNeXtDCNN&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="s2">&quot;model_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.models.asap.ConvNeXtDCNN&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="s2">&quot;loss_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.loss.ProfilePoissonNLLLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="s2">&quot;loss_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;log_input&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;log1p_targets&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="s2">&quot;metrics_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.metrics.DefaultMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="s2">&quot;metrics_args&quot;</span><span class="p">:</span> <span class="p">{},</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="s2">&quot;model_args&quot;</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>        <span class="s2">&quot;residual_blocks&quot;</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>        <span class="s2">&quot;filters0&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">,</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>        <span class="s2">&quot;filters1&quot;</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>        <span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>    <span class="p">},</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="usage_1">Usage<a class="headerlink" href="#usage_1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models.asap</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConvNeXtDCNN</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># Default: 2048bp -&gt; 512 bins (2048bp at 4bp resolution)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">ConvNeXtDCNN</span><span class="p">(</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">output_bin_size</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="p">)</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="c1"># Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 512)</span>
+</code></pre></div>
+<h2 id="globalprofilecnn-gopher">GlobalProfileCNN (Gopher)<a class="headerlink" href="#globalprofilecnn-gopher" title="Permanent link">&para;</a></h2>
+<p><strong>Implementation</strong>: <code>cerberus.models.GlobalProfileCNN</code>
 <strong>Source</strong>: <code>src/cerberus/models/gopher.py</code></p>
-<p>A baseline architecture based on the "Gopher" model (ResNet-style CNN with global pooling).</p>
-<h3 id="key-features_5">Key Features<a class="headerlink" href="#key-features_5" title="Permanent link">&para;</a></h3>
+<p>A baseline architecture corresponding to the "Baseline CNN" from the Gopher manuscript (<code>conv_profile_all_base</code>). It uses a standard convolutional body followed by a global dense bottleneck that compresses the full sequence into a fixed-size representation, then projects back to a spatial grid.</p>
+<h3 id="key-features_3">Key Features<a class="headerlink" href="#key-features_3" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Structure</strong>: 3 Convolutional Blocks -&gt; Global Dense Bottleneck -&gt; Global Projection -&gt; Final Conv.</li>
-<li><strong>Output</strong>: Predicts signal profiles directly (Single Head). Returns a tuple containing the profile tensor.</li>
+<li><strong>3 Convolutional Blocks</strong>: Conv1D → BatchNorm → ReLU → MaxPool (pooling factors: 8×, 4×, 4× = 128× total), with increasing filter counts (192, 256, 512).</li>
+<li><strong>Global Dense Bottleneck</strong>: Flattens the pooled feature map into a single vector (Dense → BN → ReLU → Dropout).</li>
+<li><strong>Global Projection</strong>: Projects the bottleneck to <code>output_bins × bottleneck_channels</code>, then reshapes back to a spatial feature map.</li>
+<li><strong>Final Conv Head</strong>: Conv1D(256) → Conv1D(output_channels) producing log-rate logits.</li>
+<li><strong>Output</strong>: Returns <code>ProfileLogRates(log_rates=...)</code> — log rates consumed by <code>ProfilePoissonNLLLoss</code>.</li>
+<li><strong>I/O</strong>: 2048bp → 1024bp at 4bp resolution (256 prediction bins). Input length must be divisible by 128.</li>
 </ul>
+<h3 id="recommended-training-settings_2">Recommended Training Settings<a class="headerlink" href="#recommended-training-settings_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Optimizer</td>
+<td><code>adamw</code></td>
+</tr>
+<tr>
+<td>Learning rate</td>
+<td><code>1e-3</code></td>
+</tr>
+<tr>
+<td>Weight decay</td>
+<td><code>0.01</code></td>
+</tr>
+<tr>
+<td>Scheduler</td>
+<td><code>cosine</code> with 10 warmup epochs</td>
+</tr>
+<tr>
+<td>Min LR</td>
+<td><code>1e-5</code></td>
+</tr>
+<tr>
+<td>Loss</td>
+<td><code>ProfilePoissonNLLLoss(log_input=True, log1p_targets=True)</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="loss-profilepoissonnllloss_1">Loss: ProfilePoissonNLLLoss<a class="headerlink" href="#loss-profilepoissonnllloss_1" title="Permanent link">&para;</a></h3>
+<p>Gopher outputs log-rates and is trained with Poisson NLL directly on the profile (no separate count head). The data config should set <code>log_transform=True</code> so targets are log1p-transformed before computing the loss:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">model_config</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;GlobalProfileCNN&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="s2">&quot;model_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.models.gopher.GlobalProfileCNN&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="s2">&quot;loss_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.loss.ProfilePoissonNLLLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="s2">&quot;loss_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;log_input&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;log1p_targets&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="s2">&quot;metrics_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.metrics.DefaultMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="s2">&quot;metrics_args&quot;</span><span class="p">:</span> <span class="p">{},</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="s2">&quot;model_args&quot;</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>        <span class="s2">&quot;bottleneck_channels&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>    <span class="p">},</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="usage_2">Usage<a class="headerlink" href="#usage_2" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">GlobalProfileCNN</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># Default: 2048bp -&gt; 256 bins (1024bp at 4bp resolution)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">GlobalProfileCNN</span><span class="p">(</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">output_bin_size</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="n">bottleneck_channels</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="p">)</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="c1"># Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 256)</span>
+</code></pre></div>
 
 
 
@@ -1351,7 +1657,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="February 1, 2026 01:45:40 UTC">February 1, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 1, 2026 06:29:58 UTC">March 1, 2026</span>
   </span>
 
     
