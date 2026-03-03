@@ -15,6 +15,7 @@ from .download import (
     download_human_reference,
 )
 from .logging import setup_logging
+from .signal import register_extractor
 
 __all__ = [
     # Core
@@ -35,4 +36,6 @@ __all__ = [
     "download_human_reference",
     # Logging
     "setup_logging",
+    # Signal Extraction
+    "register_extractor",
 ]

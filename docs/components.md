@@ -107,11 +107,12 @@ Extractors retrieve the actual data for a given `Interval`.
     ```
 
 ### UniversalExtractor
-Intelligently routes input channels to the appropriate specific extractor based on file extension. This is the default extractor used by `CerberusDataset`.
+Routes input channels to the appropriate extractor based on file extension using a module-level registry. This is the default extractor used by `CerberusDataset`.
 
-*   **Source**: BigWig (.bw), BigBed (.bb), BED (.bed) files.
+*   **Source**: Any registered file format (BigWig, BigBed, BED, and custom formats).
 *   **Output**: Signal tensors or Masks.
-*   **Behavior**: Routes files to `SignalExtractor` (BigWig), `BigBedMaskExtractor` (BigBed), or `BedMaskExtractor` (BED).
+*   **Behavior**: Looks up the extractor class for each channel's file extension via `_EXTRACTOR_REGISTRY`. Channels with the same type are grouped into a single extractor instance for efficiency. New formats can be added via `register_extractor()` without modifying this class.
+*   **Built-in formats**: `.bw`/`.bigwig` → `SignalExtractor`, `.bb`/`.bigbed` → `BigBedMaskExtractor`, `.bed`/`.bed.gz` → `BedMaskExtractor`.
 
 ### SignalExtractor
 *   **Source**: BigWig files.

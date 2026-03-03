@@ -242,10 +242,12 @@ Returns one-hot encoded DNA in ACGT or AGCT channel order.
 
 #### 3.4.2 Signal Extraction
 
-**UniversalExtractor:** Intelligently routes channels to appropriate extractors based on file extension:
-- `.bw` → SignalExtractor (BigWig coverage)
-- `.bb` → BigBedMaskExtractor (Binary masks)
-- `.bed` → BedMaskExtractor (InterLap-based masks)
+**UniversalExtractor:** Routes channels to appropriate extractors via a module-level registry (`_EXTRACTOR_REGISTRY`). Built-in mappings:
+- `.bw`/`.bigwig` → SignalExtractor (BigWig coverage)
+- `.bb`/`.bigbed` → BigBedMaskExtractor (Binary masks)
+- `.bed`/`.bed.gz` → BedMaskExtractor (InterLap-based masks)
+
+New formats can be added via `register_extractor()` without modifying `UniversalExtractor`. Channels of the same type are grouped into a single extractor instance for efficiency.
 
 **In-Memory Mode:** Pre-loads all signals into shared memory tensors for fast access.
 

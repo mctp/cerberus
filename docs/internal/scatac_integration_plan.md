@@ -422,7 +422,11 @@ This gives two clean usage paths:
 1. **Config-driven** (YAML -> `build_dataset()`): auto-creates everything, supports fragments via `ChannelSpec`
 2. **Manual** (Python API): construct your own extractors and pass them directly
 
-### 3.4 Problem: `ReverseComplement` Hardcodes Channel Semantics
+### 3.4 ~~Problem~~ RESOLVED: `ReverseComplement` Channel Semantics
+
+> **Status: Fixed.** `ReverseComplement` now accepts a `dna_channels` parameter (`transform.py:145`), and config validation (`config.py:408-412`) enforces that `reverse_complement=True` requires `use_sequence=True`. Since DNA is always channels 0-3 when sequence is enabled, the `slice(0, 4)` default in `create_default_transforms` is correct. No further changes needed.
+
+### 3.4 Original Problem: `ReverseComplement` Hardcodes Channel Semantics
 
 `ReverseComplement` (`transform.py`) assumes the first 4 channels are one-hot DNA:
 

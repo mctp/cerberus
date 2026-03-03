@@ -65,9 +65,10 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.signal`
 
+- **`register_extractor()`** — Register an extractor class for a file extension.
 - **`class BaseSignalExtractor(Protocol)`** — Protocol for signal extractors.
 - **`class SignalExtractor(BaseSignalExtractor)`** — Extracts raw signal from BigWig files on-the-fly.
-- **`class UniversalExtractor(BaseSignalExtractor)`** — Intelligently routes input channels to the appropriate extractor based on file extension.
+- **`class UniversalExtractor(BaseSignalExtractor)`** — Routes input channels to the appropriate extractor based on file extension.
 - **`class InMemorySignalExtractor(BaseSignalExtractor)`** — Extracts signal from BigWig files loaded into memory.
 
 ### `cerberus.mask`

@@ -7,6 +7,42 @@ from cerberus.interval import Interval
 from cerberus.mask import BigBedMaskExtractor, InMemoryBigBedMaskExtractor, BedMaskExtractor
 
 
+# --- Extractor Registry ---
+
+_EXTRACTOR_REGISTRY: dict[str, tuple[type, type | None]] = {}
+
+
+def register_extractor(
+    extension: str,
+    extractor_cls: type,
+    in_memory_cls: type | None = None,
+) -> None:
+    """Register an extractor class for a file extension.
+
+    Args:
+        extension: File extension including dot (e.g., '.bw', '.bed.gz').
+        extractor_cls: Default extractor class for this extension.
+        in_memory_cls: Optional in-memory variant. If None, extractor_cls is always used.
+    """
+    _EXTRACTOR_REGISTRY[extension.lower()] = (extractor_cls, in_memory_cls)
+
+
+def _resolve_extractor_cls(path: Path, in_memory: bool) -> type:
+    """Look up the appropriate extractor class for a file path."""
+    suffix = path.suffix.lower()
+    # Handle compound extensions like .bed.gz
+    if path.name.lower().endswith('.bed.gz'):
+        suffix = '.bed.gz'
+    entry = _EXTRACTOR_REGISTRY.get(suffix)
+    if entry is None:
+        raise ValueError(
+            f"No extractor registered for extension '{suffix}'. "
+            f"Registered: {sorted(_EXTRACTOR_REGISTRY.keys())}"
+        )
+    default_cls, in_memory_cls = entry
+    return in_memory_cls if (in_memory and in_memory_cls is not None) else default_cls
+
+
 class BaseSignalExtractor(Protocol):
     """
     Protocol for signal extractors.
@@ -102,85 +138,48 @@ class SignalExtractor(BaseSignalExtractor):
 
 class UniversalExtractor(BaseSignalExtractor):
     """
-    Intelligently routes input channels to the appropriate extractor based on file extension.
-    Supports BigWig (.bw), BigBed (.bb), and BED (.bed) files.
+    Routes input channels to the appropriate extractor based on file extension.
+
+    Uses the module-level extractor registry to resolve extensions to extractor
+    classes. Channels that map to the same class are grouped into a single
+    extractor instance for efficiency.
+
+    New formats can be added via ``register_extractor()`` without modifying
+    this class.
     """
     def __init__(self, paths: dict[str, Path], in_memory: bool = False):
         self.paths = paths
         self.channels = sorted(paths.keys())
         self.in_memory = in_memory
-        
-        # Group channels by type
-        self.bw_paths = {}
-        self.bb_paths = {}
-        self.bed_paths = {}
-        
+
+        # Group channels by resolved extractor class
+        groups: dict[type, dict[str, Path]] = {}
+        self._channel_to_cls: dict[str, type] = {}
+
         for name in self.channels:
             path = Path(paths[name])
-            suffix = path.suffix.lower()
-            name_str = str(name)
-            
-            if suffix in ('.bw', '.bigwig'):
-                self.bw_paths[name_str] = path
-            elif suffix in ('.bb', '.bigbed'):
-                self.bb_paths[name_str] = path
-            elif suffix in ('.bed', '.bed.gz', '.gz'): 
-                self.bed_paths[name_str] = path
-            else:
-                # Default to BigWig if unknown
-                self.bw_paths[name_str] = path
+            cls = _resolve_extractor_cls(path, in_memory)
+            self._channel_to_cls[name] = cls
+            groups.setdefault(cls, {})[name] = path
 
-        self.extractors = {}
-        
-        if self.bw_paths:
-            if self.in_memory:
-                self.extractors['bw'] = InMemorySignalExtractor(self.bw_paths)
-            else:
-                self.extractors['bw'] = SignalExtractor(self.bw_paths)
-                
-        if self.bb_paths:
-            if self.in_memory:
-                self.extractors['bb'] = InMemoryBigBedMaskExtractor(self.bb_paths)
-            else:
-                self.extractors['bb'] = BigBedMaskExtractor(self.bb_paths)
-                
-        if self.bed_paths:
-            # BedMaskExtractor is always in-memory (InterLap)
-            self.extractors['bed'] = BedMaskExtractor(self.bed_paths)
+        # One extractor per class group (preserves batching)
+        self._extractors: dict[type, BaseSignalExtractor] = {
+            cls: cls(cls_paths) for cls, cls_paths in groups.items()
+        }
+        self._group_keys: dict[type, list[str]] = {
+            cls: sorted(cls_paths.keys()) for cls, cls_paths in groups.items()
+        }
 
     def extract(self, interval: Interval) -> torch.Tensor:
-        # We need to return channels in sorted order of self.channels
-        
-        # Collect results from all extractors
-        results = {}
-        if 'bw' in self.extractors:
-            results['bw'] = self.extractors['bw'].extract(interval) # (N_bw, L)
-            
-        if 'bb' in self.extractors:
-            results['bb'] = self.extractors['bb'].extract(interval)
-            
-        if 'bed' in self.extractors:
-            results['bed'] = self.extractors['bed'].extract(interval)
-            
-        # Helper to map channel name back to result tensor index
-        bw_keys = sorted(self.bw_paths.keys())
-        bb_keys = sorted(self.bb_paths.keys())
-        bed_keys = sorted(self.bed_paths.keys())
-        
-        final_tensors = []
-        
+        results: dict[type, torch.Tensor] = {
+            cls: ext.extract(interval) for cls, ext in self._extractors.items()
+        }
+        final = []
         for name in self.channels:
-            if name in self.bw_paths:
-                idx = bw_keys.index(name)
-                final_tensors.append(results['bw'][idx])
-            elif name in self.bb_paths:
-                idx = bb_keys.index(name)
-                final_tensors.append(results['bb'][idx])
-            elif name in self.bed_paths:
-                idx = bed_keys.index(name)
-                final_tensors.append(results['bed'][idx])
-                
-        return torch.stack(final_tensors)
+            cls = self._channel_to_cls[name]
+            idx = self._group_keys[cls].index(name)
+            final.append(results[cls][idx])
+        return torch.stack(final)
 
 
 class InMemorySignalExtractor(BaseSignalExtractor):
@@ -247,3 +246,13 @@ class InMemorySignalExtractor(BaseSignalExtractor):
             extracted_values.append(vals)
 
         return torch.stack(extracted_values)
+
+
+# --- Built-in format registrations ---
+
+register_extractor('.bw', SignalExtractor, InMemorySignalExtractor)
+register_extractor('.bigwig', SignalExtractor, InMemorySignalExtractor)
+register_extractor('.bb', BigBedMaskExtractor, InMemoryBigBedMaskExtractor)
+register_extractor('.bigbed', BigBedMaskExtractor, InMemoryBigBedMaskExtractor)
+register_extractor('.bed', BedMaskExtractor)
+register_extractor('.bed.gz', BedMaskExtractor)

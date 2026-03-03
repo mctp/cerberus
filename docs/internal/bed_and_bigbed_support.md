@@ -20,17 +20,11 @@ Implement a new class `BedMaskExtractor` in `src/cerberus/mask.py` (or similar).
 -   **Extraction:** `extract(interval)` queries the InterLap structure and returns a binary tensor (1.0 for overlap, 0.0 otherwise).
 -   **Interface:** Must conform to `BaseMaskExtractor` / `BaseSignalExtractor` protocol.
 
-### 2. Extractor Factory
-Refactor `CerberusDataset` in `src/cerberus/dataset.py` to dynamically select the appropriate extractor based on file extension.
+### 2. Extractor Factory — IMPLEMENTED
 
-**Logic:**
--   Gather all input paths.
--   Group by extension type? Or enforce same type per group?
-    -   *Constraint:* `CerberusDataset` currently takes a single `input_signal_extractor`. If inputs are mixed (e.g., some BigWig, some BED), we might need a `CompositeSignalExtractor` or enforce one type per dictionary.
-    -   *Decision:* For now, we will assume all inputs in `data_config['inputs']` are of the same type OR we will implement a factory that creates a composite or handles mixed types if needed.
-    -   *Better approach:* Check extensions for each channel. If they differ, create separate extractors and wrap them, or (simpler) create a `UniversalSignalExtractor` that holds a dict of specific extractors per channel.
-    -   *Simpler MVP:* Inspect the first file. If `.bw` -> `SignalExtractor`. If `.bb` -> `BigBedMaskExtractor`. If `.bed` -> `BedMaskExtractor`. Warn if mixed?
-    -   *Robust approach:* A `UniversalExtractor` that inspects each path and assigns it to an internal handler (BW/BB/BED). This allows mixing continuous signals (BW) with sparse peaks (BED).
+`UniversalExtractor` now uses a module-level `_EXTRACTOR_REGISTRY` to resolve file extensions to extractor classes. New formats are added via `register_extractor(extension, cls, in_memory_cls)` — no modification to `UniversalExtractor` needed.
+
+Channels are grouped by resolved class so same-type channels share one extractor instance (preserving the batching optimization). Mixed inputs (e.g., BigWig + BED) are fully supported.
 
 ### 3. Testing (`tests/test_track_support_gaps.py`)
 -   **`test_bed_mask_extractor`**: Verify `BedMaskExtractor` works with dummy BED files.
@@ -50,15 +44,8 @@ class BedMaskExtractor:
 ```
 
 ```python
-# Universal Extractor Idea
-class UniversalExtractor:
-    def __init__(self, paths: dict[str, Path]):
-        self.extractors = {}
-        # for name, path in paths.items():
-        #   if .bw: self.extractors[name] = SignalExtractor({name: path})
-        #   elif .bed: self.extractors[name] = BedMaskExtractor({name: path})
-        #   ...
-    
-    def extract(self, interval):
-        # iterate channels, extract, stack...
+# UniversalExtractor now uses registry-based dispatch (implemented in signal.py):
+# register_extractor('.bw', SignalExtractor, InMemorySignalExtractor)
+# register_extractor('.bed', BedMaskExtractor)
+# ... new formats added via register_extractor() calls
 ```
