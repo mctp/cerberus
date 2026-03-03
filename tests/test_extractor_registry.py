@@ -118,7 +118,7 @@ class TestUniversalExtractorRegistry:
         # Create a minimal bigwig
         import pybigtools
         bw_path = tmp_path / "signal.bw"
-        bw = pybigtools.open(str(bw_path), "w")
+        bw = pybigtools.open(str(bw_path), "w")  # type: ignore[attr-defined]
         bw.write({"chr1": 1000}, [("chr1", 0, 1000, [0.0] * 1000)])
 
         extractor = UniversalExtractor(

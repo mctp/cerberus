@@ -1,4 +1,5 @@
 from typing import Any
+import numpy as np
 import torch
 import logging
 from torch.utils.data import Dataset
@@ -65,6 +66,7 @@ class CerberusDataset(Dataset):
         in_memory: bool = False,
         is_train: bool = True,
         seed: int | None = None,
+        prepare_cache: dict[str, np.ndarray] | None = None,
     ):
         """
         Initializes the CerberusDataset.
@@ -79,12 +81,13 @@ class CerberusDataset(Dataset):
             sampler: Optional custom sampler. If None, created based on config.
             exclude_intervals: Optional pre-computed exclude intervals. If None, loaded from config.
             transforms: Optional list of transforms for training. If None, defaults are created from data_config.
-            deterministic_transforms: Optional list of deterministic transforms for val/test. 
+            deterministic_transforms: Optional list of deterministic transforms for val/test.
                                       Must be provided if transforms is provided.
             in_memory: Whether to load data into memory (default: False).
             is_train: Whether this dataset is used for training (enables random transforms).
             seed: Optional random seed for sampler initialization.
-        
+            prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
+
         Raises:
             ValueError: If configurations are invalid.
         """
@@ -94,7 +97,8 @@ class CerberusDataset(Dataset):
         self.in_memory = in_memory
         self.is_train = is_train
         self.seed = seed
-        
+        self.prepare_cache = prepare_cache
+
         if sampler_config is not None:
             self.sampler_config = validate_sampler_config(sampler_config)
             validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
@@ -207,6 +211,7 @@ class CerberusDataset(Dataset):
             exclude_intervals=self.exclude_intervals,
             fasta_path=self.genome_config["fasta_path"],
             seed=self.seed,
+            prepare_cache=self.prepare_cache,
         )
 
     def __len__(self) -> int:

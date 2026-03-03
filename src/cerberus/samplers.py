@@ -1208,6 +1208,7 @@ class PeakSampler(MultiSampler):
         min_candidates: int = 10000,
         candidate_oversample_factor: float = 5.0,
         seed: int | None = None,
+        prepare_cache: dict[str, np.ndarray] | None = None,
     ):
         """
         Args:
@@ -1217,11 +1218,12 @@ class PeakSampler(MultiSampler):
             padded_size: Interval size.
             folds: Fold definitions.
             exclude_intervals: Excluded regions.
-            background_ratio: Ratio of background intervals to peaks. 
+            background_ratio: Ratio of background intervals to peaks.
                               e.g. 1.0 = 1:1, 2.0 = 2 backgrounds per peak.
             min_candidates: Minimum number of candidate intervals to generate.
             candidate_oversample_factor: Factor to oversample candidates relative to peaks.
             seed: Random seed.
+            prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
         """
         self.intervals_path = Path(intervals_path)
         self.background_ratio = background_ratio
@@ -1285,6 +1287,7 @@ class PeakSampler(MultiSampler):
                 seed=None,
                 generate_on_init=False,
                 metrics=["gc", "dust", "cpg"],
+                metrics_cache=prepare_cache,
             )
             samplers.append(self.negatives)
         else:
@@ -1308,20 +1311,23 @@ def create_sampler(
     exclude_intervals: dict[str, InterLap],
     fasta_path: Path | str | None = None,
     seed: int | None = None,
+    prepare_cache: dict[str, np.ndarray] | None = None,
 ) -> Sampler:
     """
     Factory function to create a Sampler from a config.
-    
+
     Args:
         config: Sampler configuration dictionary.
         chrom_sizes: Chromosome sizes dictionary.
         folds: List of fold definitions.
         exclude_intervals: Dictionary of excluded regions.
         fasta_path: Path to the genome FASTA file (required for ComplexityMatchedSampler/PeakSampler).
-        
+        seed: Random seed.
+        prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
+
     Returns:
         Sampler: An instantiated sampler object.
-        
+
     Raises:
         ValueError: If sampler_type is unsupported.
     """
@@ -1400,6 +1406,7 @@ def create_sampler(
             candidate_ratio=sampler_args["candidate_ratio"],
             seed=seed,
             metrics=sampler_args["metrics"],
+            metrics_cache=prepare_cache,
         )
 
     elif sampler_type == "peak":
@@ -1417,6 +1424,7 @@ def create_sampler(
             exclude_intervals=exclude_intervals,
             background_ratio=background_ratio,
             seed=seed,
+            prepare_cache=prepare_cache,
         )
 
     else:
