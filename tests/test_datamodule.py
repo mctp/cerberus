@@ -38,7 +38,7 @@ def test_datamodule_setup(
     # Configs
     genome_config = cast(GenomeConfig, {"mock": "genome", "fold_args": {"test_fold": 0, "val_fold": 1}})
     data_config = cast(DataConfig, {"mock": "data"})
-    sampler_config = cast(SamplerConfig, {"mock": "sampler"})
+    sampler_config = cast(SamplerConfig, {"mock": "sampler", "sampler_type": "random"})
     
     dm = CerberusDataModule(genome_config, data_config, sampler_config)
     
@@ -51,7 +51,8 @@ def test_datamodule_setup(
         data_config=data_config,
         sampler_config=sampler_config,
         in_memory=False,
-        seed=None
+        seed=None,
+        prepare_cache=None,
     )
     
     # Verify validation was called
@@ -99,7 +100,7 @@ def test_datamodule_dataloaders(
     dm = CerberusDataModule(
         cast(GenomeConfig, {"fold_args": {"test_fold": 0, "val_fold": 1}}),
         cast(DataConfig, {}),
-        cast(SamplerConfig, {}),
+        cast(SamplerConfig, {"sampler_type": "random"}),
     )
     dm.setup(batch_size=16, num_workers=2)
     
@@ -144,7 +145,7 @@ def test_datamodule_resample_via_dataloader(
     dm = CerberusDataModule(
         cast(GenomeConfig, {"fold_args": {"test_fold": 0, "val_fold": 1}}),
         cast(DataConfig, {}),
-        cast(SamplerConfig, {}),
+        cast(SamplerConfig, {"sampler_type": "random"}),
     )
     dm.setup(batch_size=16, num_workers=2)
     
@@ -187,7 +188,7 @@ def test_datamodule_drop_last(
     dm = CerberusDataModule(
         cast(GenomeConfig, {"fold_args": {"test_fold": 0, "val_fold": 1}}),
         cast(DataConfig, {}),
-        cast(SamplerConfig, {}),
+        cast(SamplerConfig, {"sampler_type": "random"}),
         drop_last=True
     )
     dm.setup(batch_size=16, num_workers=2)

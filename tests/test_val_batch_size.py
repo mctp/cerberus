@@ -41,7 +41,7 @@ def test_val_batch_size_configuration(
     dm = CerberusDataModule(
         cast(GenomeConfig, {"fold_args": {"test_fold": 0, "val_fold": 1}}),
         cast(DataConfig, {}),
-        cast(SamplerConfig, {}),
+        cast(SamplerConfig, {"sampler_type": "random"}),
     )
     
     # 1. Test default behavior (no val_batch_size provided)

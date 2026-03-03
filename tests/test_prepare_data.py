@@ -403,3 +403,216 @@ class TestSaveLoadPrepareCache:
 
     def test_load_returns_none_when_dir_missing(self, tmp_path):
         assert load_prepare_cache(tmp_path / "nonexistent") is None
+
+
+# --- Commit 3: prepare_data() + setup() integration tests ---
+
+
+class TestPrepareData:
+    """Tests for CerberusDataModule.prepare_data() and setup() integration."""
+
+    @pytest.fixture
+    def _mock_datamodule_deps(self, tmp_path):
+        """Mock dependencies for CerberusDataModule to isolate prepare_data logic."""
+        fasta = tmp_path / "genome.fa"
+        fasta.write_text(">chr1\nACGT\n")
+
+        genome_config = {
+            "name": "test",
+            "fasta_path": str(fasta),
+            "chrom_sizes": {"chr1": 10000},
+            "fold_type": "chrom_partition",
+            "fold_args": {"k": 2, "test_fold": 0, "val_fold": 1},
+            "exclude_intervals": [],
+            "allowed_chroms": ["chr1"],
+        }
+        data_config = {
+            "use_sequence": False,
+            "encoding": "one_hot",
+            "inputs": {"sig": "mock.bw"},
+            "targets": {},
+            "input_length": 1000,
+            "output_length": 1000,
+            "target_scale": 1.0,
+            "reverse_complement": False,
+            "random_shift": 0,
+        }
+        sampler_config = {
+            "sampler_type": "complexity_matched",
+            "padded_size": 100,
+            "sampler_args": {
+                "target_sampler": {
+                    "type": "random",
+                    "args": {"num_intervals": 5},
+                },
+                "candidate_sampler": {
+                    "type": "random",
+                    "args": {"num_intervals": 10},
+                },
+                "bins": 10,
+                "candidate_ratio": 1.0,
+                "metrics": ["gc"],
+            },
+        }
+
+        # Build a fake metrics_cache the mock sampler will expose
+        fake_cache = {
+            "chr1:0-100(+)": np.array([0.5, 0.3], dtype=np.float32),
+            "chr1:100-200(+)": np.array([0.7, 0.1], dtype=np.float32),
+        }
+
+        mock_sampler = MagicMock()
+        mock_sampler.metrics_cache = fake_cache
+
+        patches = [
+            patch("cerberus.datamodule.validate_genome_config", return_value=genome_config),
+            patch("cerberus.datamodule.validate_data_config", return_value=data_config),
+            patch("cerberus.datamodule.validate_sampler_config", return_value=sampler_config),
+            patch("cerberus.datamodule.validate_data_and_sampler_compatibility"),
+        ]
+
+        mocks = [p.start() for p in patches]
+
+        # Patch CerberusDataset at the datamodule import site
+        mock_dataset = MagicMock()
+        mock_dataset.sampler = mock_sampler
+        dataset_patch = patch("cerberus.datamodule.CerberusDataset", return_value=mock_dataset)
+        mock_dataset_cls = dataset_patch.start()
+        patches.append(dataset_patch)
+
+        yield {
+            "genome_config": genome_config,
+            "data_config": data_config,
+            "sampler_config": sampler_config,
+            "tmp_path": tmp_path,
+            "fake_cache": fake_cache,
+            "mock_dataset_cls": mock_dataset_cls,
+            "mock_dataset": mock_dataset,
+        }
+
+        for p in patches:
+            p.stop()
+
+    def test_prepare_data_creates_cache(self, _mock_datamodule_deps):
+        """prepare_data() creates cache dir, .npz, and ready sentinel."""
+        from cerberus.datamodule import CerberusDataModule
+
+        m = _mock_datamodule_deps
+        dm = CerberusDataModule(
+            genome_config=m["genome_config"],
+            data_config=m["data_config"],
+            sampler_config=m["sampler_config"],
+            cache_dir=m["tmp_path"] / "cache",
+        )
+
+        dm.prepare_data()
+
+        cache_dir = dm._resolve_cache_dir()
+        assert cache_dir is not None
+        assert (cache_dir / "ready").exists()
+        assert (cache_dir / "metrics_cache.npz").exists()
+
+        loaded = load_prepare_cache(cache_dir)
+        assert loaded is not None
+        assert set(loaded.keys()) == set(m["fake_cache"].keys())
+
+    def test_prepare_data_skips_when_ready(self, _mock_datamodule_deps):
+        """prepare_data() is a no-op when ready sentinel already exists."""
+        from cerberus.datamodule import CerberusDataModule
+
+        m = _mock_datamodule_deps
+        dm = CerberusDataModule(
+            genome_config=m["genome_config"],
+            data_config=m["data_config"],
+            sampler_config=m["sampler_config"],
+            cache_dir=m["tmp_path"] / "cache",
+        )
+
+        # Pre-create the cache
+        dm.prepare_data()
+        m["mock_dataset_cls"].reset_mock()
+
+        # Second call should not create a dataset
+        dm.prepare_data()
+        m["mock_dataset_cls"].assert_not_called()
+
+    def test_prepare_data_noop_for_random_sampler(self, _mock_datamodule_deps):
+        """prepare_data() is a no-op for sampler types that don't need caching."""
+        from cerberus.datamodule import CerberusDataModule
+
+        m = _mock_datamodule_deps
+        # Override sampler_config to random type
+        random_config = cast(SamplerConfig, {
+            "sampler_type": "random",
+            "padded_size": 100,
+            "sampler_args": {"num_intervals": 10},
+        })
+        with patch("cerberus.datamodule.validate_sampler_config", return_value=random_config):
+            dm = CerberusDataModule(
+                genome_config=m["genome_config"],
+                data_config=m["data_config"],
+                sampler_config=random_config,
+                cache_dir=m["tmp_path"] / "cache",
+            )
+
+        m["mock_dataset_cls"].reset_mock()
+        dm.prepare_data()
+        m["mock_dataset_cls"].assert_not_called()
+
+    def test_setup_loads_cache_from_prepare_data(self, _mock_datamodule_deps):
+        """setup() loads the cache written by prepare_data() and passes it to CerberusDataset."""
+        from cerberus.datamodule import CerberusDataModule
+
+        m = _mock_datamodule_deps
+        dm = CerberusDataModule(
+            genome_config=m["genome_config"],
+            data_config=m["data_config"],
+            sampler_config=m["sampler_config"],
+            cache_dir=m["tmp_path"] / "cache",
+        )
+
+        # Run prepare_data to write cache
+        dm.prepare_data()
+        m["mock_dataset_cls"].reset_mock()
+
+        # Mock split_folds for setup
+        mock_train = MagicMock()
+        mock_train.__len__ = MagicMock(return_value=10)
+        mock_val = MagicMock()
+        mock_val.__len__ = MagicMock(return_value=5)
+        mock_test = MagicMock()
+        mock_test.__len__ = MagicMock(return_value=5)
+        m["mock_dataset"].split_folds.return_value = (mock_train, mock_val, mock_test)
+
+        dm.setup()
+
+        # Verify CerberusDataset was called with prepare_cache
+        m["mock_dataset_cls"].assert_called_once()
+        call_kwargs = m["mock_dataset_cls"].call_args.kwargs
+        assert call_kwargs["prepare_cache"] is not None
+        assert set(call_kwargs["prepare_cache"].keys()) == set(m["fake_cache"].keys())
+
+    def test_setup_works_without_prepare_data(self, _mock_datamodule_deps):
+        """setup() works even if prepare_data() was never called (no cache)."""
+        from cerberus.datamodule import CerberusDataModule
+
+        m = _mock_datamodule_deps
+        dm = CerberusDataModule(
+            genome_config=m["genome_config"],
+            data_config=m["data_config"],
+            sampler_config=m["sampler_config"],
+            cache_dir=m["tmp_path"] / "cache",
+        )
+
+        mock_train = MagicMock()
+        mock_train.__len__ = MagicMock(return_value=10)
+        mock_val = MagicMock()
+        mock_val.__len__ = MagicMock(return_value=5)
+        mock_test = MagicMock()
+        mock_test.__len__ = MagicMock(return_value=5)
+        m["mock_dataset"].split_folds.return_value = (mock_train, mock_val, mock_test)
+
+        dm.setup()
+
+        m["mock_dataset_cls"].assert_called_once()
+        assert m["mock_dataset_cls"].call_args.kwargs["prepare_cache"] is None

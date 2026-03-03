@@ -20,7 +20,7 @@ def test_datamodule_hardware_settings():
         
         mock_genome.return_value = {"fold_args": {"test_fold": 0, "val_fold": 1}}
         mock_data.return_value = {}
-        mock_sampler.return_value = {}
+        mock_sampler.return_value = {"sampler_type": "random"}
         
         # Mock dataset instance for split_folds
         mock_dataset_instance = MagicMock()
@@ -42,7 +42,7 @@ def test_datamodule_hardware_settings():
         dm = CerberusDataModule(
             genome_config={}, # type: ignore
             data_config={}, # type: ignore
-            sampler_config={}, # type: ignore
+            sampler_config={"sampler_type": "random"}, # type: ignore
             pin_memory=True
         )
         
@@ -54,7 +54,7 @@ def test_datamodule_hardware_settings():
         dm_explicit = CerberusDataModule(
             genome_config={}, # type: ignore
             data_config={}, # type: ignore
-            sampler_config={}, # type: ignore
+            sampler_config={"sampler_type": "random"}, # type: ignore
             pin_memory=False
         )
         assert dm_explicit.pin_memory is False, "pin_memory should remain False when explicitly set"
@@ -78,7 +78,7 @@ def test_datamodule_hardware_settings():
         dm_disabled = CerberusDataModule(
             genome_config={}, # type: ignore
             data_config={}, # type: ignore
-            sampler_config={}, # type: ignore
+            sampler_config={"sampler_type": "random"}, # type: ignore
             persistent_workers=False
         )
         dm_disabled.setup(num_workers=2)
@@ -94,7 +94,7 @@ def test_datamodule_hardware_settings():
         dm_ctx = CerberusDataModule(
             genome_config={}, # type: ignore
             data_config={}, # type: ignore
-            sampler_config={} # type: ignore
+            sampler_config={"sampler_type": "random"} # type: ignore
         )
         dm_ctx.setup(num_workers=2)
         val_loader = dm_ctx.val_dataloader()
@@ -104,7 +104,7 @@ def test_datamodule_hardware_settings():
         dm_spawn = CerberusDataModule(
             genome_config={}, # type: ignore
             data_config={}, # type: ignore
-            sampler_config={}, # type: ignore
+            sampler_config={"sampler_type": "random"}, # type: ignore
             multiprocessing_context='spawn'
         )
         dm_spawn.setup(num_workers=2)

@@ -5,7 +5,7 @@ import torch
 import numpy as np
 import logging
 from torch.utils.data import DataLoader
-from .cache import get_default_cache_dir, resolve_cache_dir, load_prepare_cache
+from .cache import get_default_cache_dir, resolve_cache_dir, load_prepare_cache, save_prepare_cache
 from .dataset import CerberusDataset
 from .signal import UniversalExtractor
 from .config import (
@@ -126,6 +126,53 @@ class CerberusDataModule(pl.LightningDataModule):
             chrom_sizes=self.genome_config["chrom_sizes"],
         )
 
+    def prepare_data(self) -> None:
+        """
+        Pre-computes complexity metrics and caches them to disk.
+
+        Called by Lightning on rank 0 only, before setup() runs on all ranks.
+        Creates a temporary sampler to trigger metric computation, then
+        serializes the resulting metrics_cache to disk so that all ranks can
+        load it in setup() without redundant FASTA reads.
+
+        No-op if the sampler type doesn't need caching or if a valid cache
+        already exists.
+        """
+        cache_dir = self._resolve_cache_dir()
+        if cache_dir is None:
+            return
+        if (cache_dir / "ready").exists():
+            logger.info(f"prepare_data cache already exists at {cache_dir}")
+            return
+
+        logger.info("prepare_data: computing complexity metrics for caching...")
+
+        # Create a temporary dataset to trigger sampler initialization and
+        # metric computation. This opens FASTA/BigWig files on rank 0 only.
+        tmp_dataset = CerberusDataset(
+            genome_config=self.genome_config,
+            data_config=self.data_config,
+            sampler_config=self.sampler_config,
+            seed=self.seed,
+        )
+
+        # Extract metrics_cache from the sampler
+        sampler = tmp_dataset.sampler
+        sampler_type = self.sampler_config["sampler_type"]
+        if sampler_type == "complexity_matched":
+            metrics_cache = sampler.metrics_cache  # type: ignore[union-attr]
+        elif sampler_type == "peak":
+            if sampler.negatives is not None:  # type: ignore[union-attr]
+                metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
+            else:
+                logger.info("prepare_data: peak sampler has no negatives, nothing to cache")
+                return
+        else:
+            return
+
+        save_prepare_cache(cache_dir, metrics_cache)
+        logger.info(f"prepare_data: cached {len(metrics_cache)} entries to {cache_dir}")
+
     def _load_prepare_cache(self) -> dict[str, np.ndarray] | None:
         """
         Loads the prepare_data cache from disk if available.
@@ -176,6 +223,9 @@ class CerberusDataModule(pl.LightningDataModule):
 
         logger.info(f"Setting up DataModule (test_fold={self.test_fold}, val_fold={self.val_fold})...")
 
+        # Load cached complexity metrics if available (populated by prepare_data)
+        prepare_cache = self._load_prepare_cache()
+
         # Initialize full dataset
         full_dataset = CerberusDataset(
             genome_config=self.genome_config,
@@ -183,6 +233,7 @@ class CerberusDataModule(pl.LightningDataModule):
             sampler_config=self.sampler_config,
             in_memory=self.in_memory,
             seed=self.seed,
+            prepare_cache=prepare_cache,
         )
 
         # Split into folds
