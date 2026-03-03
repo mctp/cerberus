@@ -79,6 +79,8 @@ nav:
     - Core Components: components.md
     - Prediction: prediction.md
     - Multi-GPU: multi_gpu.md
+  - Contributing:
+    - Maintaining Docs: contributing.md
   - Reference:
     - Models: models.md
     - Complexity Metrics: complexity.md
