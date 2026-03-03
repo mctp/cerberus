@@ -298,3 +298,108 @@ class TestDatasetPrepareCache:
 
         m["create_sampler"].assert_called_once()
         assert m["create_sampler"].call_args.kwargs["prepare_cache"] is None
+
+
+# --- Commit 2: Cache utilities tests ---
+
+from pathlib import Path
+
+from cerberus.cache import (
+    get_default_cache_dir,
+    resolve_cache_dir,
+    save_prepare_cache,
+    load_prepare_cache,
+)
+from cerberus.config import SamplerConfig
+
+
+class TestGetDefaultCacheDir:
+    """Tests for default cache directory resolution."""
+
+    def test_uses_xdg_cache_home_if_set(self, monkeypatch):
+        monkeypatch.setenv("XDG_CACHE_HOME", "/tmp/custom_xdg")
+        result = get_default_cache_dir()
+        assert result == Path("/tmp/custom_xdg/cerberus")
+
+    def test_falls_back_to_home_dot_cache(self, monkeypatch):
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        result = get_default_cache_dir()
+        assert result == Path.home() / ".cache" / "cerberus"
+
+
+class TestResolveCacheDir:
+    """Tests for deterministic cache directory computation."""
+
+    def test_deterministic_same_inputs(self, tmp_path):
+        fasta = tmp_path / "genome.fa"
+        fasta.write_text(">chr1\nACGT\n")
+
+        config = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {}, "padded_size": 100})
+        chrom_sizes = {"chr1": 10000}
+
+        dir1 = resolve_cache_dir(tmp_path, fasta, config, seed=42, chrom_sizes=chrom_sizes)
+        dir2 = resolve_cache_dir(tmp_path, fasta, config, seed=42, chrom_sizes=chrom_sizes)
+        assert dir1 == dir2
+
+    def test_different_seed_different_dir(self, tmp_path):
+        fasta = tmp_path / "genome.fa"
+        fasta.write_text(">chr1\nACGT\n")
+
+        config = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {}, "padded_size": 100})
+        chrom_sizes = {"chr1": 10000}
+
+        dir1 = resolve_cache_dir(tmp_path, fasta, config, seed=42, chrom_sizes=chrom_sizes)
+        dir2 = resolve_cache_dir(tmp_path, fasta, config, seed=99, chrom_sizes=chrom_sizes)
+        assert dir1 != dir2
+
+    def test_different_config_different_dir(self, tmp_path):
+        fasta = tmp_path / "genome.fa"
+        fasta.write_text(">chr1\nACGT\n")
+
+        config_a = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {"bg": 1.0}, "padded_size": 100})
+        config_b = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {"bg": 2.0}, "padded_size": 100})
+        chrom_sizes = {"chr1": 10000}
+
+        dir1 = resolve_cache_dir(tmp_path, fasta, config_a, seed=42, chrom_sizes=chrom_sizes)
+        dir2 = resolve_cache_dir(tmp_path, fasta, config_b, seed=42, chrom_sizes=chrom_sizes)
+        assert dir1 != dir2
+
+    def test_is_subdirectory_of_cache_dir(self, tmp_path):
+        fasta = tmp_path / "genome.fa"
+        fasta.write_text(">chr1\nACGT\n")
+
+        config = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {}, "padded_size": 100})
+        result = resolve_cache_dir(tmp_path / "my_cache", fasta, config, seed=0, chrom_sizes={})
+        assert result.parent == tmp_path / "my_cache"
+
+
+class TestSaveLoadPrepareCache:
+    """Tests for cache serialization round-trip."""
+
+    def test_round_trip(self, tmp_path):
+        cache = {
+            "chr1:100-200(+)": np.array([0.5, 0.3, 0.7], dtype=np.float32),
+            "chr1:300-400(+)": np.array([0.1, 0.9, 0.4], dtype=np.float32),
+        }
+
+        save_prepare_cache(tmp_path, cache)
+
+        assert (tmp_path / "metrics_cache.npz").exists()
+        assert (tmp_path / "ready").exists()
+
+        loaded = load_prepare_cache(tmp_path)
+        assert loaded is not None
+        assert set(loaded.keys()) == set(cache.keys())
+        for k in cache:
+            np.testing.assert_array_almost_equal(loaded[k], cache[k])
+
+    def test_load_returns_none_when_no_ready(self, tmp_path):
+        np.savez_compressed(tmp_path / "metrics_cache.npz", keys=[], values=[])
+        assert load_prepare_cache(tmp_path) is None
+
+    def test_load_returns_none_when_no_npz(self, tmp_path):
+        (tmp_path / "ready").touch()
+        assert load_prepare_cache(tmp_path) is None
+
+    def test_load_returns_none_when_dir_missing(self, tmp_path):
+        assert load_prepare_cache(tmp_path / "nonexistent") is None

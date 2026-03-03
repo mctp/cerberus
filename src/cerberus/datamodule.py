@@ -1,9 +1,11 @@
 import random
+from pathlib import Path
 import pytorch_lightning as pl
 import torch
 import numpy as np
 import logging
 from torch.utils.data import DataLoader
+from .cache import get_default_cache_dir, resolve_cache_dir, load_prepare_cache
 from .dataset import CerberusDataset
 from .signal import UniversalExtractor
 from .config import (
@@ -38,6 +40,7 @@ class CerberusDataModule(pl.LightningDataModule):
         multiprocessing_context: str | None = None,
         seed: int | None = None,
         drop_last: bool = False,
+        cache_dir: Path | str | None = None,
     ):
         """
         Args:
@@ -51,6 +54,8 @@ class CerberusDataModule(pl.LightningDataModule):
             multiprocessing_context: Context name for multiprocessing (e.g., 'spawn', 'fork').
             seed: Optional random seed for sampler initialization.
             drop_last: Whether to drop the last incomplete batch in training.
+            cache_dir: Base directory for prepare_data() cache. Defaults to
+                $XDG_CACHE_HOME/cerberus or ~/.cache/cerberus.
         """
         super().__init__()
         self.genome_config = validate_genome_config(genome_config)
@@ -81,6 +86,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.multiprocessing_context = multiprocessing_context
         self.seed = seed
         self.drop_last = drop_last
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else get_default_cache_dir()
 
         self.train_dataset: CerberusDataset | None = None
         self.val_dataset: CerberusDataset | None = None
@@ -102,6 +108,34 @@ class CerberusDataModule(pl.LightningDataModule):
         worker_seed = torch.initial_seed() % 2**32
         np.random.seed(worker_seed)
         random.seed(worker_seed)
+
+    def _resolve_cache_dir(self) -> Path | None:
+        """
+        Computes the deterministic cache subdirectory for the current config.
+
+        Returns None if the sampler type does not benefit from caching.
+        """
+        sampler_type = self.sampler_config["sampler_type"]
+        if sampler_type not in ("peak", "complexity_matched"):
+            return None
+        return resolve_cache_dir(
+            self.cache_dir,
+            fasta_path=self.genome_config["fasta_path"],
+            sampler_config=self.sampler_config,
+            seed=self.seed,
+            chrom_sizes=self.genome_config["chrom_sizes"],
+        )
+
+    def _load_prepare_cache(self) -> dict[str, np.ndarray] | None:
+        """
+        Loads the prepare_data cache from disk if available.
+
+        Returns None if the sampler type doesn't need caching or no cache exists.
+        """
+        cache_dir = self._resolve_cache_dir()
+        if cache_dir is None:
+            return None
+        return load_prepare_cache(cache_dir)
 
     def setup(
         self, 
