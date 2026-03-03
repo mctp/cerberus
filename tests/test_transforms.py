@@ -115,6 +115,18 @@ def test_reverse_complement_with_signals(dummy_interval):
     
     assert out_int.strand == "-"
 
+def test_reverse_complement_no_dna(dummy_interval):
+    """RC with no DNA channels should only reverse spatially."""
+    inputs = torch.arange(10).unsqueeze(0).float()  # (1, 10) signal only
+    targets = torch.arange(5).unsqueeze(0).float()
+
+    rc = ReverseComplement(probability=1.0, dna_channels=slice(0, 0))
+    out_in, out_tgt, out_int = rc(inputs, targets, dummy_interval)
+
+    assert out_in[0, 0] == 9  # reversed
+    assert out_tgt[0, 0] == 4  # reversed
+    assert out_int.strand == "-"
+
 def test_log1p(dummy_interval):
     targets = torch.tensor([0.0, 1.0, 10.0]).unsqueeze(0)
     inputs = torch.randn(4, 3)

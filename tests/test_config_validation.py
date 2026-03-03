@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import cast
 from torchmetrics import MetricCollection
 from cerberus.config import (
+    validate_data_config,
     validate_sampler_config,
     validate_model_config,
     validate_data_and_sampler_compatibility,
@@ -12,6 +13,25 @@ from cerberus.config import (
     ModelConfig,
     DataConfig
 )
+
+# --- Data Config Tests ---
+
+def test_validate_data_config_rc_without_sequence():
+    """reverse_complement=True with use_sequence=False should raise."""
+    config = cast(DataConfig, {
+        "inputs": {},
+        "targets": {},
+        "input_len": 100,
+        "output_len": 100,
+        "max_jitter": 0,
+        "output_bin_size": 1,
+        "encoding": "ACGT",
+        "log_transform": False,
+        "reverse_complement": True,
+        "use_sequence": False,
+    })
+    with pytest.raises(ValueError, match="reverse_complement=True requires use_sequence=True"):
+        validate_data_config(config)
 
 # --- Sampler Config Tests ---
 

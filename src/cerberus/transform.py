@@ -331,7 +331,7 @@ def create_default_transforms(
     # 2. Reverse Complement (random)
     # If deterministic, skip RC
     if data_config["reverse_complement"] and not deterministic:
-        transforms.append(ReverseComplement())
+        transforms.append(ReverseComplement(dna_channels=slice(0, 4)))
 
     # 3. Target Cropping (deterministic)
     if data_config["output_len"] < data_config["input_len"]:

@@ -405,6 +405,12 @@ def validate_data_config(
     if not isinstance(use_sequence, bool):
         raise TypeError("use_sequence must be a boolean")
 
+    if config["reverse_complement"] and not use_sequence:
+        raise ValueError(
+            "reverse_complement=True requires use_sequence=True. "
+            "Reverse complement operates on DNA sequence channels."
+        )
+
     return {
         "inputs": inputs,
         "targets": targets,
