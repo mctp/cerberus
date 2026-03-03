@@ -30,6 +30,8 @@ def base_config():
         "in_memory": False,
         "scheduler_type": "default",
         "scheduler_args": {},
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     })
 
 def test_configure_optimizers_default(base_config):

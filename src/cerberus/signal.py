@@ -1,10 +1,13 @@
 from pathlib import Path
 from typing import Protocol
+import logging
 import numpy as np
 import pybigtools
 import torch
 from cerberus.interval import Interval
 from cerberus.mask import BigBedMaskExtractor, InMemoryBigBedMaskExtractor, BedMaskExtractor
+
+logger = logging.getLogger(__name__)
 
 
 # --- Extractor Registry ---
@@ -74,6 +77,7 @@ class SignalExtractor(BaseSignalExtractor):
 
     def _load(self):
         """Lazy loader for BigWig handles."""
+        logger.debug(f"Lazy-loading {len(self.channels)} BigWig file(s)...")
         self._bigwig_files = {}
         for name in self.channels:
             path = str(self.bigwig_paths[name])
@@ -125,8 +129,15 @@ class SignalExtractor(BaseSignalExtractor):
 
             except RuntimeError:
                 # Chromosome not found or other read error -> zeros
+                logger.debug(f"Chrom {interval.chrom} not found in BigWig '{name}', returning zeros")
                 vals = np.zeros(length, dtype=np.float32)
             except Exception:
+                # Catch non-fatal read errors (e.g. malformed data, unsupported regions).
+                # pyo3_runtime.PanicException from bigtools inherits BaseException but
+                # was reclassified to Exception in newer versions; Rust panics that still
+                # inherit BaseException will propagate naturally (alongside KeyboardInterrupt,
+                # SystemExit, GeneratorExit) which is the correct behavior.
+                logger.debug(f"Error reading BigWig '{name}' at {interval}, returning zeros")
                 vals = np.zeros(length, dtype=np.float32)
 
             extracted_values.append(vals)
@@ -189,14 +200,20 @@ class InMemorySignalExtractor(BaseSignalExtractor):
     Pre-loads entire chromosomes into shared memory tensors for fast access.
     Best for smaller genomes or when sufficient RAM is available.
     """
-    def __init__(self, bigwig_paths: dict[str, Path]):
+    def __init__(self, bigwig_paths: dict[str, Path], chroms: list[str] | None = None):
         """
         Args:
             bigwig_paths: Dictionary mapping channel names to BigWig file paths.
+            chroms: Optional list of chromosome names to load. When None (default),
+                    all chromosomes in each BigWig file are loaded. Providing a
+                    subset (e.g. ``["chr21", "chr22"]``) reduces memory use and
+                    load time; chromosomes absent from this list will be treated as
+                    missing during extraction (returning zeros).
         """
         self.channels = sorted(bigwig_paths.keys())
         self._cache = {}  # channel -> chrom -> tensor
 
+        logger.info(f"Loading {len(self.channels)} BigWig file(s) into memory...")
         for name in self.channels:
             path = str(bigwig_paths[name])
             try:
@@ -204,9 +221,15 @@ class InMemorySignalExtractor(BaseSignalExtractor):
                 self._cache[name] = {}
 
                 # Get chrom sizes
-                chroms = bw.chroms()
+                all_chroms = bw.chroms()
+                to_load = {c: s for c, s in all_chroms.items() if chroms is None or c in chroms}
+                if chroms is not None:
+                    skipped = set(chroms) - set(all_chroms)
+                    for c in skipped:
+                        logger.debug(f"Requested chrom '{c}' not found in BigWig '{name}', skipping")
+                logger.info(f"Loading {len(to_load)} of {len(all_chroms)} chrom(s) for '{name}'")
 
-                for chrom, size in chroms.items():
+                for chrom, size in to_load.items():
                     vals = bw.values(chrom, 0, size)
                     arr = np.array(vals, dtype=np.float32)
                     arr = np.nan_to_num(arr)

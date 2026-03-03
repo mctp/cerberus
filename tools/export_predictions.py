@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import logging
 from pathlib import Path
 import torch
 import csv
@@ -7,11 +8,15 @@ import gzip
 import re
 import json
 
+import cerberus
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.samplers import IntervalSampler
-from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
-from cerberus.config import import_class
+from cerberus.output import compute_total_log_counts
+from cerberus.module import instantiate_metrics_and_loss
+from cerberus.loss import MSEMultinomialLoss, CoupledMSEMultinomialLoss
+
+logger = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(description="Export predicted vs observed log-counts to TSV.")
@@ -25,9 +30,11 @@ def main():
     parser.add_argument("--use_folds", type=str, default=None, help="Folds to use (e.g. 'test', 'test+val'). Default depends on model type.")
 
     args = parser.parse_args()
-    
+
+    cerberus.setup_logging()
+
     # 1. Load Model Ensemble
-    print(f"Loading model from {args.model_path}...")
+    logger.info(f"Loading model from {args.model_path}...")
     
     if args.device:
         device_name = args.device
@@ -39,7 +46,7 @@ def main():
         device_name = "cpu"
         
     device = torch.device(device_name)
-    print(f"Using device: {device}")
+    logger.info(f"Using device: {device}")
     
     # Provide search paths for resolving files (e.g. genome fasta) from other environments
     # We include tests/data as a likely location for test resources relative to project root
@@ -62,12 +69,12 @@ def main():
                 use_folds.extend(["train", "test", "val"])
             else:
                 use_folds.append(p)
-        use_folds = list(set(use_folds))
+        use_folds = list(dict.fromkeys(use_folds))
         
-    print(f"Using folds configuration: {use_folds if use_folds else 'Default'}")
+    logger.info(f"Using folds configuration: {use_folds if use_folds else 'Default'}")
 
     # 2. Configure Dataset
-    print("Configuring dataset...")
+    logger.info("Configuring dataset...")
     cerberus_config = ensemble.cerberus_config
     data_config = cerberus_config["data_config"]
     genome_config = cerberus_config["genome_config"]
@@ -83,7 +90,7 @@ def main():
     # Override the single target
     key = list(data_config["targets"].keys())[0]
     data_config["targets"][key] = Path(args.bigwig)
-    print(f"Overriding target '{key}' with {args.bigwig}")
+    logger.info(f"Overriding target '{key}' with {args.bigwig}")
             
     # Create Dataset
     dataset = CerberusDataset(
@@ -95,7 +102,7 @@ def main():
     )
     
     # 3. Load Peaks
-    print(f"Loading peaks from {args.peaks}...")
+    logger.info(f"Loading peaks from {args.peaks}...")
     padded_size = data_config["input_len"]
     
     # Create a minimal IntervalSampler
@@ -105,27 +112,36 @@ def main():
         padded_size=padded_size
     )
     
-    print(f"Loaded {len(peak_sampler)} intervals.")
+    logger.info(f"Loaded {len(peak_sampler)} intervals.")
     if len(peak_sampler) == 0:
-        print("No intervals found. Exiting.")
+        logger.warning("No intervals found. Exiting.")
         return
 
     # 3.5 Setup Metrics and Loss
-    print("Configuring metrics and loss...")
-    
-    metrics_cls = import_class(model_config["metrics_cls"])
-    metrics_args = model_config["metrics_args"]
-    metrics = metrics_cls(**metrics_args).to(device)
+    logger.info("Configuring metrics and loss...")
+    metrics, criterion = instantiate_metrics_and_loss(model_config, device=device)
 
-    loss_cls = import_class(model_config["loss_cls"])
-    loss_args = model_config["loss_args"]
-    criterion = loss_cls(**loss_args).to(device)
+    # MSE losses train log_counts against log(total_counts + pseudocount).
+    # Poisson/NB losses use PoissonNLLLoss(log_input=True) against raw counts,
+    # so log_counts ≈ log(total_counts) — not log(counts + pseudocount). Using the
+    # wrong transform creates a systematic offset in the predicted vs observed comparison.
+    # log_counts_include_pseudocount also controls multi-channel aggregation in compute_total_log_counts:
+    # for MSE with count_per_channel=True, per-channel log_counts are in
+    # log(count + pseudocount) space and must be converted back before summing
+    # (logsumexp gives log(n_ch * pseudocount + total), not log(pseudocount + total)).
+    log_counts_include_pseudocount = isinstance(criterion, (MSEMultinomialLoss, CoupledMSEMultinomialLoss))
+    if log_counts_include_pseudocount:
+        count_pseudocount = getattr(criterion, "count_pseudocount", 1.0)
+        obs_log_count_fn = lambda x: torch.log(x + count_pseudocount)
+    else:
+        count_pseudocount = 1.0
+        obs_log_count_fn = lambda x: torch.log(x.clamp_min(1.0))
 
     total_loss = 0.0
     total_samples = 0
 
     # 4. Predict and Collect
-    print("Running prediction...")
+    logger.info("Running prediction...")
     
     results = [] # List of tuples (chrom, start, end, strand, pred, obs)
     
@@ -143,50 +159,51 @@ def main():
 
     for batch_output, batch_intervals in batch_gen:
         if args.max_batches is not None and batch_count >= args.max_batches:
-            print(f"Reached max_batches ({args.max_batches}). Stopping.")
+            logger.info(f"Reached max_batches ({args.max_batches}). Stopping.")
             break
         batch_count += 1
 
         # 4a. Get Predicted Log Counts
-        preds_batch = None
-        if isinstance(batch_output, ProfileCountOutput):
-            log_counts = batch_output.log_counts
-            if log_counts.ndim == 2 and log_counts.shape[1] > 1:
-                pred_log_total = torch.logsumexp(log_counts, dim=1)
-            else:
-                pred_log_total = log_counts.flatten()
+        try:
+            pred_log_total = compute_total_log_counts(
+                batch_output,
+                log_counts_include_pseudocount=log_counts_include_pseudocount,
+                pseudocount=count_pseudocount,
+            )
             preds_batch = pred_log_total.cpu().numpy()
-            
-        elif isinstance(batch_output, ProfileLogRates):
-             log_rates = batch_output.log_rates
-             if log_rates.shape[1] > 1:
-                 pred_log_total = torch.logsumexp(log_rates.flatten(start_dim=1), dim=-1)
-             else:
-                 pred_log_total = torch.logsumexp(log_rates, dim=(1,2)).flatten()
-             preds_batch = pred_log_total.cpu().numpy()
-        else:
-             print("Warning: Model output does not have log_counts or log_rates. Skipping batch.")
-             continue
+        except ValueError:
+            logger.warning("Model output does not have log_counts or log_rates. Skipping batch.")
+            continue
 
         # 4b. Get Observed Log Counts
         targets_list = []
+        raw_obs_list = []
+        
         for interval in batch_intervals:
+            # 1. Get transformed data for metrics/loss
             data = dataset.get_interval(interval)
             targets_list.append(data["targets"])
             
+            # 2. Get raw data for exported "observed" counts
+            raw_target = dataset.get_raw_targets(interval, crop_to_output_len=True)
+            raw_obs_list.append(raw_target)
+            
         targets = torch.stack(targets_list)
-        obs_total = targets.sum(dim=(1, 2))
-        obs_log_total = torch.log1p(obs_total)
+        
+        # Calculate observed total from RAW counts, in the same log-space as the loss.
+        # Apply target_scale so the observed is on the same scale as the training targets.
+        raw_obs = torch.stack(raw_obs_list)
+        obs_total = raw_obs.sum(dim=(1, 2)) * data_config["target_scale"]
+        obs_log_total = obs_log_count_fn(obs_total)
         obs_batch = obs_log_total.numpy()
         
         # 4c. Update Metrics and Loss
         targets_device = targets.to(device)
-        metrics.update(batch_output, targets_device)
-        
         with torch.no_grad():
-             batch_loss = criterion(batch_output, targets_device)
-             total_loss += batch_loss.item() * targets.size(0)
-             total_samples += targets.size(0)
+            metrics.update(batch_output, targets_device)
+            batch_loss = criterion(batch_output, targets_device)
+            total_loss += batch_loss.item() * targets.size(0)
+            total_samples += targets.size(0)
         
         # 4d. Collect Metadata
         for i, interval in enumerate(batch_intervals):
@@ -206,12 +223,12 @@ def main():
             ))
 
     if not results:
-        print("No predictions generated.")
+        logger.warning("No predictions generated.")
         return
 
     # 5. Write to TSV
     output_path = Path(args.output)
-    print(f"Writing results to {output_path}...")
+    logger.info(f"Writing results to {output_path}...")
     
     if output_path.suffix == ".gz":
         f = gzip.open(output_path, "wt", newline="")
@@ -228,7 +245,7 @@ def main():
         f.close()
         
     # 6. Compute and Save Metrics
-    print("Computing final metrics...")
+    logger.info("Computing final metrics...")
     final_metrics = metrics.compute()
     avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
     
@@ -245,12 +262,12 @@ def main():
         "metrics": summary_metrics
     }
     
-    summary_path = str(output_path) + ".metrics.json"
-    print(f"Writing metrics to {summary_path}...")
+    summary_path = output_path.with_suffix("").with_suffix(".metrics.json")
+    logger.info(f"Writing metrics to {summary_path}...")
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
         
-    print("Done.")
+    logger.info("Done.")
 
 if __name__ == "__main__":
     main()

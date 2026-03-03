@@ -185,7 +185,7 @@ def print_model_dims(model_name, input_len=None, output_len=None, verbose=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Print dimensions of a Cerberus model.")
-    parser.add_argument("model", type=str, help="Name of the model class (e.g., Pomeranian, BPNet, GemiNet)")
+    parser.add_argument("model", type=str, help="Name of the model class (e.g., Pomeranian, BPNet)")
     parser.add_argument("--input_len", type=int, default=None, help="Input sequence length (default: inferred from model or 2112)")
     parser.add_argument("--output_len", type=int, default=None, help="Output sequence length (default: inferred from model or 1024)")
     # parser.add_argument("--verbose", action="store_true", help="Print more detailed layer information")

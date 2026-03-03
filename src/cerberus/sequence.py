@@ -1,11 +1,14 @@
 from pathlib import Path
 from typing import Protocol, Iterable
+import logging
 import numpy as np
 import pyfaidx
 import torch
 
 from cerberus.interval import Interval
 from cerberus.complexity import calculate_gc_content
+
+logger = logging.getLogger(__name__)
 
 
 def _create_mapping(encoding: str) -> np.ndarray:
@@ -92,7 +95,8 @@ def compute_intervals_gc(intervals: Iterable[Interval], fasta_path: Path | str) 
             seq_obj = fasta[interval.chrom][interval.start : interval.end]
             seq = str(seq_obj)
             gc_values.append(calculate_gc_content(seq))
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to compute GC content for %s: %s", interval, exc)
             gc_values.append(0.0)
 
     return gc_values
@@ -147,6 +151,7 @@ class SequenceExtractor(BaseSequenceExtractor):
         """
         # Lazy load (fork safety via lazy init + __getstate__)
         if self.fasta is None:
+            logger.debug(f"Lazy-loading FASTA: {self.fasta_path}")
             self.fasta = pyfaidx.Fasta(str(self.fasta_path))
 
         # pyfaidx handles 0-based coordinates if using slicing on the chrom object
@@ -188,6 +193,7 @@ class InMemorySequenceExtractor(BaseSequenceExtractor):
 
     def _load(self):
         """Loads the entire genome into memory."""
+        logger.info(f"Loading genome into memory from {self.fasta_path}...")
         fasta = pyfaidx.Fasta(str(self.fasta_path))
         for chrom in fasta.keys():
             # Read full sequence

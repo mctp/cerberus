@@ -119,7 +119,7 @@ def test_mse_multinomial_requirements():
 
 def test_pearson_metric_polymorphism():
     """Verify ProfilePearsonCorrCoef accepts both Logits and Rates."""
-    metric = ProfilePearsonCorrCoef(num_channels=1)
+    metric = ProfilePearsonCorrCoef()
     
     # Setup consistent inputs
     # Let log_rates = [0, 1, 2]. Softmax -> probs

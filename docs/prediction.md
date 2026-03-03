@@ -136,14 +136,66 @@ This tool:
 1. Loads the model and automatically resolves dataset paths.
 2. Overrides the target BigWig with the provided one (useful for cross-sample prediction).
 3. Computes total log-counts for each peak.
-4. Saves a compressed TSV with columns: `chrom`, `start`, `end`, `strand`, `predicted_log_count`, `observed_log_count`.
+4. Saves a compressed TSV with columns: `chrom`, `start`, `end`, `strand`, `pred_interval`, `predicted_log_count`, `observed_log_count`.
+5. Saves a companion `predictions.metrics.json` with aggregated metrics and loss.
+
+#### Log-space semantics
+
+The `predicted_log_count` and `observed_log_count` columns are placed in the same log-space as the training objective, which depends on the loss:
+
+| Loss family | Count head trains against | Column space |
+|---|---|---|
+| `MSEMultinomialLoss`, `CoupledMSEMultinomialLoss` | `log(total_counts + count_pseudocount)` | `log(x + p)` (defaults to `log1p` when `count_pseudocount=1.0`) |
+| `PoissonMultinomialLoss`, `NegativeBinomialMultinomialLoss`, and their `Coupled` variants | `log(total_counts)` (via `PoissonNLLLoss(log_input=True)`) | `log` |
+
+The tool reads the instantiated loss to determine this automatically — no manual configuration is needed.
+
+The observed total is computed from raw BigWig signal (bypassing transforms) and then multiplied by `data_config["target_scale"]` before the log transform, matching what the loss was trained against.
+
+#### Multi-channel models (`count_per_channel=True`)
+
+When the model has multiple output channels and was trained with `count_per_channel=True` under an MSE loss, each channel's `log_counts` is in `log(count + count_pseudocount)` space. The tool correctly aggregates these to a single global log-count via:
+
+```
+log((exp(lc_ch0) - p) + (exp(lc_ch1) - p) + ... + p)
+```
+
+where `p = count_pseudocount`, rather than the naive `logsumexp`, which would give `log(n_channels * p + total_counts)`.
+
+#### Optional arguments
+
+| Argument | Description |
+|---|---|
+| `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val` for multi-fold ensembles, `all` for single-fold. |
+| `--max_batches` | Limit the number of batches processed (useful for quick checks). |
+| `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
 
 ## Model Outputs
 
 Predictions return `ModelOutput` objects (defined in `cerberus.output`), which contain the raw tensors.
 
 *   **ProfileLogits**: Unnormalized log-probabilities (shape `Batch, Channels, Length`).
-*   **ProfileLogRates**: Log-scale counts/rates.
-*   **ProfileCountOutput**: Tuple of profile logits and total log counts (BPNet style).
+*   **ProfileLogRates**: Log-scale counts/rates (shape `Batch, Channels, Length`). `exp(log_rates)` gives predicted counts per bin per channel.
+*   **ProfileCountOutput**: Profile logits plus a total log-count head (BPNet style). `log_counts` has shape `Batch, Channels` when `count_per_channel=True`, otherwise `Batch, 1`.
 
 You typically need to detach and post-process these (e.g., applying Softmax or Exponentials) for analysis.
+
+### Extracting total log-counts
+
+`cerberus.output.compute_total_log_counts` aggregates a `ModelOutput` into a scalar log-count per interval in the batch:
+
+```python
+from cerberus.output import compute_total_log_counts
+
+# log_counts_include_pseudocount=True for MSEMultinomialLoss / CoupledMSEMultinomialLoss
+# log_counts_include_pseudocount=False (default) for Poisson / NB losses
+log_counts = compute_total_log_counts(batch_output, log_counts_include_pseudocount=True)
+# → tensor of shape (batch_size,)
+```
+
+The `log_counts_include_pseudocount` parameter matters only for multi-channel `ProfileCountOutput` (i.e. `count_per_channel=True`):
+
+- **`log_counts_include_pseudocount=False`** (default): assumes `log_counts` per channel is in natural-log space (Poisson/NB losses). Uses `logsumexp` to sum across channels: `log(Σ exp(log_counts_c))`.
+- **`log_counts_include_pseudocount=True`**: assumes `log_counts` per channel is in `log(count + count_pseudocount)` space (MSE loss). Inverts per channel, sums, then reapplies: `log(Σ(exp(lc) - p) + p)`.
+
+Using the wrong value with a multi-channel MSE model would give `log(n_channels * count_pseudocount + total_counts)` instead of `log(count_pseudocount + total_counts)`.

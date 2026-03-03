@@ -85,7 +85,7 @@ genome_config: GenomeConfig = create_genome_config(
     exclude_intervals={"blacklist": blacklist_path},
     # Use chromosome partitioning for train/val/test splits
     fold_type="chrom_partition",
-    fold_args={"k": 5}
+    fold_args={"k": 5, "test_fold": 0, "val_fold": 1}
 )
 
 print("Genome Config Created:")
@@ -112,6 +112,8 @@ data_config: DataConfig = {
     "max_jitter": 128,
     "log_transform": True,
     "reverse_complement": True,
+        "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 print("Data Config Created:")

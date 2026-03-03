@@ -14,7 +14,7 @@ class TestDataModuleSeeding(unittest.TestCase):
             "chrom_sizes": {"chr1": 1000},
             "exclude_intervals": {},
             "fold_type": "chrom_partition",
-            "fold_args": {"k": 5}
+            "fold_args": {"k": 5, "test_fold": 0, "val_fold": 1}
         } # type: ignore
         self.data_config = {
             "inputs": {},
@@ -26,6 +26,8 @@ class TestDataModuleSeeding(unittest.TestCase):
             "max_jitter": 0,
             "log_transform": False,
             "reverse_complement": False,
+        "target_scale": 1.0,
+            "count_pseudocount": 1.0,
             "use_sequence": True
         } # type: ignore
         self.sampler_config = {

@@ -66,6 +66,8 @@ def test_validate_data_config_valid(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     })
     validated = validate_data_config(config)
@@ -116,6 +118,8 @@ def test_dataset_init(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     })
     sampler_config = cast(SamplerConfig, {
@@ -146,6 +150,8 @@ def test_validate_data_config_invalid_types(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     })
     with pytest.raises(ValueError, match="output_len must be a positive integer"):
@@ -162,6 +168,8 @@ def test_validate_data_config_missing_file(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     })
     with pytest.raises(FileNotFoundError, match="inputs file 'cons' not found"):

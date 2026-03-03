@@ -60,7 +60,7 @@ Cerberus follows a layered architecture with clear separation of concerns:
 │  (CerberusModule + CerberusDataModule)  │
 ├─────────────────────────────────────────┤
 │           Model Layer                   │
-│   (BPNet, Gopher, Geminet, etc.)        │
+│   (BPNet, Gopher, Pomeranian, etc.)      │
 ├─────────────────────────────────────────┤
 │        Data Processing Layer            │
 │  (Transforms, Samplers, Extractors)     │
@@ -531,41 +531,15 @@ Cerberus includes a diverse collection of model architectures, ranging from refe
 Models are organized by output type and architectural paradigm:
 
 **By Output Type:**
-- **Decoupled (ProfileCountOutput)**: Separate profile and count heads (BPNet, GemiNet, Pomeranian, LyraNet)
+- **Decoupled (ProfileCountOutput)**: Separate profile and count heads (BPNet, Pomeranian)
 - **Coupled (ProfileLogRates)**: Derive counts from profile (Gopher, ConvNeXtDCNN)
 
 **By Architectural Paradigm:**
-- **Dilated Residual**: BPNet, GemiNet, Pomeranian
+- **Dilated Residual**: BPNet, Pomeranian
 - **Global Bottleneck**: Gopher (GlobalProfileCNN)
 - **Basenji-style**: ConvNeXtDCNN (ASAP)
-- **Hybrid (SSM + Conv)**: LyraNet (PGC + S4D)
 
-### 5.2 GemiNet: Modern BPNet Replacement
-
-**Architecture Philosophy**: GemiNet replaces BPNet's dilated residual blocks with Projected Gated Convolutions (PGC), offering better parameter efficiency and training stability.
-
-**Structure:**
-```
-Input (B, 4, L)
-  ↓
-Stem: Conv1d(K=21, same padding) + ReLU
-  ↓
-Body: 8x PGC Blocks (dilations: 2, 4, 8, ..., 256)
-  ↓              ↓
-Profile Head    Counts Head
-Conv1d(K=75)    GlobalAvgPool + Linear
-  ↓              ↓
-Logits          Log(Counts)
-```
-
-**Key Differences from BPNet:**
-- Uses **same padding** (simpler than valid padding)
-- PGC blocks with gating mechanism (more expressive than plain residual)
-- ~100k parameters (baseline), 600k (medium), 2.2M (large), 5M (XL)
-
-**Design Insight:** The PGC block combines depthwise convolution with gating, similar to gated linear units, providing better gradient flow than standard residual connections.
-
-### 5.3 Pomeranian: Lightweight Valid-Padding Model
+### 5.2 Pomeranian: Lightweight Valid-Padding Model
 
 **Architecture Philosophy**: Mirrors BPNet's valid padding strategy but uses modern components (ConvNeXt, PGC) for better expressiveness per parameter.
 
@@ -726,12 +700,6 @@ Many models provide size variants with consistent scaling:
 3. **Expansion**: Increase bottleneck capacity (1 → 2 → 4)
 4. **Dropout**: Higher dropout for larger models (0.1 → 0.35)
 
-**Example (GemiNet family):**
-- **GemiNet**: 64 filters, 8 layers, expansion=1, dropout=0.1 (~100k params)
-- **GemiNetMedium**: 128 filters, 11 layers, expansion=1, dropout=0.15 (~600k params)
-- **GemiNetLarge**: 128 filters, 11 layers, expansion=4, dropout=0.2 (~2.2M params)
-- **GemiNetExtraLarge**: 224 filters, 11 layers, expansion=3, dropout=0.35 (~5M params)
-
 **Design Rationale:** Provides a smooth capacity ladder for different dataset sizes and computational budgets while maintaining the same architectural principles.
 
 ### 5.8 Custom Metric Collections
@@ -739,8 +707,8 @@ Many models provide size variants with consistent scaling:
 Each model family defines its own MetricCollection matching its output type:
 
 ```python
-class GemiNetMetricCollection(MetricCollection):
-    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
+class BPNetMetricCollection(MetricCollection):
+    def __init__(self, **kwargs):
         super().__init__({
             "pearson": CountProfilePearsonCorrCoef(...),
             "mse_profile": CountProfileMeanSquaredError(...),
@@ -1167,10 +1135,10 @@ Cerberus provides several specialized metrics:
 
 ### 8.3 Implicit Log Targets
 
-All losses and metrics support `implicit_log_targets=True`:
+All losses and metrics support `log1p_targets=True`:
 
 ```python
-if implicit_log_targets:
+if log1p_targets:
     targets = torch.expm1(targets)  # Undo log1p
 ```
 
@@ -1941,14 +1909,14 @@ For high-coverage genomic data (e.g., deep sequencing), target counts can exceed
 
 **When It Manifests:**
 - Deep sequencing data (ATAC-seq, ChIP-seq with high read depth)
-- Targets not log-transformed (`implicit_log_targets=False`)
+- Targets not log-transformed (`log1p_targets=False`)
 - High-resolution outputs (small bin sizes)
 
 **Current Mitigation:** Using log1p transform on targets prevents this, but not enforced.
 
 **Suggested Enhancement:**
 - Add numerical stability checks or use Stirling's approximation for large values
-- Document that high-count data should use `implicit_log_targets=True`
+- Document that high-count data should use `log1p_targets=True`
 - Add optional clipping of target values
 
 ### 15.8 Missing Validation: Interval.center() Edge Cases
@@ -2006,10 +1974,10 @@ def center(self, width: int) -> "Interval":
 
 **Description:**
 
-When `implicit_log_targets=True`, the code appears to perform redundant transformations:
+When `log1p_targets=True`, the code appears to perform redundant transformations:
 ```python
 def forward(self, outputs, targets):
-    if self.implicit_log_targets:
+    if self.log1p_targets:
         targets = torch.expm1(targets).clamp_min(0.0)  # log(x+1) -> x
 
     # ... later in count loss ...
@@ -2151,7 +2119,7 @@ But in loss functions, `expm1` on targets lacked clamping, which could cause iss
 **Fix Applied:**
 All loss functions now consistently use:
 ```python
-if self.implicit_log_targets:
+if self.log1p_targets:
     targets = torch.expm1(targets).clamp_min(0.0)
 ```
 
@@ -2216,7 +2184,7 @@ seed = (base_seed + (epoch * world_size) + rank) % (2**32)
 6. **[15.5] No explicit bounds checking in extractors** - Already mitigated by sampler validation
 7. **[15.6] Ambiguous DNA base handling** - Acceptable design choice
 8. **[15.8] Missing validation in Interval.center()** - Edge cases with invalid width values
-9. **[15.9] Redundant log operations with implicit_log_targets** - Performance inefficiency, minor precision loss
+9. **[15.9] Redundant log operations with log1p_targets** - Performance inefficiency, minor precision loss
 10. **[15.10] Strand information lost in merge_intervals** - Design limitation for stranded data
 11. **[15.11] Bin alignment truncation in aggregation** - Partial bins silently dropped in genome-wide prediction
 12. **[15.12] SlidingWindowSampler boundary condition** - Confirmed correct, not a bug
@@ -2229,7 +2197,7 @@ seed = (base_seed + (epoch * world_size) + rank) % (2**32)
 - **Issue 15.1 (Critical)**: Add `interval = copy.copy(interval)` in Dataset._get_interval() before applying transforms, or make Interval immutable
 
 **High Priority:**
-- **Issue 15.7 (Medium)**: Document that high-count data should use `implicit_log_targets=True` and consider adding overflow detection
+- **Issue 15.7 (Medium)**: Document that high-count data should use `log1p_targets=True` and consider adding overflow detection
 
 **Completed:**
 - ✅ **Issue 15.13 (Fixed)**: Added `.clamp_min(0.0)` to all `expm1()` calls in loss functions

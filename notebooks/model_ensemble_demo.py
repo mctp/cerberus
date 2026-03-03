@@ -27,7 +27,11 @@ from cerberus.samplers import IntervalSampler
 # Define paths (relative to project root)
 os.chdir(Path(__file__).parent.parent)
 DATA_DIR = Path("tests/data")
-MODEL_DIR = Path("tests/data/models/chip_ar_mdapca2b_bpnet/multi-fold") 
+MODEL_DIR = Path("tests/data/models/chip_ar_mdapca2b_bpnet/multi-fold")
+if not MODEL_DIR.exists():
+    print(f"Skipping: checkpoint directory not found: {MODEL_DIR}")
+    print("Run 'bash examples/chip_ar_mdapca2b_bpnet.sh' with a multi-fold setup to generate it.")
+    import sys; sys.exit(0)
 
 # 1. Genome Config
 # We use the same genome config as training
@@ -55,6 +59,8 @@ data_config: DataConfig = {
     "max_jitter": 0, # Ignored during prediction (is_train=False)
     "log_transform": False,
     "reverse_complement": False, # Ignored during prediction
+        "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 

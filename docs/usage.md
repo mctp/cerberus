@@ -25,7 +25,7 @@ genome_config = create_genome_config(
     # Exclude blacklist regions
     exclude_intervals={"blacklist": blacklist_path},
     fold_type="chrom_partition",
-    fold_args={"k": 5}
+    fold_args={"k": 5, "test_fold": 0, "val_fold": 1}
 )
 
 # 2. Data Configuration
@@ -39,7 +39,9 @@ data_config = {
     "max_jitter": 128,
     "log_transform": True,
     "reverse_complement": True,
-    "use_sequence": True
+    "use_sequence": True,
+    "target_scale": 1.0,  # Multiplicative scale applied to targets before log transform
+    "count_pseudocount": 1.0,  # Additive offset before log-transforming count targets
 }
 
 # 3. Sampler Configuration (Peaks + Negatives)
@@ -95,51 +97,49 @@ train_config = {
     "optimizer": "adamw",
     "scheduler_type": "cosine",
     "scheduler_args": {"warmup_epochs": 5},
-    "filter_bias_and_bn": True
+    "filter_bias_and_bn": True,
+    "reload_dataloaders_every_n_epochs": 0,
+    "adam_eps": 1e-8,           # Use 1e-7 for BPNet-style models (matches TF/Keras default)
+    "gradient_clip_val": None,  # Set to e.g. 1.0 to clip gradients; None = disabled
 }
 
 # 5. Model Configuration
 # Uses standard models from cerberus.models or your own importable class path.
-# "model_cls", "loss_cls", and "metrics_cls" must be strings.
+# "model_cls", "loss_cls", and "metrics_cls" must be fully-qualified class strings.
+# input_len, output_len, output_bin_size are automatically passed from DataConfig.
 
 model_config = {
     "name": "my_bpnet",
-    "model_cls": "cerberus.models.BPNet",
-    "loss_cls": "cerberus.loss.MSEMultinomialLoss",
-    "loss_args": {"count_weight": 1.0},
-    "metrics_cls": "torchmetrics.MetricCollection",
-    "metrics_args": {
-        "metrics": {
-            "pearson": "cerberus.metrics.CountProfilePearsonCorrCoef",
-            "mse_profile": "cerberus.metrics.CountProfileMeanSquaredError"
-        }
-    },
+    "model_cls": "cerberus.models.bpnet.BPNet",
+    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
+    # Set alpha="adaptive" to compute the counts loss weight from the training set
+    # automatically (alpha = median_total_counts / 10). This balances the profile
+    # and counts loss terms at the correct scale for the dataset depth.
+    "loss_args": {"alpha": "adaptive"},
+    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
+    "metrics_args": {},
     "model_args": {
-        "filters": 64,
-        "n_dilated_layers": 9,
-        # Note: input_channels and output_channels are passed if the model requires them.
-        # BPNet automatically infers input/output dimensions from input_len/output_len/DataConfig,
-        # but explicit channels can be passed if needed by custom models.
-        "input_channels": ["A", "C", "G", "T"],
-        "output_channels": ["AR"]
-    }
+        "n_dilated_layers": 8,
+        "output_channels": ["AR"],
+    },
 }
 
 # Option A: Train a Single Model (Single Split)
 # Uses the high-level API to handle instantiation and output structure (creates fold_0)
-# (test_fold defaults to 0, val_fold defaults to 1)
+# (test_fold and val_fold are read from fold_args, or can be overridden here)
 trainer = train_single(
     genome_config=genome_config,
     data_config=data_config,
     sampler_config=sampler_config,
     model_config=model_config,
     train_config=train_config,
-    num_workers=8, 
-    in_memory=False, 
+    num_workers=8,
+    in_memory=False,
     precision="16-mixed",      # Enable Mixed Precision
     matmul_precision="high",   # TensorFloat-32 on Ampere+
     root_dir="logs/single_run",
-    accelerator="gpu", 
+    run_test=True,             # Evaluate on test fold after training (uses best ckpt)
+    accelerator="gpu",
     devices=1
 )
 
@@ -155,16 +155,42 @@ trainers = train_multi(
     precision="16-mixed",
     matmul_precision="high",
     root_dir="logs/cross_val", # Models saved in logs/cross_val/fold_0, fold_1, etc.
+    run_test=True,             # Evaluate on test fold after each fold's training
     accelerator="gpu",
     devices=1
 )
 ```
 
+### Output Files
+
+After training, each fold directory (`fold_0/`, `fold_1/`, …) contains:
+
+| File | Description |
+|------|-------------|
+| `config.json` | All config dicts (model, data, genome, sampler, train) as JSON for reproducibility |
+| `model.pt` | Best checkpoint weights as a plain `state_dict` — load without PyTorch Lightning |
+| `last.ckpt` | Last epoch checkpoint (useful for inspecting final weights) |
+| `checkpoint-epoch=XX-val_loss=Y.ckpt` | Best checkpoint (lowest `val_loss`) |
+| `plots/val_count_scatter_epoch_NNN.png` | Per-epoch scatter of predicted vs. true log-counts |
+| `lightning_logs/version_0/hparams.yaml` | Hyperparameters logged by Lightning |
+| `lightning_logs/version_0/metrics.csv` | Per-step and per-epoch scalar metrics |
+
+To load `model.pt` for inference without Lightning:
+```python
+import torch
+from cerberus.models.bpnet import BPNet
+
+model = BPNet(...)
+model.load_state_dict(torch.load("logs/single_run/fold_0/model.pt", map_location="cpu"))
+model.eval()
+```
+
 ### Logging
 
-Cerberus automatically logs all configuration dictionaries (`genome_config`, `data_config`, `sampler_config`, `model_config`, `train_config`) to the experiment log directory.
-You can find these parameters in:
-`lightning_logs/version_{#}/hparams.yaml`
+Cerberus automatically logs all configuration dictionaries (`genome_config`, `data_config`, `sampler_config`, `model_config`, `train_config`) to two places:
+
+- `config.json` in each fold directory — human-readable JSON written before training starts
+- `lightning_logs/version_{#}/hparams.yaml` — Lightning's hyperparameter log
 
 ## Manual Usage (PyTorch Dataset)
 
@@ -183,8 +209,11 @@ dataset = CerberusDataset(
 
 # Access a single item
 item = dataset[0]
-print(item['inputs'].shape)  # (4, 2114) -> Sequence (one-hot)
-print(item['targets'].shape) # (1, 1000) -> Signal
+print(item['inputs'].shape)   # (4, 2114) -> Sequence (one-hot)
+print(item['targets'].shape)  # (1, 1000) -> Signal
+print(item['intervals'])      # "chr1:1000-3114(+)" -> genomic interval string
+print(item['peak_status'])    # 1 = peak interval, 0 = background
+                              # (always 1 for samplers that don't support labelling)
 
 # Create DataLoader
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
@@ -217,24 +246,87 @@ Ensuring reproducibility in training runs involves two levels of randomness cont
 
 ## Examples
 
-The `notebooks/` directory contains complete examples:
+The `examples/` directory contains ready-to-run shell scripts covering all model × dataset combinations. Each script defines dataset-specific variables at the top and forwards any extra arguments to the underlying tool.
+
+| Script | Model | Dataset |
+|---|---|---|
+| `examples/chip_ar_mdapca2b_bpnet.sh` | BPNet | MDA-PCA-2b AR (auto-downloaded) |
+| `examples/chip_ar_mdapca2b_pomeranian.sh` | Pomeranian | MDA-PCA-2b AR (auto-downloaded) |
+| `examples/chip_ar_mdapca2b_gopher.sh` | Gopher | MDA-PCA-2b AR (auto-downloaded) |
+| `examples/chip_prox1_tc32_bpnet.sh` | BPNet | TC32 PROX1 (local paths) |
+| `examples/chip_prox1_tc32_pomeranian.sh` | Pomeranian | TC32 PROX1 (local paths) |
+| `examples/chip_prox1_tc32_gopher.sh` | Gopher | TC32 PROX1 (local paths) |
+
+```bash
+# Run single-fold training (default)
+bash examples/chip_ar_mdapca2b_bpnet.sh
+
+# Run multi-fold cross-validation
+bash examples/chip_ar_mdapca2b_pomeranian.sh --multi
+
+# Use PomeranianK5 variant
+bash examples/chip_ar_mdapca2b_pomeranian.sh --k5
+```
+
+The `notebooks/` directory contains lower-level walkthroughs:
 
 *   `notebooks/cerberus_basics.py`: A step-by-step walkthrough of the library components (Configuration, Samplers, Datasets, Transforms).
 *   `notebooks/baseline_cnn_train.py`: A complete training example using the `GlobalProfileCNN` model to predict BigWig tracks from DNA sequence.
 
 ## Generic Training Tools
 
-For quick training on custom data, you can use generic scripts in the `tools/` directory:
+For quick training on custom data, use the model-specific scripts in the `tools/` directory. All scripts accept any BigWig signal and BED/narrowPeak file and share the same CLI structure.
 
-*   `tools/train_pomeranian.py`: Train a Pomeranian model on any BigWig and BED (narrowPeak) file.
+*   `tools/train_bpnet.py`: Train a BPNet model.
     ```bash
-    # Basic usage
+    # Standard BPNet (2114bp -> 1000bp, canonical chrombpnet-pytorch settings)
+    python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet
+
+    # BPNet1024 variant (2112bp -> 1024bp, comparable I/O to Pomeranian)
+    python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --1024
+
+    # Multi-fold cross-validation
+    python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --multi
+    ```
+
+*   `tools/train_pomeranian.py`: Train a Pomeranian model (2112bp → 1024bp).
+    ```bash
+    # Default Pomeranian (Kernel=9)
     python tools/train_pomeranian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_pomeranian
 
-    # Customized training (adjust learning rate, patience, background ratio)
+    # PomeranianK5 variant (Kernel=5)
+    python tools/train_pomeranian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_pomeranian --k5
+
+    # Customized training
     python tools/train_pomeranian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_pomeranian \
         --learning-rate 0.001 --patience 15 --background-ratio 2.0
     ```
+
+*   `tools/train_gopher.py`: Train a Gopher (GlobalProfileCNN) model (2048bp → 1024bp at 4bp resolution).
+    ```bash
+    # Standard Gopher
+    python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher
+
+    # Custom bottleneck size
+    python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher \
+        --bottleneck-channels 16
+
+    # Multi-fold cross-validation
+    python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher --multi
+    ```
+
+All tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
+
+| Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_gopher.py` |
+|---|---|---|---|
+| `--optimizer` | `adam` | `adamw` | `adamw` |
+| `--learning-rate` | `1e-3` | `5e-4` | `1e-3` |
+| `--weight-decay` | `0.0` | `0.01` | `0.01` |
+| `--scheduler-type` | `default` (constant) | `cosine` | `cosine` |
+| `--input-len` | `2114` | `2112` | `2048` |
+| `--output-len` | `1000` | `1024` | `1024` |
+| `--output-bin-size` | `1` | `1` | `4` |
+| `--alpha` / loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | — (ProfilePoissonNLLLoss) |
 
 ## Next Steps
 

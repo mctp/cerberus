@@ -65,7 +65,7 @@ except Exception as e:
 genome_config: GenomeConfig = create_human_genome_config(
     genome_dir=GENOME_DIR / "hg38",
     fold_type="chrom_partition",
-    fold_args={"k": 5}  # 5-fold cross validation split
+    fold_args={"k": 5, "test_fold": 0, "val_fold": 1}  # 5-fold cross validation split
 )
 
 print("Genome Config:")
@@ -238,6 +238,8 @@ data_config: DataConfig = {
     "max_jitter": 0,
     "log_transform": False,
     "reverse_complement": False,
+        "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 

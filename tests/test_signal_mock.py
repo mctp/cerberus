@@ -106,6 +106,26 @@ def test_signal_extractor_open_error(mock_pybigtools):
     with pytest.raises(RuntimeError, match="Failed to open BigWig file"):
         extractor.extract(Interval("chr1", 0, 100))
 
+def test_signal_extractor_base_exception_propagates(mock_pybigtools):
+    """BaseException subclasses (e.g. pyo3 Rust panics) should propagate
+    rather than being silently swallowed.  Only Exception subclasses are
+    caught and result in zeros."""
+    mock_bw = MagicMock()
+    mock_pybigtools.open.return_value = mock_bw
+
+    class FakePanicException(BaseException):
+        pass
+
+    mock_bw.values.side_effect = FakePanicException("called Result::unwrap() on an Err value: BadData")
+
+    from pathlib import Path
+    extractor = SignalExtractor({"s1": Path("test.bw")})
+    interval = Interval("chr1", 0, 100)
+
+    with pytest.raises(FakePanicException):
+        extractor.extract(interval)
+
+
 def test_signal_extractor_nan_inf_handling(mock_pybigtools):
     mock_bw = MagicMock()
     mock_pybigtools.open.return_value = mock_bw

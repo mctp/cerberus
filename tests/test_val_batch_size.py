@@ -39,7 +39,7 @@ def test_val_batch_size_configuration(
     mock_instance.split_folds.return_value = (train_ds, val_ds, test_ds)
     
     dm = CerberusDataModule(
-        cast(GenomeConfig, {"fold_args": {}}),
+        cast(GenomeConfig, {"fold_args": {"test_fold": 0, "val_fold": 1}}),
         cast(DataConfig, {}),
         cast(SamplerConfig, {}),
     )

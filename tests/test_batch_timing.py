@@ -26,7 +26,7 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
         species="human",
         exclude_intervals={"blacklist": blacklist_path},
         fold_type="chrom_partition",
-        fold_args={"k": 5}
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1}
     )
 
     # 4. Sampler Configuration
@@ -65,6 +65,8 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
             "max_jitter": 128,
             "log_transform": True,
             "reverse_complement": True,
+        "target_scale": 1.0,
+            "count_pseudocount": 1.0,
             "use_sequence": True,
         })
 

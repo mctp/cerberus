@@ -62,9 +62,11 @@ def integration_setup(tmp_path):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True,
     })
-    
+
     # No sampler needed for prediction integration test
     dataset = CerberusDataset(genome_config, data_config, sampler_config=None)
     
@@ -95,7 +97,9 @@ def integration_setup(tmp_path):
         "optimizer": "adam",
         "filter_bias_and_bn": False,
         "scheduler_type": "default",
-        "scheduler_args": {}
+        "scheduler_args": {},
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     })
     
     # Use ModelEnsemble directly

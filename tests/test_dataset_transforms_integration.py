@@ -24,6 +24,8 @@ def test_dataset_auto_transforms(mock_genome):
         "max_jitter": 10,
         "log_transform": True,
         "reverse_complement": True,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "encoding": "ACGT",
         "use_sequence": True,
     })
@@ -82,6 +84,8 @@ def test_dataset_no_jitter_defaults(mock_genome):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "encoding": "ACGT",
         "use_sequence": True,
     })

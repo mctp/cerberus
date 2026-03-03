@@ -1,7 +1,10 @@
 from typing import TypedDict, Any
 from pathlib import Path
 import yaml
+import logging
 import importlib
+
+logger = logging.getLogger(__name__)
 
 def import_class(name: str) -> Any:
     """
@@ -32,8 +35,10 @@ class GenomeConfig(TypedDict):
         chrom_sizes: Dictionary mapping chromosome names to their lengths.
         fold_type: Strategy for creating folds. Currently only 'chrom_partition' is supported.
         fold_args: Arguments for the folding strategy.
-                   For 'chrom_partition', required keys: 'k' (int).
-                   Optional keys: 'test_fold' (int), 'val_fold' (int).
+                   For 'chrom_partition', required keys: 'k' (int),
+                   'test_fold' (int), 'val_fold' (int).
+                   test_fold and val_fold can be omitted if passed directly
+                   to CerberusDataModule or train_single.
     """
 
     name: str
@@ -91,7 +96,14 @@ class DataConfig(TypedDict):
         encoding: DNA encoding strategy (e.g., 'ACGT').
         log_transform: Whether to apply log(x+1) transformation to signal.
         reverse_complement: Whether to apply reverse complement augmentation.
+        target_scale: Multiplicative scaling factor for targets.
         use_sequence: Whether to use sequence input (default: True).
+        count_pseudocount: Additive offset before log-transforming count targets, specified
+            in raw coverage units (i.e. approximately read_length). propagate_pseudocount
+            (called from instantiate()) multiplies this by target_scale before injecting
+            into loss_args and metrics_args so that loss and metrics always receive the
+            value in their native (scaled) units.
+            A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.
     """
 
     inputs: dict[str, Path]
@@ -104,6 +116,8 @@ class DataConfig(TypedDict):
     log_transform: bool
     reverse_complement: bool
     use_sequence: bool
+    target_scale: float
+    count_pseudocount: float
 
 
 class TrainConfig(TypedDict):
@@ -116,8 +130,13 @@ class TrainConfig(TypedDict):
         learning_rate: Base learning rate.
         weight_decay: Weight decay for optimizer.
         patience: Patience for early stopping.
-        optimizer: Optimizer name (e.g., 'adamw', 'sgd').
+        optimizer: Optimizer name (e.g., 'adam', 'adamw', 'sgd').
         filter_bias_and_bn: Whether to exclude bias and batch norm parameters from weight decay.
+        adam_eps: Epsilon for Adam/AdamW optimizer numerical stability (default: 1e-8).
+            chrombpnet-pytorch uses 1e-7 for BPNet-style models.
+        gradient_clip_val: Maximum gradient norm for gradient clipping (default: None = disabled).
+            Passed to pl.Trainer as gradient_clip_val. A value of 1.0 is a reasonable
+            safeguard for unnormalized networks like BPNet.
     """
 
     batch_size: int
@@ -130,6 +149,8 @@ class TrainConfig(TypedDict):
     scheduler_args: dict[str, Any]
     filter_bias_and_bn: bool
     reload_dataloaders_every_n_epochs: int
+    adam_eps: float
+    gradient_clip_val: float | None
 
 
 class ModelConfig(TypedDict):
@@ -368,11 +389,11 @@ def validate_data_config(
         "max_jitter",
         "log_transform",
         "reverse_complement",
+        "target_scale",
+        "count_pseudocount",
+        "use_sequence",
     }
-    
-    # Optional with default
-    use_sequence = config.get("use_sequence", True)
-    
+
     if not all(key in config for key in required_keys):
         missing = required_keys - config.keys()
         raise ValueError(f"Data config missing required keys: {missing}")
@@ -402,10 +423,16 @@ def validate_data_config(
     if not isinstance(config["reverse_complement"], bool):
         raise TypeError("reverse_complement must be a boolean")
 
-    if not isinstance(use_sequence, bool):
+    if not isinstance(config["target_scale"], float) or config["target_scale"] <= 0:
+        raise ValueError("target_scale must be a positive number")
+
+    if not isinstance(config["count_pseudocount"], (int, float)) or config["count_pseudocount"] <= 0:
+        raise ValueError("count_pseudocount must be a positive number")
+
+    if not isinstance(config["use_sequence"], bool):
         raise TypeError("use_sequence must be a boolean")
 
-    if config["reverse_complement"] and not use_sequence:
+    if config["reverse_complement"] and not config["use_sequence"]:
         raise ValueError(
             "reverse_complement=True requires use_sequence=True. "
             "Reverse complement operates on DNA sequence channels."
@@ -421,7 +448,9 @@ def validate_data_config(
         "encoding": config["encoding"],
         "log_transform": config["log_transform"],
         "reverse_complement": config["reverse_complement"],
-        "use_sequence": use_sequence,
+        "target_scale": config["target_scale"],
+        "count_pseudocount": float(config["count_pseudocount"]),
+        "use_sequence": config["use_sequence"],
     }
 
 
@@ -554,8 +583,12 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
         "patience",
         "optimizer",
         "filter_bias_and_bn",
+        "adam_eps",
+        "gradient_clip_val",
+        "scheduler_type",
+        "scheduler_args",
+        "reload_dataloaders_every_n_epochs",
     }
-    # Optional: scheduler_type, scheduler_args
     if not all(key in config for key in required_keys):
         missing = required_keys - config.keys()
         raise ValueError(f"Train config missing required keys: {missing}")
@@ -581,17 +614,21 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
     if not isinstance(config["filter_bias_and_bn"], bool):
         raise TypeError("filter_bias_and_bn must be a boolean")
 
-    scheduler_type = config.get("scheduler_type", "default")
-    if not isinstance(scheduler_type, str):
+    if not isinstance(config["scheduler_type"], str):
         raise TypeError("scheduler_type must be a string")
 
-    scheduler_args = config.get("scheduler_args", {})
-    if not isinstance(scheduler_args, dict):
+    if not isinstance(config["scheduler_args"], dict):
         raise TypeError("scheduler_args must be a dictionary")
 
-    reload_dataloaders = config.get("reload_dataloaders_every_n_epochs", 0)
-    if not isinstance(reload_dataloaders, int) or reload_dataloaders < 0:
+    if not isinstance(config["reload_dataloaders_every_n_epochs"], int) or config["reload_dataloaders_every_n_epochs"] < 0:
         raise ValueError("reload_dataloaders_every_n_epochs must be a non-negative integer")
+
+    if not isinstance(config["adam_eps"], float) or config["adam_eps"] <= 0:
+        raise ValueError("adam_eps must be a positive float")
+
+    gradient_clip_val = config["gradient_clip_val"]
+    if gradient_clip_val is not None and (not isinstance(gradient_clip_val, float) or gradient_clip_val <= 0):
+        raise ValueError("gradient_clip_val must be a positive float or None")
 
     return {
         "batch_size": config["batch_size"],
@@ -600,10 +637,12 @@ def validate_train_config(config: TrainConfig) -> TrainConfig:
         "weight_decay": config["weight_decay"],
         "patience": config["patience"],
         "optimizer": config["optimizer"],
-        "scheduler_type": scheduler_type,
-        "scheduler_args": scheduler_args,
+        "scheduler_type": config["scheduler_type"],
+        "scheduler_args": config["scheduler_args"],
         "filter_bias_and_bn": config["filter_bias_and_bn"],
-        "reload_dataloaders_every_n_epochs": reload_dataloaders,
+        "reload_dataloaders_every_n_epochs": config["reload_dataloaders_every_n_epochs"],
+        "adam_eps": config["adam_eps"],
+        "gradient_clip_val": config["gradient_clip_val"],
     }
 
 
@@ -733,6 +772,35 @@ def validate_data_and_model_compatibility(
             raise ValueError(f"Data inputs {missing} are not in model input channels")
 
 
+def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) -> ModelConfig:
+    """
+    Propagate the scaled count_pseudocount from data_config into model_config's
+    loss_args and metrics_args.
+
+    The user specifies count_pseudocount in raw coverage units (e.g. read length);
+    scaling by target_scale converts it to the units that the loss and metrics
+    actually operate on. Uses setdefault so an explicitly provided value in
+    loss_args/metrics_args is never overwritten.
+
+    Returns a new ModelConfig; the input is not modified so callers can safely
+    reuse the same model_config dict across folds.
+
+    Args:
+        data_config: Validated data configuration containing count_pseudocount
+            and target_scale.
+        model_config: Model configuration containing loss_args and metrics_args.
+
+    Returns:
+        A new ModelConfig with count_pseudocount set in loss_args and metrics_args.
+    """
+    scaled_pseudocount = data_config["count_pseudocount"] * data_config["target_scale"]
+    loss_args = {**model_config["loss_args"]}
+    loss_args.setdefault("count_pseudocount", scaled_pseudocount)
+    metrics_args = {**model_config["metrics_args"]}
+    metrics_args.setdefault("count_pseudocount", scaled_pseudocount)
+    return {**model_config, "loss_args": loss_args, "metrics_args": metrics_args}
+
+
 def parse_hparams_config(
     path: str | Path, 
     search_paths: list[Path] | None = None
@@ -792,7 +860,7 @@ def parse_hparams_config(
     # Cross-validation
     validate_data_and_sampler_compatibility(data_conf, sampler_conf)
     validate_data_and_model_compatibility(data_conf, model_conf)
-    
+
     config: CerberusConfig = {
         "train_config": train_conf,
         "genome_config": genome_conf,
@@ -800,6 +868,8 @@ def parse_hparams_config(
         "sampler_config": sampler_conf,
         "model_config": model_conf,
     }
+    
+    logger.info(f"Successfully parsed hparams from {p}")
         
     return config
 

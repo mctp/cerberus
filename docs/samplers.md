@@ -86,6 +86,7 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Seeding**: Propagates seed to the negative generation process.
 *   **Resampling**: Re-samples the negative set to match the positives (while keeping positives static).
 *   **Splitting**: Splits both the positive and negative samplers consistent with folds.
+*   **Peak labelling**: Because `PeakSampler` extends `MultiSampler`, each batch item returned by `CerberusDataset` includes a `peak_status` field: `1` for peak intervals (from `IntervalSampler`) and `0` for background intervals (from `ComplexityMatchedSampler`). This label is always consistent with `__getitem__` — both read from the same internal index table.
 
 ## Best Practices for Users
 

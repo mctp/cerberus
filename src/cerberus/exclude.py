@@ -1,5 +1,8 @@
 from pathlib import Path
+import logging
 from interlap import InterLap
+
+logger = logging.getLogger(__name__)
 
 # NOTE: InterLap uses CLOSED coordinates [start, end].
 # We convert standard HALF-OPEN genomic intervals [start, end) to [start, end-1]
@@ -25,6 +28,7 @@ def get_exclude_intervals(
     """
     intervals: dict[str, InterLap] = {}
 
+    logger.debug(f"Loading {len(exclude_intervals)} exclude interval file(s)...")
     for path in exclude_intervals.values():
         path = Path(path)
         if not path.exists():
@@ -55,6 +59,8 @@ def get_exclude_intervals(
                 # Convert half-open [start, end) to closed [start, end-1] for InterLap
                 intervals[chrom].add((start, end - 1))
 
+    total = sum(len(list(il)) for il in intervals.values())
+    logger.debug(f"Loaded {total} exclude intervals across {len(intervals)} chromosome(s)")
     return intervals
 
 

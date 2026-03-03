@@ -1,8 +1,11 @@
 import os
+import json
+import warnings
 import logging
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
+from pytorch_lightning.callbacks import ModelCheckpoint
 from typing import Any
 from pathlib import Path
 
@@ -20,10 +23,176 @@ from .model_ensemble import update_ensemble_metadata
 logger = logging.getLogger(__name__)
 
 
+def compute_counts_loss_weight(median_counts: float, scale: float = 10.0) -> float:
+    """
+    Compute the count loss weight (alpha) from training data statistics.
+
+    Implements the formula from chrombpnet-pytorch:
+        alpha = median_total_counts / scale    (default scale=10)
+
+    The profile loss (full multinomial NLL) scales linearly with peak depth N,
+    while the count loss (MSE of log-counts) scales as (log N)^2. Without a
+    data-derived weight, the profile term increasingly dominates as depth grows.
+    Linear scaling of alpha with N counteracts this. See
+    docs/internal/adaptive_counts_loss_weight.md for the full derivation.
+
+    Args:
+        median_counts: Median total signal counts per peak from the training fold,
+            already scaled by data_config["target_scale"]. Obtain from
+            CerberusDataModule.compute_median_counts().
+        scale: Divisor. Default 10 matches chrombpnet-pytorch. Use a smaller value
+            for stronger count supervision, larger for stronger profile supervision.
+
+    Returns:
+        Count loss weight to pass as loss_args["alpha"] or loss_args["count_weight"].
+
+    Raises:
+        ValueError: If median_counts is not positive.
+    """
+    if median_counts <= 0:
+        raise ValueError(f"median_counts must be positive, got {median_counts}")
+    return median_counts / scale
+
+
+def resolve_adaptive_loss_args(
+    model_config: "ModelConfig",
+    datamodule: "CerberusDataModule",
+    n_samples: int = 2000,
+) -> "ModelConfig":
+    """
+    Resolve "adaptive" sentinel values in loss_args to data-derived floats.
+
+    Any loss_args entry whose value is the string "adaptive" is replaced with
+    compute_counts_loss_weight(datamodule.compute_median_counts()). This allows
+    users to write model configs like:
+
+        loss_args = {"alpha": "adaptive"}           # BPNetLoss
+        loss_args = {"count_weight": "adaptive"}    # MSEMultinomialLoss / PoissonMultinomialLoss
+
+    and have the weight computed from the actual training data rather than a
+    hard-coded constant. The datamodule must already be setup (setup() called).
+
+    The returned ModelConfig is a new dict; the input is not modified.
+
+    Args:
+        model_config: ModelConfig dict, possibly containing "adaptive" in loss_args.
+        datamodule: A setup CerberusDataModule for the current fold.
+        n_samples: Number of training intervals to sample when computing the median.
+
+    Returns:
+        A new ModelConfig with all "adaptive" values in loss_args replaced by floats.
+    """
+    loss_args = model_config["loss_args"]
+    adaptive_keys = [k for k, v in loss_args.items() if v == "adaptive"]
+    if not adaptive_keys:
+        return model_config
+
+    median_counts = datamodule.compute_median_counts(n_samples=n_samples)
+    weight = compute_counts_loss_weight(median_counts)
+    logger.info(
+        f"Resolved adaptive loss_args {adaptive_keys} → {weight:.4f} "
+        f"(median_counts={median_counts:.1f} / 10)"
+    )
+    resolved_loss_args = {
+        k: (weight if v == "adaptive" else v)
+        for k, v in loss_args.items()
+    }
+    return {**model_config, "loss_args": resolved_loss_args}
+
+
+def _dump_config(
+    root_dir: str | Path,
+    model_config: "ModelConfig",
+    data_config: "DataConfig",
+    train_config: "TrainConfig",
+    genome_config: "GenomeConfig | None" = None,
+    sampler_config: "SamplerConfig | None" = None,
+) -> None:
+    """
+    Write all configuration dicts to ``<root_dir>/config.json``.
+
+    Records the exact configs used for a training run so they can be inspected
+    without loading a checkpoint. Called once at training start, before
+    ``trainer.fit()``.
+
+    Args:
+        root_dir: Directory in which to write ``config.json``.
+        model_config: Model architecture configuration.
+        data_config: Data inputs/outputs configuration.
+        train_config: Training hyperparameters.
+        genome_config: Genome configuration (optional).
+        sampler_config: Sampler configuration (optional).
+    """
+    config_path = Path(root_dir) / "config.json"
+    payload: dict = {
+        "model_config": model_config,
+        "data_config": data_config,
+        "train_config": train_config,
+    }
+    if genome_config is not None:
+        payload["genome_config"] = genome_config
+    if sampler_config is not None:
+        payload["sampler_config"] = sampler_config
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w") as f:
+            json.dump(payload, f, indent=2, default=str)
+        logger.info(f"Saved training config to {config_path}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Could not write config.json: {exc}")
+
+
+def _save_model_pt(trainer: pl.Trainer, root_dir: str | Path) -> None:
+    """
+    Save the best model weights as a plain PyTorch state dict (.pt file).
+
+    Loads the best checkpoint written by ModelCheckpoint and strips the
+    ``model.`` prefix added by CerberusModule, producing a file that can
+    be loaded with ``model.load_state_dict(torch.load("model.pt"))``
+    without requiring PyTorch Lightning.
+
+    If the model was compiled with ``torch.compile``, the internal
+    ``_orig_mod.`` prefix is also stripped so the output matches the
+    original uncompiled module's state dict.
+
+    Args:
+        trainer: Fitted Trainer whose checkpoint_callback holds the best path.
+        root_dir: Directory in which to write ``model.pt``.
+    """
+    ckpt_callback = trainer.checkpoint_callback
+    if not isinstance(ckpt_callback, ModelCheckpoint) or not ckpt_callback.best_model_path:
+        logger.warning("No best checkpoint found; skipping model.pt export.")
+        return
+
+    best_path = ckpt_callback.best_model_path
+    ckpt = torch.load(best_path, map_location="cpu", weights_only=False)
+
+    # CerberusModule stores the backbone under self.model → keys are "model.*"
+    prefix = "model."
+    state_dict = {
+        k[len(prefix):]: v
+        for k, v in ckpt["state_dict"].items()
+        if k.startswith(prefix)
+    }
+
+    # torch.compile wraps the module and adds an internal "_orig_mod." prefix
+    compile_prefix = "_orig_mod."
+    if state_dict and all(k.startswith(compile_prefix) for k in state_dict):
+        state_dict = {k[len(compile_prefix):]: v for k, v in state_dict.items()}
+
+    pt_path = Path(root_dir) / "model.pt"
+    torch.save(state_dict, pt_path)
+    logger.info(f"Saved model state dict (best checkpoint) to {pt_path}")
+
+
 def _train(
-    module: pl.LightningModule,
+    model_config: ModelConfig,
+    data_config: DataConfig,
     datamodule: CerberusDataModule,
     train_config: TrainConfig,
+    compile: bool = False,
+    genome_config: GenomeConfig | None = None,
+    sampler_config: SamplerConfig | None = None,
     callbacks: list[pl.Callback] | None = None,
     num_workers: int = 0,
     in_memory: bool = False,
@@ -34,36 +203,57 @@ def _train(
     **trainer_kwargs,
 ) -> pl.Trainer:
     """
-    Train a PyTorch Lightning model using Cerberus infrastructure.
+    Train a Cerberus model from configuration.
+
+    Handles the full training lifecycle in order:
+      1. Datamodule setup (loads datasets, sets batch_size / num_workers).
+      2. Adaptive loss weight resolution — any "adaptive" sentinel in loss_args
+         is replaced with compute_counts_loss_weight(datamodule.compute_median_counts())
+         before the module is instantiated.
+      3. Module instantiation with the resolved model_config (which internally
+         calls propagate_pseudocount to inject scaled count_pseudocount into
+         loss_args and metrics_args).
+      4. trainer.fit().
+
+    Keeping setup before instantiation ensures that loss weights derived from
+    training data statistics are always concrete floats by the time the loss
+    object is constructed.
 
     Args:
-        module: A PyTorch LightningModule (e.g. CerberusModule) to train.
-        datamodule: A pre-initialized CerberusDataModule.
-        train_config: Training configuration dictionary containing keys like:
-            - 'max_epochs': Maximum number of epochs to train.
-            - 'patience': Patience for early stopping (based on val_loss).
+        model_config: Model architecture configuration. loss_args values may be
+            the string "adaptive"; see resolve_adaptive_loss_args().
+        data_config: Data inputs/outputs configuration.
+        datamodule: A CerberusDataModule (not yet setup).
+        train_config: Training hyperparameters.
+        compile: Whether to compile the model with torch.compile (default: False).
+        genome_config: Genome configuration; passed through to the module for
+            hparam logging.
+        sampler_config: Sampler configuration; passed through to the module for
+            hparam logging.
         callbacks: Optional list of additional PyTorch Lightning callbacks.
-            These will be added to the default set (LearningRateMonitor, ModelCheckpoint, EarlyStopping)
-            unless a callback of the same type is already provided.
+            Added to the default set (LearningRateMonitor, ModelCheckpoint,
+            EarlyStopping) unless a callback of the same type is already present.
         num_workers: Number of DataLoader workers (default: 0).
         in_memory: Whether to load data into memory (default: False).
         matmul_precision: Precision for float32 matrix multiplication.
             Options: 'highest', 'high', 'medium'. (default: 'highest').
-            Set to 'medium' or 'high' on newer NVIDIA GPUs (Ampere+) to improve performance.
-        precision: Mixed precision setting passed to pl.Trainer. 
+        precision: Mixed precision setting passed to pl.Trainer.
             Options: '32-true', '16-mixed', 'bf16-mixed', etc. (default: '32-true').
         root_dir: Root directory for saving logs and checkpoints.
             If provided, it overrides 'default_root_dir' in trainer_kwargs.
         **trainer_kwargs: Additional arguments passed directly to pl.Trainer.
-            Common examples include:
-            - accelerator: "auto", "gpu", "cpu"
-            - devices: "auto", int, or list
-            - default_root_dir: path for logs/checkpoints
-            - logger: Custom logger instance
 
     Returns:
         The fitted PyTorch Lightning Trainer object.
     """
+
+    # Suppress spurious PL model summary warning for mixed precision modes.
+    # The summary uses 32-bit for size estimation regardless — training is unaffected.
+    warnings.filterwarnings(
+        "ignore",
+        message="Precision .* is not supported by the model summary",
+        module="pytorch_lightning",
+    )
 
     # Set float32 matmul precision
     torch.set_float32_matmul_precision(matmul_precision)
@@ -100,11 +290,22 @@ def _train(
         callbacks=current_callbacks,
         precision=precision,
         reload_dataloaders_every_n_epochs=train_config["reload_dataloaders_every_n_epochs"],
+        gradient_clip_val=train_config["gradient_clip_val"],
         **trainer_kwargs,
     )
 
-    # Setup DataModule
-    # Passing runtime parameters to setup allowing for final adjustments
+    # 0. Dump configs for reproducibility (rank-0 only, best-effort)
+    if root_dir is not None and trainer.is_global_zero:
+        _dump_config(
+            root_dir,
+            model_config=model_config,
+            data_config=data_config,
+            train_config=train_config,
+            genome_config=genome_config,
+            sampler_config=sampler_config,
+        )
+
+    # 1. Setup DataModule — must happen before adaptive resolution and instantiation.
     datamodule.setup(
         batch_size=train_config["batch_size"],
         val_batch_size=val_batch_size,
@@ -112,8 +313,29 @@ def _train(
         in_memory=in_memory,
     )
 
-    # Start Training
+    # 2. Resolve any "adaptive" sentinels in loss_args to data-derived floats.
+    # Returns a new ModelConfig; the input is not modified so train_multi can
+    # safely reuse the same model_config dict across folds.
+    model_config = resolve_adaptive_loss_args(model_config, datamodule)
+
+    # 3. Instantiate module with the resolved model_config.
+    # Note: propagate_pseudocount is called inside instantiate(), which is the
+    # single owner of pseudocount propagation into loss_args/metrics_args.
+    module = instantiate(
+        model_config=model_config,
+        data_config=data_config,
+        train_config=train_config,
+        compile=compile,
+        genome_config=genome_config,
+        sampler_config=sampler_config,
+    )
+
+    # 4. Train
     trainer.fit(module, datamodule=datamodule)
+
+    # 5. Save clean state dict for inference (best checkpoint, no Lightning overhead)
+    if root_dir is not None and trainer.is_global_zero:
+        _save_model_pt(trainer, root_dir)
 
     return trainer
 
@@ -133,13 +355,15 @@ def train_single(
     precision: str = "32-true",
     root_dir: str | Path = ".",
     val_batch_size: int | None = None,
+    run_test: bool = False,
     **trainer_kwargs,
 ) -> pl.Trainer:
     """
     Train a single model for a specific fold from configurations.
 
-    Acts as a high-level entrypoint that handles instantiation of the
-    CerberusModule and CerberusDataModule before calling the low-level train().
+    Acts as a high-level entrypoint that constructs the CerberusDataModule and
+    delegates to _train(), which handles datamodule setup, adaptive loss weight
+    resolution, module instantiation, and trainer.fit() in that order.
 
     Args:
         genome_config: Genome configuration containing fold definitions.
@@ -155,6 +379,9 @@ def train_single(
         matmul_precision: Precision for float32 matrix multiplication.
         precision: Mixed precision setting passed to pl.Trainer.
         root_dir: Root directory for saving logs and checkpoints.
+        run_test: If True, run ``trainer.test()`` on the test fold immediately
+            after training using the best checkpoint. Metrics are logged to the
+            same logger as training (default: False).
         **trainer_kwargs: Additional arguments passed to pl.Trainer.
 
     Returns:
@@ -185,21 +412,15 @@ def train_single(
         genome_config["fold_args"]["test_fold"] = test_fold
         genome_config["fold_args"]["val_fold"] = val_fold
 
-    # 2. Instantiate new Model
-    module = instantiate(
+    # 2. Train (setup → adaptive resolution → instantiate → fit happen inside _train)
+    trainer = _train(
         model_config=model_config,
         data_config=data_config,
+        datamodule=datamodule,
         train_config=train_config,
         compile=compile,
         genome_config=genome_config,
         sampler_config=sampler_config,
-    )
-
-    # 3. Train
-    return _train(
-        module=module,
-        datamodule=datamodule,
-        train_config=train_config,
         num_workers=num_workers,
         in_memory=in_memory,
         matmul_precision=matmul_precision,
@@ -208,6 +429,24 @@ def train_single(
         val_batch_size=val_batch_size,
         **trainer_kwargs,
     )
+
+    # 3. Optionally evaluate on the held-out test fold using the best checkpoint.
+    # The datamodule was set up inside _train() so test_dataloader() is ready.
+    # Guard: skip if no ModelCheckpoint was configured or no checkpoint was saved
+    # (e.g. enable_checkpointing=False), since ckpt_path="best" would raise a
+    # MisconfigurationException in that case.
+    if run_test:
+        ckpt_callback = trainer.checkpoint_callback
+        if isinstance(ckpt_callback, ModelCheckpoint) and ckpt_callback.best_model_path:
+            logger.info(f"Running test evaluation for fold {test_fold} (best checkpoint)...")
+            trainer.test(datamodule=datamodule, ckpt_path="best")
+        else:
+            logger.warning(
+                f"run_test=True but no best checkpoint is available for fold {test_fold}; "
+                "skipping test evaluation. Ensure enable_checkpointing is not disabled."
+            )
+
+    return trainer
 
 
 def train_multi(
@@ -223,6 +462,7 @@ def train_multi(
     precision: str = "32-true",
     root_dir: str | Path = ".",
     val_batch_size: int | None = None,
+    run_test: bool = False,
     **trainer_kwargs,
 ) -> list[pl.Trainer]:
     """
@@ -244,6 +484,8 @@ def train_multi(
         precision: Mixed precision setting passed to pl.Trainer.
         root_dir: Root directory for saving logs and checkpoints.
                   Each fold will be saved in a subdirectory 'fold_{i}'.
+        run_test: If True, run ``trainer.test()`` after each fold's training
+            using the best checkpoint (default: False).
         **trainer_kwargs: Additional arguments passed to pl.Trainer.
 
     Returns:
@@ -273,6 +515,7 @@ def train_multi(
             precision=precision,
             root_dir=root_dir,
             val_batch_size=val_batch_size,
+            run_test=run_test,
             **trainer_kwargs,
         )
 

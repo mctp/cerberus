@@ -15,12 +15,10 @@ except ImportError:
 # Cerberus imports
 from pprint import pprint
 from cerberus.download import download_dataset, download_human_reference
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
-from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
-from cerberus.module import CerberusModule
-from cerberus.train import _train as train
+from cerberus.train import _train
 
 # %% [markdown]
 # ## 1. Setup Directories and Download Data
@@ -85,6 +83,8 @@ data_config: DataConfig = {
     "encoding": "ACGT", # Standard One-Hot
     "log_transform": False, # BPNet uses raw counts for multinomial loss
     "reverse_complement": True, # Augmentation
+        "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 
@@ -114,7 +114,9 @@ train_config: TrainConfig = {
         "num_epochs": 2, # Must match max_epochs
         "warmup_epochs": 0,
         "min_lr": 1e-5
-    }
+    },
+    "adam_eps": 1e-7,
+    "gradient_clip_val": None,
 }
 
 print("Genome Config:")
@@ -138,7 +140,8 @@ datamodule = CerberusDataModule(
     sampler_config=sampler_config,
 )
 
-# Setup datamodule (create datasets) and set runtime batch size
+# Setup datamodule for interactive exploration only.
+# _train() will call setup() again with the same parameters before fitting.
 # Note: num_workers=0 for compatibility in notebook
 datamodule.setup(
     batch_size=train_config["batch_size"],
@@ -156,61 +159,51 @@ print("Batch inputs shape:", batch["inputs"].shape)   # Expected: (B, 4, 2114)
 print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 1000)
 
 # %% [markdown]
-# ## 4. Model Setup
-# 
-# We use the `BPNet` architecture.
-# 
-# The `BPNet` model returns a tuple: `(profile_logits, log_total_counts)`.
-# We use `MSEMultinomialLoss` which handles this tuple and computes profile and count losses.
-# 
-# Configuration:
-# - We set `n_dilated_layers=8` to match the receptive field requirements for 2114->1000 with this implementation.
+# ## 4. Model Configuration
+#
+# We define a `ModelConfig` dict specifying the BPNet architecture, loss, and metrics
+# using dotted class paths. Setting `alpha="adaptive"` instructs cerberus to compute
+# the counts loss weight from the median training-set depth automatically
+# (alpha = median_counts / 10), balancing the profile and counts loss terms.
 
 # %%
-# Initialize Model
-# input_len=2114, output_len=1000
-model = BPNet(
-    input_len=2114, 
-    output_len=1000, 
-    output_bin_size=1,
-    n_dilated_layers=8, # 8 layers (dilations 2..256) matches 2114->1000 with this implementation
-    output_channels=["signal"]
-)
-
-# Define Loss and Metrics
-criterion = BPNetLoss()
-metrics = BPNetMetricCollection(num_channels=1)
-
-# Create Lightning Module
-module = CerberusModule(
-    model=model,
-    train_config=train_config,
-    criterion=criterion,
-    metrics=metrics
-)
+model_config: ModelConfig = {
+    "name": "BPNet_AR",
+    "model_cls": "cerberus.models.bpnet.BPNet",
+    "model_args": {
+        "n_dilated_layers": 8,  # 8 layers (dilations 2..256) matches 2114->1000
+        "output_channels": ["signal"],
+    },
+    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
+    "loss_args": {"alpha": "adaptive"},  # computed from training data at fit time
+    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
+    "metrics_args": {},
+}
 
 # %% [markdown]
 # ## 5. Training
-# 
-# We run the training loop using `entrypoints.train`.
+#
+# We run the training loop using `_train`. It will setup the datamodule, resolve the
+# adaptive alpha, instantiate the module, and call `trainer.fit()`.
 
 # %%
 # Train
-# We use 'fast_dev_run' or limit epochs to ensure quick execution for this notebook
-trainer = train(
-    module=module,
+# We use limit_train_batches / limit_val_batches to keep this demo short.
+trainer = _train(
+    model_config=model_config,
+    data_config=data_config,
     datamodule=datamodule,
     train_config=train_config,
-    num_workers=0, # Set to 0 for compatibility in notebook
+    num_workers=0,  # Set to 0 for compatibility in notebook
     in_memory=False,
     accelerator="auto",
     devices=1,
-    limit_train_batches=10, # For demo purposes
+    limit_train_batches=10,  # For demo purposes
     limit_val_batches=5,
     enable_checkpointing=True,
-    logger=True, # Enable logging
+    logger=True,  # Enable logging
     enable_progress_bar=False,
-    log_every_n_steps=5
+    log_every_n_steps=5,
 )
 
 print("Training finished.")

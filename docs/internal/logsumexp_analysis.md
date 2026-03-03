@@ -29,11 +29,11 @@ Difference: 0.2513 (12.9% error)
 
 ### Loss Functions (7 instances)
 
-All loss functions with `implicit_log_targets=True` follow this pattern:
+All loss functions with `log1p_targets=True` follow this pattern:
 
 **Pattern:**
 ```python
-if self.implicit_log_targets:
+if self.log1p_targets:
     targets = torch.expm1(targets).clamp_min(0.0)  # log(x+1) → x
 
 # Later (count loss):
@@ -53,7 +53,7 @@ target_log_counts = torch.log1p(target_counts)  # log(Σx + 1)
 
 **LogCountsMeanSquaredError** (lines 189-197):
 ```python
-if self.implicit_log_targets:
+if self.log1p_targets:
     target = torch.expm1(target)
 
 target_counts = target.sum(dim=2)
@@ -167,7 +167,7 @@ The current code is actually **well-designed**:
 - Uses `log1p` for numerical stability near zero
 - Consistently applies the same transform
 - Properly clamps after `expm1` to prevent negative values
-- Documents the implicit_log_targets behavior
+- Documents the log1p_targets behavior
 
 The pattern is **intentional, not a bug**.
 

@@ -18,7 +18,7 @@ def predict_to_bigwig(
     dataset: CerberusDataset,
     model_ensemble: ModelEnsemble,
     stride: int | None = None,
-    use_folds: list[str] = ["test", "val"],
+    use_folds: list[str] | None = None,
     aggregation: str = "model",
     batch_size: int = 64,
 ) -> None:
@@ -41,6 +41,9 @@ def predict_to_bigwig(
     """
     genome_config = dataset.genome_config
     data_config = dataset.data_config
+
+    if use_folds is None:
+        use_folds = ["test", "val"]
 
     if stride is None:
         stride = data_config["output_len"] // 2
@@ -142,6 +145,17 @@ def _process_island(
             f"Could not identify a profile track in output keys: {list(aggregated_output.keys())}"
         )
     
+    # TODO(#32): Add a `channel` parameter to predict_to_bigwig / _process_island
+    # so callers can choose which channel to export. BigWig is single-track, so
+    # multi-channel export would require one file per channel or an aggregation
+    # strategy (sum/mean).  For now we always take the first channel.
+    n_channels = track_data.shape[0]
+    if n_channels > 1:
+        logger.warning(
+            "Model output has %d channels but BigWig is single-track; "
+            "only channel 0 will be exported. Other channels are discarded.",
+            n_channels,
+        )
     values = track_data[0]  # Shape: (Bins,)
 
     chrom = merged_interval.chrom

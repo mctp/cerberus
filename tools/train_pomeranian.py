@@ -18,7 +18,7 @@ import os
 import logging
 import torch
 from pathlib import Path
-from pprint import pprint
+from pprint import pformat
 
 # Cerberus imports
 import cerberus
@@ -26,6 +26,18 @@ from cerberus.download import download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
+
+def _parse_alpha(value: str) -> "float | str":
+    """Accept a float or the literal string 'adaptive' for --alpha."""
+    if value == "adaptive":
+        return "adaptive"
+    try:
+        return float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"--alpha must be a float or 'adaptive', got: {value!r}"
+        )
+
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train Pomeranian models with Cerberus using any BigWig and BED file")
@@ -47,6 +59,7 @@ def get_args():
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
     parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
+    parser.add_argument("--silent", action="store_true", help="Disable tqdm progress bar during training")
     
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
@@ -60,11 +73,15 @@ def get_args():
     parser.add_argument("--input-len", type=int, default=2112, help="Input sequence length")
     parser.add_argument("--output-len", type=int, default=1024, help="Output signal length")
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
-    parser.add_argument("--alpha", type=float, default=1.0, help="Weight for count loss (lambda)")
+    parser.add_argument("--alpha", type=_parse_alpha, default="adaptive",
+                        help="Weight for count loss. Use 'adaptive' (default) to compute from training data "
+                             "(alpha = median_total_counts / 10), or a float to set explicitly.")
     parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson", "nb"], help="Loss function to use")
     parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
     parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
-    
+    parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets (e.g., 1000 for fractional BigWig values)")
+    parser.add_argument("--count-pseudocount", type=float, default=150.0, help="Additive offset before log-transforming count targets (in raw coverage units)")
+
     # Training parameters
     parser.add_argument("--learning-rate", type=float, default=5e-4, help="Learning rate")
     parser.add_argument("--weight-decay", type=float, default=0.01, help="Weight decay")
@@ -77,6 +94,10 @@ def get_args():
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
     parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
+    parser.add_argument("--precision", type=str, default="bf16", choices=["bf16", "mps", "full"],
+                        help="Precision strategy: 'bf16' for NVIDIA bf16-mixed (default), "
+                             "'mps' for Apple Silicon fp16-mixed, "
+                             "'full' for safest float32 (32-true, matmul=highest, no compile)")
     
     return parser.parse_args()
 
@@ -152,6 +173,8 @@ def main():
         "log_transform": False, # Uses raw counts for multinomial loss
         "reverse_complement": True, # Augmentation
         "use_sequence": True,
+        "target_scale": args.target_scale,
+        "count_pseudocount": args.count_pseudocount,
     }
 
     # Sampler Config - Peak Intervals
@@ -182,7 +205,9 @@ def main():
             "num_epochs": args.max_epochs,
             "warmup_epochs": args.warmup_epochs,
             "min_lr": args.min_lr
-        }
+        },
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
 
     # Model Config
@@ -227,15 +252,16 @@ def main():
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
         loss_args = {"count_weight": args.alpha}
-        logging.info(f"Using PoissonMultinomialLoss (count_weight={args.alpha})...")
+        logging.info("Using PoissonMultinomialLoss (count_weight=%s)...", args.alpha)
     elif args.loss == "nb":
         loss_cls = "cerberus.loss.NegativeBinomialMultinomialLoss"
         loss_args = {"count_weight": args.alpha, "total_count": args.total_count}
-        logging.info(f"Using NegativeBinomialMultinomialLoss (count_weight={args.alpha}, total_count={args.total_count})...")
+        logging.info("Using NegativeBinomialMultinomialLoss (count_weight=%s, total_count=%s)...",
+                     args.alpha, args.total_count)
     else:
         loss_cls = "cerberus.models.bpnet.BPNetLoss"
         loss_args = {"alpha": args.alpha}
-        logging.info(f"Using BPNetLoss (alpha={args.alpha})...")
+        logging.info("Using BPNetLoss (alpha=%s)...", args.alpha)
 
     model_config: ModelConfig = {
         "name": model_name,
@@ -265,22 +291,33 @@ def main():
         accelerator = "mps"
 
     if accelerator == "mps":
-        logging.info(f"[INFO] Using Apple Silicon (MPS) acceleration.")
+        logging.info("Using Apple Silicon (MPS) acceleration.")
         if num_workers > 0:
-            logging.warning(f"[WARN] num_workers={num_workers} may cause instability on MPS. Recommend setting --num-workers 0.")
+            logging.warning("num_workers=%d may cause instability on MPS. Recommend setting --num-workers 0.", num_workers)
     
     # Precision settings
-    if accelerator == "mps":
-        # MPS-optimized settings
+    if args.precision == "full":
+        # Safest full float32 — no reduced precision, no compile, no cuDNN benchmark.
+        # Use when numerical reproducibility or debugging is a priority.
+        precision_args = {
+            "precision": "32-true",
+            "matmul_precision": "highest",
+            "accelerator": accelerator,
+            "devices": devices,
+            "strategy": "auto",
+            "compile": False,
+        }
+    elif args.precision == "mps":
+        # Apple Silicon (MPS) — fp16 mixed precision.
         precision_args = {
             "precision": "16-mixed",
             "accelerator": accelerator,
             "devices": devices,
-            "strategy": "auto", 
-            "compile": False
+            "strategy": "auto",
+            "compile": False,
         }
     else:
-        # NVIDIA A100 / CUDA optimized settings
+        # bf16 (default) — NVIDIA Ampere+ bf16 mixed precision.
         precision_args = {
             "precision": "bf16-mixed",
             "matmul_precision": "medium",
@@ -288,29 +325,20 @@ def main():
             "devices": devices,
             "strategy": "ddp_find_unused_parameters_false" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto",
             "benchmark": True,
-            "compile": True
+            "compile": True,
         }
 
-    logging.info("\nConfigurations:")
-    logging.info("-" * 20)
-    logging.info("Genome Config:")
-    pprint(genome_config)
-    logging.info("\nData Config:")
-    pprint(data_config)
-    logging.info("\nSampler Config:")
-    pprint(sampler_config)
-    logging.info("\nTrain Config:")
-    pprint(train_config)
-    logging.info("\nModel Config:")
-    pprint(model_config)
-    logging.info("\nPrecision and Hardware Args:")
-    pprint(precision_args)
-    logging.info("-" * 20 + "\n")
+    logging.info("Configurations:")
+    logging.info("Genome Config:\n%s", pformat(genome_config))
+    logging.info("Data Config:\n%s", pformat(data_config))
+    logging.info("Sampler Config:\n%s", pformat(sampler_config))
+    logging.info("Train Config:\n%s", pformat(train_config))
+    logging.info("Model Config:\n%s", pformat(model_config))
+    logging.info("Precision and Hardware Args:\n%s", pformat(precision_args))
 
 
     if args.multi:
         logging.info("Starting Multi-Fold Training (train_multi)...")
-        logging.info("Calling train_multi...")
         train_multi(
             genome_config=genome_config,
             data_config=data_config,
@@ -323,11 +351,11 @@ def main():
             enable_checkpointing=True,
             log_every_n_steps=10,
             val_batch_size=args.batch_size * 4,
+            enable_progress_bar=not args.silent,
             **precision_args
         )
     else:
         logging.info("Starting Single Fold Training (train_single)...")
-        logging.info("Calling train_single...")
         train_single(
             genome_config=genome_config,
             data_config=data_config,
@@ -340,6 +368,7 @@ def main():
             enable_checkpointing=True,
             log_every_n_steps=10,
             val_batch_size=args.batch_size * 4,
+            enable_progress_bar=not args.silent,
             **precision_args
         )
 

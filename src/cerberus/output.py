@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 import dataclasses
+import logging
 import torch
 import numpy as np
 from typing import Any, Sequence
 from cerberus.interval import Interval
+
+logger = logging.getLogger(__name__)
 
 @dataclass(kw_only=True)
 class ModelOutput:
@@ -215,6 +218,7 @@ def aggregate_intervals(
     if output_cls is None:
         raise ValueError("output_cls must be provided to aggregate_intervals")
 
+    logger.debug(f"Aggregated {len(outputs)} intervals into {merged_interval}")
     return output_cls(**aggregated_components, out_interval=merged_interval)
 
 def aggregate_models(
@@ -254,5 +258,49 @@ def aggregate_models(
     # Usually for batched aggregation, out_interval is None or same.
     # We take the first one.
     out_int = outputs[0].out_interval
-    
+
+    logger.debug(f"Aggregated {len(outputs)} model outputs using '{method}'")
     return cls(**aggregated_elements, out_interval=out_int)
+
+def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseudocount: bool = False, pseudocount: float = 1.0) -> torch.Tensor:
+    """
+    Extracts total log counts from the model output.
+    Supports ProfileCountOutput and ProfileLogRates.
+
+    Args:
+        model_output: The output from the model.
+        log_counts_include_pseudocount: If True, indicates that per-channel log_counts
+            are in log(count + pseudocount) space (as trained by MSEMultinomialLoss with
+            count_per_channel=True). In this case, multi-channel counts are aggregated
+            by inverting the log transform per channel, summing, then reapplying it —
+            giving the correct log(total + pseudocount) rather than the incorrect
+            log(n_channels + total) that logsumexp would produce.
+            If False (default), log_counts are treated as being in log space (Poisson/NB
+            losses), where logsumexp correctly gives log(total).
+        pseudocount: Additive offset used when log_counts_include_pseudocount=True to
+            invert and reapply the log transform. Must match the count_pseudocount used
+            during training. Default 1.0 reproduces the original log1p behaviour.
+
+    Returns:
+        A tensor of shape (batch_size,) containing the total log counts.
+    """
+    if isinstance(model_output, ProfileCountOutput):
+        log_counts = model_output.log_counts
+        if log_counts.ndim == 2 and log_counts.shape[1] > 1:
+            if log_counts_include_pseudocount:
+                # Undo log(x + pseudocount) per channel, sum channels, reapply.
+                total = (torch.exp(log_counts.float()) - pseudocount).clamp_min(0.0).sum(dim=1)
+                return torch.log(total + pseudocount)
+            else:
+                return torch.logsumexp(log_counts.float(), dim=1)
+        else:
+            return log_counts.flatten()
+            
+    elif isinstance(model_output, ProfileLogRates):
+        log_rates = model_output.log_rates
+        if log_rates.shape[1] > 1:
+            return torch.logsumexp(log_rates.float().flatten(start_dim=1), dim=-1)
+        else:
+            return torch.logsumexp(log_rates.float(), dim=(1,2)).flatten()
+            
+    raise ValueError(f"Model output type {type(model_output)} not supported for total log counts extraction.")

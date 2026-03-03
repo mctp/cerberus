@@ -35,7 +35,7 @@ from cerberus.models.gopher import GlobalProfileCNN
 from cerberus.metrics import DefaultMetricCollection
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.module import CerberusModule
-from cerberus.train import _train as train
+import pytorch_lightning as pl
 
 # Mock imports (assuming tests/mock_utils.py exists)
 try:
@@ -145,7 +145,7 @@ genome_config: GenomeConfig = {
     "allowed_chroms": ["chr1"],
     "chrom_sizes": {"chr1": 1_000_000},
     "fold_type": "chrom_partition",
-    "fold_args": {"k": 5}
+    "fold_args": {"k": 5, "test_fold": 0, "val_fold": 1}
 }
 
 data_config: DataConfig = {
@@ -158,6 +158,8 @@ data_config: DataConfig = {
     "encoding": "ACGT",
     "log_transform": False,
     "reverse_complement": False,
+        "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True
 }
 
@@ -181,7 +183,9 @@ train_config: TrainConfig = {
         "num_epochs": 20,
         "warmup_epochs": 2,
         "min_lr": 1e-5
-    }
+    },
+    "adam_eps": 1e-8,
+    "gradient_clip_val": None,
 }
 
 # %% [markdown]
@@ -203,7 +207,7 @@ model = GlobalProfileCNN(input_len=2048, output_len=2048, output_bin_size=1)
 
 # Initialize Lightning Module
 criterion = ProfilePoissonNLLLoss(log_input=True, full=False)
-metrics = DefaultMetricCollection(num_channels=1)
+metrics = DefaultMetricCollection()
 
 module = CerberusModule(
     model=model,
@@ -213,21 +217,29 @@ module = CerberusModule(
 )
 
 # Train
+# We use pl.Trainer directly here so the mock model object remains accessible
+# for the verification section below. _train() creates the module internally
+# and is not suitable when you need a reference to the model after training.
 if __name__ == "__main__":
-    trainer = train(
-        module=module,
-        datamodule=datamodule,
-        train_config=train_config,
-        num_workers=0,
+    datamodule.setup(batch_size=train_config["batch_size"], num_workers=0, in_memory=False)
+    trainer = pl.Trainer(
+        max_epochs=train_config["max_epochs"],
         accelerator="auto",
         devices=1,
         limit_train_batches=50,
         limit_val_batches=10,
-        enable_checkpointing=True, 
-        logger=True, 
+        enable_checkpointing=True,
+        logger=True,
         enable_progress_bar=False,
-        default_root_dir=str(dummy_dir / "logs")
+        default_root_dir=str(dummy_dir / "logs"),
+        callbacks=[
+            pl.callbacks.EarlyStopping(
+                monitor="val_loss",
+                patience=train_config["patience"],
+            ),
+        ],
     )
+    trainer.fit(module, datamodule=datamodule)
 
     print("\nTraining Complete.")
     

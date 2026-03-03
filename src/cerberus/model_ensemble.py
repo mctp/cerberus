@@ -565,13 +565,13 @@ class _ModelManager:
         new_state_dict = {}
         for k, v in state_dict.items():
             if k.startswith("model."):
-                key = k[6:]
+                weight_key = k[6:]
                 # Handle torch.compile prefix:
                 # If the model was compiled during training, keys will have "_orig_mod." prefix.
                 # Since we are loading into an uncompiled model here, we must strip this prefix.
-                if key.startswith("_orig_mod."):
-                    key = key[10:]
-                new_state_dict[key] = v
+                if weight_key.startswith("_orig_mod."):
+                    weight_key = weight_key[10:]
+                new_state_dict[weight_key] = v
         
         model.load_state_dict(new_state_dict)
         model.to(self.device)
@@ -590,7 +590,7 @@ def update_ensemble_metadata(root_dir: Path | str, fold: int):
     path.mkdir(parents=True, exist_ok=True)
     meta_path = path / "ensemble_metadata.yaml"
     
-    existing_folds = set()
+    existing_folds: set[int] = set()
     if meta_path.exists():
         with open(meta_path, "r") as f:
             try:
@@ -598,7 +598,10 @@ def update_ensemble_metadata(root_dir: Path | str, fold: int):
                 if meta and "folds" in meta:
                      existing_folds = set(meta["folds"])
             except yaml.YAMLError:
-                pass
+                logger.warning(
+                    f"Corrupt ensemble metadata at {meta_path}; "
+                    "existing fold information will be lost"
+                )
     
     existing_folds.add(fold)
     

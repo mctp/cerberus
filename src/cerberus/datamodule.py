@@ -2,8 +2,10 @@ import random
 import pytorch_lightning as pl
 import torch
 import numpy as np
+import logging
 from torch.utils.data import DataLoader
 from .dataset import CerberusDataset
+from .signal import UniversalExtractor
 from .config import (
     GenomeConfig,
     DataConfig,
@@ -13,6 +15,8 @@ from .config import (
     validate_sampler_config,
     validate_data_and_sampler_compatibility,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CerberusDataModule(pl.LightningDataModule):
@@ -60,11 +64,11 @@ class CerberusDataModule(pl.LightningDataModule):
         self.num_workers = 0
         self.in_memory = False
 
-        # Resolve fold indices: argument > config > default
+        # Resolve fold indices: argument > config
         if test_fold is None:
-            test_fold = self.genome_config["fold_args"].get("test_fold", 0)
+            test_fold = self.genome_config["fold_args"]["test_fold"]
         if val_fold is None:
-            val_fold = self.genome_config["fold_args"].get("val_fold", 1)
+            val_fold = self.genome_config["fold_args"]["val_fold"]
         
         self.test_fold = test_fold
         self.val_fold = val_fold
@@ -136,6 +140,8 @@ class CerberusDataModule(pl.LightningDataModule):
         if self._is_initialized:
             return
 
+        logger.info(f"Setting up DataModule (test_fold={self.test_fold}, val_fold={self.val_fold})...")
+
         # Initialize full dataset
         full_dataset = CerberusDataset(
             genome_config=self.genome_config,
@@ -149,6 +155,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.train_dataset, self.val_dataset, self.test_dataset = full_dataset.split_folds(
             test_fold=self.test_fold, val_fold=self.val_fold
         )
+        logger.info(f"DataModule setup complete. Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}, Test: {len(self.test_dataset)}")
         self._is_initialized = True
 
     def train_dataloader(self) -> DataLoader:
@@ -168,9 +175,8 @@ class CerberusDataModule(pl.LightningDataModule):
                 base_seed = self.seed if self.seed is not None else 0
                 seed = base_seed + (epoch * world_size) + rank
                 self.train_dataset.resample(seed=seed)
-            except (AttributeError, RuntimeError):
-                # Trainer not fully initialized or in testing
-                pass
+            except (AttributeError, RuntimeError) as exc:
+                logger.warning("Could not resample train dataset: %s", exc)
 
         return DataLoader(
             self.train_dataset,
@@ -215,3 +221,69 @@ class CerberusDataModule(pl.LightningDataModule):
             persistent_workers=(self.persistent_workers and self.num_workers > 0),
             multiprocessing_context=self.multiprocessing_context,
         )
+
+    def compute_median_counts(self, n_samples: int = 2000) -> float:
+        """
+        Compute the median total signal count per peak from the training fold.
+
+        Samples up to n_samples intervals from the training dataset, sums raw target
+        signal over all channels and positions to get total counts per peak, and
+        returns the median multiplied by target_scale. The result represents the
+        effective count magnitude that the loss function sees during training.
+
+        Used to compute a data-adaptive count loss weight (alpha) for BPNet-style
+        models via compute_counts_loss_weight(). See docs/internal/adaptive_counts_loss_weight.md.
+
+        Args:
+            n_samples: Number of intervals to sample. If the training dataset has
+                fewer intervals, all are used.
+
+        Returns:
+            Median total raw counts per peak scaled by data_config["target_scale"].
+
+        Raises:
+            RuntimeError: If setup() has not been called yet.
+        """
+        if not self._is_initialized or self.train_dataset is None:
+            raise RuntimeError(
+                "DataModule must be setup before computing statistics. "
+                "Call datamodule.setup() first."
+            )
+        dataset = self.train_dataset
+        if dataset.sampler is None:
+            raise RuntimeError("train_dataset has no sampler; cannot compute median counts.")
+        n = len(dataset)
+        indices = random.sample(range(n), min(n_samples, n))
+
+        # Use a short-lived temporary extractor so the dataset's own handles are
+        # never opened in the main process.  On Linux, DataLoader workers are
+        # forked and inherit open file descriptors; workers sharing the same
+        # kernel open-file description interleave seeks and corrupt bigtools
+        # B-tree reads (BadData / Unexpected isleaf panics).  The tmp_extractor
+        # is garbage-collected when this method returns, leaving the dataset
+        # extractor at _bigwig_files=None so each worker opens its own fd.
+        tmp_extractor = UniversalExtractor(
+            paths=dataset.data_config["targets"],
+            in_memory=False,
+        )
+        output_len = dataset.data_config["output_len"]
+        input_len = dataset.data_config["input_len"]
+        crop_start = (input_len - output_len) // 2
+        crop_end = crop_start + output_len
+
+        counts = []
+        for i in indices:
+            interval = dataset.sampler[i]
+            raw = tmp_extractor.extract(interval)   # (C, input_len), no transforms
+            if raw.shape[-1] > output_len:
+                raw = raw[..., crop_start:crop_end]
+            counts.append(float(raw.sum()))
+        raw_median = float(np.median(counts))
+        target_scale = self.data_config["target_scale"]
+        scaled_median = raw_median * target_scale
+        logger.info(
+            f"Computed median_counts={scaled_median:.1f} "
+            f"(raw={raw_median:.1f} × target_scale={target_scale}) "
+            f"from {len(indices)} training intervals."
+        )
+        return scaled_median

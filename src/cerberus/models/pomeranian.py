@@ -7,6 +7,8 @@ from cerberus.output import ProfileCountOutput
 from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, LogCountsPearsonCorrCoef
 from cerberus.layers import ConvNeXtV2Block, PGCBlock
 
+_UNSET = object()
+
 class Pomeranian(nn.Module):
     """
     Pomeranian: A lightweight model mirroring BPNet (valid padding) but using modern components.
@@ -52,21 +54,29 @@ class Pomeranian(nn.Module):
         input_len: int = 2112,
         output_len: int = 1024,
         output_bin_size: int = 1,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 64,
         n_dilated_layers: int = 8,
-        conv_kernel_size: int | list[int] = [11, 11],
+        conv_kernel_size: int | list[int] | None = None,
         dil_kernel_size: int | list[int] = 9,
         profile_kernel_size: int = 45,
         expansion: int = 1,
         dropout: float = 0.1,
         predict_total_count: bool = True,
         stem_expansion: int = 2,
-        dilations: list[int] | None = [1, 1, 2, 4, 8, 16, 32, 64],
+        dilations: list[int] | None = _UNSET,  # type: ignore[assignment]
     ):
         super().__init__()
-        
+        if input_channels is None:
+            input_channels = ["A", "C", "G", "T"]
+        if output_channels is None:
+            output_channels = ["signal"]
+        if conv_kernel_size is None:
+            conv_kernel_size = [11, 11]
+        if dilations is _UNSET:
+            dilations = [1, 1, 2, 4, 8, 16, 32, 64]
+
         self.input_len = input_len
         self.output_len = output_len
         self.output_bin_size = output_bin_size
@@ -107,6 +117,12 @@ class Pomeranian(nn.Module):
         # 2. Dilated PGC Tower
         self.layers = nn.ModuleList()
         if dilations is not None:
+            if len(dilations) != n_dilated_layers:
+                raise ValueError(
+                    f"n_dilated_layers={n_dilated_layers} conflicts with "
+                    f"len(dilations)={len(dilations)}. When providing dilations "
+                    f"explicitly, set n_dilated_layers to match or omit it."
+                )
             dilation_schedule = dilations
         else:
             dilation_schedule = [2**i for i in range(1, n_dilated_layers + 1)]
@@ -149,7 +165,7 @@ class Pomeranian(nn.Module):
         self.count_mlp = nn.Sequential(
             nn.Linear(filters, hidden_dim),
             nn.GELU(),
-            nn.Linear(hidden_dim, num_count_outputs)
+            nn.Linear(hidden_dim, num_count_outputs),
         )
 
     def forward(self, x) -> ProfileCountOutput:
@@ -220,19 +236,23 @@ class PomeranianK5(Pomeranian):
         input_len: int = 2112,
         output_len: int = 1024,
         output_bin_size: int = 1,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 64,
         n_dilated_layers: int = 8,
-        conv_kernel_size: list[int] = [11, 11],
+        conv_kernel_size: int | list[int] | None = None,
         dil_kernel_size: int = 5,
         profile_kernel_size: int = 49,
         expansion: int = 1,
         dropout: float = 0.1,
         predict_total_count: bool = True,
         stem_expansion: int = 2,
-        dilations: list[int] | None = [1, 2, 4, 8, 16, 32, 64, 128],
+        dilations: list[int] | None = _UNSET,  # type: ignore[assignment]
     ):
+        if conv_kernel_size is None:
+            conv_kernel_size = [11, 11]
+        if dilations is _UNSET:
+            dilations = [1, 2, 4, 8, 16, 32, 64, 128]
         super().__init__(
             input_len=input_len,
             output_len=output_len,
@@ -256,10 +276,10 @@ class PomeranianMetricCollection(MetricCollection):
     """
     MetricCollection for Pomeranian models.
     """
-    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0):
         super().__init__({
-            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
-            "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
+            "pearson": CountProfilePearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_profile": CountProfileMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
         })

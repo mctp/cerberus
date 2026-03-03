@@ -247,14 +247,12 @@ Cerberus has 6 model architectures. Compatibility with different interpretation 
 |-------|-------------|--------------------|-----------------------------|-----|------------------|
 | **BPNet** | Dilated residual CNN | Yes | Yes | Yes | Yes |
 | **Pomeranian** | ConvNeXtV2 + PGC | Likely (needs testing with GRN) | Yes | Yes | Yes |
-| **GemiNet** | PGC blocks | Likely (gated convolutions) | Yes | Yes | Yes |
-| **LyraNet** | PGC + S4D (SSM) | Uncertain (S4D uses FFT conv) | Yes | Yes | Yes |
 | **GlobalProfileCNN** | Conv + MaxPool + Dense | Yes | Yes | Yes | Yes |
 | **ConvNeXtDCNN** | ConvNeXtV2 blocks | Likely | Yes | Yes | Yes |
 
 Notes:
 - **IntegratedGradients** and **Gradient x Input** are the most universally compatible since they only require `torch.autograd.grad` on the model's forward pass.
-- **DeepLiftShap** via captum may have issues with non-standard layers (S4D in LyraNet, GRN in Pomeranian/ConvNeXtDCNN) because DeepLIFT requires specific propagation rules for each layer type.
+- **DeepLiftShap** via captum may have issues with non-standard layers (GRN in Pomeranian/ConvNeXtDCNN) because DeepLIFT requires specific propagation rules for each layer type.
 - **ISM** is architecture-agnostic (only uses forward passes).
 
 #### Output Format Differences
@@ -287,7 +285,7 @@ BPReveal uses `(B, L, 4)` layout; cerberus uses `(B, 4, L)`. All attribution sco
 
 Two cerberus model families produce different output types:
 
-- **`ProfileCountOutput`** (BPNet, Pomeranian, GemiNet, LyraNet): Have separate profile logits and log-counts. The BPReveal interpretation metrics (profile spikiness, counts) map directly.
+- **`ProfileCountOutput`** (BPNet, Pomeranian): Have separate profile logits and log-counts. The BPReveal interpretation metrics (profile spikiness, counts) map directly.
 - **`ProfileLogRates`** (GlobalProfileCNN, ConvNeXtDCNN): Only have log-rates, no separate counts head. The profile metric would need adaptation (e.g., sum of log-rates as the scalar, or per-position log-rate for PISA-like analysis).
 
 ## 7. Recommended Integration Strategy

@@ -16,6 +16,7 @@ from .download import (
 )
 from .logging import setup_logging
 from .signal import register_extractor
+from .train import compute_counts_loss_weight, resolve_adaptive_loss_args
 
 __all__ = [
     # Core
@@ -38,4 +39,7 @@ __all__ = [
     "setup_logging",
     # Signal Extraction
     "register_extractor",
+    # Training utilities
+    "compute_counts_loss_weight",
+    "resolve_adaptive_loss_args",
 ]

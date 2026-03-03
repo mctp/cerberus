@@ -15,14 +15,10 @@ except ImportError:
 # Cerberus imports
 from pprint import pprint
 from cerberus.download import download_dataset, download_human_reference
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
-from cerberus.models.gopher import GlobalProfileCNN
-from cerberus.metrics import DefaultMetricCollection
-from cerberus.loss import ProfilePoissonNLLLoss
-from cerberus.module import CerberusModule
-from cerberus.train import _train as train
+from cerberus.train import _train
 
 # %% [markdown]
 # ## 1. Setup Directories and Download Data
@@ -87,6 +83,8 @@ data_config: DataConfig = {
     "encoding": "ACGT", # Standard One-Hot
     "log_transform": True, # Log(x+1) transform targets
     "reverse_complement": True, # Augmentation
+        "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 
@@ -116,7 +114,9 @@ train_config: TrainConfig = {
         "num_epochs": 3, # Must match max_epochs
         "warmup_epochs": 0,
         "min_lr": 1e-5
-    }
+    },
+    "adam_eps": 1e-8,
+    "gradient_clip_val": None,
 }
 
 print("Genome Config:")
@@ -141,7 +141,8 @@ datamodule = CerberusDataModule(
     drop_last=True,
 )
 
-# Setup datamodule (create datasets) and set runtime batch size
+# Setup datamodule for interactive exploration only.
+# _train() will call setup() again with the same parameters before fitting.
 # Note: num_workers=0 for compatibility in notebook
 datamodule.setup(
     batch_size=train_config["batch_size"],
@@ -159,59 +160,47 @@ print("Batch inputs shape:", batch["inputs"].shape)   # Expected: (B, 4, 2048)
 print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
 
 # %% [markdown]
-# ## 4. Model Setup
-# 
-# We use the `GlobalProfileCNN` architecture.
-# 
-# The `GlobalProfileCNN` has standard Cerberus conventions:
-# - Input: `(Batch, Channels, Length)` e.g., `(B, 4, 2048)`.
-# - Output: `(Batch, Output_Channels, Output_Bins)` e.g., `(B, 1, 256)`.
-# 
-# We configure it with `output_len=1024` to match our target field of view (1024bp -> 256 bins @ 4bp).
+# ## 4. Model Configuration
 #
-# We then define the loss function and metrics suitable for profile prediction.
-# We set implicit log targets since our data is log-transformed.
+# We define a `ModelConfig` dict specifying the `GlobalProfileCNN` architecture, loss,
+# and metrics using dotted class paths. The model dimensions (`input_len`, `output_len`,
+# `output_bin_size`) are taken automatically from `data_config` at instantiation time.
 
 # %%
-# Initialize Model
-# output_len=1024 to get 256 bins (1024 // 4)
-# input_len=2048 matches our data config.
-model = GlobalProfileCNN(input_len=2048, output_len=1024, output_bin_size=4)
-
-# Define Loss and Metrics
-criterion = ProfilePoissonNLLLoss(log_input=True, full=False, implicit_log_targets=False)
-metrics = DefaultMetricCollection(num_channels=1, implicit_log_targets=False)
-
-# Create Lightning Module
-module = CerberusModule(
-    model=model,
-    train_config=train_config,
-    criterion=criterion,
-    metrics=metrics
-)
+model_config: ModelConfig = {
+    "name": "GlobalProfileCNN",
+    "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
+    "model_args": {},  # input_len/output_len/output_bin_size come from data_config
+    "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
+    "loss_args": {"log_input": True, "full": False, "log1p_targets": False},
+    "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
+    "metrics_args": {"log1p_targets": False},
+}
 
 # %% [markdown]
 # ## 5. Training
-# 
-# We run the training loop using `cerberus.train._train`.
+#
+# We run the training loop using `_train`. It will setup the datamodule, instantiate
+# the module from `model_config`, and call `trainer.fit()`.
 
 # %%
 # Train
-# We use 'fast_dev_run' or limit epochs to ensure quick execution for this notebook
-trainer = train(
-    module=module,
+# We use limit_train_batches / limit_val_batches to keep this demo short.
+trainer = _train(
+    model_config=model_config,
+    data_config=data_config,
     datamodule=datamodule,
     train_config=train_config,
-    num_workers=0, # Set to 0 for compatibility in notebook
+    num_workers=0,  # Set to 0 for compatibility in notebook
     in_memory=False,
     accelerator="auto",
     devices=1,
-    limit_train_batches=10, # For demo purposes
+    limit_train_batches=10,  # For demo purposes
     limit_val_batches=5,
     enable_checkpointing=True,
-    logger=True, # Enable logging
+    logger=True,  # Enable logging
     enable_progress_bar=True,
-    log_every_n_steps=5
+    log_every_n_steps=5,
 )
 
 print("Training finished.")

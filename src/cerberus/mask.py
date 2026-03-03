@@ -1,11 +1,14 @@
 from pathlib import Path
 from typing import Protocol
+import logging
 import numpy as np
 import pybigtools
 import torch
 import gzip
 from interlap import InterLap
 from cerberus.interval import Interval
+
+logger = logging.getLogger(__name__)
 
 
 class BaseMaskExtractor(Protocol):
@@ -40,6 +43,7 @@ class BigBedMaskExtractor(BaseMaskExtractor):
 
     def _load(self):
         """Lazy loader for BigBed handles."""
+        logger.debug(f"Lazy-loading {len(self.channels)} BigBed file(s)...")
         self._bigbed_files = {}
         for name in self.channels:
             path = str(self.bigbed_paths[name])
@@ -93,10 +97,9 @@ class BigBedMaskExtractor(BaseMaskExtractor):
                             vals[s:e] = 1.0
 
             except RuntimeError:
-                # Chromosome not found or read error -> zeros
-                pass
+                logger.debug(f"Chrom {interval.chrom} not found in BigBed '{name}', returning zeros")
             except Exception:
-                pass
+                logger.debug(f"Error reading BigBed '{name}' at {interval}, returning zeros")
 
             extracted_values.append(vals)
 
@@ -120,6 +123,7 @@ class InMemoryBigBedMaskExtractor(BaseMaskExtractor):
         self.channels = sorted(bigbed_paths.keys())
         self._cache = {}  # channel -> chrom -> tensor
 
+        logger.info(f"Loading {len(self.channels)} BigBed file(s) into memory...")
         for name in self.channels:
             path = str(bigbed_paths[name])
             try:
@@ -186,6 +190,7 @@ class BedMaskExtractor(BaseMaskExtractor):
         self.channels = sorted(bed_paths.keys())
         self._interlaps = {} # channel -> chrom -> InterLap
 
+        logger.debug(f"Loading {len(self.channels)} BED file(s) into InterLap...")
         for name in self.channels:
             path = Path(self.bed_paths[name])
             self._interlaps[name] = self._load_bed(path)

@@ -148,7 +148,7 @@ def analyze_predictions():
         model=model,
         train_config=train_config, # type: ignore
         criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
-        metrics=DefaultMetricCollection(num_channels=1)
+        metrics=DefaultMetricCollection()
     )
 
     # Train

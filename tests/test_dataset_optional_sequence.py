@@ -61,6 +61,8 @@ def test_dataset_no_sequence_init(genome_setup):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": False
     })
     
@@ -109,6 +111,8 @@ def test_dataset_no_sequence_default_extractor(genome_setup):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": False
     })
     
@@ -159,6 +163,8 @@ def test_dataset_split_preserves_no_sequence(genome_setup):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": False
     })
     
@@ -212,6 +218,8 @@ def test_dataset_use_sequence_true(genome_setup):
         "max_jitter": 0,
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True
     })
     

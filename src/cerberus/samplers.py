@@ -374,6 +374,27 @@ class MultiSampler(BaseSampler):
         sampler_idx, interval_idx = self._indices[idx]
         return self.samplers[sampler_idx][interval_idx]
 
+    def get_peak_status(self, idx: int) -> int:
+        """
+        Return the peak label for the interval at position ``idx``.
+
+        By convention, intervals drawn from the first sub-sampler
+        (``samplers[0]``) are treated as positives (peaks) and labelled ``1``;
+        all others are labelled ``0`` (background).
+
+        This matches the layout created by :class:`PeakSampler`, where
+        ``samplers[0]`` is always the :class:`IntervalSampler` of positive
+        peaks and any subsequent samplers are background samplers.  The label
+        is preserved correctly after :meth:`split_folds` because that method
+        returns new :class:`MultiSampler` instances with the same sub-sampler
+        ordering.
+
+        Returns:
+            ``1`` for a peak interval, ``0`` for a background interval.
+        """
+        sampler_idx, _ = self._indices[idx]
+        return 1 if sampler_idx == 0 else 0
+
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
     ) -> tuple["MultiSampler", "MultiSampler", "MultiSampler"]:
@@ -948,7 +969,7 @@ class ComplexityMatchedSampler(ProxySampler):
         exclude_intervals: dict[str, InterLap] | None = None,
         bins: int = 20,
         candidate_ratio: float = 1.0,
-        metrics: list[str] = ["gc", "dust", "cpg"],
+        metrics: list[str] | None = None,
         seed: int | None = None,
         generate_on_init: bool = True,
         metrics_cache: dict[str, np.ndarray] | None = None,
@@ -980,7 +1001,9 @@ class ComplexityMatchedSampler(ProxySampler):
         self.candidate_ratio = candidate_ratio
         self.seed = seed
         self.rng = random.Random(seed)
-        
+
+        if metrics is None:
+            metrics = ["gc", "dust", "cpg"]
         self.metrics = metrics
         self.metrics_cache = metrics_cache if metrics_cache is not None else {}
 

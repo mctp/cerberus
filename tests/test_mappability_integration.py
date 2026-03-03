@@ -56,6 +56,9 @@ def test_sequence_and_signal_extraction(human_genome, mappability_file, fasta_fi
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
+        "use_sequence": True,
         "in_memory": False
     })
     

@@ -1,8 +1,13 @@
+import logging
+
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
 from torchmetrics import MetricCollection
 
 from cerberus.loss import MSEMultinomialLoss
+
+logger = logging.getLogger(__name__)
 from cerberus.output import ProfileCountOutput
 from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, LogCountsPearsonCorrCoef
 from cerberus.layers import DilatedResidualBlock
@@ -33,54 +38,78 @@ class BPNet(nn.Module):
         profile_kernel_size (int): Kernel size for profile head convolution. Default: 75.
         predict_total_count (bool): If True, predicts a single total count scalar (sum of all channels).
                                     If False, predicts per-channel counts. Default: True.
+        activation (str): Activation function used throughout the dilated tower. One of ``"relu"``
+            or ``"gelu"``. GELU provides smoother gradients, reducing dying-neuron risk in deep
+            stacks and working better with cosine LR schedules. Default: ``"relu"``.
+        weight_norm (bool): If True, applies :func:`torch.nn.utils.weight_norm` to the initial
+            convolution and all dilated residual block convolutions. This decouples weight magnitude
+            from direction, stabilising gradient norms across the deep tower and enabling effective
+            AdamW weight decay and cosine LR scheduling. Safe for DeepLIFT/DeepSHAP: weight
+            normalisation is a weight reparameterisation, not an activation nonlinearity.
+            Default: ``False``.
     """
     def __init__(
         self,
         input_len: int = 2114,
         output_len: int = 1000,
         output_bin_size: int = 1,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 64,
         n_dilated_layers: int = 8,
         conv_kernel_size: int = 21,
         dil_kernel_size: int = 3,
         profile_kernel_size: int = 75,
         predict_total_count: bool = True,
+        activation: str = "relu",
+        weight_norm: bool = False,
     ):
         super().__init__()
-        
+        if input_channels is None:
+            input_channels = ["A", "C", "G", "T"]
+        if output_channels is None:
+            output_channels = ["signal"]
+
         self.input_len = input_len
         self.output_len = output_len
         self.output_bin_size = output_bin_size
         self.n_input_channels = len(input_channels)
         self.n_output_channels = len(output_channels)
         self.predict_total_count = predict_total_count
-        
-        # 1. Initial Convolution
-        self.iconv = nn.Conv1d(
-            self.n_input_channels, filters, 
-            kernel_size=conv_kernel_size, 
+
+        # 1. Initial Convolution (plain — weight_norm applied after reinit if requested)
+        self.iconv: nn.Module = nn.Conv1d(
+            self.n_input_channels, filters,
+            kernel_size=conv_kernel_size,
             padding='valid'
         )
-        
-        # 2. Dilated Residual Tower
+
+        # Activation for the initial conv output (same as tower activation)
+        if activation == "relu":
+            self.iconv_act: nn.Module = nn.ReLU()
+        elif activation == "gelu":
+            self.iconv_act = nn.GELU()
+        else:
+            raise ValueError(f"BPNet: unsupported activation {activation!r}. Must be 'relu' or 'gelu'.")
+
+        # 2. Dilated Residual Tower (built plain — weight_norm applied after reinit if requested)
         self.res_layers = nn.ModuleList()
         for i in range(1, n_dilated_layers + 1):
             # Dilation increases exponentially: 2^1, 2^2, ...
             dilation = 2**i
             self.res_layers.append(
-                DilatedResidualBlock(filters, dil_kernel_size, dilation)
+                DilatedResidualBlock(filters, dil_kernel_size, dilation,
+                                     activation=activation, weight_norm=False)
             )
-            
+
         # 3. Profile Head
         # Predicts shape (logits)
         self.profile_conv = nn.Conv1d(
-            filters, self.n_output_channels, 
-            kernel_size=profile_kernel_size, 
+            filters, self.n_output_channels,
+            kernel_size=profile_kernel_size,
             padding='valid'
         )
-        
+
         # 4. Counts Head
         # Predicts total count (log space)
         # Global Average Pooling is performed in forward()
@@ -88,6 +117,40 @@ class BPNet(nn.Module):
         # regardless of the number of profile output channels, matching chrombpnet/bpnet-lite.
         num_count_outputs = 1 if self.predict_total_count else self.n_output_channels
         self.count_dense = nn.Linear(filters, num_count_outputs)
+
+        # Xavier reinit on plain weights first, then apply weight_norm.
+        # This follows PyTorch's recommended pattern: right_inverse decomposes the
+        # Xavier-initialized weight into weight_g and weight_v, preserving the intent.
+        self._tf_style_reinit()
+        if weight_norm:
+            _apply_weight_norm(self.iconv)
+            for block in self.res_layers:
+                if isinstance(block, DilatedResidualBlock):
+                    _apply_weight_norm(block.conv)
+
+        logger.info(
+            "BPNet initialized: filters=%d, n_dilated_layers=%d, activation=%s, weight_norm=%s",
+            filters, n_dilated_layers, activation, weight_norm,
+        )
+
+    def _tf_style_reinit(self):
+        """Re-initialize weights using Xavier uniform (Glorot) and zero biases.
+
+        Matches the TensorFlow/Keras default initialization used by the original
+        BPNet implementation and chrombpnet-pytorch. Without this, PyTorch defaults
+        to Kaiming uniform which is calibrated for deeper ReLU networks and produces
+        different activation scales at initialization.
+
+        Called before weight normalization is applied (if ``weight_norm=True``).
+        PyTorch's ``right_inverse`` then decomposes the Xavier-initialized weight
+        into ``weight_g`` and ``weight_v``, preserving the initialization intent.
+        """
+        for m in self.modules():
+            if isinstance(m, (nn.Conv1d, nn.Linear)):
+                if m.weight is not None:
+                    nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x) -> ProfileCountOutput:
         """
@@ -101,8 +164,8 @@ class BPNet(nn.Module):
                 logits: (Batch, Out_Channels, Out_Len)
                 log_counts: (Batch, Out_Channels) - representing log(total_counts)
         """
-        # 1. Initial Conv + ReLU
-        x = F.relu(self.iconv(x))
+        # 1. Initial Conv + Activation
+        x = self.iconv_act(self.iconv(x))
         
         # 2. Residual Tower
         for layer in self.res_layers:
@@ -164,14 +227,16 @@ class BPNet1024(BPNet):
         input_len: int = 2112,
         output_len: int = 1024,
         output_bin_size: int = 1,
-        input_channels: list[str] = ["A", "C", "G", "T"],
-        output_channels: list[str] = ["signal"],
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
         filters: int = 77,
         n_dilated_layers: int = 8,
         conv_kernel_size: int = 21,
         dil_kernel_size: int = 3,
         profile_kernel_size: int = 49,
         predict_total_count: bool = True,
+        activation: str = "relu",
+        weight_norm: bool = False,
     ):
         super().__init__(
             input_len=input_len,
@@ -185,6 +250,8 @@ class BPNet1024(BPNet):
             dil_kernel_size=dil_kernel_size,
             profile_kernel_size=profile_kernel_size,
             predict_total_count=predict_total_count,
+            activation=activation,
+            weight_norm=weight_norm,
         )
 
 
@@ -228,13 +295,23 @@ class BPNetLoss(MSEMultinomialLoss):
             beta (float): Weight for profile loss. Default: 1.0.
             **kwargs: Other arguments passed to MSEMultinomialLoss.
         """
-        # Remove constrained arguments from kwargs if they exist to avoid multiple values error
-        kwargs.pop("average_channels", None)
-        kwargs.pop("flatten_channels", None)
-        kwargs.pop("count_per_channel", None)
-        kwargs.pop("implicit_log_targets", None)
-        kwargs.pop("count_weight", None)
-        kwargs.pop("profile_weight", None)
+        # BPNetLoss enforces fixed values for chrombpnet compatibility.
+        # Warn if the caller explicitly passed conflicting values.
+        _fixed = {
+            "average_channels": True,
+            "flatten_channels": False,
+            "count_per_channel": False,
+            "log1p_targets": False,
+            "count_weight": alpha,
+            "profile_weight": beta,
+        }
+        for key, fixed_val in _fixed.items():
+            caller_val = kwargs.pop(key, None)
+            if caller_val is not None and caller_val != fixed_val:
+                logger.warning(
+                    f"BPNetLoss: ignoring {key}={caller_val!r}, "
+                    f"using fixed value {fixed_val!r} for chrombpnet compatibility"
+                )
 
         # chrombpnet: loss = beta * profile + alpha * count
         # MSEMultinomialLoss: loss = profile_weight * profile + count_weight * count
@@ -245,7 +322,7 @@ class BPNetLoss(MSEMultinomialLoss):
             average_channels=True, 
             flatten_channels=False,
             count_per_channel=False,
-            implicit_log_targets=False,
+            log1p_targets=False,
             **kwargs
         )
 
@@ -255,10 +332,10 @@ class BPNetMetricCollection(MetricCollection):
     MetricCollection for BPNet models.
     Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
     """
-    def __init__(self, num_channels: int = 1, implicit_log_targets: bool = False):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0):
         super().__init__({
-            "pearson": CountProfilePearsonCorrCoef(num_channels=num_channels, implicit_log_targets=implicit_log_targets),
-            "mse_profile": CountProfileMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "mse_log_counts": LogCountsMeanSquaredError(implicit_log_targets=implicit_log_targets),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(implicit_log_targets=implicit_log_targets),
+            "pearson": CountProfilePearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_profile": CountProfileMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
         })

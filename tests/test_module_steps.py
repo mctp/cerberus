@@ -28,6 +28,8 @@ def base_config():
         "scheduler_type": "default",
         "scheduler_args": {},
         "filter_bias_and_bn": True,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
 
 def test_training_step(base_config):
@@ -53,14 +55,17 @@ def test_validation_step(base_config):
     model = DummyModel()
     module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=base_config)
     module.log = MagicMock()
-    
+    mock_trainer = MagicMock()
+    mock_trainer.is_global_zero = True
+    module._trainer = mock_trainer  # attach a mock trainer so self.trainer resolves
+
     batch = {
         "inputs": torch.randn(5, 10),
         "targets": torch.abs(torch.randn(5, 1)).unsqueeze(-1)
     }
-    
+
     loss = module.validation_step(batch, 0)
-    
+
     assert isinstance(loss, torch.Tensor)
     module.log.assert_called_with("val_loss", loss, prog_bar=True, batch_size=5, sync_dist=True)
 

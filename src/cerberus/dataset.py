@@ -1,5 +1,6 @@
 from typing import Any
 import torch
+import logging
 from torch.utils.data import Dataset
 from interlap import InterLap
 from .config import (
@@ -18,6 +19,8 @@ from .sequence import SequenceExtractor, InMemorySequenceExtractor, BaseSequence
 from .signal import BaseSignalExtractor, UniversalExtractor
 from .transform import DataTransform, Compose, create_default_transforms
 from .interval import Interval, resolve_interval
+
+logger = logging.getLogger(__name__)
 
 
 class CerberusDataset(Dataset):
@@ -115,6 +118,7 @@ class CerberusDataset(Dataset):
         if sampler is not None:
             self.sampler = sampler
         elif self.sampler_config is not None:
+            logger.debug(f"Initializing sampler of type {self.sampler_config['sampler_type']}...")
             self.sampler = self._initialize_sampler()
         else:
             self.sampler = None
@@ -172,7 +176,8 @@ class CerberusDataset(Dataset):
                 "Both 'transforms' and 'deterministic_transforms' must be provided, or neither (to use defaults)."
             )
 
-        if transforms and deterministic_transforms:
+        if transforms is not None:
+            assert deterministic_transforms is not None  # guaranteed by check above
             self.transforms = Compose(transforms)
             self.deterministic_transforms = Compose(deterministic_transforms)
         else:
@@ -209,6 +214,42 @@ class CerberusDataset(Dataset):
         if self.sampler is None:
             return 0
         return len(self.sampler)
+
+    def get_raw_targets(
+        self, 
+        query: Any, 
+        crop_to_output_len: bool = True
+    ) -> torch.Tensor:
+        """
+        Retrieves raw target signals for a specific interval, bypassing transforms.
+        
+        This is useful for getting true observed counts without binning or log transforms
+        that might be applied in the standard pipeline.
+        
+        Args:
+            query: Interval object, string "chr:start-end", or tuple (chr, start, end).
+            crop_to_output_len: Whether to crop the extracted signal to the output length.
+            
+        Returns:
+            torch.Tensor: The raw target signal.
+        """
+        interval = resolve_interval(query)
+        
+        if self.target_signal_extractor is None:
+            raise RuntimeError("Target signal extractor is not initialized.")
+
+        # Extract (C, Input_Len)
+        raw_target = self.target_signal_extractor.extract(interval) 
+        
+        if crop_to_output_len:
+            crop_start = (self.data_config["input_len"] - self.data_config["output_len"]) // 2
+            crop_end = crop_start + self.data_config["output_len"]
+            
+            # Check if we need to crop
+            if raw_target.shape[-1] > self.data_config["output_len"]:
+                raw_target = raw_target[..., crop_start:crop_end]
+                
+        return raw_target
 
     def get_interval(self, query: Any) -> dict[str, Any]:
         """
@@ -261,17 +302,16 @@ class CerberusDataset(Dataset):
         else:
             targets = torch.empty(0)
 
-        # Apply transforms
+        # Apply transforms (self.transforms and self.deterministic_transforms
+        # are always Compose objects, possibly wrapping an empty list)
         if self.is_train:
-            if self.transforms:
-                inputs, targets, interval = self.transforms(
-                    inputs, targets, interval
-                )
+            inputs, targets, interval = self.transforms(
+                inputs, targets, interval
+            )
         else:
-            if self.deterministic_transforms:
-                inputs, targets, interval = self.deterministic_transforms(
-                    inputs, targets, interval
-                )
+            inputs, targets, interval = self.deterministic_transforms(
+                inputs, targets, interval
+            )
 
         return {
             "inputs": inputs,
@@ -294,6 +334,10 @@ class CerberusDataset(Dataset):
                 - 'intervals': String representation of the genomic interval.
                                Note: If random transforms (like Jitter) are active, this string
                                reflects the transformed coordinates, not the original sampler coordinates.
+                - 'peak_status': int — ``1`` if the interval is a positive peak, ``0`` if background.
+                                 Requires the sampler to implement ``get_peak_status()``
+                                 (e.g. :class:`MultiSampler` / :class:`PeakSampler`); defaults to ``1``
+                                 for samplers that do not support labelling.
         
         Raises:
             TypeError: If no sampler is configured for this dataset.
@@ -301,7 +345,13 @@ class CerberusDataset(Dataset):
         if self.sampler is None:
             raise TypeError("Dataset has no sampler configured. Use get_interval() for specific queries.")
         interval = self.sampler[idx]
-        return self._get_interval(interval)
+        result = self._get_interval(interval)
+        result["peak_status"] = (
+            self.sampler.get_peak_status(idx)  # type: ignore[union-attr]
+            if hasattr(self.sampler, "get_peak_status")
+            else 1
+        )
+        return result
 
     def __getitems__(self, indices: list[int]):
         """Batch retrieval optimization (optional)."""
@@ -332,10 +382,8 @@ class CerberusDataset(Dataset):
             target_signal_extractor=self.target_signal_extractor,
             sampler=sampler,
             exclude_intervals=self.exclude_intervals,
-            transforms=(
-                self.transforms.transforms if self.transforms else None),
-            deterministic_transforms=(
-                self.deterministic_transforms.transforms if self.deterministic_transforms else None),
+            transforms=self.transforms.transforms,
+            deterministic_transforms=self.deterministic_transforms.transforms,
             in_memory=self.in_memory,
             is_train=is_train,
             seed=self.seed,

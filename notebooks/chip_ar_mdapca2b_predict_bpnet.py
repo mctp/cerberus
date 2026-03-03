@@ -97,6 +97,8 @@ data_config: DataConfig = {
     "encoding": "ACGT",
     "log_transform": log_transform,
     "reverse_complement": True, # Matches training config (ignored if is_train=False)
+        "target_scale": 1.0,
+    "count_pseudocount": 1.0,
     "use_sequence": True,
 }
 
@@ -125,7 +127,9 @@ train_config: TrainConfig = {
     "filter_bias_and_bn": True,
     "reload_dataloaders_every_n_epochs": 0,
     "scheduler_type": "cosine",
-    "scheduler_args": {}
+    "scheduler_args": {},
+    "adam_eps": 1e-7,
+    "gradient_clip_val": None,
 }
 
 # Model Config for BPNet
@@ -135,10 +139,10 @@ model_config: ModelConfig = {
     "loss_cls": "cerberus.models.bpnet.BPNetLoss",
     "loss_args": {
         "alpha": 1.0, 
-        "implicit_log_targets": log_transform
+        "log1p_targets": log_transform
     },
     "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {"num_channels": 1},
+    "metrics_args": {},
     "model_args": {
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],
@@ -186,7 +190,8 @@ model_ensemble = ModelEnsemble(
     model_config=model_config,
     data_config=data_config,
     genome_config=genome_config,
-    device=device
+    device=device,
+    search_paths=[project_root],
 )
 
 # %% [markdown]

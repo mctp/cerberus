@@ -3,11 +3,13 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from torchmetrics import MetricCollection
-from typing import Callable
-from pathlib import Path
+import logging
+from typing import Callable, Any
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
+from cerberus.output import compute_total_log_counts
+from cerberus.plots import save_count_scatter
 from cerberus.config import (
     TrainConfig,
     validate_train_config,
@@ -21,7 +23,10 @@ from cerberus.config import (
     validate_genome_config,
     validate_sampler_config,
     import_class,
+    propagate_pseudocount,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CerberusModule(pl.LightningModule):
@@ -75,6 +80,13 @@ class CerberusModule(pl.LightningModule):
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")
 
+        # Accumulators for the per-epoch validation scatter plot.
+        # Populated in _shared_step (val only, rank 0) and cleared in on_validation_epoch_end.
+        self._val_log_count_preds: list[torch.Tensor] = []
+        self._val_log_count_targets: list[torch.Tensor] = []
+
+        logger.info(f"Initialized CerberusModule with model: {model.__class__.__name__}")
+
     def configure_optimizers(self): # type: ignore[override]
         if self.train_config is None:
             raise RuntimeError("Cannot configure optimizers: train_config is missing.")
@@ -85,7 +97,8 @@ class CerberusModule(pl.LightningModule):
             opt=self.train_config["optimizer"],
             lr=self.train_config["learning_rate"],
             weight_decay=self.train_config["weight_decay"],
-            filter_bias_and_bn=self.train_config["filter_bias_and_bn"]
+            filter_bias_and_bn=self.train_config["filter_bias_and_bn"],
+            eps=self.train_config["adam_eps"],
         )
         
         optim_conf = {
@@ -147,7 +160,11 @@ class CerberusModule(pl.LightningModule):
             outputs_detached = outputs.detach()
             
         metric_collection.update(outputs_detached, targets.detach())
-        
+
+        # Accumulate log counts for the validation scatter plot (rank 0 only)
+        if prefix == "val_" and self.trainer.is_global_zero:
+            self._accumulate_log_counts(outputs_detached, targets.detach())
+
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -162,11 +179,56 @@ class CerberusModule(pl.LightningModule):
         self.log_dict(metrics, sync_dist=True)
         self.train_metrics.reset()
         
+    def _accumulate_log_counts(self, outputs: Any, targets: torch.Tensor) -> None:
+        """
+        Accumulate predicted and target log counts for the epoch-end scatter plot.
+
+        Silently skips output types not supported by compute_total_log_counts
+        (e.g. raw-tensor or tuple outputs from non-standard models).
+
+        Args:
+            outputs: Detached model output (ModelOutput subclass or other).
+            targets: Detached target tensor, shape (B, C, L).
+        """
+        try:
+            pseudocount = getattr(self.criterion, "count_pseudocount", 1.0)
+            # MSE losses predict log(count + pseudocount); Poisson/NB predict log(count).
+            # Only MSE losses carry count_pseudocount; its presence signals the offset space.
+            log_counts_include_pseudocount = hasattr(self.criterion, "count_pseudocount")
+            pred_lc = compute_total_log_counts(
+                outputs,
+                log_counts_include_pseudocount=log_counts_include_pseudocount,
+                pseudocount=pseudocount,
+            )                                                                        # (B,)
+            target_lc = torch.log(targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount)            # (B,)
+            self._val_log_count_preds.append(pred_lc.cpu())
+            self._val_log_count_targets.append(target_lc.cpu())
+        # TODO: consider restricting to ValueError only — AttributeError,
+        # TypeError, and IndexError may indicate real bugs that should surface.
+        except (ValueError, AttributeError, TypeError, IndexError) as e:
+            if not getattr(self, "_log_count_warning_emitted", False):
+                logger.debug(
+                    f"Skipping log-count accumulation: {type(e).__name__}: {e}"
+                )
+                self._log_count_warning_emitted = True
+
     def on_validation_epoch_end(self):
         # Log aggregated metrics
         metrics = self.val_metrics.compute()
         self.log_dict(metrics, sync_dist=True)
         self.val_metrics.reset()
+
+        # Generate count scatter plot (rank 0 only; skip Lightning's 2-batch sanity check)
+        if (self._val_log_count_preds
+                and self.trainer.is_global_zero
+                and not self.trainer.sanity_checking):
+            all_preds = torch.cat(self._val_log_count_preds).float().numpy()
+            all_targets = torch.cat(self._val_log_count_targets).float().numpy()
+            trainer_log_dir = getattr(self.trainer.logger, "log_dir", None)
+            save_dir = trainer_log_dir or self.trainer.default_root_dir or "."
+            save_count_scatter(all_preds, all_targets, save_dir, self.current_epoch)
+        self._val_log_count_preds = []
+        self._val_log_count_targets = []
 
 
 def configure_callbacks(
@@ -205,6 +267,7 @@ def configure_callbacks(
             monitor="val_loss",
             mode="min",
             save_top_k=1,
+            save_last=True,
             filename="checkpoint-{epoch:02d}-{val_loss:.4f}",
         )
 
@@ -239,6 +302,8 @@ def instantiate_model(
     model_cls_name = model_config["model_cls"]
     model_cls = import_class(model_cls_name)
     model_args = model_config["model_args"]
+    
+    logger.debug(f"Instantiating model {model_cls_name} with args: {model_args}")
     
     model = model_cls(
         input_len=input_len,
@@ -285,22 +350,23 @@ def instantiate(
     if sampler_config is not None:
         sampler_config = validate_sampler_config(sampler_config)
     
-    # model_config and data_config validated in instantiate_model
-    model = instantiate_model(model_config, data_config, compile)
-    
-    # Ensure model_config is validated version for subsequent use
+    # Validate model_config before instantiate_model so the validated version
+    # is available for instantiate_metrics_and_loss below. instantiate_model
+    # also validates internally (for standalone use), but that is idempotent.
     model_config = validate_model_config(model_config)
 
-    # Instantiate criterion and metrics
-    loss_cls_name = model_config["loss_cls"]
-    loss_cls = import_class(loss_cls_name)
-    loss_args = model_config["loss_args"]
-    criterion = loss_cls(**loss_args)
+    # Propagate scaled count_pseudocount from data_config into loss_args and
+    # metrics_args. This is the single call site — neither parse_hparams_config
+    # nor _train call propagate_pseudocount, keeping ownership here where the
+    # loss and metrics are actually constructed.
+    model_config = propagate_pseudocount(data_config, model_config)
 
-    metrics_cls_name = model_config["metrics_cls"]
-    metrics_cls = import_class(metrics_cls_name)
-    metrics_args = model_config["metrics_args"]
-    metrics = metrics_cls(**metrics_args)
+    model = instantiate_model(model_config, data_config, compile)
+
+    # Instantiate criterion and metrics
+    metrics, criterion = instantiate_metrics_and_loss(model_config)
+
+    logger.info(f"Instantiated CerberusModule (Model: {model_config['name']}, Loss: {model_config['loss_cls']})")
 
     return CerberusModule(
         model=model,
@@ -312,3 +378,31 @@ def instantiate(
         sampler_config=sampler_config,
         model_config=model_config,
     )
+
+def instantiate_metrics_and_loss(
+    model_config: ModelConfig, 
+    device: torch.device | None = None
+) -> tuple[Any, Any]:
+    """
+    Instantiates metrics and loss functions from model configuration.
+    
+    Args:
+        model_config: Model configuration dictionary.
+        device: Optional device to move metrics and loss to.
+        
+    Returns:
+        tuple: (metrics, criterion)
+    """
+    metrics_cls = import_class(model_config["metrics_cls"])
+    metrics_args = model_config["metrics_args"]
+    metrics = metrics_cls(**metrics_args)
+
+    loss_cls = import_class(model_config["loss_cls"])
+    loss_args = model_config["loss_args"]
+    criterion = loss_cls(**loss_args)
+    
+    if device is not None:
+        metrics = metrics.to(device)
+        criterion = criterion.to(device)
+        
+    return metrics, criterion

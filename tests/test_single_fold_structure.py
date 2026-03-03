@@ -28,7 +28,9 @@ def minimal_configs():
         "max_jitter": 0,
         "encoding": "ACGT",
         "log_transform": False,
-        "reverse_complement": False
+        "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
     }
 
     sampler_config: SamplerConfig = {
@@ -52,13 +54,16 @@ def minimal_configs():
         "max_epochs": 1,
         "optimizer": "adamw",
         "learning_rate": 1e-3,
-        "weight_decay": 0,
+        "weight_decay": 0.0,
         "filter_bias_and_bn": False,
         "patience": 1,
         "scheduler_type": "default",
-        "scheduler_args": {}
+        "scheduler_args": {},
+        "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
-    
+
     return genome_config, data_config, sampler_config, model_config, train_config
 
 def test_train_single_creates_structure(tmp_path, minimal_configs):

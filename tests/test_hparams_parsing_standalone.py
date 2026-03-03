@@ -23,7 +23,10 @@ def test_parse_hparams_config_generated_success(tmp_path):
             "optimizer": "adamw",
             "filter_bias_and_bn": True,
             "scheduler_type": "default",
-            "scheduler_args": {}
+            "scheduler_args": {},
+            "reload_dataloaders_every_n_epochs": 0,
+            "adam_eps": 1e-8,
+            "gradient_clip_val": None,
         },
         "genome_config": {
             "name": "test_genome",
@@ -44,6 +47,8 @@ def test_parse_hparams_config_generated_success(tmp_path):
             "encoding": "ACGT",
             "log_transform": False,
             "reverse_complement": False,
+        "target_scale": 1.0,
+            "count_pseudocount": 1.0,
             "use_sequence": True
         },
         "sampler_config": {
@@ -54,8 +59,8 @@ def test_parse_hparams_config_generated_success(tmp_path):
         "model_config": {
             "name": "test_model",
             "model_cls": "cerberus.models.bpnet.BPNet",
-            "loss_cls": "cerberus.loss.BPNetLoss",
-            "metrics_cls": "cerberus.metrics.BPNetMetrics",
+            "loss_cls": "cerberus.models.bpnet.BPNetLoss",
+            "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
             "loss_args": {},
             "metrics_args": {},
             "model_args": {

@@ -34,7 +34,9 @@ def mock_configs():
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
-        "use_sequence": True
+        "target_scale": 1.0,
+        "use_sequence": True,
+        "count_pseudocount": 1.0,
     }
     train_config: TrainConfig = {
         "batch_size": 1,
@@ -45,7 +47,10 @@ def mock_configs():
         "optimizer": "adam",
         "filter_bias_and_bn": False,
         "scheduler_type": "default",
-        "scheduler_args": {}
+        "scheduler_args": {},
+        "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
     }
     genome_config: GenomeConfig = {
         "name": "test",

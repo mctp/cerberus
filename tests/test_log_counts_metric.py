@@ -84,9 +84,9 @@ def test_log_counts_mse_from_log_rates():
     expected_diff = (torch.log1p(torch.tensor(30.0)) - torch.log(torch.tensor(30.0))) ** 2
     assert torch.isclose(val, expected_diff, atol=1e-6)
 
-def test_log_counts_implicit_log_targets():
-    """Test with implicit_log_targets=True."""
-    metric = LogCountsMeanSquaredError(implicit_log_targets=True)
+def test_log_counts_log1p_targets():
+    """Test with log1p_targets=True."""
+    metric = LogCountsMeanSquaredError(log1p_targets=True)
     
     # Raw target total = 10.
     # Input target is log1p(raw)
@@ -94,7 +94,7 @@ def test_log_counts_implicit_log_targets():
     input_target = torch.log1p(raw_target)
     
     # Pred: log(11).
-    # If implicit_log_targets is True, metric un-logs input_target -> 10.
+    # If log1p_targets is True, metric un-logs input_target -> 10.
     # Then sums -> 10. Then takes log1p -> log(11).
     # So if pred is log(11), MSE is 0.
     
@@ -128,3 +128,47 @@ def test_invalid_input_type():
     metric = LogCountsMeanSquaredError()
     with pytest.raises(TypeError, match="requires ProfileCountOutput or ProfileLogRates"):
         metric.update(ProfileLogits(logits=torch.randn(1,1,1)), torch.randn(1,1,1)) # type: ignore
+
+
+def test_log_counts_mse_pseudocount_default_equals_log1p():
+    """count_pseudocount=1.0 (default) must be numerically equivalent to the original log1p."""
+    targets = torch.zeros(1, 1, 10)
+    targets[0, 0, 0] = 50.0
+
+    # Metric computes log(50 + 1.0); perfect pred is log(51).
+    pred = torch.log(torch.tensor([[51.0]]))
+    out = ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=pred)
+
+    metric = LogCountsMeanSquaredError(count_pseudocount=1.0)
+    metric.update(out, targets)
+    assert torch.isclose(metric.compute(), torch.tensor(0.0), atol=1e-6)
+
+
+def test_log_counts_mse_pseudocount_100():
+    """count_pseudocount=100.0 uses log(count+100) as the target."""
+    targets = torch.zeros(1, 1, 10)
+    targets[0, 0, 0] = 500.0  # total = 500
+
+    # Perfect prediction under pseudocount=100: log(600)
+    pred_perfect = torch.log(torch.tensor([[600.0]]))
+    out_perfect = ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=pred_perfect)
+
+    metric = LogCountsMeanSquaredError(count_pseudocount=100.0)
+    metric.update(out_perfect, targets)
+    assert torch.isclose(metric.compute(), torch.tensor(0.0), atol=1e-6)
+
+    # Prediction using pseudocount=1 is wrong under pseudocount=100
+    pred_wrong = torch.log(torch.tensor([[501.0]]))
+    out_wrong = ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=pred_wrong)
+
+    metric2 = LogCountsMeanSquaredError(count_pseudocount=100.0)
+    metric2.update(out_wrong, targets)
+    val = metric2.compute()
+    expected = (torch.log(torch.tensor(501.0)) - torch.log(torch.tensor(600.0))) ** 2
+    assert torch.isclose(val, expected, atol=1e-5)
+
+
+def test_log_counts_mse_pseudocount_stored():
+    """count_pseudocount is accessible as an attribute."""
+    metric = LogCountsMeanSquaredError(count_pseudocount=42.0)
+    assert metric.count_pseudocount == 42.0

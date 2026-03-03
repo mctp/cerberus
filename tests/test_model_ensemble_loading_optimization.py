@@ -77,6 +77,8 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": False,
+        "target_scale": 1.0,
+        "count_pseudocount": 1.0,
         "use_sequence": True
     }
     
