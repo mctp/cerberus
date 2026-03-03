@@ -221,6 +221,7 @@ module = CerberusModule(
 # for the verification section below. _train() creates the module internally
 # and is not suitable when you need a reference to the model after training.
 if __name__ == "__main__":
+    datamodule.prepare_data()
     datamodule.setup(batch_size=train_config["batch_size"], num_workers=0, in_memory=False)
     trainer = pl.Trainer(
         max_epochs=train_config["max_epochs"],

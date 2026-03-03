@@ -92,7 +92,7 @@ This requires adding a `metrics_cache` parameter to:
 
 ## What Gets Cached
 
-### Phase 1: Complexity Metrics (highest ROI)
+### Phase 1: Complexity Metrics (highest ROI) — **IMPLEMENTED**
 
 The `metrics_cache` dict maps `str(interval)` → `np.ndarray` of shape `(M,)` where M is the number of metrics (typically 3: GC, DUST, CpG). This is already the internal cache format used by `ComplexityMatchedSampler._get_metrics()`.
 

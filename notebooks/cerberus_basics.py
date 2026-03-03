@@ -276,6 +276,7 @@ dm = CerberusDataModule(
     sampler_config=sampler_config_peaks,
 )
 
+dm.prepare_data()
 dm.setup(batch_size=8, num_workers=0, in_memory=False)
 
 train_loader = dm.train_dataloader()

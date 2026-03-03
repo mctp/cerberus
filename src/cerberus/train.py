@@ -305,7 +305,10 @@ def _train(
             sampler_config=sampler_config,
         )
 
-    # 1. Setup DataModule — must happen before adaptive resolution and instantiation.
+    # 1. Pre-compute and cache complexity metrics (rank 0 only in DDP).
+    datamodule.prepare_data()
+
+    # 2. Setup DataModule — must happen before adaptive resolution and instantiation.
     datamodule.setup(
         batch_size=train_config["batch_size"],
         val_batch_size=val_batch_size,
@@ -313,12 +316,12 @@ def _train(
         in_memory=in_memory,
     )
 
-    # 2. Resolve any "adaptive" sentinels in loss_args to data-derived floats.
+    # 3. Resolve any "adaptive" sentinels in loss_args to data-derived floats.
     # Returns a new ModelConfig; the input is not modified so train_multi can
     # safely reuse the same model_config dict across folds.
     model_config = resolve_adaptive_loss_args(model_config, datamodule)
 
-    # 3. Instantiate module with the resolved model_config.
+    # 4. Instantiate module with the resolved model_config.
     # Note: propagate_pseudocount is called inside instantiate(), which is the
     # single owner of pseudocount propagation into loss_args/metrics_args.
     module = instantiate(
@@ -330,10 +333,10 @@ def _train(
         sampler_config=sampler_config,
     )
 
-    # 4. Train
+    # 5. Train
     trainer.fit(module, datamodule=datamodule)
 
-    # 5. Save clean state dict for inference (best checkpoint, no Lightning overhead)
+    # 6. Save clean state dict for inference (best checkpoint, no Lightning overhead)
     if root_dir is not None and trainer.is_global_zero:
         _save_model_pt(trainer, root_dir)
 
