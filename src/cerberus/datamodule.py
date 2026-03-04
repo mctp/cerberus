@@ -38,7 +38,7 @@ class CerberusDataModule(pl.LightningDataModule):
         pin_memory: bool = True,
         persistent_workers: bool = True,
         multiprocessing_context: str | None = None,
-        seed: int | None = None,
+        seed: int = 42,
         drop_last: bool = False,
         cache_dir: Path | str | None = None,
     ):
@@ -52,9 +52,8 @@ class CerberusDataModule(pl.LightningDataModule):
             pin_memory: Whether to pin memory in DataLoaders (recommended for GPU training).
             persistent_workers: Whether to use persistent workers in DataLoaders.
             multiprocessing_context: Context name for multiprocessing (e.g., 'spawn', 'fork').
-            seed: Random seed for sampler initialization. If None, a random
-                seed is auto-generated to ensure deterministic behavior within
-                the lifetime of this DataModule.
+            seed: Random seed for sampler initialization and prepare_data
+                caching. Must be the same across all DDP ranks.
             drop_last: Whether to drop the last incomplete batch in training.
             cache_dir: Base directory for prepare_data() cache. Defaults to
                 $XDG_CACHE_HOME/cerberus or ~/.cache/cerberus.
@@ -86,7 +85,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
         self.multiprocessing_context = multiprocessing_context
-        self.seed = seed if seed is not None else random.Random().getrandbits(32)
+        self.seed = seed
         self.drop_last = drop_last
         self.cache_dir = Path(cache_dir) if cache_dir is not None else get_default_cache_dir()
 

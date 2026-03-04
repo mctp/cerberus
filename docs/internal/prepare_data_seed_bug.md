@@ -78,16 +78,23 @@ Tests in [test_datamodule_seeding.py:103-113](tests/test_datamodule_seeding.py#L
 
 ## Fix
 
-`CerberusDataModule.__init__()` now guarantees `self.seed` is always an `int`.
-When the user does not provide an explicit seed, a random one is generated:
+`CerberusDataModule.seed` is now `int` (default 42, no longer `int | None`).
+
+The seed must be deterministic across DDP ranks because Lightning DDP
+re-executes the training script in each subprocess, creating a new
+`CerberusDataModule` per rank.  A random default (`random.Random(None)`)
+would produce different seeds per rank → different cache directories →
+cache misses.
 
 ```python
-self.seed = seed if seed is not None else random.Random().getrandbits(32)
-```
+# Before:
+seed: int | None = None
+self.seed = seed  # None → non-deterministic sampler init
 
-This ensures `prepare_data()` and `setup()` always use the same seed,
-producing identical random intervals and full cache hits. No seed file
-in the cache is needed.
+# After:
+seed: int = 42
+self.seed = seed  # always int → deterministic across DDP ranks
+```
 
 The `base_seed` dead code in `train_dataloader()` was also removed:
 
