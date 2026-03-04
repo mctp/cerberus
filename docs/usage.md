@@ -256,6 +256,7 @@ The `examples/` directory contains ready-to-run shell scripts covering all model
 | `examples/chip_prox1_tc32_bpnet.sh` | BPNet | TC32 PROX1 (local paths) |
 | `examples/chip_prox1_tc32_pomeranian.sh` | Pomeranian | TC32 PROX1 (local paths) |
 | `examples/chip_prox1_tc32_gopher.sh` | Gopher | TC32 PROX1 (local paths) |
+| `examples/scatac_kidney_pseudobulk.sh` | — | Kidney scATAC-seq pseudobulk BigWigs + peaks |
 
 ```bash
 # Run single-fold training (default)
@@ -327,6 +328,51 @@ All tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`ful
 | `--output-len` | `1000` | `1024` | `1024` |
 | `--output-bin-size` | `1` | `1` | `4` |
 | `--alpha` / loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | — (ProfilePoissonNLLLoss) |
+
+## scATAC-seq Pseudobulk Tools
+
+The `tools/scatac_pseudobulk.py` script generates per-cell-type pseudobulk BigWig coverage tracks and calls peaks from scATAC-seq fragment files using SnapATAC2. The output BigWig and narrowPeak files can be used directly as cerberus training targets and peak-based sampler intervals.
+
+```bash
+# Basic: per-cell-type BigWigs
+python tools/scatac_pseudobulk.py \
+    fragments.tsv.bgz gene_activity.h5ad output_dir/ \
+    --genome hg38 --groupby cell_type
+
+# Full pipeline: BigWigs + peaks + bulk + merged peak set
+python tools/scatac_pseudobulk.py \
+    fragments.tsv.bgz gene_activity.h5ad output_dir/ \
+    --genome hg38 --groupby cell_type \
+    --call-peaks --bulk --merge --n-jobs 8
+```
+
+Key options:
+
+| Flag | Description |
+|---|---|
+| `--genome` | Built-in genome (hg38, hg19, mm10, mm39) or use `--chrom-sizes` for custom |
+| `--groupby` | obs column to group cells by (default: `cell_type`) |
+| `--bulk` | Also generate a bulk (all-cells) BigWig and peak set |
+| `--call-peaks` | Call peaks with MACS3 after BigWig generation |
+| `--merge` | Collapse all narrowPeak files into a single merged set (median summits) |
+| `--counting-strategy` | `insertion` (Tn5 cut sites), `fragment`, or `paired-insertion` |
+| `--normalization` | `raw`, `CPM`, `RPKM`, or `BPM` |
+| `--n-jobs` | Total concurrent thread/process budget (default: 8) |
+| `--sequential` | Disable parallel stage overlap |
+
+Output layout (all files in `output_dir/`):
+
+```
+cell_type_A.bw                  # per-group BigWig
+cell_type_A.narrowPeak.bed.gz   # per-group peaks (with --call-peaks)
+cell_type_A.narrowPeak.bed.gz.tbi
+...
+bulk.bw                         # with --bulk
+bulk.narrowPeak.bed.gz          # with --bulk --call-peaks
+merged.narrowPeak.bed.gz        # with --merge --call-peaks
+```
+
+See `examples/scatac_kidney_pseudobulk.sh` for a complete example using the kidney scATAC-seq dataset.
 
 ## Next Steps
 

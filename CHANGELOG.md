@@ -11,9 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `kidney_scatac` dataset in `download_dataset()`: human kidney 10x scATAC-seq
   from CellxGene (27,034 cells, 14 cell types, 5 donors, GRCh38). Downloads
   tabix-indexed fragment file, index, and gene activity h5ad.
-- `tools/pseudobulk_bigwig.py`: generates per-cell-type BigWig files from
-  scATAC-seq fragments. Supports configurable coverage mode (insertion/fragment),
-  normalization (cpm/rpkm/raw), fragment size filtering, and Tn5 shift.
+- `tools/scatac_pseudobulk.py`: SnapATAC2-based pseudobulk BigWig generation
+  and MACS3 peak calling from scATAC-seq fragments. Uses Rust-backed fragment
+  import, multiprocessing-based parallel pipeline, and per-group narrowPeak BED
+  output. Features: per-cell-type and bulk modes (`--bulk`), peak calling
+  (`--call-peaks`), built-in genomes (hg38/hg19/mm10/mm39), all counting
+  strategies (insertion/fragment/paired-insertion), `--merge` to collapse all
+  peaks into a single `merged.narrowPeak.bed.gz` with median summits,
+  `--n-jobs` budget with `--sequential` fallback.
+- `examples/scatac_kidney_pseudobulk.sh`: example script for generating
+  pseudobulk BigWigs and peaks from the kidney scATAC-seq dataset.
+- `snapatac2` added to dev dependencies.
 
 ## [0.9.3] - 2026-03-03
 
