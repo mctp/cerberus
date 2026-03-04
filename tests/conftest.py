@@ -45,6 +45,19 @@ def mouse_genome():
     return download_reference_genome(genome_dir, genome="mm10")
 
 @pytest.fixture(scope="session")
+def kidney_scatac_dataset():
+    """
+    Downloads the kidney_scatac dataset if not present.
+    Returns a dictionary with paths to the files.
+    """
+    if os.environ.get("RUN_SLOW_TESTS") is None:
+        pytest.skip("Skipping slow tests (RUN_SLOW_TESTS not set)")
+
+    base_dir = get_base_dir()
+    data_dir = base_dir / "dataset"
+    return download_dataset(data_dir, name="kidney_scatac")
+
+@pytest.fixture(scope="session")
 def mdapca2b_ar_dataset():
     """
     Downloads the mdapca2b-ar dataset if not present.

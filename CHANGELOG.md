@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `kidney_scatac` dataset in `download_dataset()`: human kidney 10x scATAC-seq
+  from CellxGene (27,034 cells, 14 cell types, 5 donors, GRCh38). Downloads
+  tabix-indexed fragment file, index, and gene activity h5ad.
+- `tools/pseudobulk_bigwig.py`: generates per-cell-type BigWig files from
+  scATAC-seq fragments. Supports configurable coverage mode (insertion/fragment),
+  normalization (cpm/rpkm/raw), fragment size filtering, and Tn5 shift.
+
 ## [0.9.3] - 2026-03-03
 
 ### Added
