@@ -43,12 +43,10 @@ def _select_from_bins(
     return selected_indices
 
 
-def generate_sub_seeds(seed: int | None, n: int) -> list[int | None]:
+def generate_sub_seeds(seed: int, n: int) -> list[int]:
     """
     Generates n independent seeds from a master seed.
     """
-    if seed is None:
-        return [None] * n
     rng = random.Random(seed)
     return [rng.getrandbits(32) for _ in range(n)]
 
@@ -301,7 +299,7 @@ class MultiSampler(BaseSampler):
         chrom_sizes: dict[str, int] | None = None,
         folds: list[dict[str, InterLap]] | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
-        seed: int | None = None,
+        seed: int = 42,
         generate_on_init: bool = True,
     ):
         """
@@ -310,7 +308,7 @@ class MultiSampler(BaseSampler):
             chrom_sizes: Dictionary of chromosome sizes.
             folds: List of fold definitions.
             exclude_intervals: Dictionary of excluded regions.
-            seed: Optional random seed for initialization.
+            seed: Random seed for initialization.
             generate_on_init: Whether to generate samples immediately (default: True).
         """
         if chrom_sizes is None:
@@ -338,7 +336,7 @@ class MultiSampler(BaseSampler):
         )
         self.samplers = samplers
         self._indices: list[tuple[int, int]] = []  # List of (sampler_idx, interval_idx)
-        self.seed: int | None = seed
+        self.seed: int = seed
         self.rng = random.Random(seed)
         if generate_on_init:
             self.resample(seed=seed)
@@ -507,7 +505,7 @@ class RandomSampler(BaseSampler):
         folds: list[dict[str, InterLap]] | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
         regions: dict[str, InterLap] | None = None,
-        seed: int | None = None,
+        seed: int = 42,
         generate_on_init: bool = True,
     ):
         super().__init__(
@@ -518,7 +516,7 @@ class RandomSampler(BaseSampler):
         self.padded_size = padded_size
         self.num_intervals = num_intervals
         self.regions = regions
-        self.seed = seed
+        self.seed: int = seed
         self.rng = random.Random(seed)
         self._intervals: list[Interval] = []
         if generate_on_init:
@@ -868,7 +866,7 @@ class ScaledSampler(ProxySampler):
         self,
         sampler: Sampler,
         num_samples: int,
-        seed: int | None = None,
+        seed: int = 42,
         generate_on_init: bool = True,
     ):
         """
@@ -886,7 +884,7 @@ class ScaledSampler(ProxySampler):
         self.sampler = sampler
         self.num_samples = int(num_samples)
         self._indices: list[int] = []
-        self.seed = seed
+        self.seed: int = seed
         self.rng = random.Random(seed)
         if generate_on_init:
             self.resample(seed=seed)
@@ -970,7 +968,7 @@ class ComplexityMatchedSampler(ProxySampler):
         bins: int = 20,
         candidate_ratio: float = 1.0,
         metrics: list[str] | None = None,
-        seed: int | None = None,
+        seed: int = 42,
         generate_on_init: bool = True,
         metrics_cache: dict[str, np.ndarray] | None = None,
     ):
@@ -999,7 +997,7 @@ class ComplexityMatchedSampler(ProxySampler):
         self.fasta_path = Path(fasta_path)
         self.bins = bins
         self.candidate_ratio = candidate_ratio
-        self.seed = seed
+        self.seed: int = seed
         self.rng = random.Random(seed)
 
         if metrics is None:
@@ -1207,7 +1205,7 @@ class PeakSampler(MultiSampler):
         background_ratio: float = 1.0,
         min_candidates: int = 10000,
         candidate_oversample_factor: float = 5.0,
-        seed: int | None = None,
+        seed: int = 42,
         prepare_cache: dict[str, np.ndarray] | None = None,
     ):
         """
@@ -1271,7 +1269,7 @@ class PeakSampler(MultiSampler):
                 num_intervals=n_candidates,
                 folds=folds,
                 exclude_intervals=neg_excludes,
-                seed=None,
+                seed=seed,
                 generate_on_init=False,
             )
 
@@ -1284,7 +1282,7 @@ class PeakSampler(MultiSampler):
                 folds=folds,
                 exclude_intervals=neg_excludes, # Use the augmented excludes
                 candidate_ratio=background_ratio,
-                seed=None,
+                seed=seed,
                 generate_on_init=False,
                 metrics=["gc", "dust", "cpg"],
                 metrics_cache=prepare_cache,
@@ -1310,7 +1308,7 @@ def create_sampler(
     folds: list[dict[str, InterLap]],
     exclude_intervals: dict[str, InterLap],
     fasta_path: Path | str | None = None,
-    seed: int | None = None,
+    seed: int = 42,
     prepare_cache: dict[str, np.ndarray] | None = None,
 ) -> Sampler:
     """

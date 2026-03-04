@@ -300,15 +300,14 @@ class TestDatasetPrepareCache:
         assert m["create_sampler"].call_args.kwargs["prepare_cache"] is None
 
 
-# --- Bug verification: seed=None produces non-deterministic intervals ---
+# --- Seed determinism verification ---
 
 
-class TestSeedNoneDeterminism:
-    """Verify that seed=None causes different random intervals between two
-    constructions — the root cause of prepare_data cache misses."""
+class TestSeedDeterminism:
+    """Verify that explicit seeds produce deterministic sampler intervals."""
 
-    def test_seed_none_produces_different_candidates(self, mock_compute):
-        """Two create_sampler() calls with seed=None produce different candidate intervals."""
+    def test_different_seeds_produce_different_candidates(self, mock_compute):
+        """Two create_sampler() calls with different seeds produce different candidate intervals."""
         config: SamplerConfig = cast(SamplerConfig, {
             "sampler_type": "complexity_matched",
             "padded_size": 100,
@@ -330,22 +329,22 @@ class TestSeedNoneDeterminism:
 
         sampler1 = create_sampler(
             config, chrom_sizes=chrom_sizes, folds=[], exclude_intervals={},
-            fasta_path="mock.fa", seed=None,
+            fasta_path="mock.fa", seed=42,
         )
         assert isinstance(sampler1, ComplexityMatchedSampler)
         intervals1 = {str(iv) for iv in sampler1.candidate_sampler}
 
         sampler2 = create_sampler(
             config, chrom_sizes=chrom_sizes, folds=[], exclude_intervals={},
-            fasta_path="mock.fa", seed=None,
+            fasta_path="mock.fa", seed=123,
         )
         assert isinstance(sampler2, ComplexityMatchedSampler)
         intervals2 = {str(iv) for iv in sampler2.candidate_sampler}
 
-        # With seed=None, the two sets should be (almost entirely) different
+        # Different seeds should produce different intervals
         overlap = intervals1 & intervals2
         assert len(overlap) < len(intervals1) * 0.5, (
-            f"Expected mostly different intervals with seed=None, "
+            f"Expected mostly different intervals with different seeds, "
             f"but got {len(overlap)}/{len(intervals1)} overlap"
         )
 

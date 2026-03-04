@@ -65,7 +65,7 @@ class CerberusDataset(Dataset):
         deterministic_transforms: list[DataTransform] | None = None,
         in_memory: bool = False,
         is_train: bool = True,
-        seed: int | None = None,
+        seed: int = 42,
         prepare_cache: dict[str, np.ndarray] | None = None,
     ):
         """
@@ -85,7 +85,7 @@ class CerberusDataset(Dataset):
                                       Must be provided if transforms is provided.
             in_memory: Whether to load data into memory (default: False).
             is_train: Whether this dataset is used for training (enables random transforms).
-            seed: Optional random seed for sampler initialization.
+            seed: Random seed for sampler initialization.
             prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
 
         Raises:
