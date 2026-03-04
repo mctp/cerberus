@@ -34,7 +34,7 @@ def resolve_cache_dir(
     cache_dir: Path,
     fasta_path: str | Path,
     sampler_config: SamplerConfig,
-    seed: int | None,
+    seed: int,
     chrom_sizes: dict[str, int],
 ) -> Path:
     """
@@ -47,7 +47,7 @@ def resolve_cache_dir(
         cache_dir: Base cache directory.
         fasta_path: Path to genome FASTA file.
         sampler_config: Sampler configuration dictionary.
-        seed: Random seed.
+        seed: Random seed (always an int; CerberusDataModule auto-generates one if not provided).
         chrom_sizes: Chromosome sizes dictionary.
 
     Returns:
@@ -67,7 +67,7 @@ def resolve_cache_dir(
 
 def save_prepare_cache(cache_dir: Path, cache: dict[str, np.ndarray]) -> None:
     """
-    Serializes a prepare_data cache dict to disk with a ready sentinel.
+    Serializes a prepare_data cache dict to disk.
 
     Args:
         cache_dir: Directory to write cache files into.
@@ -86,14 +86,14 @@ def load_prepare_cache(cache_dir: Path) -> dict[str, np.ndarray] | None:
     """
     Loads a prepare_data cache from disk if available.
 
-    Returns the cache dict if a valid cache exists (metrics_cache.npz + ready sentinel),
-    or None if no cache is available.
+    Returns the cache dict if a valid cache exists (metrics_cache.npz + ready
+    sentinel), or None if no cache is available.
 
     Args:
         cache_dir: Directory containing cache files.
 
     Returns:
-        Dictionary mapping interval string keys to metric arrays, or None.
+        Cache dict mapping interval keys to metric arrays, or None.
     """
     if not (cache_dir / "ready").exists():
         return None

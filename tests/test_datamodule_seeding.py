@@ -100,14 +100,14 @@ class TestDataModuleSeeding(unittest.TestCase):
         self.dm.train_dataloader()
         self.train_ds_mock.resample.assert_called_with(seed=123)
 
-    def test_train_dataloader_no_seed_configured(self):
-        """Test behavior when seed is None."""
-        self.dm.seed = None
+    def test_train_dataloader_seed_zero(self):
+        """Test behavior when seed is 0."""
+        self.dm.seed = 0
         # epoch=0, rank=0. Expected: 0 + 0 + 0 = 0
         self.dm.train_dataloader()
         self.train_ds_mock.resample.assert_called_with(seed=0)
-        
-        # epoch=1. Expected: 1
+
+        # epoch=1. Expected: 0 + 1*1 + 0 = 1
         self.trainer_mock.current_epoch = 1
         self.dm.train_dataloader()
         self.train_ds_mock.resample.assert_called_with(seed=1)

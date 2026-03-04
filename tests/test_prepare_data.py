@@ -300,6 +300,93 @@ class TestDatasetPrepareCache:
         assert m["create_sampler"].call_args.kwargs["prepare_cache"] is None
 
 
+# --- Bug verification: seed=None produces non-deterministic intervals ---
+
+
+class TestSeedNoneDeterminism:
+    """Verify that seed=None causes different random intervals between two
+    constructions — the root cause of prepare_data cache misses."""
+
+    def test_seed_none_produces_different_candidates(self, mock_compute):
+        """Two create_sampler() calls with seed=None produce different candidate intervals."""
+        config: SamplerConfig = cast(SamplerConfig, {
+            "sampler_type": "complexity_matched",
+            "padded_size": 100,
+            "sampler_args": {
+                "target_sampler": {
+                    "type": "random",
+                    "args": {"num_intervals": 5},
+                },
+                "candidate_sampler": {
+                    "type": "random",
+                    "args": {"num_intervals": 50},
+                },
+                "bins": 10,
+                "candidate_ratio": 1.0,
+                "metrics": ["gc"],
+            },
+        })
+        chrom_sizes = {"chr1": 1_000_000}
+
+        sampler1 = create_sampler(
+            config, chrom_sizes=chrom_sizes, folds=[], exclude_intervals={},
+            fasta_path="mock.fa", seed=None,
+        )
+        assert isinstance(sampler1, ComplexityMatchedSampler)
+        intervals1 = {str(iv) for iv in sampler1.candidate_sampler}
+
+        sampler2 = create_sampler(
+            config, chrom_sizes=chrom_sizes, folds=[], exclude_intervals={},
+            fasta_path="mock.fa", seed=None,
+        )
+        assert isinstance(sampler2, ComplexityMatchedSampler)
+        intervals2 = {str(iv) for iv in sampler2.candidate_sampler}
+
+        # With seed=None, the two sets should be (almost entirely) different
+        overlap = intervals1 & intervals2
+        assert len(overlap) < len(intervals1) * 0.5, (
+            f"Expected mostly different intervals with seed=None, "
+            f"but got {len(overlap)}/{len(intervals1)} overlap"
+        )
+
+    def test_explicit_seed_produces_identical_candidates(self, mock_compute):
+        """Two create_sampler() calls with seed=42 produce identical candidate intervals."""
+        config: SamplerConfig = cast(SamplerConfig, {
+            "sampler_type": "complexity_matched",
+            "padded_size": 100,
+            "sampler_args": {
+                "target_sampler": {
+                    "type": "random",
+                    "args": {"num_intervals": 5},
+                },
+                "candidate_sampler": {
+                    "type": "random",
+                    "args": {"num_intervals": 50},
+                },
+                "bins": 10,
+                "candidate_ratio": 1.0,
+                "metrics": ["gc"],
+            },
+        })
+        chrom_sizes = {"chr1": 1_000_000}
+
+        sampler1 = create_sampler(
+            config, chrom_sizes=chrom_sizes, folds=[], exclude_intervals={},
+            fasta_path="mock.fa", seed=42,
+        )
+        assert isinstance(sampler1, ComplexityMatchedSampler)
+        intervals1 = [str(iv) for iv in sampler1.candidate_sampler]
+
+        sampler2 = create_sampler(
+            config, chrom_sizes=chrom_sizes, folds=[], exclude_intervals={},
+            fasta_path="mock.fa", seed=42,
+        )
+        assert isinstance(sampler2, ComplexityMatchedSampler)
+        intervals2 = [str(iv) for iv in sampler2.candidate_sampler]
+
+        assert intervals1 == intervals2
+
+
 # --- Commit 2: Cache utilities tests ---
 
 from pathlib import Path
@@ -386,6 +473,7 @@ class TestSaveLoadPrepareCache:
 
         assert (tmp_path / "metrics_cache.npz").exists()
         assert (tmp_path / "ready").exists()
+        assert not (tmp_path / "seed").exists()
 
         loaded = load_prepare_cache(tmp_path)
         assert loaded is not None

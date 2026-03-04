@@ -45,13 +45,13 @@ def test_datamodule_setup(
     # Test setup with runtime params
     dm.setup(batch_size=16, num_workers=2)
     
-    # Verify Dataset init
+    # Verify Dataset init — seed is auto-generated when not provided
     mock_dataset_cls.assert_called_once_with(
         genome_config=genome_config,
         data_config=data_config,
         sampler_config=sampler_config,
         in_memory=False,
-        seed=None,
+        seed=dm.seed,
         prepare_cache=None,
     )
     
@@ -158,8 +158,8 @@ def test_datamodule_resample_via_dataloader(
     # Calling train_dataloader should trigger resample
     dm.train_dataloader()
     
-    # Check if resample was called with correct seed (epoch + rank = 1 + 0 = 1)
-    train_ds.resample.assert_called_once_with(seed=1)
+    # Check if resample was called with correct seed (seed + epoch*world + rank)
+    train_ds.resample.assert_called_once_with(seed=dm.seed + 1)
 
 @patch("cerberus.datamodule.validate_genome_config")
 @patch("cerberus.datamodule.validate_data_config")

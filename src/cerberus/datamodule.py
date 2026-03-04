@@ -52,7 +52,9 @@ class CerberusDataModule(pl.LightningDataModule):
             pin_memory: Whether to pin memory in DataLoaders (recommended for GPU training).
             persistent_workers: Whether to use persistent workers in DataLoaders.
             multiprocessing_context: Context name for multiprocessing (e.g., 'spawn', 'fork').
-            seed: Optional random seed for sampler initialization.
+            seed: Random seed for sampler initialization. If None, a random
+                seed is auto-generated to ensure deterministic behavior within
+                the lifetime of this DataModule.
             drop_last: Whether to drop the last incomplete batch in training.
             cache_dir: Base directory for prepare_data() cache. Defaults to
                 $XDG_CACHE_HOME/cerberus or ~/.cache/cerberus.
@@ -84,7 +86,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
         self.multiprocessing_context = multiprocessing_context
-        self.seed = seed
+        self.seed = seed if seed is not None else random.Random().getrandbits(32)
         self.drop_last = drop_last
         self.cache_dir = Path(cache_dir) if cache_dir is not None else get_default_cache_dir()
 
@@ -257,8 +259,7 @@ class CerberusDataModule(pl.LightningDataModule):
                 epoch = self.trainer.current_epoch
                 # Ensure unique seed per rank to maximize data coverage in DDP
                 world_size = self.trainer.world_size if self.trainer else 1
-                base_seed = self.seed if self.seed is not None else 0
-                seed = base_seed + (epoch * world_size) + rank
+                seed = self.seed + (epoch * world_size) + rank
                 self.train_dataset.resample(seed=seed)
             except (AttributeError, RuntimeError) as exc:
                 logger.warning("Could not resample train dataset: %s", exc)
