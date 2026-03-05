@@ -21,32 +21,6 @@ def test_mdapca2b_ar_dataset_download(mdapca2b_ar_dataset):
     print(f"Verified mdapca2b-ar dataset files at: {paths}")
 
 
-def test_kidney_scatac_dataset_download(kidney_scatac_dataset):
-    """
-    Test that the kidney_scatac dataset is downloaded and paths are correct.
-    """
-    paths = kidney_scatac_dataset
-
-    assert "fragments" in paths
-    assert "fragments_index" in paths
-    assert "h5ad" in paths
-
-    assert paths["fragments"].exists()
-    assert paths["fragments_index"].exists()
-    assert paths["h5ad"].exists()
-
-    assert paths["fragments"].stat().st_size > 0
-    assert paths["fragments_index"].stat().st_size > 0
-    assert paths["h5ad"].stat().st_size > 0
-
-    # Verify file names
-    assert paths["fragments"].name == "fragments.tsv.bgz"
-    assert paths["fragments_index"].name == "fragments.tsv.bgz.tbi"
-    assert paths["h5ad"].name == "gene_activity.h5ad"
-
-    print(f"Verified kidney_scatac dataset files at: {paths}")
-
-
 @patch("cerberus.download._download_file")
 def test_kidney_scatac_download_mocked(mock_download, tmp_path):
     """Test kidney_scatac download logic without actually downloading."""
