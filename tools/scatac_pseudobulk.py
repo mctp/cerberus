@@ -42,6 +42,7 @@ Usage:
 import argparse
 import gzip
 import logging
+import os
 import statistics
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -126,8 +127,11 @@ def _export_coverage(
 ) -> dict[str, str]:
     """Export pseudobulk BigWig files for a given groupby column.
 
-    Opens its own read-only handle to the h5ad file, making it safe for
-    multiprocessing (each process gets an independent file descriptor).
+    Opens its own read-only handle to the h5ad file, making it safe to call
+    from a child process (each process gets an independent file descriptor).
+
+    Internally, snapatac2 ``export_coverage`` uses ``n_jobs`` threads
+    (Rust-backed) for parallel I/O within this single process.
 
     Args:
         snap_h5ad: Path to the SnapATAC2 h5ad file with imported fragments.
@@ -136,7 +140,7 @@ def _export_coverage(
         args: Parsed CLI arguments.
         normalization: Normalization method or None for raw.
         out_dir: Output directory path.
-        n_jobs: Thread count for coverage export. Defaults to args.n_jobs.
+        n_jobs: Number of threads for coverage export. Defaults to args.n_jobs.
 
     Returns:
         Dict mapping group name to output file path.
@@ -177,11 +181,14 @@ def _call_peaks(
 ) -> None:
     """Call peaks with MACS3 and write bgzipped+tabixed narrowPeak BED files.
 
-    Opens its own read-only handle to the h5ad file, making it safe for
-    multiprocessing (each process gets an independent file descriptor).
+    Opens its own read-only handle to the h5ad file, making it safe to call
+    from a child process (each process gets an independent file descriptor).
+
+    Internally, ``snap.tl.macs3`` spawns up to ``n_jobs`` MACS3 subprocesses
+    (one per group). The bgzip/tabix post-processing uses ``n_jobs`` threads
+    via ThreadPoolExecutor.
 
     Writes one {group_name}.narrowPeak.bed.gz + .tbi per group, all in out_dir.
-    The bgzip/tabix post-processing runs in parallel across groups.
 
     Args:
         snap_h5ad: Path to the SnapATAC2 h5ad file with imported fragments.
@@ -189,7 +196,7 @@ def _call_peaks(
         selections: Optional subset of groups to call peaks for.
         args: Parsed CLI arguments.
         out_dir: Output directory path.
-        n_jobs: Thread count for MACS3 and bgzip/tabix parallelism.
+        n_jobs: Number of MACS3 subprocesses and bgzip/tabix threads.
             Defaults to args.n_jobs.
     """
     # Configure logging for spawned processes (no-op if already configured)
@@ -517,20 +524,29 @@ def main() -> None:
     )
 
     # Parallelism
+    _default_n_jobs = max(4, os.cpu_count() // 2 if os.cpu_count() else 4)
     parser.add_argument(
         "--n-jobs",
         type=int,
-        default=8,
+        default=_default_n_jobs,
         help=(
-            "Max total concurrent threads/processes across all stages "
-            "(default: 8). When stages overlap, the budget is split "
-            "between them."
+            f"Parallelism budget passed to each stage "
+            f"(default: max(4, cpu_count//2) = {_default_n_jobs}). "
+            "Fragment import and coverage export use this many threads "
+            "(Rust-backed). Peak calling spawns this many MACS3 "
+            "subprocesses (one per group). When --bulk --call-peaks "
+            "enables stage overlap, three stages run as separate "
+            "processes via ProcessPoolExecutor, and the budget is "
+            "split between them (see --sequential)."
         ),
     )
     parser.add_argument(
         "--sequential",
         action="store_true",
-        help="Disable stage overlap; run all stages strictly sequentially",
+        help=(
+            "Disable stage overlap; run all stages strictly sequentially "
+            "in a single process. Each stage gets the full --n-jobs budget."
+        ),
     )
 
     parser.add_argument(
@@ -642,21 +658,22 @@ def main() -> None:
     _export_coverage(snap_h5ad, args.groupby, selections, args, normalization, out_dir)
 
     # --- Parallel stage overlap ---
-    # Uses ProcessPoolExecutor so each worker gets its own process and
-    # independent HDF5 file descriptor (read-only), avoiding thread-safety
-    # issues.  When --bulk --call-peaks, three tasks run concurrently:
-    #   1. Per-group peak calling (uses n_jobs workers internally via MACS3)
-    #   2. Bulk coverage export (uses n_jobs workers internally)
-    #   3. Bulk peak calling (always 1 MACS3 process — single group)
-    # Bulk peaks is always 1 process regardless of n_jobs, so the remaining
-    # budget is split between per-group peaks and bulk coverage.
+    # Uses ProcessPoolExecutor to run three stages as separate *processes*,
+    # each with an independent HDF5 file descriptor (read-only):
+    #   1. Per-group peak calling — spawns up to `half` MACS3 subprocesses
+    #   2. Bulk coverage export  — uses `half` threads (Rust-backed)
+    #   3. Bulk peak calling     — always 1 MACS3 subprocess (single group)
+    # Bulk peaks is always 1 subprocess regardless of n_jobs, so the
+    # remaining budget is split between per-group peaks and bulk coverage.
     can_overlap = args.bulk and args.call_peaks and not args.sequential
     if can_overlap:
         half = max(1, (args.n_jobs - 1) // 2)
         logger.info(
-            f"Running per-group peaks (n_jobs={half}), bulk coverage "
-            f"(n_jobs={half}), and bulk peaks (n_jobs=1) in parallel "
-            f"(total budget: {args.n_jobs})..."
+            f"Running 3 stages as separate processes: "
+            f"per-group peaks ({half} MACS3 subprocesses), "
+            f"bulk coverage ({half} threads), "
+            f"bulk peaks (1 MACS3 subprocess) "
+            f"[budget: {args.n_jobs}]..."
         )
         with ProcessPoolExecutor(max_workers=3) as pool:
             futures = {
