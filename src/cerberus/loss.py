@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from cerberus.output import ProfileCountOutput, ProfileLogRates
+from cerberus.config import import_class
+from cerberus.output import FactorizedProfileCountOutput, ProfileCountOutput, ProfileLogRates
 
 class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     """
@@ -417,3 +418,86 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
         loss_shape = self._compute_profile_loss(logits, targets)
 
         return self.count_weight * loss_count + self.profile_weight * loss_shape
+
+
+class DalmatianLoss(nn.Module):
+    """Peak-conditioned factorized loss for the Dalmatian architecture.
+
+    Three loss terms:
+      1. L_recon: Combined reconstruction loss on all examples (profile + count).
+      2. L_bias: Bias-only reconstruction loss on non-peak (background) examples.
+      3. L_signal_bg: Signal suppression penalty on non-peak examples --
+         L1 on signal logits and log_counts, pushing them toward zero
+         (the identity elements for logit addition and logsumexp).
+
+    The base loss (e.g. MSEMultinomialLoss) is instantiated internally from
+    ``base_loss_cls`` / ``base_loss_args``, enabling nested config via YAML.
+
+    Args:
+        base_loss_cls: Fully qualified class name for the base loss
+            (e.g. ``"cerberus.loss.MSEMultinomialLoss"``).
+        base_loss_args: Keyword arguments forwarded to the base loss constructor.
+        bias_weight: Weight for the bias-only reconstruction term.
+        signal_background_weight: Weight for the signal suppression term on
+            background regions.
+        count_pseudocount: Forwarded into ``base_loss_args`` (via setdefault)
+            so that ``propagate_pseudocount`` works transparently.
+    """
+
+    def __init__(
+        self,
+        base_loss_cls: str,
+        base_loss_args: dict[str, object] | None = None,
+        bias_weight: float = 1.0,
+        signal_background_weight: float = 0.1,
+        count_pseudocount: float = 1.0,
+    ):
+        super().__init__()
+        self.bias_weight = bias_weight
+        self.signal_background_weight = signal_background_weight
+
+        loss_cls = import_class(base_loss_cls)
+        args = dict(base_loss_args or {})
+        args.setdefault("count_pseudocount", count_pseudocount)
+        self.base_loss: nn.Module = loss_cls(**args)
+
+    def forward(
+        self,
+        output: FactorizedProfileCountOutput,
+        target: torch.Tensor,
+        peak_status: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute factorized loss.
+
+        Args:
+            output: Model output with combined and decomposed fields.
+            target: Ground-truth target tensor (B, C, L).
+            peak_status: Per-example indicator -- 1 for peak, 0 for background.
+
+        Returns:
+            Scalar loss tensor.
+        """
+        # 1. Combined reconstruction loss (all examples)
+        combined = ProfileCountOutput(
+            logits=output.logits, log_counts=output.log_counts,
+        )
+        l_recon = self.base_loss(combined, target)
+
+        # 2. Bias-only reconstruction + signal suppression (non-peak examples)
+        non_peak = peak_status == 0
+        l_bias = torch.tensor(0.0, device=target.device)
+        l_signal_bg = torch.tensor(0.0, device=target.device)
+
+        if non_peak.any():
+            bias_out = ProfileCountOutput(
+                logits=output.bias_logits[non_peak],
+                log_counts=output.bias_log_counts[non_peak],
+            )
+            l_bias = self.base_loss(bias_out, target[non_peak])
+
+            l_signal_bg = (
+                output.signal_logits[non_peak].abs().mean()
+                + output.signal_log_counts[non_peak].abs().mean()
+            )
+
+        return l_recon + self.bias_weight * l_bias + self.signal_background_weight * l_signal_bg

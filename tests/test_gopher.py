@@ -111,9 +111,8 @@ def test_gopher_fixed_input_constraint():
     # Should work
     model(torch.randn(2, 4, 2048))
     
-    # Should fail due to Dense layer mismatch
-    # Note: Flatten size will change, Linear layer will complain about input shape
-    with pytest.raises(RuntimeError):
+    # Should fail due to input being shorter than required input_len
+    with pytest.raises(ValueError, match="shorter than required"):
         model(torch.randn(2, 4, 1024))
 
 def test_reshape_layer():

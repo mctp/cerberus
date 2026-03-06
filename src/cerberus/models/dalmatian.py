@@ -6,7 +6,7 @@ Composes two Pomeranian sub-networks:
 - SignalNet: large, full receptive field (~1089bp) -- learns regulatory grammar
 
 Their outputs are combined (profile addition in logit space, count
-addition in log space via logsumexp) and returned as DalmatianOutput.
+addition in log space via logsumexp) and returned as FactorizedProfileCountOutput.
 """
 
 import logging
@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 
 from cerberus.models.pomeranian import Pomeranian
-from cerberus.output import DalmatianOutput
+from cerberus.output import FactorizedProfileCountOutput
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +208,7 @@ class Dalmatian(nn.Module):
         nn.init.zeros_(final_linear.weight)
         nn.init.constant_(final_linear.bias, -10.0)
 
-    def forward(self, x: torch.Tensor) -> DalmatianOutput:
+    def forward(self, x: torch.Tensor) -> FactorizedProfileCountOutput:
         # Both sub-models center-crop to their own input_len automatically
         bias_out = self.bias_model(x)
         signal_out = self.signal_model(x)
@@ -219,7 +219,7 @@ class Dalmatian(nn.Module):
             dim=-1,
         )
 
-        return DalmatianOutput(
+        return FactorizedProfileCountOutput(
             logits=combined_logits,
             log_counts=combined_log_counts,
             bias_logits=bias_out.logits,

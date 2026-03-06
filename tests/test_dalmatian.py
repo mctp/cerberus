@@ -1,15 +1,16 @@
 """Tests for the Dalmatian architecture (end-to-end bias-factorized model)."""
 
 import torch
-from cerberus.output import DalmatianOutput, ProfileCountOutput, unbatch_modeloutput, compute_total_log_counts
+from cerberus.output import FactorizedProfileCountOutput, ProfileCountOutput, unbatch_modeloutput, compute_total_log_counts
+from cerberus.loss import DalmatianLoss
 from cerberus.models.dalmatian import Dalmatian
 
 
-# --- Step 1: DalmatianOutput tests ---
+# --- Step 1: FactorizedProfileCountOutput tests ---
 
 def test_dalmatian_output_is_profile_count_output():
-    """DalmatianOutput must be isinstance of ProfileCountOutput."""
-    out = DalmatianOutput(
+    """FactorizedProfileCountOutput must be isinstance of ProfileCountOutput."""
+    out = FactorizedProfileCountOutput(
         logits=torch.randn(2, 1, 100),
         log_counts=torch.randn(2, 1),
         bias_logits=torch.randn(2, 1, 100),
@@ -21,8 +22,8 @@ def test_dalmatian_output_is_profile_count_output():
 
 
 def test_dalmatian_output_detach():
-    """detach() returns new DalmatianOutput instance with all tensors detached."""
-    out = DalmatianOutput(
+    """detach() returns new FactorizedProfileCountOutput instance with all tensors detached."""
+    out = FactorizedProfileCountOutput(
         logits=torch.randn(2, 1, 100, requires_grad=True),
         log_counts=torch.randn(2, 1, requires_grad=True),
         bias_logits=torch.randn(2, 1, 100, requires_grad=True),
@@ -31,7 +32,7 @@ def test_dalmatian_output_detach():
         signal_log_counts=torch.randn(2, 1, requires_grad=True),
     )
     det = out.detach()
-    assert isinstance(det, DalmatianOutput)
+    assert isinstance(det, FactorizedProfileCountOutput)
     assert not det.logits.requires_grad
     assert not det.log_counts.requires_grad
     assert not det.bias_logits.requires_grad
@@ -41,8 +42,8 @@ def test_dalmatian_output_detach():
 
 
 def test_dalmatian_output_unbatch():
-    """unbatch_modeloutput works with DalmatianOutput (all tensor fields split)."""
-    out = DalmatianOutput(
+    """unbatch_modeloutput works with FactorizedProfileCountOutput (all tensor fields split)."""
+    out = FactorizedProfileCountOutput(
         logits=torch.randn(4, 1, 100),
         log_counts=torch.randn(4, 1),
         bias_logits=torch.randn(4, 1, 100),
@@ -63,8 +64,8 @@ def test_dalmatian_output_unbatch():
 
 
 def test_dalmatian_output_compute_total_log_counts():
-    """compute_total_log_counts sees combined log_counts from DalmatianOutput."""
-    out = DalmatianOutput(
+    """compute_total_log_counts sees combined log_counts from FactorizedProfileCountOutput."""
+    out = FactorizedProfileCountOutput(
         logits=torch.randn(2, 1, 100),
         log_counts=torch.tensor([[3.0], [4.0]]),
         bias_logits=torch.randn(2, 1, 100),
@@ -80,11 +81,11 @@ def test_dalmatian_output_compute_total_log_counts():
 # --- Step 2: Dalmatian model tests ---
 
 def test_dalmatian_forward_shape():
-    """Forward produces DalmatianOutput with correct shapes."""
+    """Forward produces FactorizedProfileCountOutput with correct shapes."""
     model = Dalmatian(input_len=2112, output_len=1024)
     x = torch.randn(2, 4, 2112)
     out = model(x)
-    assert isinstance(out, DalmatianOutput)
+    assert isinstance(out, FactorizedProfileCountOutput)
     assert out.logits.shape == (2, 1, 1024)
     assert out.log_counts.shape == (2, 1)
     assert out.bias_logits.shape == (2, 1, 1024)
@@ -163,3 +164,142 @@ def test_dalmatian_shrinkage_validation():
             input_len=2112, output_len=1024,
             signal_dilations=[1, 1, 2, 4],  # too little shrinkage
         )
+
+
+# --- Step 3: DalmatianLoss tests ---
+
+
+def _make_factorized_output(batch_size=4, channels=1, length=100):
+    """Helper to create a FactorizedProfileCountOutput for loss tests."""
+    return FactorizedProfileCountOutput(
+        logits=torch.randn(batch_size, channels, length, requires_grad=True),
+        log_counts=torch.randn(batch_size, channels, requires_grad=True),
+        bias_logits=torch.randn(batch_size, channels, length, requires_grad=True),
+        bias_log_counts=torch.randn(batch_size, channels, requires_grad=True),
+        signal_logits=torch.randn(batch_size, channels, length, requires_grad=True),
+        signal_log_counts=torch.randn(batch_size, channels, requires_grad=True),
+    )
+
+
+def test_dalmatian_loss_instantiation():
+    """DalmatianLoss instantiates with nested base loss from class string."""
+    loss = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        base_loss_args={"count_weight": 1.0, "profile_weight": 1.0},
+    )
+    from cerberus.loss import MSEMultinomialLoss
+    assert isinstance(loss.base_loss, MSEMultinomialLoss)
+
+
+def test_dalmatian_loss_forward_mixed_batch():
+    """Loss computes all three terms with mixed peak/background batch."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        bias_weight=1.0,
+        signal_background_weight=0.1,
+    )
+    output = _make_factorized_output(batch_size=4)
+    target = torch.rand(4, 1, 100).abs() + 0.1
+    peak_status = torch.tensor([1, 0, 1, 0])
+
+    loss = loss_fn(output, target, peak_status)
+    assert loss.shape == ()
+    assert loss.requires_grad
+
+
+def test_dalmatian_loss_all_peaks():
+    """When all examples are peaks, bias and signal_bg terms are zero."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        bias_weight=1.0,
+        signal_background_weight=0.1,
+    )
+    output = _make_factorized_output(batch_size=4)
+    target = torch.rand(4, 1, 100).abs() + 0.1
+    peak_status = torch.ones(4, dtype=torch.long)
+
+    loss_all_peak = loss_fn(output, target, peak_status)
+
+    # Compare with just reconstruction loss
+    recon_only = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        bias_weight=0.0,
+        signal_background_weight=0.0,
+    )
+    loss_recon = recon_only(output, target, peak_status)
+    assert torch.allclose(loss_all_peak, loss_recon)
+
+
+def test_dalmatian_loss_all_background():
+    """When all examples are background, all three terms contribute."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        bias_weight=1.0,
+        signal_background_weight=0.1,
+    )
+    output = _make_factorized_output(batch_size=4)
+    target = torch.rand(4, 1, 100).abs() + 0.1
+    peak_status = torch.zeros(4, dtype=torch.long)
+
+    loss = loss_fn(output, target, peak_status)
+    assert loss.shape == ()
+    assert loss.requires_grad
+
+
+def test_dalmatian_loss_backward():
+    """Gradients flow through all decomposed fields."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        bias_weight=1.0,
+        signal_background_weight=0.1,
+    )
+    output = _make_factorized_output(batch_size=4)
+    target = torch.rand(4, 1, 100).abs() + 0.1
+    peak_status = torch.tensor([1, 0, 1, 0])
+
+    loss = loss_fn(output, target, peak_status)
+    loss.backward()
+
+    # Combined fields get gradients from l_recon
+    assert output.logits.grad is not None
+    assert output.log_counts.grad is not None
+    # Bias fields get gradients from l_bias (non-peak examples exist)
+    assert output.bias_logits.grad is not None
+    assert output.bias_log_counts.grad is not None
+    # Signal fields get gradients from l_signal_bg
+    assert output.signal_logits.grad is not None
+    assert output.signal_log_counts.grad is not None
+
+
+def test_dalmatian_loss_pseudocount_forwarding():
+    """count_pseudocount is forwarded to the base loss."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        count_pseudocount=5.0,
+    )
+    assert loss_fn.base_loss.count_pseudocount == 5.0  # type: ignore[union-attr]
+
+
+def test_dalmatian_loss_pseudocount_base_args_override():
+    """Explicit base_loss_args.count_pseudocount overrides top-level."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        base_loss_args={"count_pseudocount": 3.0},
+        count_pseudocount=5.0,
+    )
+    # base_loss_args takes precedence (setdefault doesn't overwrite)
+    assert loss_fn.base_loss.count_pseudocount == 3.0  # type: ignore[union-attr]
+
+
+def test_dalmatian_loss_with_poisson_base():
+    """DalmatianLoss works with PoissonMultinomialLoss as base."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.PoissonMultinomialLoss",
+    )
+    output = _make_factorized_output(batch_size=4)
+    target = torch.rand(4, 1, 100).abs() + 0.1
+    peak_status = torch.tensor([1, 0, 1, 0])
+
+    loss = loss_fn(output, target, peak_status)
+    assert loss.shape == ()
+    assert loss.requires_grad

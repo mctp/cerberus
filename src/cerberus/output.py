@@ -52,7 +52,7 @@ class ProfileCountOutput(ProfileLogits):
         )
 
 @dataclass
-class DalmatianOutput(ProfileCountOutput):
+class FactorizedProfileCountOutput(ProfileCountOutput):
     """Combined output with decomposed sub-model outputs for the Dalmatian model.
 
     Inherits combined logits and log_counts from ProfileCountOutput.
@@ -65,7 +65,7 @@ class DalmatianOutput(ProfileCountOutput):
     signal_log_counts: torch.Tensor # (B, C)   -- signal model log counts
 
     def detach(self):
-        return DalmatianOutput(
+        return FactorizedProfileCountOutput(
             logits=self.logits.detach(),
             log_counts=self.log_counts.detach(),
             bias_logits=self.bias_logits.detach(),
