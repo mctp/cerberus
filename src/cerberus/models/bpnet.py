@@ -155,15 +155,24 @@ class BPNet(nn.Module):
     def forward(self, x) -> ProfileCountOutput:
         """
         Forward pass.
-        
+
         Args:
             x (Tensor): Input sequence (Batch, Channels, Input_Len)
-            
+
         Returns:
             ProfileCountOutput: Contains profile_logits and log_counts.
                 logits: (Batch, Out_Channels, Out_Len)
                 log_counts: (Batch, Out_Channels) - representing log(total_counts)
         """
+        # Center-crop or reject input based on expected input_len
+        if x.shape[-1] > self.input_len:
+            crop = (x.shape[-1] - self.input_len) // 2
+            x = x[..., crop : crop + self.input_len]
+        elif x.shape[-1] < self.input_len:
+            raise ValueError(
+                f"Input length {x.shape[-1]} is shorter than required {self.input_len}"
+            )
+
         # 1. Initial Conv + Activation
         x = self.iconv_act(self.iconv(x))
         

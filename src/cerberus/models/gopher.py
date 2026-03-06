@@ -71,6 +71,8 @@ class GlobalProfileCNN(nn.Module):
         if output_channels is None:
             output_channels = ["signal"]
 
+        self.input_len = input_len
+
         num_input_channels = len(input_channels)
         num_output_channels = len(output_channels)
         
@@ -164,8 +166,17 @@ class GlobalProfileCNN(nn.Module):
         self.head = nn.Conv1d(256, num_output_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> ProfileLogRates:
+        # Center-crop or reject input based on expected input_len
+        if x.shape[-1] > self.input_len:
+            crop = (x.shape[-1] - self.input_len) // 2
+            x = x[..., crop : crop + self.input_len]
+        elif x.shape[-1] < self.input_len:
+            raise ValueError(
+                f"Input length {x.shape[-1]} is shorter than required {self.input_len}"
+            )
+
         # x: (Batch, Channels, Length)
-        
+
         # Conv Blocks
         x = self.block1(x)
         x = self.block2(x)

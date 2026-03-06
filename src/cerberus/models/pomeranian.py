@@ -169,6 +169,15 @@ class Pomeranian(nn.Module):
         )
 
     def forward(self, x) -> ProfileCountOutput:
+        # Center-crop or reject input based on expected input_len
+        if x.shape[-1] > self.input_len:
+            crop = (x.shape[-1] - self.input_len) // 2
+            x = x[..., crop : crop + self.input_len]
+        elif x.shape[-1] < self.input_len:
+            raise ValueError(
+                f"Input length {x.shape[-1]} is shorter than required {self.input_len}"
+            )
+
         # 1. Stem
         x = self.stem(x)
         
