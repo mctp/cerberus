@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Dalmatian model** (`cerberus.models.Dalmatian`): End-to-end bias-factorized
+  sequence-to-function model for ATAC-seq. Composes two Pomeranian sub-networks
+  (BiasNet ~147bp RF, SignalNet ~1089bp RF) with zero-initialized signal outputs,
+  logit addition for profiles, and logsumexp for counts. Per-channel count
+  prediction by default (ATAC-seq channels are independent samples).
+- **FactorizedProfileCountOutput** (`cerberus.output`): Extends
+  `ProfileCountOutput` with decomposed bias/signal logits and log_counts.
+  Compatible with all existing losses and metrics expecting `ProfileCountOutput`.
+- **DalmatianLoss** (`cerberus.loss`): Peak-conditioned loss wrapping any
+  profile+count base loss. Adds bias-only reconstruction on background regions
+  and L1 signal suppression on non-peak examples. Requires `peak_status` batch
+  context.
+- All loss classes now accept `**kwargs` for batch context forwarding.
+  `CerberusModule._shared_step` passes all non-input/target batch fields as
+  keyword arguments to the loss function.
+- Input length validation (center-crop or `ValueError`) added to all models:
+  Pomeranian, BPNet, ConvNeXtDCNN, GlobalProfileCNN.
+
 ### Changed
 - `tools/scatac_pseudobulk.py`: Default Tn5 shift now converts 10x +4/-5
   fragment coordinates to the newer +4/-4 convention (`--shift-right` default

@@ -1,5 +1,7 @@
 """Tests for the Dalmatian architecture (end-to-end bias-factorized model)."""
 
+import os
+import pytest
 import torch
 from cerberus.output import FactorizedProfileCountOutput, ProfileCountOutput, unbatch_modeloutput, compute_total_log_counts
 from cerberus.loss import DalmatianLoss
@@ -158,7 +160,6 @@ def test_dalmatian_bias_input_crop():
 
 def test_dalmatian_shrinkage_validation():
     """Dalmatian rejects signal configs that don't produce exact output_len."""
-    import pytest
     with pytest.raises(ValueError, match="SignalNet shrinkage"):
         Dalmatian(
             input_len=2112, output_len=1024,
@@ -341,7 +342,6 @@ def test_dalmatian_loss_receives_peak_status_via_kwargs():
 
 def test_dalmatian_loss_missing_peak_status_raises():
     """DalmatianLoss raises KeyError when peak_status is missing from kwargs."""
-    import pytest
     loss_fn = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
     )
@@ -508,3 +508,73 @@ def test_dalmatian_state_dict_roundtrip(tmp_path):
     ):
         assert n1 == n2
         assert torch.equal(p1, p2), f"Parameter {n1} mismatch after load"
+
+
+# --- Step 7: End-to-end optimization test ---
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_SLOW_TESTS") is None,
+    reason="Skipping slow tests (RUN_SLOW_TESTS not set)",
+)
+def test_dalmatian_optimization_reduces_loss():
+    """Train Dalmatian for a few steps and verify loss decreases and parameters move."""
+    torch.manual_seed(42)
+
+    model = Dalmatian(input_len=2112, output_len=1024)
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        bias_weight=1.0,
+        signal_background_weight=0.1,
+    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    # Fixed synthetic data: 8 examples, alternating peak/background
+    # Use a non-trivial target pattern so there's something to learn
+    torch.manual_seed(0)
+    inputs = torch.randn(8, 4, 2112)
+    # Target: a peaked signal (Gaussian bump) so the model has structure to fit
+    positions = torch.arange(1024).float()
+    bump = torch.exp(-0.5 * ((positions - 512) / 50) ** 2)
+    targets = (bump.unsqueeze(0).unsqueeze(0).expand(8, 1, -1) + 0.1)
+    peak_status = torch.tensor([1, 0, 1, 0, 1, 0, 1, 0])
+
+    # Snapshot initial parameters
+    init_params = {n: p.clone() for n, p in model.named_parameters()}
+
+    # Collect losses over training steps
+    losses = []
+    n_steps = 20
+    for _ in range(n_steps):
+        optimizer.zero_grad()
+        output = model(inputs)
+        loss = loss_fn(output, targets, peak_status=peak_status)
+        loss.backward()
+        optimizer.step()
+        losses.append(loss.item())
+
+    # 1. Loss should decrease: final loss < initial loss
+    assert losses[-1] < losses[0], (
+        f"Loss did not decrease: {losses[0]:.4f} -> {losses[-1]:.4f}"
+    )
+
+    # 2. Both sub-models' parameters should have moved
+    bias_moved = False
+    signal_moved = False
+    for name, param in model.named_parameters():
+        if not torch.equal(param, init_params[name]):
+            if "bias_model" in name:
+                bias_moved = True
+            if "signal_model" in name:
+                signal_moved = True
+    assert bias_moved, "BiasNet parameters did not change during training"
+    assert signal_moved, "SignalNet parameters did not change during training"
+
+    # 3. After training, signal count head should have moved far from -10 init
+    #    (Profile logits stay near zero longer due to two zero-init conv layers
+    #    in series, but the count MLP head moves quickly)
+    with torch.no_grad():
+        out = model(inputs[:2])
+    assert (out.signal_log_counts > -5.0).all(), (
+        f"Signal log_counts still near -10 init: {out.signal_log_counts}"
+    )

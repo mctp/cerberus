@@ -193,6 +193,109 @@ model = ConvNeXtDCNN(
 # Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 512)
 ```
 
+## Dalmatian
+
+**Implementation**: `cerberus.models.Dalmatian`
+**Source**: `src/cerberus/models/dalmatian.py`
+
+An end-to-end bias-factorized sequence-to-function model for ATAC-seq data. Replaces ChromBPNet's two-stage training (freeze bias, then train signal) with joint training of two Pomeranian sub-networks, using architectural constraints and a peak-conditioned loss to separate Tn5 enzyme bias from regulatory signal.
+
+The name "Dalmatian" follows the dog-breed naming convention (BPNet, Pomeranian) and alludes to the two-component spotted pattern.
+
+### Architecture
+
+Dalmatian composes two Pomeranian sub-networks:
+
+- **BiasNet** (~72K params): Small receptive field (~147bp) to capture local Tn5 sequence bias. Uses 64 filters, 4 dilated layers `[1,2,4,8]`, kernel size 9, stem kernel 11, profile kernel 17.
+- **SignalNet** (~2-3M params): Full receptive field (~1089bp) to capture regulatory grammar (TF footprints, nucleosome positioning). Uses 256 filters, 8 dilated layers `[1,1,2,4,8,16,32,64]`, kernel size 9, two-layer stem `[11,11]`, profile kernel 45.
+
+Their outputs are combined:
+- **Profile**: logit addition (`combined_logits = bias_logits + signal_logits`)
+- **Counts**: log-space addition via logsumexp (`combined_log_counts = logsumexp(bias_log_counts, signal_log_counts)`)
+
+### Key Features
+*   **Zero-initialized signal outputs**: At initialization, signal outputs are identity elements (logits=0, log_counts=-10), so the combined output equals the bias-only output. This ensures stable early training.
+*   **Per-channel counts**: Both sub-models use `predict_total_count=False` because ATAC-seq channels represent independent samples (not forward/reverse strands).
+*   **Clean geometry**: SignalNet shrinkage exactly maps `input_len` to `output_len` with no excess cropping. BiasNet receives a center-cropped input sized to its own receptive field needs.
+*   **Input validation**: Rejects configurations where SignalNet shrinkage doesn't produce the exact `output_len`.
+
+### Output: FactorizedProfileCountOutput
+
+Returns a `FactorizedProfileCountOutput` (extends `ProfileCountOutput`) containing both the combined predictions and the decomposed bias/signal components:
+
+```python
+@dataclass
+class FactorizedProfileCountOutput(ProfileCountOutput):
+    bias_logits: torch.Tensor       # (B, C, L)
+    bias_log_counts: torch.Tensor   # (B, C)
+    signal_logits: torch.Tensor     # (B, C, L)
+    signal_log_counts: torch.Tensor # (B, C)
+```
+
+This is fully compatible with existing losses and metrics that expect `ProfileCountOutput` (they see `logits` and `log_counts`), while the decomposed fields enable the peak-conditioned `DalmatianLoss`.
+
+### Loss: DalmatianLoss
+
+`DalmatianLoss` wraps any profile+count base loss (e.g., `MSEMultinomialLoss`) and adds peak-conditioned terms:
+
+```
+L = L_recon(combined, target)                          # all examples
+  + bias_weight * L_bias(bias_only, target)            # background only
+  + signal_background_weight * L_signal_bg(signal)     # background only
+```
+
+- **L_recon**: Standard reconstruction loss on the combined output (all examples).
+- **L_bias**: Reconstruction loss using only the bias component (background/non-peak examples only). Forces the bias model to explain background signal on its own.
+- **L_signal_bg**: L1 penalty on signal logits and counts in background regions. Suppresses the signal model from learning in non-peak regions.
+- **`peak_status`**: A per-example binary tensor passed as batch context via `**kwargs`. The `CerberusModule._shared_step` automatically forwards all non-input/target batch fields as keyword arguments.
+
+```python
+model_config = {
+    "name": "Dalmatian",
+    "model_cls": "cerberus.models.dalmatian.Dalmatian",
+    "loss_cls": "cerberus.loss.DalmatianLoss",
+    "loss_args": {
+        "base_loss_cls": "cerberus.loss.MSEMultinomialLoss",
+        "base_loss_args": {"count_per_channel": True},
+        "bias_weight": 1.0,
+        "signal_background_weight": 0.1,
+    },
+    "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
+    "metrics_args": {},
+    "model_args": {
+        "input_len": 2112,
+        "output_len": 1024,
+        "output_channels": ["sample1"],
+    },
+}
+```
+
+### Usage
+```python
+from cerberus.models import Dalmatian
+from cerberus.loss import DalmatianLoss
+
+# Default: 2112bp -> 1024bp
+model = Dalmatian(
+    input_len=2112,
+    output_len=1024,
+    input_channels=["A", "C", "G", "T"],
+    output_channels=["sample1"],
+)
+
+loss = DalmatianLoss(
+    base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+    bias_weight=1.0,
+    signal_background_weight=0.1,
+)
+
+# Returns FactorizedProfileCountOutput with combined + decomposed fields
+out = model(torch.randn(2, 4, 2112))
+# out.logits, out.log_counts       -- combined
+# out.bias_logits, out.bias_log_counts    -- bias component
+# out.signal_logits, out.signal_log_counts -- signal component
+```
+
 ## GlobalProfileCNN (Gopher)
 
 **Implementation**: `cerberus.models.GlobalProfileCNN`
