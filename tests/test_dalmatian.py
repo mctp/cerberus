@@ -202,7 +202,7 @@ def test_dalmatian_loss_forward_mixed_batch():
     target = torch.rand(4, 1, 100).abs() + 0.1
     peak_status = torch.tensor([1, 0, 1, 0])
 
-    loss = loss_fn(output, target, peak_status)
+    loss = loss_fn(output, target, peak_status=peak_status)
     assert loss.shape == ()
     assert loss.requires_grad
 
@@ -218,7 +218,7 @@ def test_dalmatian_loss_all_peaks():
     target = torch.rand(4, 1, 100).abs() + 0.1
     peak_status = torch.ones(4, dtype=torch.long)
 
-    loss_all_peak = loss_fn(output, target, peak_status)
+    loss_all_peak = loss_fn(output, target, peak_status=peak_status)
 
     # Compare with just reconstruction loss
     recon_only = DalmatianLoss(
@@ -226,7 +226,7 @@ def test_dalmatian_loss_all_peaks():
         bias_weight=0.0,
         signal_background_weight=0.0,
     )
-    loss_recon = recon_only(output, target, peak_status)
+    loss_recon = recon_only(output, target, peak_status=peak_status)
     assert torch.allclose(loss_all_peak, loss_recon)
 
 
@@ -241,7 +241,7 @@ def test_dalmatian_loss_all_background():
     target = torch.rand(4, 1, 100).abs() + 0.1
     peak_status = torch.zeros(4, dtype=torch.long)
 
-    loss = loss_fn(output, target, peak_status)
+    loss = loss_fn(output, target, peak_status=peak_status)
     assert loss.shape == ()
     assert loss.requires_grad
 
@@ -257,7 +257,7 @@ def test_dalmatian_loss_backward():
     target = torch.rand(4, 1, 100).abs() + 0.1
     peak_status = torch.tensor([1, 0, 1, 0])
 
-    loss = loss_fn(output, target, peak_status)
+    loss = loss_fn(output, target, peak_status=peak_status)
     loss.backward()
 
     # Combined fields get gradients from l_recon
@@ -300,6 +300,53 @@ def test_dalmatian_loss_with_poisson_base():
     target = torch.rand(4, 1, 100).abs() + 0.1
     peak_status = torch.tensor([1, 0, 1, 0])
 
-    loss = loss_fn(output, target, peak_status)
+    loss = loss_fn(output, target, peak_status=peak_status)
     assert loss.shape == ()
     assert loss.requires_grad
+
+
+# --- Step 4: Loss **kwargs API regression tests ---
+
+
+def test_existing_losses_accept_kwargs():
+    """All existing losses silently ignore extra kwargs (batch context)."""
+    from cerberus.loss import MSEMultinomialLoss, PoissonMultinomialLoss
+
+    output = ProfileCountOutput(
+        logits=torch.randn(2, 1, 100),
+        log_counts=torch.randn(2, 1),
+    )
+    target = torch.rand(2, 1, 100).abs() + 0.1
+    extra = {"peak_status": torch.tensor([1, 0]), "some_other_key": 42}
+
+    for loss_cls in [MSEMultinomialLoss, PoissonMultinomialLoss]:
+        loss_fn = loss_cls()
+        loss = loss_fn(output, target, **extra)
+        assert loss.shape == ()
+
+
+def test_dalmatian_loss_receives_peak_status_via_kwargs():
+    """DalmatianLoss extracts peak_status from kwargs (as module.py passes it)."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+    )
+    output = _make_factorized_output(batch_size=4)
+    target = torch.rand(4, 1, 100).abs() + 0.1
+
+    # Simulate what _shared_step does: batch_context = {k: v for k != inputs/targets}
+    batch_context = {"peak_status": torch.tensor([1, 0, 1, 0])}
+    loss = loss_fn(output, target, **batch_context)
+    assert loss.shape == ()
+
+
+def test_dalmatian_loss_missing_peak_status_raises():
+    """DalmatianLoss raises KeyError when peak_status is missing from kwargs."""
+    import pytest
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+    )
+    output = _make_factorized_output(batch_size=4)
+    target = torch.rand(4, 1, 100).abs() + 0.1
+
+    with pytest.raises(KeyError):
+        loss_fn(output, target)

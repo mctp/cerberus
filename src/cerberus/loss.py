@@ -23,9 +23,9 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
         # count_pseudocount is accepted for compatibility with propagate_pseudocount
         # but not used (PoissonNLLLoss handles count loss directly).
 
-    def forward(self, log_input, target):
+    def forward(self, log_input, target, **kwargs):
         target = target.float()
-        
+
         if not isinstance(log_input, ProfileLogRates):
              raise TypeError("ProfilePoissonNLLLoss requires ProfileLogRates")
 
@@ -117,9 +117,9 @@ class MSEMultinomialLoss(nn.Module):
             else:
                 return profile_loss_per_channel.sum(dim=-1).mean()
 
-    def forward(self, outputs, targets):
+    def forward(self, outputs, targets, **kwargs):
         targets = targets.float()
-        
+
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
 
@@ -160,9 +160,9 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
     (interpreting inputs as log-intensities) over all channels and bins.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with MSEMultinomialLoss).
     """
-    def forward(self, outputs, targets):
+    def forward(self, outputs, targets, **kwargs):
         targets = targets.float()
-        
+
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
 
@@ -250,9 +250,9 @@ class PoissonMultinomialLoss(nn.Module):
                  loss_shape = loss_shape_per_channel.sum(dim=-1).mean()
          return loss_shape
 
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, **kwargs):
         targets = targets.float()
-        
+
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
 
@@ -290,9 +290,9 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp of logits over all channels.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
     """
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, **kwargs):
         targets = targets.float()
-        
+
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
 
@@ -340,9 +340,9 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
         super().__init__(**kwargs)
         self.total_count = float(total_count)
         
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, **kwargs):
         targets = targets.float()
-        
+
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
 
@@ -383,9 +383,9 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
     Negative Binomial Multinomial Loss (Coupled).
     Mathematically equivalent to NegativeBinomialMultinomialLoss but derives counts from log_rates.
     """
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, **kwargs):
         targets = targets.float()
-        
+
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
 
@@ -465,18 +465,22 @@ class DalmatianLoss(nn.Module):
         self,
         output: FactorizedProfileCountOutput,
         target: torch.Tensor,
-        peak_status: torch.Tensor,
+        **kwargs: object,
     ) -> torch.Tensor:
         """Compute factorized loss.
 
         Args:
             output: Model output with combined and decomposed fields.
             target: Ground-truth target tensor (B, C, L).
-            peak_status: Per-example indicator -- 1 for peak, 0 for background.
+            **kwargs: Batch context. Must contain ``peak_status`` (B,) tensor
+                with 1 for peak and 0 for background examples.
 
         Returns:
             Scalar loss tensor.
         """
+        peak_status = kwargs["peak_status"]
+        assert isinstance(peak_status, torch.Tensor)
+
         # 1. Combined reconstruction loss (all examples)
         combined = ProfileCountOutput(
             logits=output.logits, log_counts=output.log_counts,

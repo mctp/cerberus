@@ -142,8 +142,9 @@ class CerberusModule(pl.LightningModule):
         # Forward pass
         outputs = self.model(inputs)
 
-        # Calculate loss
-        loss = self.criterion(outputs, targets)
+        # Calculate loss (extra batch context passed as kwargs for losses that need it)
+        batch_context = {k: v for k, v in batch.items() if k not in ("inputs", "targets")}
+        loss = self.criterion(outputs, targets, **batch_context)
         
         # Logging
         batch_size = inputs.shape[0]
