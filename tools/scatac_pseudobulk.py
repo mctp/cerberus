@@ -4,6 +4,19 @@
 Uses SnapATAC2's Rust-backed fragment importer, coverage exporter, and MACS3
 peak caller for fast pseudobulk BigWig generation and peak calling.
 
+Tn5 shift correction
+---------------------
+Tn5 transposase creates a 9 bp staggered double-strand cut. Standard 10x
+pipelines (Cell Ranger ATAC, cellranger-arc) already shift fragment
+coordinates by +4 bp (left/start) and -5 bp (right/end) in the output
+fragments.tsv.gz, placing each cut site at the center of the 9 bp overhang.
+
+Recent work (Mao et al. 2024, PRINT) shows that a symmetric +4/-4 shift
+better models Tn5 sequence bias. By default, this tool applies an additional
++1 bp shift to the right end (--shift-right=1), converting from the 10x
++4/-5 convention to the +4/-4 convention. Use --no-shift to keep the
+original 10x coordinates.
+
 Output layout (all files in output_dir/):
     cell_type_A.bw
     cell_type_A.narrowPeak.bed.gz
@@ -19,6 +32,11 @@ Usage:
     python tools/scatac_pseudobulk.py \\
         fragments.tsv.bgz gene_activity.h5ad output_dir/ \\
         --genome hg38 --groupby cell_type --call-peaks --bulk
+
+    # Keep original 10x +4/-5 coordinates (no additional correction):
+    python tools/scatac_pseudobulk.py \\
+        fragments.tsv.bgz gene_activity.h5ad output_dir/ \\
+        --genome hg38 --groupby cell_type --no-shift
 """
 
 import argparse
@@ -423,18 +441,56 @@ def main() -> None:
         help="Minimum number of fragments per cell to keep (default: 200)",
     )
 
-    # Tn5 shift
-    parser.add_argument(
+    # Tn5 shift correction
+    #
+    # Background: Tn5 transposase creates a 9 bp staggered cut. Standard
+    # pipelines (Cell Ranger ATAC, cellranger-arc) already apply a +4/-5 bp
+    # shift to fragment coordinates in their fragments.tsv.gz output, placing
+    # each end at the center of the 9 bp overhang.
+    #
+    # However, recent work (e.g. Mao et al. 2024, PRINT) shows that a +4/-4
+    # shift better models Tn5 sequence bias symmetry. Since 10x fragments are
+    # pre-shifted by +4/-5, the default shift_right=+1 here converts them to
+    # the +4/-4 convention (+4/-5 +1 = +4/-4).
+    #
+    # Use --no-shift (sets both to 0) to skip any additional correction and
+    # keep the original +4/-5 coordinates from 10x pipelines.
+    tn5_group = parser.add_argument_group(
+        "Tn5 shift correction",
+        description=(
+            "Adjust fragment coordinates for Tn5 insertion bias. "
+            "10x Cell Ranger fragments are pre-shifted +4/-5. The defaults "
+            "convert to the newer +4/-4 convention (shift_right=+1). "
+            "Use --no-shift to keep the original 10x +4/-5 coordinates."
+        ),
+    )
+    tn5_group.add_argument(
         "--shift-left",
         type=int,
         default=0,
-        help="Shift left end of fragments by this many bp (default: 0)",
+        help=(
+            "Additional bp shift for the left (start) end of each fragment. "
+            "Positive values shift right (downstream). (default: 0, i.e. "
+            "keep the +4 already applied by 10x pipelines)"
+        ),
     )
-    parser.add_argument(
+    tn5_group.add_argument(
         "--shift-right",
         type=int,
-        default=0,
-        help="Shift right end of fragments by this many bp (default: 0)",
+        default=1,
+        help=(
+            "Additional bp shift for the right (end) end of each fragment. "
+            "Positive values shift right (downstream). Default +1 converts "
+            "10x's +4/-5 to the +4/-4 convention. (default: 1)"
+        ),
+    )
+    tn5_group.add_argument(
+        "--no-shift",
+        action="store_true",
+        help=(
+            "Disable Tn5 shift correction (equivalent to --shift-left 0 "
+            "--shift-right 0). Keeps original fragment coordinates as-is."
+        ),
     )
 
     # Peak calling
@@ -485,10 +541,24 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    # --no-shift overrides both shift values to 0
+    if args.no_shift:
+        args.shift_left = 0
+        args.shift_right = 0
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+
+    # Log Tn5 shift settings
+    if args.shift_left == 0 and args.shift_right == 0:
+        logger.info("Tn5 shift: none (keeping original fragment coordinates)")
+    else:
+        logger.info(
+            f"Tn5 shift: left={args.shift_left:+d}, right={args.shift_right:+d} "
+            f"(applied on top of any pre-existing shift in the fragment file)"
+        )
 
     # Resolve genome / chrom sizes
     if args.genome:

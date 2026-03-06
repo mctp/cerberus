@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `tools/scatac_pseudobulk.py`: Default Tn5 shift now converts 10x +4/-5
+  fragment coordinates to the newer +4/-4 convention (`--shift-right` default
+  changed from 0 to 1). This better models Tn5 sequence bias symmetry per
+  Mao et al. 2024. Added `--no-shift` flag to keep original 10x coordinates.
+  Added Tn5 shift argument group with detailed help text.
+
 ### Added
 - `kidney_scatac` dataset in `download_dataset()`: human kidney 10x scATAC-seq
   from CellxGene (27,034 cells, 14 cell types, 5 donors, GRCh38). Downloads
