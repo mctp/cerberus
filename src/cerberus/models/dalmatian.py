@@ -161,6 +161,7 @@ class Dalmatian(nn.Module):
             expansion=bias_expansion,
             stem_expansion=bias_stem_expansion,
             dropout=bias_dropout,
+            predict_total_count=False,
         )
 
         self.signal_model = Pomeranian(
@@ -178,6 +179,7 @@ class Dalmatian(nn.Module):
             expansion=signal_expansion,
             stem_expansion=signal_stem_expansion,
             dropout=signal_dropout,
+            predict_total_count=False,
         )
 
         self._zero_init_signal_outputs()

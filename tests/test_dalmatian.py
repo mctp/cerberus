@@ -350,3 +350,161 @@ def test_dalmatian_loss_missing_peak_status_raises():
 
     with pytest.raises(KeyError):
         loss_fn(output, target)
+
+
+# --- Step 5: Config / import_class integration tests ---
+
+
+def test_dalmatian_model_via_import_class():
+    """Dalmatian can be instantiated via import_class (config pipeline)."""
+    from cerberus.config import import_class
+    cls = import_class("cerberus.models.dalmatian.Dalmatian")
+    model = cls(input_len=2112, output_len=1024)
+    assert isinstance(model, Dalmatian)
+
+
+def test_dalmatian_loss_via_import_class():
+    """DalmatianLoss can be instantiated via import_class (config pipeline)."""
+    from cerberus.config import import_class
+    cls = import_class("cerberus.loss.DalmatianLoss")
+    loss = cls(base_loss_cls="cerberus.loss.MSEMultinomialLoss")
+    assert isinstance(loss, DalmatianLoss)
+
+
+def test_dalmatian_convenience_import():
+    """Dalmatian is importable from cerberus.models shortcut."""
+    from cerberus.models import Dalmatian as D
+    assert D is Dalmatian
+
+
+# --- Step 6: End-to-end integration and additional tests ---
+
+
+def test_dalmatian_cerberus_module_training_step():
+    """Full training step through CerberusModule with Dalmatian + DalmatianLoss."""
+    import warnings
+    import pytorch_lightning as pl
+    from torch.utils.data import DataLoader, Dataset
+    from cerberus.module import CerberusModule
+    from cerberus.config import TrainConfig
+    from cerberus.models.pomeranian import PomeranianMetricCollection
+
+    class DalmatianDataset(Dataset):
+        def __init__(self, n=8):
+            self.n = n
+        def __len__(self):
+            return self.n
+        def __getitem__(self, idx):
+            return {
+                "inputs": torch.randn(4, 2112),
+                "targets": torch.rand(1, 1024).abs() + 0.1,
+                "peak_status": torch.tensor(idx % 2),  # alternating peak/bg
+            }
+
+    model = Dalmatian(input_len=2112, output_len=1024)
+    loss = DalmatianLoss(base_loss_cls="cerberus.loss.MSEMultinomialLoss")
+    metrics = PomeranianMetricCollection()
+
+    train_config: TrainConfig = {
+        "batch_size": 2,
+        "max_epochs": 1,
+        "learning_rate": 1e-3,
+        "weight_decay": 0.0,
+        "optimizer": "adam",
+        "scheduler_type": "default",
+        "filter_bias_and_bn": False,
+        "patience": 5,
+        "scheduler_args": {},
+        "reload_dataloaders_every_n_epochs": 0,
+        "adam_eps": 1e-8,
+        "gradient_clip_val": None,
+    }
+
+    module = CerberusModule(model, loss, metrics, train_config=train_config)
+    dataset = DalmatianDataset(n=8)
+    dataloader = DataLoader(dataset, batch_size=2, num_workers=0)
+
+    trainer = pl.Trainer(
+        max_epochs=1,
+        logger=False,
+        enable_checkpointing=False,
+        enable_model_summary=False,
+        enable_progress_bar=False,
+        accelerator="auto",
+        devices=1,
+        limit_train_batches=2,
+        limit_val_batches=1,
+    )
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", ".*does not have many workers.*")
+        trainer.fit(module, train_dataloaders=dataloader, val_dataloaders=dataloader)
+
+
+def test_pomeranian_metrics_with_factorized_output():
+    """PomeranianMetricCollection works with FactorizedProfileCountOutput."""
+    from cerberus.models.pomeranian import PomeranianMetricCollection
+
+    metrics = PomeranianMetricCollection()
+    output = FactorizedProfileCountOutput(
+        logits=torch.randn(2, 1, 100),
+        log_counts=torch.randn(2, 1),
+        bias_logits=torch.randn(2, 1, 100),
+        bias_log_counts=torch.randn(2, 1),
+        signal_logits=torch.randn(2, 1, 100),
+        signal_log_counts=torch.randn(2, 1),
+    )
+    target = torch.rand(2, 1, 100).abs() + 0.1
+    metrics.update(output, target)
+    result = metrics.compute()
+    assert "pearson" in result
+    assert "mse_log_counts" in result
+
+
+def test_dalmatian_multi_channel():
+    """Dalmatian works with multiple output channels (independent samples)."""
+    model = Dalmatian(
+        input_len=2112, output_len=1024,
+        output_channels=["sample1", "sample2"],
+    )
+    x = torch.randn(2, 4, 2112)
+    out = model(x)
+    # Per-channel counts (predict_total_count=False): log_counts is (B, C)
+    assert out.logits.shape == (2, 2, 1024)
+    assert out.log_counts.shape == (2, 2)
+    assert out.bias_logits.shape == (2, 2, 1024)
+    assert out.bias_log_counts.shape == (2, 2)
+    assert out.signal_logits.shape == (2, 2, 1024)
+    assert out.signal_log_counts.shape == (2, 2)
+
+
+def test_dalmatian_multi_channel_loss():
+    """DalmatianLoss works with multi-channel outputs (per-channel counts)."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        base_loss_args={"count_per_channel": True},
+    )
+    output = _make_factorized_output(batch_size=4, channels=2, length=100)
+    target = torch.rand(4, 2, 100).abs() + 0.1
+    peak_status = torch.tensor([1, 0, 1, 0])
+
+    loss = loss_fn(output, target, peak_status=peak_status)
+    assert loss.shape == ()
+    assert loss.requires_grad
+
+
+def test_dalmatian_state_dict_roundtrip(tmp_path):
+    """Dalmatian state_dict saves and loads correctly."""
+    model = Dalmatian(input_len=2112, output_len=1024)
+    path = tmp_path / "dalmatian.pt"
+    torch.save(model.state_dict(), path)
+
+    model2 = Dalmatian(input_len=2112, output_len=1024)
+    model2.load_state_dict(torch.load(path, weights_only=True))
+
+    # Verify parameters match
+    for (n1, p1), (n2, p2) in zip(
+        model.named_parameters(), model2.named_parameters()
+    ):
+        assert n1 == n2
+        assert torch.equal(p1, p2), f"Parameter {n1} mismatch after load"
