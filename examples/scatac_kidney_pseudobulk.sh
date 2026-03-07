@@ -2,11 +2,11 @@
 # Pseudobulk BigWig and peak calling example for scATAC-seq data.
 #
 # Generates per-cell-type BigWig coverage tracks, MACS3 narrowPeak files,
-# a bulk (all-cells) BigWig + peak set, and a merged peak set from the
+# a bulk (all-cells) BigWig, and a merged peak set from the
 # kidney scATAC-seq dataset (27,034 cells, 14 cell types, hg38).
 #
 # Prerequisites:
-#   - snapatac2, macs3, bgzip, tabix must be installed
+#   - snapatac2, macs3, pysam must be installed
 #   - Dataset is downloaded automatically to DATA_DIR
 #
 # Usage:
@@ -19,7 +19,6 @@ set -euo pipefail
 # --- Variables ---
 DATA_DIR="tests/data"
 OUTPUT_DIR="tests/data/scatac_kidney_pseudobulk"
-N_JOBS=8
 
 # --- Download dataset ---
 python - <<EOF
@@ -39,9 +38,6 @@ python tools/scatac_pseudobulk.py \
     --genome hg38 \
     --groupby cell_type \
     --call-peaks \
-    --bulk \
-    --merge \
     --counting-strategy insertion \
     --normalization raw \
-    --n-jobs "${N_JOBS}" \
     "$@"

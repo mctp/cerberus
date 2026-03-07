@@ -22,16 +22,21 @@ Output layout (all files in output_dir/):
     cell_type_A.narrowPeak.bed.gz
     cell_type_A.narrowPeak.bed.gz.tbi
     ...
-    bulk.bw                         (with --bulk)
-    bulk.narrowPeak.bed.gz          (with --bulk --call-peaks)
-    bulk.narrowPeak.bed.gz.tbi
-    merged.narrowPeak.bed.gz        (with --merge --call-peaks)
-    merged.narrowPeak.bed.gz.tbi
+    bulk.bw
+    bulk_call.narrowPeak.bed.gz     (with --bulk-peaks --call-peaks)
+    bulk_call.narrowPeak.bed.gz.tbi
+    bulk_merge.narrowPeak.bed.gz    (with --call-peaks, disable with --no-merge)
+    bulk_merge.narrowPeak.bed.gz.tbi
 
 Usage:
     python tools/scatac_pseudobulk.py \\
         fragments.tsv.bgz gene_activity.h5ad output_dir/ \\
-        --genome hg38 --groupby cell_type --call-peaks --bulk
+        --genome hg38 --groupby cell_type --call-peaks
+
+    # Re-run from scratch even if outputs already exist:
+    python tools/scatac_pseudobulk.py \\
+        fragments.tsv.bgz gene_activity.h5ad output_dir/ \\
+        --genome hg38 --groupby cell_type --call-peaks --overwrite
 
     # Keep original 10x +4/-5 coordinates (no additional correction):
     python tools/scatac_pseudobulk.py \\
@@ -43,13 +48,21 @@ import argparse
 import gzip
 import logging
 import os
+import shutil
 import statistics
-import subprocess
+import multiprocessing
+import warnings
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Literal
 
+# Disable HDF5 POSIX file locking before any HDF5-backed library is imported.
+# POSIX fcntl locks are unreliable on NFS and cause deadlocks when multiple
+# processes (from ProcessPoolExecutor) open the same .h5ad file concurrently.
+os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
+
 import anndata as ad
+import pysam  # type: ignore
 import snapatac2 as snap  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -65,6 +78,8 @@ GENOME_ALIASES: dict[str, Any] = {
 # Constant column name used for bulk (all-cells) grouping
 _BULK_GROUP_COL = "_bulk_group"
 _BULK_GROUP_VAL = "bulk"
+_BULK_CALL_PREFIX = "bulk_call"
+_BULK_MERGE_PREFIX = "bulk_merge"
 
 
 def load_chrom_sizes(path: Path) -> dict[str, int]:
@@ -87,6 +102,7 @@ def _bgzip_and_tabix(bed_path: Path) -> Path:
     """Sort, bgzip, and tabix-index a BED file. Returns path to .bed.gz.
 
     The original uncompressed BED file is removed after compression.
+    Uses pysam for bgzip/tabix instead of requiring external binaries.
 
     Args:
         bed_path: Path to an uncompressed BED file.
@@ -96,21 +112,44 @@ def _bgzip_and_tabix(bed_path: Path) -> Path:
     """
     gz_path = bed_path.parent / (bed_path.name + ".gz")
 
-    # Sort by chrom, start, end then bgzip
-    subprocess.run(
-        f"sort -k1,1 -k2,2n '{bed_path}' | bgzip -c > '{gz_path}'",
-        shell=True,
-        check=True,
-    )
-    bed_path.unlink()
+    # Sort by chrom, start, end in memory then write sorted file back
+    with open(bed_path) as f:
+        lines = f.readlines()
+    lines.sort(key=lambda line: (line.split("\t")[0], int(line.split("\t")[1])))
+    with open(bed_path, "w") as f:
+        f.writelines(lines)
 
-    # Tabix index
-    subprocess.run(
-        ["tabix", "-p", "bed", str(gz_path)],
-        check=True,
-    )
+    # bgzip and tabix via pysam (no external binaries needed)
+    pysam.tabix_compress(str(bed_path), str(gz_path), force=True)  # type: ignore[attr-defined]
+    bed_path.unlink()
+    pysam.tabix_index(str(gz_path), preset="bed", force=True)  # type: ignore[attr-defined]
+
     logger.info(f"  Indexed: {gz_path}")
     return gz_path
+
+
+def _outputs_exist(paths: list[Path], stage_name: str) -> bool:
+    """Check if all expected output files for a stage already exist and are non-empty.
+
+    Args:
+        paths: Expected output file paths.
+        stage_name: Human-readable stage name for log messages.
+
+    Returns:
+        True if all paths exist and are non-empty (stage can be skipped),
+        False otherwise.
+    """
+    if not paths:
+        return False
+    existing = [p for p in paths if p.exists() and p.stat().st_size > 0]
+    if len(existing) == len(paths):
+        logger.info(
+            f"Skipping {stage_name}: all {len(paths)} output(s) already exist"
+        )
+        for p in existing:
+            logger.info(f"  Found: {p}")
+        return True
+    return False
 
 
 _Normalization = Literal["RPKM", "CPM", "BPM"]
@@ -178,6 +217,7 @@ def _call_peaks(
     args: argparse.Namespace,
     out_dir: Path,
     n_jobs: int | None = None,
+    name_map: dict[str, str] | None = None,
 ) -> None:
     """Call peaks with MACS3 and write bgzipped+tabixed narrowPeak BED files.
 
@@ -198,6 +238,8 @@ def _call_peaks(
         out_dir: Output directory path.
         n_jobs: Number of MACS3 subprocesses and bgzip/tabix threads.
             Defaults to args.n_jobs.
+        name_map: Optional mapping from group name to output file prefix.
+            Groups not in the map keep their original name.
     """
     # Configure logging for spawned processes (no-op if already configured)
     logging.basicConfig(
@@ -221,7 +263,8 @@ def _call_peaks(
     # Write BED files, then bgzip+tabix in parallel
     bed_paths: list[Path] = []
     for group_name, peak_df in sorted(peaks.items()):
-        bed_path = out_dir / f"{group_name}.narrowPeak.bed"
+        file_prefix = (name_map or {}).get(group_name, group_name)
+        bed_path = out_dir / f"{file_prefix}.narrowPeak.bed"
         peak_df.write_csv(str(bed_path), separator="\t", include_header=False)
         logger.info(f"  Peaks: {group_name} ({len(peak_df)} peaks)")
         bed_paths.append(bed_path)
@@ -390,9 +433,9 @@ def main() -> None:
         help="Specific group names to process (default: all groups)",
     )
     parser.add_argument(
-        "--bulk",
+        "--bulk-peaks",
         action="store_true",
-        help="Also generate a bulk BigWig and peak set using all cells",
+        help="Also call bulk peaks using all cells (slow). Bulk BigWig is always exported.",
     )
 
     # Coverage mode
@@ -513,18 +556,19 @@ def main() -> None:
         help="MACS3 q-value cutoff for peak calling (default: 0.05)",
     )
     parser.add_argument(
-        "--merge",
+        "--no-merge",
         action="store_true",
         help=(
-            "Merge all per-group (and bulk, if --bulk) narrowPeak files into "
-            "a single merged.narrowPeak.bed.gz. Overlapping peaks are collapsed "
-            "and the summit is set to the median of constituent summits. "
-            "Requires --call-peaks."
+            "Disable merging of per-group narrowPeak files. By default, when "
+            "--call-peaks is set, all per-group narrowPeak files are merged into "
+            "bulk_merge.narrowPeak.bed.gz. Overlapping peaks are collapsed and "
+            "the summit is set to the median of constituent summits."
         ),
     )
 
     # Parallelism
-    _default_n_jobs = max(4, os.cpu_count() // 2 if os.cpu_count() else 4)
+    _cpu = os.cpu_count() or 8
+    _default_n_jobs = max(4, _cpu // 2)
     parser.add_argument(
         "--n-jobs",
         type=int,
@@ -534,10 +578,10 @@ def main() -> None:
             f"(default: max(4, cpu_count//2) = {_default_n_jobs}). "
             "Fragment import and coverage export use this many threads "
             "(Rust-backed). Peak calling spawns this many MACS3 "
-            "subprocesses (one per group). When --bulk --call-peaks "
-            "enables stage overlap, three stages run as separate "
-            "processes via ProcessPoolExecutor, and the budget is "
-            "split between them (see --sequential)."
+            "subprocesses (one per group). When --bulk-peaks --call-peaks "
+            "enables stage overlap, up to three stages run as separate "
+            "processes via ProcessPoolExecutor, each receiving the full "
+            "budget. Use --sequential to run stages one at a time."
         ),
     )
     parser.add_argument(
@@ -546,6 +590,15 @@ def main() -> None:
         help=(
             "Disable stage overlap; run all stages strictly sequentially "
             "in a single process. Each stage gets the full --n-jobs budget."
+        ),
+    )
+
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Re-run all stages even if output files already exist. "
+            "By default, stages whose outputs are already present are skipped."
         ),
     )
 
@@ -593,24 +646,107 @@ def main() -> None:
     adata_meta.file.close()
     logger.info(f"Loaded {len(meta_barcodes)} barcodes from metadata")
 
-    # Import fragments into a backed AnnData via snapatac2
-    # Use metadata barcodes as whitelist so only relevant cells are imported
-    logger.info(f"Importing fragments from {args.fragments}...")
-    snap_h5ad = args.output_dir / "_snap_fragments.h5ad"
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-
-    data = snap.pp.import_fragments(
-        args.fragments,
-        chrom_sizes=chrom_sizes,
-        file=snap_h5ad,
-        sorted_by_barcode=False,
-        whitelist=meta_barcodes,
-        min_num_fragments=args.min_num_fragments,
-        shift_left=args.shift_left,
-        shift_right=args.shift_right,
-        n_jobs=args.n_jobs,
+    # Resolve normalization (snapatac2 expects None for raw)
+    normalization: _Normalization | None = (
+        None if args.normalization == "raw"
+        else args.normalization  # type: ignore[assignment]  # validated by argparse choices
     )
-    logger.info(f"Imported {data.n_obs} cells from fragment file")
+    out_dir: Path = args.output_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine expected group names from metadata for skip checks.
+    # This is an approximation — actual groups after import may differ
+    # due to min_num_fragments filtering, but it is sufficient to detect
+    # whether a previous run's outputs are present.
+    expected_groups: list[str] = sorted(
+        set(args.groups) if args.groups else set(str(g) for g in barcode_to_group.values())
+    )
+
+    # --- Determine which stages need to run (skip check) ---
+    skip_group_cov = (
+        not args.overwrite
+        and _outputs_exist(
+            [out_dir / f"{g}.bw" for g in expected_groups],
+            "per-group coverage",
+        )
+    )
+    skip_group_peaks = (
+        not args.call_peaks
+        or (
+            not args.overwrite
+            and _outputs_exist(
+                [out_dir / f"{g}.narrowPeak.bed.gz" for g in expected_groups],
+                "per-group peaks",
+            )
+        )
+    )
+    skip_bulk_cov = (
+        not args.overwrite
+        and _outputs_exist(
+            [out_dir / f"{_BULK_GROUP_VAL}.bw"],
+            "bulk coverage",
+        )
+    )
+    skip_bulk_peaks = (
+        not (args.bulk_peaks and args.call_peaks)
+        or (
+            not args.overwrite
+            and _outputs_exist(
+                [out_dir / f"{_BULK_CALL_PREFIX}.narrowPeak.bed.gz"],
+                "bulk peaks",
+            )
+        )
+    )
+    skip_merge = (
+        args.no_merge
+        or not args.call_peaks
+        or (
+            not args.overwrite
+            and _outputs_exist(
+                [out_dir / f"{_BULK_MERGE_PREFIX}.narrowPeak.bed.gz"],
+                "merged peaks",
+            )
+        )
+    )
+
+    all_skipped = (
+        skip_group_cov and skip_group_peaks
+        and skip_bulk_cov and skip_bulk_peaks and skip_merge
+    )
+    if all_skipped:
+        logger.info("All outputs already exist. Nothing to do.")
+        logger.info("All done.")
+        return
+
+    # Import fragments into a backed AnnData via snapatac2
+    # Reuse existing snap h5ad from a previous run if present (unless --overwrite)
+    snap_h5ad = out_dir / "_snap_fragments.h5ad"
+
+    data: Any = None
+    if not args.overwrite and snap_h5ad.exists() and snap_h5ad.stat().st_size > 0:
+        try:
+            data = snap.read(snap_h5ad, backed="r+")
+            logger.info(f"Reusing existing fragment store: {snap_h5ad}")
+        except (Exception, BaseException):
+            logger.warning(
+                f"Existing fragment store is corrupt, re-importing: {snap_h5ad}"
+            )
+            snap_h5ad.unlink(missing_ok=True)
+            data = None
+    if data is None:
+        logger.info(f"Importing fragments from {args.fragments}...")
+        data = snap.pp.import_fragments(
+            args.fragments,
+            chrom_sizes=chrom_sizes,
+            file=snap_h5ad,
+            sorted_by_barcode=False,
+            whitelist=meta_barcodes,
+            min_num_fragments=args.min_num_fragments,
+            shift_left=args.shift_left,
+            shift_right=args.shift_right,
+            n_jobs=args.n_jobs,
+        )
+    logger.info(f"Fragment store has {data.n_obs} cells")
 
     if data.n_obs == 0:
         raise ValueError(
@@ -626,14 +762,18 @@ def main() -> None:
     data.obs[_BULK_GROUP_COL] = [_BULK_GROUP_VAL] * data.n_obs
 
     # Log group sizes (snapatac2 obs uses Polars)
-    group_counts = data.obs[args.groupby].value_counts()
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="_import_from_c", category=DeprecationWarning)
+        group_counts = data.obs[args.groupby].value_counts()
     for row in group_counts.iter_rows():
         logger.info(f"  {row[0]}: {row[1]} cells")
 
     # Filter to requested groups
     selections = None
     if args.groups:
-        available = set(data.obs[args.groupby].unique().to_list())
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="_import_from_c", category=DeprecationWarning)
+            available = set(data.obs[args.groupby].unique().to_list())
         missing = set(args.groups) - available
         if missing:
             raise ValueError(
@@ -641,103 +781,129 @@ def main() -> None:
             )
         selections = args.groups
 
-    # Resolve normalization (snapatac2 expects None for raw)
-    normalization: _Normalization | None = (
-        None if args.normalization == "raw"
-        else args.normalization  # type: ignore[assignment]  # validated by argparse choices
-    )
-    out_dir: Path = args.output_dir
-
     # Close the main handle; all subsequent functions open their own
     # read-only handles, which is safe for concurrent multiprocessing.
     n_obs = data.n_obs
     data.close()
 
-    # --- Per-group BigWig files ---
-    logger.info("Exporting per-group pseudobulk BigWig files...")
-    _export_coverage(snap_h5ad, args.groupby, selections, args, normalization, out_dir)
+    need_group_peaks = not skip_group_peaks
+    need_bulk_cov = not skip_bulk_cov
+    need_bulk_peaks = not skip_bulk_peaks
 
-    # --- Parallel stage overlap ---
-    # Uses ProcessPoolExecutor to run three stages as separate *processes*,
-    # each with an independent HDF5 file descriptor (read-only):
-    #   1. Per-group peak calling — spawns up to `half` MACS3 subprocesses
-    #   2. Bulk coverage export  — uses `half` threads (Rust-backed)
-    #   3. Bulk peak calling     — always 1 MACS3 subprocess (single group)
-    # Bulk peaks is always 1 subprocess regardless of n_jobs, so the
-    # remaining budget is split between per-group peaks and bulk coverage.
-    can_overlap = args.bulk and args.call_peaks and not args.sequential
-    if can_overlap:
-        half = max(1, (args.n_jobs - 1) // 2)
-        logger.info(
-            f"Running 3 stages as separate processes: "
-            f"per-group peaks ({half} MACS3 subprocesses), "
-            f"bulk coverage ({half} threads), "
-            f"bulk peaks (1 MACS3 subprocess) "
-            f"[budget: {args.n_jobs}]..."
-        )
-        with ProcessPoolExecutor(max_workers=3) as pool:
-            futures = {
-                "bulk coverage": pool.submit(
-                    _export_coverage,
-                    snap_h5ad, _BULK_GROUP_COL, None, args, normalization,
-                    out_dir, half,
-                ),
-                "per-group peaks": pool.submit(
-                    _call_peaks,
-                    snap_h5ad, args.groupby, selections, args, out_dir,
-                    half,
-                ),
-                "bulk peaks": pool.submit(
-                    _call_peaks,
-                    snap_h5ad, _BULK_GROUP_COL, None, args, out_dir,
-                    1,
-                ),
-            }
-            # Collect all exceptions instead of failing on the first one
-            errors: dict[str, BaseException] = {}
-            for name, fut in futures.items():
-                try:
-                    fut.result()
-                except Exception as exc:
-                    logger.error(f"  {name} failed: {exc}")
-                    errors[name] = exc
-            if errors:
-                raise RuntimeError(
-                    f"Parallel stage failed for: {', '.join(errors)}. "
-                    f"See log output above for details."
-                ) from next(iter(errors.values()))
-
-    else:
-        # --- Sequential fallback ---
-        if args.call_peaks:
+    if args.sequential:
+        # --- Sequential mode: one stage at a time, full n_jobs each ---
+        if not skip_group_cov:
+            logger.info("Exporting per-group pseudobulk BigWig files...")
+            _export_coverage(
+                snap_h5ad, args.groupby, selections, args, normalization, out_dir,
+            )
+        if need_group_peaks:
             _call_peaks(snap_h5ad, args.groupby, selections, args, out_dir)
-
-        if args.bulk:
+        if need_bulk_cov:
             logger.info(f"Exporting bulk BigWig ({n_obs} cells)...")
             _export_coverage(
                 snap_h5ad, _BULK_GROUP_COL, None, args, normalization, out_dir,
             )
-            if args.call_peaks:
-                _call_peaks(
-                    snap_h5ad, _BULK_GROUP_COL, None, args, out_dir,
-                )
+        if need_bulk_peaks:
+            _call_peaks(snap_h5ad, _BULK_GROUP_COL, None, args, out_dir,
+                        name_map={_BULK_GROUP_VAL: _BULK_CALL_PREFIX})
+    else:
+        # --- Parallel mode ---
+        # Bulk peaks is the slowest stage (all cells, single MACS3 call),
+        # so it starts first as a background process.  Per-group coverage
+        # runs in the main process while bulk peaks warms up.  Then the
+        # remaining stages (per-group peaks, bulk coverage) overlap with
+        # the still-running bulk peaks.  Each stage gets the full n_jobs
+        # budget; MACS3 subprocesses and Rust I/O threads are lightweight,
+        # so mild oversubscription is fine.
+        mp_ctx = multiprocessing.get_context("forkserver")
+        bg_futures: dict[str, Any] = {}
+        pool = ProcessPoolExecutor(max_workers=3, mp_context=mp_ctx)
+
+        # Start bulk peaks first — it has the longest wall-clock time
+        if need_bulk_peaks:
+            logger.info("Starting bulk peaks in background (slowest stage)...")
+            bg_futures["bulk peaks"] = pool.submit(
+                _call_peaks,
+                snap_h5ad, _BULK_GROUP_COL, None, args, out_dir, 1,
+                {_BULK_GROUP_VAL: _BULK_CALL_PREFIX},
+            )
+
+        # Per-group coverage in main process (overlaps with bulk peaks)
+        if not skip_group_cov:
+            logger.info("Exporting per-group pseudobulk BigWig files...")
+            _export_coverage(
+                snap_h5ad, args.groupby, selections, args, normalization, out_dir,
+            )
+
+        # Submit remaining stages to pool (overlap with bulk peaks)
+        if need_group_peaks:
+            bg_futures["per-group peaks"] = pool.submit(
+                _call_peaks,
+                snap_h5ad, args.groupby, selections, args, out_dir,
+                args.n_jobs,
+            )
+        if need_bulk_cov:
+            bg_futures["bulk coverage"] = pool.submit(
+                _export_coverage,
+                snap_h5ad, _BULK_GROUP_COL, None, args, normalization,
+                out_dir, args.n_jobs,
+            )
+
+        if bg_futures:
+            logger.info(
+                f"Waiting for {len(bg_futures)} background stage(s): "
+                f"{', '.join(bg_futures)}..."
+            )
+
+        # Collect all exceptions
+        errors: dict[str, BaseException] = {}
+        for name, fut in bg_futures.items():
+            try:
+                fut.result()
+            except Exception as exc:
+                logger.error(f"  {name} failed: {exc}")
+                errors[name] = exc
+        pool.shutdown(wait=False)
+        if errors:
+            raise RuntimeError(
+                f"Parallel stage failed for: {', '.join(errors)}. "
+                f"See log output above for details."
+            ) from next(iter(errors.values()))
 
     # --- Merge peaks ---
-    if args.merge:
-        if not args.call_peaks:
-            raise ValueError("--merge requires --call-peaks")
+    if not skip_merge:
+        merge_out = f"{_BULK_MERGE_PREFIX}.narrowPeak"
         peak_files = sorted(out_dir.glob("*.narrowPeak.bed.gz"))
-        # Exclude any previous merged file
-        peak_files = [p for p in peak_files if p.name != "merged.narrowPeak.bed.gz"]
-        if peak_files:
+        # Exclude previous merge output and bulk called peaks (all-cells aggregate,
+        # not a biological group — including it would double-count every peak)
+        _exclude = {
+            f"{_BULK_MERGE_PREFIX}.narrowPeak.bed.gz",
+            f"{_BULK_CALL_PREFIX}.narrowPeak.bed.gz",
+        }
+        peak_files = [p for p in peak_files if p.name not in _exclude]
+        if len(peak_files) > 1:
             logger.info(
                 f"Merging {len(peak_files)} narrowPeak files into "
-                f"merged.narrowPeak.bed.gz..."
+                f"{merge_out}.bed.gz..."
             )
-            _merge_peaks(peak_files, out_dir)
+            _merge_peaks(peak_files, out_dir, out_name=_BULK_MERGE_PREFIX)
+        elif len(peak_files) == 1:
+            logger.info(
+                f"Only one peak file ({peak_files[0].name}), "
+                f"copying as {merge_out}.bed.gz"
+            )
+            merged_path = out_dir / f"{merge_out}.bed.gz"
+            shutil.copy2(peak_files[0], merged_path)
+            tbi_src = peak_files[0].parent / (peak_files[0].name + ".tbi")
+            if tbi_src.exists():
+                shutil.copy2(tbi_src, out_dir / f"{merge_out}.bed.gz.tbi")
+        else:
+            logger.info("No peak files found to merge.")
 
-    # Clean up temporary snap h5ad
-    snap_h5ad.unlink(missing_ok=True)
+    # Keep snap h5ad for future reuse (skipped on next run without --overwrite).
+    # Delete with --overwrite on the *next* run (import_fragments overwrites it).
+    logger.info(f"Fragment store retained at {snap_h5ad}")
     logger.info("All done.")
 
 

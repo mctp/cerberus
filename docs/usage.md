@@ -339,11 +339,11 @@ python tools/scatac_pseudobulk.py \
     fragments.tsv.bgz gene_activity.h5ad output_dir/ \
     --genome hg38 --groupby cell_type
 
-# Full pipeline: BigWigs + peaks + bulk + merged peak set
+# Full pipeline: BigWigs + peaks + merged peak set
 python tools/scatac_pseudobulk.py \
     fragments.tsv.bgz gene_activity.h5ad output_dir/ \
     --genome hg38 --groupby cell_type \
-    --call-peaks --bulk --merge --n-jobs 8
+    --call-peaks --n-jobs 8
 ```
 
 Key options:
@@ -352,24 +352,25 @@ Key options:
 |---|---|
 | `--genome` | Built-in genome (hg38, hg19, mm10, mm39) or use `--chrom-sizes` for custom |
 | `--groupby` | obs column to group cells by (default: `cell_type`) |
-| `--bulk` | Also generate a bulk (all-cells) BigWig and peak set |
 | `--call-peaks` | Call peaks with MACS3 after BigWig generation |
-| `--merge` | Collapse all narrowPeak files into a single merged set (median summits) |
+| `--bulk-peaks` | Also call bulk (all-cells) peaks with MACS3 (slow, off by default) |
+| `--no-merge` | Disable merging per-group peaks into `bulk_merge.narrowPeak.bed.gz` |
+| `--overwrite` | Re-generate all outputs even if they already exist |
 | `--counting-strategy` | `insertion` (Tn5 cut sites), `fragment`, or `paired-insertion` |
 | `--normalization` | `raw`, `CPM`, `RPKM`, or `BPM` |
-| `--n-jobs` | Total concurrent thread/process budget (default: 8) |
+| `--n-jobs` | Total concurrent thread/process budget (default: max(4, cpu_count//2)) |
 | `--sequential` | Disable parallel stage overlap |
 
 Output layout (all files in `output_dir/`):
 
 ```
-cell_type_A.bw                  # per-group BigWig
-cell_type_A.narrowPeak.bed.gz   # per-group peaks (with --call-peaks)
+cell_type_A.bw                       # per-group BigWig
+cell_type_A.narrowPeak.bed.gz        # per-group peaks (with --call-peaks)
 cell_type_A.narrowPeak.bed.gz.tbi
 ...
-bulk.bw                         # with --bulk
-bulk.narrowPeak.bed.gz          # with --bulk --call-peaks
-merged.narrowPeak.bed.gz        # with --merge --call-peaks
+bulk.bw                              # bulk (all-cells) BigWig (always)
+bulk_call.narrowPeak.bed.gz          # with --bulk-peaks --call-peaks
+bulk_merge.narrowPeak.bed.gz         # merged per-group peaks (with --call-peaks)
 ```
 
 See `examples/scatac_kidney_pseudobulk.sh` for a complete example using the kidney scATAC-seq dataset.

@@ -27,11 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Pomeranian, BPNet, ConvNeXtDCNN, GlobalProfileCNN.
 
 ### Changed
-- `tools/scatac_pseudobulk.py`: Default Tn5 shift now converts 10x +4/-5
-  fragment coordinates to the newer +4/-4 convention (`--shift-right` default
-  changed from 0 to 1). This better models Tn5 sequence bias symmetry per
-  Mao et al. 2024. Added `--no-shift` flag to keep original 10x coordinates.
-  Added Tn5 shift argument group with detailed help text.
+- `tools/scatac_pseudobulk.py`: Reworked CLI flags and output naming:
+  - `--overwrite` flag (off by default) skips stages with existing outputs.
+  - Replaced `bgzip`/`tabix` binaries with `pysam` (no htslib dependency).
+  - Bulk BigWig (`bulk.bw`) is now always exported; `--bulk` replaced by
+    `--bulk-peaks` (off by default) for the slow bulk peak calling step.
+  - Peak merging on by default with `--call-peaks`; use `--no-merge` to
+    disable. Single-group case copies the file instead of failing.
+  - Output files renamed: merged peaks → `bulk_merge.narrowPeak.bed.gz`,
+    bulk called peaks → `bulk_call.narrowPeak.bed.gz`. Bulk called peaks
+    are excluded from the merge.
+  - Default Tn5 shift converts 10x +4/-5 to +4/-4 (`--shift-right` default
+    changed from 0 to 1, per Mao et al. 2024). `--no-shift` to keep
+    original coordinates.
 
 ### Added
 - `kidney_scatac` dataset in `download_dataset()`: human kidney 10x scATAC-seq
@@ -40,10 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tools/scatac_pseudobulk.py`: SnapATAC2-based pseudobulk BigWig generation
   and MACS3 peak calling from scATAC-seq fragments. Uses Rust-backed fragment
   import, multiprocessing-based parallel pipeline, and per-group narrowPeak BED
-  output. Features: per-cell-type and bulk modes (`--bulk`), peak calling
-  (`--call-peaks`), built-in genomes (hg38/hg19/mm10/mm39), all counting
-  strategies (insertion/fragment/paired-insertion), `--merge` to collapse all
-  peaks into a single `merged.narrowPeak.bed.gz` with median summits,
+  output. Features: per-cell-type BigWigs and always-on bulk BigWig, peak
+  calling (`--call-peaks`) with automatic merge into
+  `bulk_merge.narrowPeak.bed.gz`, optional bulk peak calling (`--bulk-peaks`),
+  built-in genomes (hg38/hg19/mm10/mm39), all counting strategies
+  (insertion/fragment/paired-insertion), `--overwrite` for re-runs,
   `--n-jobs` budget with `--sequential` fallback.
 - `examples/scatac_kidney_pseudobulk.sh`: example script for generating
   pseudobulk BigWigs and peaks from the kidney scATAC-seq dataset.
