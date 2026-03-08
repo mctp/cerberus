@@ -49,16 +49,17 @@ python tools/train_bpnet.py \
 # --- Plot ---
 python tools/plot_training_results.py "${MODEL_DIR}"
 
-# --- Predict (in-sample: 22Rv1) ---
+# --- Predict (in-sample: 22Rv1, held-out test chromosomes only) ---
 python tools/export_predictions.py \
     "${MODEL_DIR}" \
     "${PEAKS}" \
     "${BIGWIG}" \
     --output "${MODEL_DIR}/predictions.tsv.gz" \
     --batch_size 128 \
-    --device cuda
+    --device cuda \
+    --eval-split test
 
-# --- Predict (cross-dataset: LNCaP — same TF, different cell line) ---
+# --- Predict (cross-dataset: LNCaP — same TF, different cell line, test chromosomes only) ---
 # High performance here suggests the model learned FOXA1 binding, not 22Rv1-specific chromatin.
 python tools/export_predictions.py \
     "${MODEL_DIR}" \
@@ -66,4 +67,5 @@ python tools/export_predictions.py \
     "${LNCAP_BIGWIG}" \
     --output "${MODEL_DIR}/predictions_lncap.tsv.gz" \
     --batch_size 128 \
-    --device cuda
+    --device cuda \
+    --eval-split test
