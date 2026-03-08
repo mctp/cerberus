@@ -64,14 +64,14 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
             results[key] = filepath
 
     elif name == "k562_chrombpnet":
-        _ZENODO_BASE = "https://zenodo.org/api/records/15713376/files"
+        _ZENODO_BASE = "https://zenodo.org/records/15713376/files"
         files = {
             "narrowPeak": "peaks.bed",
             "bigwig": "unstranded.bw",
         }
 
         urls = {
-            key: f"{_ZENODO_BASE}/{filename}/content"
+            key: f"{_ZENODO_BASE}/{filename}?download=1"
             for key, filename in files.items()
         }
 
