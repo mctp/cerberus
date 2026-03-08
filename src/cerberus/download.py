@@ -1,6 +1,8 @@
 
 import logging
 from pathlib import Path
+import subprocess
+import urllib.error
 import urllib.request
 import shutil
 import gzip
@@ -9,13 +11,25 @@ import pyfaidx
 logger = logging.getLogger(__name__)
 
 def _download_file(url: str, dest: Path):
-    """Downloads a file from a URL to a destination path."""
-    # Use a custom user agent to avoid potential 403s from some servers
-    req = urllib.request.Request(
-        url, headers={"User-Agent": "Mozilla/5.0"}
-    )
-    with urllib.request.urlopen(req) as response, open(dest, "wb") as out_file:
-        shutil.copyfileobj(response, out_file)
+    """Downloads a file from a URL to a destination path.
+
+    Tries urllib first, falls back to curl if blocked (HTTP 403).
+    """
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(req) as response, open(dest, "wb") as out_file:
+            shutil.copyfileobj(response, out_file)
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            logger.info("urllib blocked (403), falling back to curl...")
+            subprocess.run(
+                ["curl", "-fSL", "-o", str(dest), url],
+                check=True,
+            )
+        else:
+            raise
 
 def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
     """
