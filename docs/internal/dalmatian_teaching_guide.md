@@ -22,15 +22,40 @@ The raw data is a base-resolution signal track: at every position in the genome,
 
 ### Component 1: Enzymatic Bias (the "noise")
 
-Tn5 does not cut DNA randomly. It has intrinsic sequence preferences—it prefers certain short DNA motifs (~10–19 bp) over others. This means that even in completely inaccessible DNA (background regions with no TF binding), Tn5 will cut more at some positions than others, purely because of the local DNA sequence. This is the Tn5 bias.
+Tn5 does not cut DNA randomly. It has intrinsic sequence preferences—it prefers certain short DNA motifs (~10–19 bp) over others. This means that even in completely inaccessible DNA (background regions with no TF binding), Tn5 will cut more at some positions than others, purely because of the local DNA sequence. This is the Tn5 bias. Published measurements converge on total information content (IC) of 1.0–2.0 bits across the ~21bp Tn5 motif (Adey et al. 2010; Li et al. 2021; Wolpe et al. 2023)—extremely weak compared to TF motifs like CTCF (12–15 bits).
 
 > **Key finding from ChromBPNet (Pampari et al., 2025):** Tn5 bias strongly affects the *shape* of the base-resolution profile (which positions get more or fewer cuts) but does NOT affect the *total number* of cuts in a region. Total counts in peaks are driven entirely by regulatory activity, not enzyme preference.
+
+> **Shift convention matters (Mao et al. 2024, PRINT):** Tn5 creates a 9bp staggered double-strand cut. The standard +4/−5 shift convention places + and − strand cut sites asymmetrically. When merged into unstranded signal (as in BigWig tracks), this 1bp offset misaligns the two strand-specific motifs, nearly destroying the Tn5 PWM. The symmetric +4/−4 convention preserves the motif in unstranded data, though strand-merging still attenuates IC by ~30–50% (from ~0.25–0.3 to ~0.15–0.2 bits/position). This means the effective Tn5 signal in unstranded training data is ~0.7–1.2 bits total—at the lower end of the literature range.
 
 ### Component 2: Regulatory Signal (the "signal")
 
 When a TF binds DNA, it physically protects a ~10–40 bp region from Tn5 cutting, creating a "footprint"—a dip in the insertion profile at the binding site flanked by elevated signal where the displaced nucleosome boundaries are. The pattern, depth, and shape of these footprints encode information about which TFs are bound, how strongly they bind, and how they cooperate with other TFs.
 
 This is the regulatory signal. It operates at multiple scales: individual TF motifs (4–25 bp), cooperative motif pairs (50–200 bp spacing), and nucleosome-scale patterns (150–200 bp). Extracting it cleanly requires removing the Tn5 bias.
+
+### Why base-resolution profiles are reproducible despite weak Tn5 bias
+
+A common source of confusion: if Tn5 sequence preference is only ~2 bits (a ~30% modulation at the most informative positions), why do base-resolution ATAC-seq profiles show sharp, reproducible spikes with zeros in between? The answer is that **multiple structural forces** shape the base-resolution profile within accessible regions, and Tn5 sequence bias is the weakest of them:
+
+| Factor | Scale | Magnitude within accessible region | Reproducible? |
+|--------|-------|-----------------------------------|---------------|
+| **TF footprints / steric occlusion** | 10–30bp | 10–50× (zero vs. peak) | Yes — same TFs bind same sites |
+| **Nucleosome phasing** | ~147bp / 10bp periodicity | 3–10× | Yes — positioned nucleosomes flank TF sites |
+| **DNA shape / flexibility** | ~5–10bp | 2–5× | Yes — sequence-determined (minor groove width, roll) |
+| **Tn5 sequence preference (PWM)** | ~21bp | 1.2–1.4× | Yes, but undetectable at typical depth |
+
+**TF footprints** dominate the profile within peaks. A bound TF physically blocks Tn5, creating a precise valley at its binding site with excess cuts at the flanking edges. This produces the dramatic zero-vs-50-count contrast visible in IGV at single-base resolution.
+
+**Nucleosome phasing** creates the regular ~10bp periodicity visible in well-positioned nucleosome arrays. The minor groove facing outward from the histone core is accessible to Tn5; the inward-facing groove is not. This produces a reproducible oscillating pattern.
+
+**DNA shape** (minor groove width, propeller twist, roll) affects Tn5 accessibility independently of the PWM motif. Some positions are sterically favorable for Tn5 insertion regardless of the local sequence composition. This is sequence-determined but is a broader structural feature than the narrow ~21bp Tn5 recognition motif.
+
+**Tn5 sequence preference** is the weakest factor. At the most informative positions, it shifts cutting probability from 0.25 (uniform) to ~0.30–0.35 per nucleotide—a ~1.3× enrichment. At background depth (~75 counts per 1024bp), this corresponds to ~0.02 count difference per position, completely drowned by Poisson noise (σ ≈ 0.26). Only at peak depth (hundreds to thousands of counts) does the Tn5 modulation rise above sampling noise.
+
+> **Implication for bias model training:** Background-only training provides insufficient gradient for the bias model because the Tn5 signal is invisible at background count depth. The bias model needs peak-region signal (where counts are high enough for the ~30% Tn5 modulation to be detectable), but must be prevented from learning the much stronger TF/nucleosome patterns. This is the fundamental tension that Dalmatian's gradient detach mechanism addresses: train the bias model on all regions for count depth, but route gradient only from L_bias (not L_recon) to prevent it from absorbing regulatory signal.
+
+> **Implication for evaluation:** Standard per-window Pearson correlation cannot detect bias learning on background regions. A perfect Tn5 predictor achieves only ~0.15 Pearson on background (the bias signal is 0.6–2% of multinomial NLL at N≈75). Alternative evaluation is needed: motif analysis of learned filters, comparison to known Tn5 preference matrices, or aggregated correlation across thousands of windows.
 
 ## 1.3 Why Separation Matters
 
@@ -420,11 +445,11 @@ L_total = L_recon + λ_bias · L_bias + λ_sparse · L_sparse
 
 ## 5.7 Why This Forces Separation: A Walk-Through
 
-Consider what each sub-network "experiences" during training:
+Consider what each sub-network "experiences" during training under the **Hard Gradient Routing** paradigm (`detach_bias_in_recon=True`):
 
 ### The bias network's perspective
 
-It receives gradients from two sources: L_recon (be part of an accurate combined prediction everywhere) and L_bias (predict background regions alone). Both push it toward learning Tn5 bias, which is exactly what we want. In peak regions, the bias network contributes the Tn5 component of the combined prediction and gets gradients to refine that contribution.
+Because its outputs are detached before entering `L_recon`, the bias network receives gradients from only **one** source: `L_bias`. This loss pushes it purely toward learning Tn5 bias from background regions (or all regions, if configured safely). It is completely blind to the `L_recon` loss and thus cannot be tricked into learning peak-specific regulatory signals.
 
 ### The signal network's perspective
 
@@ -434,14 +459,27 @@ In peak regions, L_sparse is not applied, and L_recon provides gradients for the
 
 ### What if both learn the same thing? (Mode collapse analysis)
 
-Suppose the signal model started learning Tn5 bias (duplicating the bias model). Then:
+Under the original soft loss-weighting scheme, mode collapse was a risk because `L_recon` on peak regions completely overwhelmed the `L_bias` signal. However, under hard gradient routing, mode collapse is structurally prevented:
 
-- **L_sparse would penalize it:** Tn5 bias produces non-zero logits in background regions, triggering the L1 penalty.
-- **L_recon would not reward it:** The bias model already explains the Tn5 component, so duplicating it in the signal model doesn't improve the combined prediction—it slightly worsens it (because the Tn5 contribution gets doubled).
+- **Bias network cannot learn peaks:** It receives no gradients from `L_recon`.
+- **Signal network cannot ignore bias:** The combined loss forces the signal model to treat the bias predictions as a fixed offset. 
+- **L_sparse prevents the signal model from learning Tn5 bias:** Tn5 bias produces non-zero logits in background regions, triggering the L1 penalty. Because the bias model handles the baseline Tn5 effect, the signal model is structurally punished for duplicating it.
 
-So learning Tn5 bias is actively punished (via L_sparse) and not rewarded (via L_recon). The signal model's optimal strategy is to be silent in background and capture only the residual regulatory signal in peaks.
+So learning Tn5 bias is actively punished for the signal model (via L_sparse) and not rewarded (via L_recon). The signal model's optimal strategy is to be silent in background and capture only the residual regulatory signal in peaks.
 
 > ⚠️ **Pitfall—what if the bias model is too slow to converge?** If the bias model hasn't learned Tn5 bias yet, L_recon will push the signal model to explain background signal (because the combined prediction is inaccurate). The signal model could then "get stuck" learning Tn5 bias before L_sparse overwhelms it. The zero-initialization strategy mitigates this: the signal model starts at exactly zero output, giving the bias model a head start via L_bias before the signal model activates.
+
+---
+
+# Part VA: Additional Refinements
+
+Based on experimental debugging of Dalmatian, the following refinements complement the core architecture:
+
+## 5A.1 Batch-Level Bias Normalization
+While the adaptive count weight balances global sequence depth, local variance can cause unstable training. Implementing dynamic batch-level calculations for adaptive weights or a learnable scaling factor ($\gamma$) in the combination layer can help align bias-only background distributions with the signal model's peak contexts.
+
+## 5A.2 Explicit Bias-Only Evaluation Metrics
+Adding specific metrics to evaluate the bias network in isolation against background regions provides a vital diagnostic during validation. If `PomeranianMetricCollection` only scores the combined model, bias collapse may be hidden behind the signal model's overcompensation.
 
 ---
 

@@ -257,6 +257,7 @@ The `examples/` directory contains ready-to-run shell scripts covering all model
 | `examples/chip_prox1_tc32_pomeranian.sh` | Pomeranian | TC32 PROX1 (local paths) |
 | `examples/chip_prox1_tc32_gopher.sh` | Gopher | TC32 PROX1 (local paths) |
 | `examples/scatac_kidney_pseudobulk.sh` | — | Kidney scATAC-seq pseudobulk BigWigs + peaks |
+| `examples/scatac_kidney_dalmatian.sh` | Dalmatian | Kidney scATAC-seq pseudobulk (bulk, all cell types) |
 
 ```bash
 # Run single-fold training (default)
@@ -316,18 +317,31 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher --multi
     ```
 
+*   `tools/train_dalmatian.py`: Train a Dalmatian model (2112bp → 1024bp, bias-factorized).
+    ```bash
+    # Default Dalmatian (MSE base loss)
+    python tools/train_dalmatian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_dalmatian
+
+    # Poisson base loss
+    python tools/train_dalmatian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_dalmatian --base-loss poisson
+
+    # Customized training
+    python tools/train_dalmatian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_dalmatian \
+        --signal-filters 128 --bias-weight 2.0
+    ```
+
 All tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
 
-| Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_gopher.py` |
-|---|---|---|---|
-| `--optimizer` | `adam` | `adamw` | `adamw` |
-| `--learning-rate` | `1e-3` | `5e-4` | `1e-3` |
-| `--weight-decay` | `0.0` | `0.01` | `0.01` |
-| `--scheduler-type` | `default` (constant) | `cosine` | `cosine` |
-| `--input-len` | `2114` | `2112` | `2048` |
-| `--output-len` | `1000` | `1024` | `1024` |
-| `--output-bin-size` | `1` | `1` | `4` |
-| `--alpha` / loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | — (ProfilePoissonNLLLoss) |
+| Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_dalmatian.py` | `train_gopher.py` |
+|---|---|---|---|---|
+| `--optimizer` | `adam` | `adamw` | `adamw` | `adamw` |
+| `--learning-rate` | `1e-3` | `5e-4` | `1e-3` | `1e-3` |
+| `--weight-decay` | `0.0` | `0.01` | `1e-4` | `0.01` |
+| `--scheduler-type` | `default` (constant) | `cosine` | `default` (constant) | `cosine` |
+| `--input-len` | `2114` | `2112` | `2112` | `2048` |
+| `--output-len` | `1000` | `1024` | `1024` | `1024` |
+| `--output-bin-size` | `1` | `1` | `1` | `4` |
+| Loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | `mse` (DalmatianLoss) | — (ProfilePoissonNLLLoss) |
 
 ## scATAC-seq Pseudobulk Tools
 

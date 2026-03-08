@@ -177,9 +177,40 @@ This is the strongest inductive bias -- it's not a soft penalty but a hard archi
 
 The bias model is intentionally small (~35K parameters) while the signal model is large (~2-3M parameters). Even within its limited receptive field, the bias model can only represent simple local sequence patterns. The signal model has the capacity for complex combinatorial regulatory grammar.
 
-### 3.3 Peak-Conditioned Loss (Training)
+### 3.2.1 Signal Strength Hierarchy Within Accessible Regions
 
-The dataset provides `peak_status` per example (1 = peak-centered window, 0 = complexity-matched background). This metadata enables three loss terms with different biological motivations:
+Understanding why architectural constraints and gradient routing are both necessary requires appreciating the hierarchy of forces that shape base-resolution ATAC-seq profiles. Within an accessible region, four factors create structure at different scales and magnitudes:
+
+| Factor | Mechanism | Scale | Magnitude | Sequence-dependent? |
+|--------|-----------|-------|-----------|---------------------|
+| **TF footprints** | Bound proteins physically block Tn5 | 10–30bp | 10–50× | Yes (TF motifs) |
+| **Nucleosome phasing** | Histone octamers wrap ~147bp, exposing minor groove at ~10bp periodicity | ~147bp / 10bp | 3–10× | Partially (positioning signals) |
+| **DNA shape** | Minor groove width, roll, propeller twist affect Tn5 accessibility | ~5–10bp | 2–5× | Yes (dinucleotide/trinucleotide) |
+| **Tn5 sequence preference** | Enzymatic recognition of ~21bp target motif | ~21bp | 1.2–1.4× | Yes (the PWM we model) |
+
+Several consequences follow:
+
+1. **Tn5 bias is the weakest factor by far.** At each position, Tn5 preference shifts cutting probability from 0.25 (uniform) to ~0.30–0.35 — a ~1.3× enrichment. TF footprints create 10–50× contrast. Without gradient isolation, the bias model will absorb TF footprints (which are much stronger and also local/sequence-dependent) rather than learning the subtle Tn5 motif.
+
+2. **Receptive field alone is insufficient.** TF footprints (10–30bp) and DNA shape effects (5–10bp) both fall within the bias model's ~80bp receptive field. The RF constraint prevents learning nucleosome-scale patterns but NOT TF-scale patterns. Without gradient detach, the bias model's strongest gradient comes from these local regulatory features, not Tn5.
+
+3. **Background-only training is insufficient.** At background depth (~75 counts per 1024bp), the Tn5 signal produces ~0.02 count difference per position — drowned by Poisson noise (σ ≈ 0.26). The multinomial NLL provides essentially zero gradient for the bias model on background regions. The bias model needs peak-region signal where total counts are high enough (hundreds to thousands) for the ~30% Tn5 modulation to produce detectable gradients. But it must receive this gradient only through L_bias, not L_recon.
+
+4. **Standard metrics are blind to bias learning.** A perfect Tn5 predictor achieves only ~0.15 per-window Pearson on background regions (Tn5 bias accounts for 0.6–2% of multinomial NLL at N≈75). Monitoring val_loss or Pearson correlation will show flat curves even when the bias model is learning correctly. Evaluation requires motif analysis of learned filters or aggregated correlation across thousands of windows.
+
+### 3.3 Hard Gradient Routing (Training)
+
+The initial assumption that the bias model could be "softly steered" using only `L_bias_only` proved insufficient, as the gradient signal from `L_recon` on peak regions overwhelmingly dominates the small baseline signal of Tn5 sequence bias (just 1-2% of total loss).
+
+To enforce absolute separation, Dalmatian uses **hard gradient routing**: the bias model's outputs are `.detach()`ed before being combined with the signal model's outputs. 
+
+```
+# Detach bias outputs before computing combined logic
+combined_logits = bias_logits.detach() + signal_logits
+combined_log_counts = logsumexp(bias_log_counts.detach(), signal_log_counts)
+```
+
+The dataset provides `peak_status` per example (1 = peak-centered window, 0 = complexity-matched background). This metadata enables three loss terms:
 
 ```
 L_total = L_recon + lambda_bias * L_bias_only + lambda_sparse * L_signal_sparse
@@ -187,22 +218,13 @@ L_total = L_recon + lambda_bias * L_bias_only + lambda_sparse * L_signal_sparse
 
 | Term | Applied To | Gradients Flow To | Biological Motivation |
 |------|-----------|-------------------|----------------------|
-| **L_recon** | ALL examples | Both models | Combined output should match the observed ATAC-seq signal everywhere |
-| **L_bias_only** | NON-PEAK examples only | Bias model only | In non-peak regions, the observed signal is almost entirely Tn5 cutting bias. The bias model alone should explain it. |
-| **L_signal_sparse** | NON-PEAK examples only | Signal model only | The signal model should output ~0 outside peaks. There's no regulatory signal to learn in background regions. |
+| **L_recon** | ALL examples | **Signal model only** | Combined output should match the observed ATAC-seq signal everywhere. The signal model must adapt to the frozen bias baseline. |
+| **L_bias_only** | NON-PEAK examples only | **Bias model only** | In non-peak regions, the observed signal is almost entirely Tn5 cutting bias. (May optionally be applied to ALL examples with `.detach()`). |
+| **L_signal_sparse** | NON-PEAK examples only | **Signal model only** | The signal model should output ~0 outside peaks. There's no regulatory signal to learn in background regions. |
 
-**Why gradient routing is natural (no stop-gradient needed):**
-
-- `L_recon` is computed from `combined_logits` and `combined_log_counts`, which depend on both models -> both get gradients.
-- `L_bias_only` is computed from `bias_logits` and `bias_log_counts` only -> only the bias model's parameters are in the computation graph.
-- `L_signal_sparse` is computed from `signal_logits` and `signal_log_counts` only -> only the signal model's parameters are in the computation graph.
-
-**Together these create complementary pressures:**
-
-1. The bias model is pulled toward explaining the ubiquitous Tn5 bias (L_bias_only)
-2. The signal model is pushed away from learning Tn5 bias (L_signal_sparse makes it silent outside peaks)
-3. In peaks, the residual signal (TF footprints, regulatory grammar) can only be captured by the signal model -- the bias model's tiny receptive field can't represent it
-4. The combined model is accurate everywhere (L_recon)
+**Together these create an absolute separation:**
+1. The bias model learns exclusively from `L_bias` and is completely blind to peak-specific profiles driven by `L_recon`.
+2. The signal model is pushed away from learning Tn5 bias (L_signal_sparse makes it silent outside peaks) and learns the residual signal in peaks relative to the fixed bias representation.
 
 ## 4. Sub-Model Configurations
 
@@ -218,6 +240,8 @@ L_total = L_recon + lambda_bias * L_bias_only + lambda_sparse * L_signal_sparse
 | `profile_kernel_size` | 21 | Small smoothing window |
 | `expansion` | 1 | Minimal PGC expansion |
 | `stem_expansion` | 1 | Minimal stem expansion |
+
+*Note: It is strictly critical that the receptive field remains ≤80bp to avoid capturing TF motifs. Previously, higher dilations (`[1, 2, 4, 8]`) with `k=9` inflated RF to 147bp.*
 
 **Receptive field estimate:** stem(11) + 4 layers x (dil x (k-1)) = 11 + (1x4 + 1x4 + 2x4 + 4x4) = 11 + 32 + profile(21) = 64bp effective, ~80bp total.
 
@@ -333,24 +357,33 @@ The decomposed fields (`bias_logits`, `signal_logits`, etc.) are consumed only b
 ### 5.3 Dalmatian.forward()
 
 ```python
-def forward(self, x) -> DalmatianOutput:
-    bias_out = self.bias_model(x)       # ProfileCountOutput
-    signal_out = self.signal_model(x)   # ProfileCountOutput
+    def forward(self, x) -> DalmatianOutput:
+        bias_out = self.bias_model(x)       # ProfileCountOutput
+        signal_out = self.signal_model(x)   # ProfileCountOutput
 
-    combined_logits = bias_out.logits + signal_out.logits
-    combined_log_counts = torch.logsumexp(
-        torch.stack([bias_out.log_counts, signal_out.log_counts], dim=-1),
-        dim=-1,
-    )
+        # Hard gradient routing: detach bias outputs before combination.
+        # BiasNet receives gradient only from L_bias, never from L_recon.
+        if getattr(self, "detach_bias_in_recon", True):
+            combined_logits = bias_out.logits.detach() + signal_out.logits
+            combined_log_counts = torch.logsumexp(
+                torch.stack([bias_out.log_counts.detach(), signal_out.log_counts], dim=-1),
+                dim=-1,
+            )
+        else:
+            combined_logits = bias_out.logits + signal_out.logits
+            combined_log_counts = torch.logsumexp(
+                torch.stack([bias_out.log_counts, signal_out.log_counts], dim=-1),
+                dim=-1,
+            )
 
-    return DalmatianOutput(
-        logits=combined_logits,
-        log_counts=combined_log_counts,
-        bias_logits=bias_out.logits,
-        bias_log_counts=bias_out.log_counts,
-        signal_logits=signal_out.logits,
-        signal_log_counts=signal_out.log_counts,
-    )
+        return DalmatianOutput(
+            logits=combined_logits,
+            log_counts=combined_log_counts,
+            bias_logits=bias_out.logits,
+            bias_log_counts=bias_out.log_counts,
+            signal_logits=signal_out.logits,
+            signal_log_counts=signal_out.log_counts,
+        )
 ```
 
 ## 6. Loss Function
@@ -1079,3 +1112,485 @@ def test_dalmatian_end_to_end_training_step():
 - `src/cerberus/signal.py` -- SignalExtractor, InMemorySignalExtractor
 - `src/cerberus/config.py` -- GenomeConfig, DataConfig, SamplerConfig, ModelConfig, import_class, propagate_pseudocount
 - `src/cerberus/metrics.py` -- PomeranianMetricCollection, CountProfilePearsonCorrCoef, LogCountsMeanSquaredError
+
+---
+
+## Appendix C: Post-Implementation Revision — Gradient-Routed Dalmatian
+
+After implementing and testing the Dalmatian model on real data, a systematic
+debug study (5 experiments across 2 datasets, `debug/dalmatian/research_log.md`)
+revealed that the soft loss-weighted separation mechanism in Sections 3.3 and
+6.1 is fundamentally inadequate. This appendix summarizes the evidence and
+prescribes concrete changes to the architecture and loss.
+
+### C.1 Experimental Evidence
+
+Six standalone Pomeranian experiments isolated the bias model's learning capacity:
+
+| Exp | Model | Dataset | Sampler | Val Loss | Pearson Profile | Pearson Counts | Epochs |
+|-----|-------|---------|---------|----------|-----------------|----------------|--------|
+| 1a | 72K, RF=147bp | kidney (N≈75) | peak+bg | 565 | 0.549 | 0.570 | 12 |
+| 1b | 72K, RF=147bp | kidney (N≈75) | bg-only | 266 | 0.443 | 0.466 | 18 |
+| 1d | 72K, RF=147bp | kidney (N≈75) | peak, cw=adaptive | 576 | 0.551 | 0.639 | 17 |
+| 2a | 220K, RF=155bp | kidney (N≈75) | bg-only | 266 | 0.443 | 0.422 | 17 |
+| 2b | 30K, RF=25bp | kidney (N≈75) | bg-only | 274 | 0.431 | 0.449 | 25 |
+| 3a | 30K, RF=25bp | K562 (N≈206) | bg-only | 299 | 0.512 | 0.597 | 20 |
+
+Key findings:
+
+1. **Background-only training fails uniformly.** Profile Pearson plateaus at
+   ~0.43 (kidney) and ~0.51 (K562) regardless of model capacity. A 7× parameter
+   range (30K → 220K) produces identical results. The bottleneck is signal
+   strength, not model capacity.
+
+2. **Tn5 bias is an inherently tiny signal.** Published measurements of Tn5
+   insertion preference converge on **total IC = 1.0–2.0 bits** across the
+   ~21bp motif (Adey et al. 2010: ~1.0 bits from libraries; Li et al. 2021:
+   ~1.9 bits from naked DNA; Wolpe et al. 2023: 2.00 bits from naked DNA).
+   For comparison, CTCF has 12–15 bits. The strongest single-position effect
+   is G at position -4 at 45% (vs 25% uniform) — only 1.8× enrichment
+   (Wolpe et al. 2023, Fig 1A).
+
+3. **Tn5 bias is 0.6–2.0% of multinomial NLL on background.** The multinomial
+   NLL profile loss at count depth N is dominated by shot noise:
+   `L ≈ N × log(L_bins)`. The KL divergence between Tn5-biased and uniform
+   insertion is ~0.02–0.07 nats/position, giving a maximum learnable signal of
+   1.5–5.3 nats on background (N=75) vs total loss of ~266 nats. The observed
+   exp1b loss drop (267.6 → 266.0 = 1.6 nats) matches this prediction exactly.
+
+4. **Pearson correlation cannot detect bias learning.** With N=75 counts in
+   1024 bins, a perfect Tn5 predictor achieves per-window Pearson ≈ 0.15 at
+   best. The observed Pearson of ~0.44 at epoch 0 reflects the count head's
+   regional coverage prediction (GC content, mappability), not profile shape.
+
+5. **Higher coverage helps counts but not profiles.** K562 (N≈206) shows higher
+   starting Pearson (~0.51 vs ~0.43) but equally flat profile learning, confirming
+   the limitation is fundamental to bp-resolution multinomial NLL at any
+   realistic ATAC-seq depth.
+
+6. **Tn5 has the highest sequence bias among common enzymes** but it is still
+   weak in absolute terms (Wolpe et al. 2023, Fig 1A):
+
+   | Enzyme | Total IC (bits) |
+   |--------|----------------|
+   | Tn5 | 2.00 |
+   | DNase I | 1.06 |
+   | MNase | 0.77 |
+   | Cyanase | 0.53 |
+   | Benzonase | 0.50 |
+
+7. **Strand-merging attenuates Tn5 IC by ~30–50%.** Mao et al. 2024 (PRINT)
+   showed that merging + and − strand cut sites into unstranded signal reduces
+   per-position IC from ~0.25–0.3 bits (per-strand) to ~0.15–0.2 bits (unstranded
+   +4/−4), a ~30–50% loss. With the asymmetric +4/−5 shift convention, the
+   unstranded motif is nearly destroyed (logos are flat). The symmetric +4/−4
+   convention (default in `tools/scatac_pseudobulk.py`) is essential for preserving
+   any Tn5 motif in unstranded training data. The effective total IC in our
+   unstranded BigWig training data is therefore ~0.7–1.2 bits, pushing the
+   learnable signal toward the lower end of the 0.6–2% loss range.
+
+7. **Tn5 bias is sample-specific.** TraceBIND (Avsec et al. 2025) showed that
+   Tn5 bias correlates highly within a sample but poorly across labs/studies,
+   and sample-specific correction reduces footprinting false positives by >60×.
+
+### C.2 Why Soft Separation Fails
+
+The current DalmatianLoss (Section 6.1) relies on three loss terms:
+
+```
+L_total = L_recon(all) + bias_weight × L_bias(bg) + sparse_weight × L_signal_bg(bg)
+```
+
+The multinomial NLL scales linearly with counts N. In a 50/50 peak/background
+batch with the kidney data:
+
+| Term | Regions | Effective N | Loss magnitude | % of total |
+|------|---------|-------------|----------------|------------|
+| L_recon | all (peak-dominated) | ~380 | ~560 | ~96% |
+| L_bias | background only | ~75 | ~266 × 0.5 = ~20 | ~3.4% |
+| L_signal_bg | background only | — | ~0.1–1 | ~0.2% |
+
+**The bias model receives >95% of its gradient from L_recon on peak examples.**
+It learns peak-specific signal (GC content, dinucleotide patterns) rather than
+Tn5 bias. The auxiliary terms L_bias and L_signal_bg are invisible in the
+gradient landscape.
+
+This is not fixable by reweighting. Even with `bias_weight=50`, the bias model
+still sees L_recon gradients that are structurally different from Tn5 bias.
+The problem is that L_recon provides a gradient path from peaks to BiasNet —
+any gradient flowing through this path teaches BiasNet the wrong thing.
+
+### C.3 Specific Corrections to This Document
+
+1. **Section 3.1 (RF Constraint):** The plan proposed RF≈80bp for BiasNet
+   (dilations=[1,1,2,4], k=5). The implementation used dilations=[1,2,4,8],
+   k=9 → RF=147bp. This is too large — 147bp allows BiasNet to capture short
+   TF motifs (6–20bp) and partial nucleosome features. The Tn5 motif extends
+   only ±11bp from the insertion site (Wolpe et al. 2023). **Revert to RF≤80bp.**
+
+2. **Section 3.3 (Peak-Conditioned Loss):** The claim that L_bias "effectively
+   steers the bias model toward Tn5 bias" is incorrect. L_bias contributes
+   ~3% of total gradient. The bias model is steered primarily by L_recon on
+   peaks, which teaches it peak-specific patterns. **Soft loss weighting is
+   insufficient; hard gradient routing is required.**
+
+3. **Section 4.3 (Zero-Init Training Dynamics):** The plan states "L_recon
+   trains only the bias model effectively" at epoch 0 and that "the bias model
+   converges on Tn5 bias." The first part is correct (SignalNet outputs zero),
+   but the second is wrong — L_recon on peaks teaches BiasNet to explain peak
+   profiles, not Tn5 bias. **BiasNet converges on the wrong target before
+   SignalNet activates.**
+
+4. **Section 6.1 (DalmatianLoss):** The base loss config should include
+   `count_weight="adaptive"` (ChromBPNet-style `median_count / 10`). Without
+   this, count loss is ~1.2 vs ~560 profile loss — the count head barely
+   trains. Experiment 1d showed adaptive count_weight improved count Pearson
+   from 0.570 to 0.639.
+
+5. **Section 3.2 (Capacity Asymmetry):** The claim that "even within its
+   limited receptive field, the bias model can only represent simple local
+   sequence patterns" is misleading. The debug study showed a 7× capacity
+   range (30K–220K params) produces identical background Pearson. The bottleneck
+   is signal strength (Tn5 bias = 0.6–2% of loss), not model capacity. Capacity
+   asymmetry is a secondary defense, not a primary separation mechanism.
+
+### C.4 Recommended Architecture: Gradient-Routed Dalmatian
+
+Replace soft loss-weighted separation with hard gradient routing in the forward
+pass. The bias model's outputs are **detached** before combining with SignalNet,
+severing the gradient path from L_recon to BiasNet.
+
+#### C.4.1 Forward Pass Change
+
+```python
+# In Dalmatian.forward():
+def forward(self, x):
+    bias_out = self.bias_model(x)
+    signal_out = self.signal_model(x)
+
+    # Hard gradient routing: detach bias outputs before combination.
+    # BiasNet receives gradient only from L_bias, never from L_recon.
+    if self.detach_bias_in_recon:
+        combined_logits = bias_out.logits.detach() + signal_out.logits
+        combined_log_counts = torch.logsumexp(
+            torch.stack([bias_out.log_counts.detach(),
+                         signal_out.log_counts], dim=-1),
+            dim=-1,
+        )
+    else:
+        combined_logits = bias_out.logits + signal_out.logits
+        combined_log_counts = torch.logsumexp(
+            torch.stack([bias_out.log_counts,
+                         signal_out.log_counts], dim=-1),
+            dim=-1,
+        )
+
+    return FactorizedProfileCountOutput(
+        logits=combined_logits,
+        log_counts=combined_log_counts,
+        bias_logits=bias_out.logits,
+        bias_log_counts=bias_out.log_counts,
+        signal_logits=signal_out.logits,
+        signal_log_counts=signal_out.log_counts,
+    )
+```
+
+Add `detach_bias_in_recon: bool = True` to the constructor. Default `True`
+enables hard separation; `False` reverts to the original soft separation for
+comparison experiments.
+
+#### C.4.2 Gradient Flow After Detach
+
+| Term | Gradients to BiasNet | Gradients to SignalNet |
+|------|---------------------|-----------------------|
+| L_recon (combined, all) | **None** (detached) | Yes |
+| L_bias (bias-only, bg) | Yes | None |
+| L_signal_bg (signal, bg) | None | Yes |
+
+BiasNet learns exclusively from L_bias on background regions. SignalNet learns
+from L_recon on all regions, seeing the full combined target minus a frozen
+bias contribution. This is analogous to ChromBPNet's freeze-then-train but
+end-to-end: the bias contribution is treated as a fixed offset in L_recon
+while being optimized separately through L_bias.
+
+#### C.4.3 Reduced BiasNet RF Defaults
+
+Revert BiasNet to the originally planned receptive field:
+
+| Parameter | Current | Proposed | Rationale |
+|-----------|---------|----------|-----------|
+| `bias_dilations` | [1, 2, 4, 8] | [1, 1, 2, 4] | Limit RF to ~80bp |
+| `bias_dil_kernel_size` | 9 | 5 | Smaller spatial kernel |
+| `bias_profile_kernel_size` | 17 | 21 | Matches Section 4.1 |
+| **Resulting RF** | **147bp** | **~80bp** | Tn5 motif is ±11bp |
+
+The Tn5 insertion motif extends ±11bp from the cut site (Wolpe et al. 2023),
+with broader compositional effects out to ±15bp. An 80bp RF is generous for
+capturing this while excluding TF motifs and nucleosome-scale features.
+
+#### C.4.4 Adaptive Count Weight
+
+Add `count_weight: "adaptive"` to the default `base_loss_args`:
+
+```yaml
+loss_args:
+  base_loss_cls: "cerberus.loss.MSEMultinomialLoss"
+  base_loss_args:
+    count_weight: "adaptive"   # median_count / 10
+    profile_weight: 1.0
+  bias_weight: 1.0
+  signal_background_weight: 0.1
+```
+
+#### C.4.5 Consider Training Bias on All Regions
+
+With `.detach()` in place, it becomes safe to compute L_bias on **all**
+examples (peak + background), not just background. The gradient path from
+L_recon to BiasNet is severed, so BiasNet cannot learn peak-specific patterns
+through the combined output. Training on peaks gives the bias model 5× more
+signal per example (N≈343 vs N≈75 for kidney data), dramatically improving
+Tn5 bias learning.
+
+This is a departure from ChromBPNet's background-only protocol, but with hard
+gradient routing the risk of contamination is eliminated. The bias model's
+limited RF (≤80bp) provides a second layer of protection — it architecturally
+cannot represent long-range regulatory patterns even if exposed to peak regions.
+
+Whether L_bias should cover all regions or just background is an empirical
+question. Recommend testing both configurations:
+
+```python
+# Option A: Background-only (current, conservative)
+if non_peak.any():
+    l_bias = self.base_loss(bias_out[non_peak], target[non_peak])
+
+# Option B: All regions (proposed, with detach providing safety)
+l_bias = self.base_loss(bias_out, target)
+```
+
+### C.5 Summary: From Soft to Hard Separation
+
+| Mechanism | Original (Sections 3, 6) | Revised |
+|-----------|-------------------------|---------|
+| **RF constraint** | RF=147bp (too large) | RF≤80bp (matches Tn5 motif) |
+| **Capacity asymmetry** | Primary mechanism | Secondary (capacity is not the bottleneck) |
+| **Loss weighting** | Soft: bias_weight × L_bias | Hard: `.detach()` severs gradient path |
+| **Bias training data** | Background only | Background or all (safe with detach) |
+| **Count weight** | Default (negligible) | Adaptive (median_count / 10) |
+
+The original design assumed that loss weighting could steer two jointly-trained
+models toward different targets. The debug study proved this fails when one
+signal (Tn5 bias, 1–2% of loss) is overwhelmed by another (peak-specific
+profile, 96% of loss). Hard gradient routing via `.detach()` replaces the soft
+pressure with an absolute constraint: BiasNet's parameters are invisible to
+L_recon, period. Combined with the architectural RF constraint, this gives
+Dalmatian the same separation guarantees as ChromBPNet's two-stage protocol
+while retaining the simplicity of end-to-end training.
+
+### C.6 Additional Refinements & Future Work
+
+Based on experimental results, several minor but important refinements are recommended:
+
+1. **Investigate Batch-Level Bias Normalization:**
+   The adaptive count weight (`median_count / 10`) handles global sequence depth, but local variations can cause large batch-to-batch loss variance. Consider calculating adaptive weights dynamically per-batch or introducing a global scale normalization factor.
+
+2. **Explicit Bias-Only Evaluation Metrics:**
+   Extend `PomeranianMetricCollection` to explicitly output metrics for the `bias_model` evaluated on background regions in isolation. Currently, it evaluates the combined output only. An isolated evaluation provides real-time signal regarding whether the bias model collapses.
+
+3. **Continuous Signal Intensity Weighting for `L_bias`:**
+   Instead of a strict binary threshold (`peak_status` = 1 or 0), investigate applying a continuous weight mapping (via sigmoid on background total counts) for `L_bias` to naturally taper the penalty for ambiguous regulatory elements near the calling threshold.
+
+4. **Testing Signal Net with a Learnable Gamma:**
+   ChromBPNet employs a fixed scalar ($\gamma$) to match count distributions. While Dalmatian uses `logsumexp` to bypass fixed scaling organically, introducing a single learnable scalar parameter before the `logsumexp` combination step may allow for natural adaptation if the bias model systematically under-predicts the background rate when exposed to peak contexts.
+
+### C.7 Literature References for Tn5 Bias Strength
+
+| Study | Method | Total IC (bits) | Key finding |
+|-------|--------|----------------|-------------|
+| Goryshin & Reznikoff 1998 | In vitro/in vivo | — | Consensus: A-GNTYWRANCT-T (9bp core) |
+| Adey et al. 2010 | Sequencing libraries | ~1.0 | Max IC=0.16 bits/pos; "little impact at level of coverage" |
+| Green et al. 2012 | Comparative | — | Tn5 biased toward G/C |
+| Li et al. 2021 | Naked DNA, 8 species | ~1.9 | Max IC≈0.35 bits/pos; only 16–29% of insertions in motif |
+| Wolpe et al. 2023 | Naked DNA, rule ensemble | **2.00** | Highest of 5 enzymes; G at pos -4 = 45% |
+| Mao et al. 2024 (PRINT) | PWM from ATAC-seq | — | +4/−4 shift preserves Tn5 motif in unstranded signal; +4/−5 destroys it. Per-strand IC ~0.25–0.3 bits/pos; unstranded +4/−4 ~0.15–0.2; unstranded +4/−5 ~flat. Strand-merging attenuates IC by ~30–50%. |
+| Pampari et al. 2025 | ChromBPNet | — | Background-only bias, frozen, then subtracted |
+| TraceBIND 2025 | Sample-specific mtDNA | — | Bias varies across labs; >60× FP reduction |
+
+## Appendix D: Designing a Better Bias Model for Weak Signals
+
+The debug study (Appendix C) established that Tn5 bias is a tiny signal: 1–2
+bits total IC, 0.6–2% of multinomial NLL on background. Five experiments across
+two datasets showed the bottleneck is signal strength, not model capacity (7×
+parameter range had no effect). This appendix outlines design principles for
+better capturing weak enzymatic bias signals.
+
+The core insight: **when the signal is weak and simple, match the model to the
+signal's structure rather than making the model bigger.** The problem is not the
+model — it is the loss function, the training signal, and the evaluation metric.
+
+### D.1 Count-Invariant Profile Loss
+
+**Problem.** Multinomial NLL scales linearly with total counts N:
+
+```
+L_multinomial = -sum_i(target_i * log_softmax(logits)_i) ≈ N * log(L_bins) + bias_signal
+```
+
+At N=75 counts in 1024 bins, `N * log(1024) ≈ 520 nats` of irreducible shot
+noise dwarfs the ~1.5–5.3 nat Tn5 signal. The gradient is ~98% noise.
+
+**Fix.** Use a loss that compares normalized distributions, removing count-depth
+dependence:
+
+```python
+# KL divergence on normalized distributions:
+pred_dist = F.log_softmax(logits, dim=-1)                    # predicted shape
+obs_dist = target / target.sum(dim=-1, keepdim=True)         # observed shape
+loss = F.kl_div(pred_dist, obs_dist, reduction='batchmean')
+```
+
+Now a 2-bit motif contributes ~0.02–0.07 nats/position regardless of count
+depth. The Tn5 signal fraction increases from ~1% to a much larger share of
+the loss.
+
+**Caveat.** At N=75, the observed normalized distribution is extremely noisy —
+93% of bins are zero, and any single window's profile is a poor estimate of
+the true shape. A count-invariant loss should be combined with smoothing or
+aggregation (D.3) to be effective.
+
+### D.2 Structured PWM Output
+
+**Problem.** A general Pomeranian (conv→dilated→profile head) has tens of
+thousands of parameters for learning what is fundamentally a ~21bp
+position-weight matrix with 84 free parameters (4 nucleotides × 21 positions).
+The excess capacity lets the model learn GC content, dinucleotide frequencies,
+and regional coverage patterns instead of the Tn5 motif.
+
+**Fix.** Replace the free-form profile head with a structured output that
+encodes what Tn5 bias actually is — a short convolutional motif:
+
+```python
+class StructuredBiasModel(nn.Module):
+    """Bias model that directly learns a position-weight matrix.
+
+    Instead of predicting a free 1024bp profile, learns a short PWM
+    and convolves it with the input sequence. This has exactly the right
+    inductive bias for enzymatic sequence preference.
+    """
+
+    def __init__(self, motif_width: int = 21):
+        super().__init__()
+        # Learnable PWM: (1, 4, motif_width) log-odds over uniform
+        self.pwm = nn.Parameter(torch.zeros(1, 4, motif_width))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, 4, L) one-hot DNA sequence
+        # Convolve PWM with sequence → per-position bias score
+        bias_logits = F.conv1d(x, self.pwm, padding='same')  # (B, 1, L)
+        return bias_logits
+```
+
+This model has **84 parameters** and is exactly the right inductive bias for
+Tn5. It physically cannot learn anything except a local sequence preference.
+
+**Extensions.** If 1st-order PWM is insufficient (Tn5 has weak dinucleotide
+dependencies), add a small number of wider or higher-order filters:
+
+```python
+# 1st-order PWM (21bp):                   84 params
+# + dinucleotide filter (16 × 20bp):     320 params
+# + DNA shape (4 features × 21bp):        84 params
+# Total:                                  488 params
+```
+
+This remains orders of magnitude smaller than even the tiniest Pomeranian
+(30K params) and encodes the known structure of enzymatic sequence bias.
+
+**Integration with Dalmatian.** The structured bias model replaces
+`self.bias_model` in the Dalmatian class. Its output (per-position logits)
+feeds into the same combination rule (logit addition with SignalNet). The count
+head can remain a small MLP since regional count variation (GC, mappability) is
+a legitimate bias-related signal.
+
+### D.3 Aggregate-Then-Evaluate (and Train)
+
+**Problem.** Per-window Pearson correlation is noise-limited. With N=75 counts
+in 1024 bins, a perfect Tn5 predictor achieves Pearson ≈ 0.15. The metric
+cannot distinguish a model that learned Tn5 bias from one that learned nothing.
+
+**Fix: aggregate evaluation.** Average predicted and observed profiles across
+thousands of windows before computing metrics:
+
+```python
+# Aggregate across K windows (e.g., K=10,000):
+mean_pred = pred_profiles.mean(dim=0)    # (1, L) — noise cancels
+mean_obs = obs_profiles.mean(dim=0)      # (1, L) — noise cancels
+# SNR improves by sqrt(K): with K=10,000, noise drops 100×
+# Now Pearson can detect the 1.8× enrichment at position -4
+agg_pearson = pearsonr(mean_pred, mean_obs)
+```
+
+This is analogous to how sequence logos are computed: no single insertion site
+is informative, but millions of sites averaged together reveal the motif.
+
+**Aggregate training loss.** The same principle can be applied during training.
+Instead of computing loss per window and averaging, accumulate predicted
+profiles across a mini-batch (or across several mini-batches using a running
+average) and compute the loss on the aggregate:
+
+```python
+# Conceptual: aggregate-then-loss (not standard PyTorch per-example loss)
+batch_pred = F.softmax(logits, dim=-1).mean(dim=0)   # avg predicted shape
+batch_obs = (target / target.sum(-1, keepdim=True)).mean(dim=0)  # avg observed shape
+loss = kl_div(batch_pred.log(), batch_obs)
+```
+
+This increases the effective N per gradient step by the batch size, improving
+the signal-to-noise ratio of the gradient proportionally. With batch_size=64,
+effective N goes from 75 to ~4,800, making Tn5 bias ~8% of the loss instead
+of ~1%.
+
+**Caveat.** Aggregation assumes the Tn5 motif is the same across all windows
+(translation-invariant). This is true by definition for a sequence-only bias
+model — the Tn5 preference depends only on local sequence, not genomic
+position. However, aggregation over heterogeneous sequences dilutes the
+position-specific signal; alignment to cut sites or grouping by local k-mer
+composition would improve it.
+
+### D.4 Alternative Evaluation: Motif Recovery
+
+Instead of Pearson correlation, evaluate whether the bias model has recovered
+the known Tn5 motif:
+
+1. **Filter inspection.** Extract the learned conv filters from the first layer
+   and compare to the Adey/Li/Wolpe Tn5 PWM using TOMTOM or Pearson on the
+   information content vectors.
+
+2. **Aggregated insertion profile.** Predict profiles for 100K+ background
+   windows, align by observed insertion sites, average the predicted bias
+   around each insertion. A model that learned Tn5 bias should show the
+   characteristic G enrichment at position -4.
+
+3. **Comparison to known PWM.** Compute Pearson between the model's predicted
+   per-position log-odds and the Tn5 PWM from Wolpe et al. (total IC = 2.00
+   bits). This directly measures whether the model captured the motif,
+   independent of shot noise.
+
+### D.5 Summary: Design Priorities
+
+| Design choice | Impact | Why |
+|---|---|---|
+| Structured PWM output | **High** | Encodes exactly what Tn5 bias is (21bp motif, 84 params) |
+| Count-invariant loss | **High** | Removes shot-noise dominance from gradient |
+| Aggregate evaluation | **High** | Makes weak signal visible in metrics |
+| Train on all regions (with detach) | **Medium** | 5× more signal per example |
+| Aggregate training loss | **Medium** | Increases effective N per gradient step |
+| Motif-based evaluation | **Medium** | Directly tests whether the right thing was learned |
+| More parameters | **None** | Debug study proved capacity is not the bottleneck |
+| Larger receptive field | **Negative** | Lets model learn non-bias patterns |
+
+The overarching principle: when the signal is weak and simple, **shrink the
+model to match the signal's structure** (D.2), **remove the noise from the loss**
+(D.1), and **aggregate to beat down shot noise** (D.3). A 84-parameter PWM with
+a count-invariant loss and aggregated evaluation would likely outperform any
+general-purpose conv net on this task.

@@ -296,6 +296,66 @@ out = model(torch.randn(2, 4, 2112))
 # out.signal_logits, out.signal_log_counts -- signal component
 ```
 
+### Training Tool
+
+Use `tools/train_dalmatian.py` for command-line training:
+
+```bash
+# Bulk pseudobulk (all cell types merged)
+python tools/train_dalmatian.py \
+    --bigwig "tests/data/scatac_kidney_pseudobulk/bulk.bw" \
+    --peaks "tests/data/scatac_kidney_pseudobulk/bulk_merge.narrowPeak.bed.gz" \
+    --output-dir models/kidney_dalmatian
+
+# Or use the example script
+bash examples/scatac_kidney_dalmatian.sh
+```
+
+## PWMBiasModel (experimental)
+
+**Location**: `debug/pwm_model/pwm_bias.py` (not part of cerberus public API)
+
+A structured bias model that learns `n_motifs` position-weight matrix (PWM) filters of fixed `motif_width` and combines them via linear mixing. Designed for capturing enzymatic sequence bias (e.g., Tn5 transposase preference in ATAC-seq), where the bias is a short motif (~21bp) with low information content (~2 bits total).
+
+Self-contained in `debug/pwm_model/` with its own output type (`RegularizedProfileCountOutput`), loss wrapper (`RegularizedMSEMultinomialLoss`), and tests. Compatible with cerberus training infrastructure via `import_class`.
+
+### Key Features
+*   **Learnable PWM filters**: `Conv1d(4, n_motifs, motif_width, valid)` — each filter is a learnable PWM that can be extracted and visualized as a sequence logo.
+*   **Linear mixing**: `Conv1d(n_motifs, n_output_channels, 1)` — pointwise linear combination of filter activations. With linear mixing, multiple filters are mathematically equivalent to a single effective filter (provably via einsum folding).
+*   **Non-negative mixing** (`nonneg_mixing=True`): Applies softplus to mixing weights, preventing filter cancellation where filters learn opposing patterns.
+*   **ReLU activation** (`relu_activation=True`): Adds ReLU between PWM conv and profile mixing, breaking linear equivalence so each filter fires independently.
+*   **Decorrelation penalty** (`decorrelation_weight`): Cosine similarity penalty between flattened PWM filters, encouraging distinct motif patterns. Used with `RegularizedMSEMultinomialLoss`.
+*   **Exact geometry**: `input_len = output_len + motif_width - 1` (no cropping). Validates at construction time.
+*   **Count head**: `GlobalAvgPool → Linear → GELU → Linear` for log count prediction.
+*   **Output**: Returns `RegularizedProfileCountOutput(logits=..., log_counts=..., reg_loss=...)`, compatible with `MSEMultinomialLoss` and `RegularizedMSEMultinomialLoss`.
+
+### Architecture Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_motifs` | 2 | Number of learnable PWM filters |
+| `motif_width` | 21 | Width of each filter in bp |
+| `nonneg_mixing` | False | Softplus on mixing weights (prevents cancellation) |
+| `relu_activation` | False | ReLU between PWM conv and mixing (breaks linear equivalence) |
+| `decorrelation_weight` | 0.0 | Cosine similarity penalty weight (0=disabled) |
+| `predict_total_count` | True | Single total count vs per-channel counts |
+
+### Usage
+```python
+# Add debug/ to sys.path first
+from pwm_model.pwm_bias import PWMBiasModel
+
+model = PWMBiasModel(
+    input_len=1044, output_len=1024,
+    n_motifs=2, motif_width=21,
+    nonneg_mixing=True, relu_activation=True,
+    decorrelation_weight=0.1,
+)
+
+# After training, extract filters for visualization:
+pwm_weights = model.get_pwm_weights()   # (n_motifs, 4, motif_width)
+mixing = model.get_mixing_weights()      # (n_output_channels, n_motifs, 1)
+```
+
 ## GlobalProfileCNN (Gopher)
 
 **Implementation**: `cerberus.models.GlobalProfileCNN`
