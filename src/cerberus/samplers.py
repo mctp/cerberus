@@ -1301,6 +1301,113 @@ class PeakSampler(MultiSampler):
         )
 
 
+class NegativePeakSampler(MultiSampler):
+    """Background-only sampler: complexity-matched non-peak intervals.
+
+    Like PeakSampler, loads peaks and generates complexity-matched background
+    intervals that exclude peak regions. Unlike PeakSampler, the peaks
+    themselves are NOT included in the training set — only the background
+    intervals are used. All intervals have peak_status=0.
+
+    Used for training bias-only models (e.g., Tn5 sequence bias in ChromBPNet /
+    Dalmatian) on non-peak regions where enzymatic bias dominates.
+
+    Args:
+        intervals_path: Path to peaks (used for exclusion and complexity reference).
+        fasta_path: Path to genome FASTA.
+        chrom_sizes: Chromosome sizes.
+        padded_size: Interval size.
+        folds: Fold definitions.
+        exclude_intervals: Excluded regions.
+        background_ratio: Number of background intervals per peak.
+            Controls epoch size: num_intervals = num_peaks * background_ratio.
+        min_candidates: Minimum number of candidate intervals to generate.
+        candidate_oversample_factor: Factor to oversample candidates relative to peaks.
+        seed: Random seed.
+        prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
+    """
+
+    def __init__(
+        self,
+        intervals_path: Path | str,
+        fasta_path: Path | str,
+        chrom_sizes: dict[str, int],
+        padded_size: int,
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+        background_ratio: float = 1.0,
+        min_candidates: int = 10000,
+        candidate_oversample_factor: float = 5.0,
+        seed: int = 42,
+        prepare_cache: dict[str, np.ndarray] | None = None,
+    ):
+        self.intervals_path = Path(intervals_path)
+        self.background_ratio = background_ratio
+
+        logger.info(f"NegativePeakSampler: Loading peak intervals from {self.intervals_path} (for exclusion/complexity reference)...")
+        # 1. Load peaks (for exclusion and complexity reference only — not included in training)
+        self.positives = IntervalSampler(
+            file_path=self.intervals_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+        )
+        logger.info(f"NegativePeakSampler: Loaded {len(self.positives)} peak intervals (reference only).")
+
+        if exclude_intervals is None:
+            exclude_intervals = {}
+
+        # 2. Exclusions for negatives (original excludes + peaks)
+        neg_excludes = copy.deepcopy(exclude_intervals)
+        for interval in self.positives:
+            if interval.chrom not in neg_excludes:
+                neg_excludes[interval.chrom] = InterLap()
+            neg_excludes[interval.chrom].add((interval.start, interval.end))
+
+        # 3. Candidates (random background, excluding peaks)
+        n_peaks = len(self.positives)
+        n_candidates = max(
+            min_candidates,
+            int(n_peaks * background_ratio * candidate_oversample_factor),
+        )
+        self.candidates = RandomSampler(
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            num_intervals=n_candidates,
+            folds=folds,
+            exclude_intervals=neg_excludes,
+            seed=seed,
+            generate_on_init=False,
+        )
+
+        # 4. Negatives (complexity matched to peaks)
+        self.negatives = ComplexityMatchedSampler(
+            target_sampler=self.positives,
+            candidate_sampler=self.candidates,
+            fasta_path=fasta_path,
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=neg_excludes,
+            candidate_ratio=background_ratio,
+            seed=seed,
+            generate_on_init=False,
+            metrics=["gc", "dust", "cpg"],
+            metrics_cache=prepare_cache,
+        )
+
+        # 5. Initialize MultiSampler with only negatives
+        super().__init__(
+            samplers=[self.negatives],
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+            seed=seed,
+        )
+
+    def get_peak_status(self, idx: int) -> int:
+        """All intervals are background (non-peak). Always returns 0."""
+        return 0
+
 
 def create_sampler(
     config: dict | SamplerConfig,
@@ -1409,11 +1516,29 @@ def create_sampler(
 
     elif sampler_type == "peak":
         background_ratio = sampler_args["background_ratio"]
-        
+
         if fasta_path is None:
             raise ValueError("PeakSampler requires 'fasta_path' to be provided.")
 
         return PeakSampler(
+            intervals_path=sampler_args["intervals_path"],
+            fasta_path=fasta_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+            background_ratio=background_ratio,
+            seed=seed,
+            prepare_cache=prepare_cache,
+        )
+
+    elif sampler_type == "negative_peak":
+        background_ratio = sampler_args["background_ratio"]
+
+        if fasta_path is None:
+            raise ValueError("NegativePeakSampler requires 'fasta_path' to be provided.")
+
+        return NegativePeakSampler(
             intervals_path=sampler_args["intervals_path"],
             fasta_path=fasta_path,
             chrom_sizes=chrom_sizes,

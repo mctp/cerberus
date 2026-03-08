@@ -55,7 +55,8 @@ class SamplerConfig(TypedDict):
     Configuration for data samplers.
 
     Attributes:
-        sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random', 'complexity_matched', 'peak').
+        sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random',
+            'complexity_matched', 'peak', 'negative_peak').
         padded_size: Length of the intervals yielded by the sampler (after padding/centering).
         sampler_args: Dictionary of arguments specific to the sampler type.
 
@@ -75,6 +76,9 @@ class SamplerConfig(TypedDict):
     - 'peak':
         - intervals_path: Path to peaks file.
         - background_ratio: Ratio of background intervals to peaks (default: 1.0).
+    - 'negative_peak':
+        - intervals_path: Path to peaks file (used for exclusion and complexity reference).
+        - background_ratio: Number of background intervals per peak (controls epoch size).
     """
 
     sampler_type: str
@@ -520,6 +524,12 @@ def validate_sampler_config(
         if not all(k in config["sampler_args"] for k in required_args):
             missing = required_args - config["sampler_args"].keys()
             raise ValueError(f"PeakSampler args missing required keys: {missing}")
+
+    elif config["sampler_type"] == "negative_peak":
+        required_args = {"intervals_path"}
+        if not all(k in config["sampler_args"] for k in required_args):
+            missing = required_args - config["sampler_args"].keys()
+            raise ValueError(f"NegativePeakSampler args missing required keys: {missing}")
 
     return {
         "sampler_type": config["sampler_type"],

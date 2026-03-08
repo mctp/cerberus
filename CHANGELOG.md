@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NegativePeakSampler** (`cerberus.samplers`): Background-only sampler that
+  generates complexity-matched non-peak intervals, excluding peak regions.
+  Used for training bias-only models (Tn5 sequence bias) on non-peak regions.
+  Config type: `"negative_peak"`, same args as `"peak"`.
 - **Dalmatian model** (`cerberus.models.Dalmatian`): End-to-end bias-factorized
   sequence-to-function model for ATAC-seq. Composes two Pomeranian sub-networks
   (BiasNet ~147bp RF, SignalNet ~1089bp RF) with zero-initialized signal outputs,
