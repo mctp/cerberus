@@ -138,18 +138,24 @@ class CerberusModule(pl.LightningModule):
     def _shared_step(self, batch, batch_idx, prefix):
         inputs = batch["inputs"]
         targets = batch["targets"]
-        
+
         # Forward pass
         outputs = self.model(inputs)
 
-        # Calculate loss
-        loss = self.criterion(outputs, targets)
-        
-        # Logging
+        # Calculate loss (with profile/count breakdown when available)
         batch_size = inputs.shape[0]
-        # Sync dist for validation to avoid warning and ensure correct epoch accumulation
         sync_dist = (prefix == "val_")
-        self.log(f"{prefix}loss", loss, prog_bar=True, batch_size=batch_size, sync_dist=sync_dist)
+
+        if hasattr(self.criterion, "loss_components"):
+            profile_loss, count_loss = self.criterion.loss_components(outputs, targets)
+            loss = (self.criterion.profile_weight * profile_loss
+                    + self.criterion.count_weight * count_loss)
+            self.log(f"{prefix}loss", loss, prog_bar=True, batch_size=batch_size, sync_dist=sync_dist)
+            self.log(f"{prefix}profile_loss", profile_loss, batch_size=batch_size, sync_dist=sync_dist)
+            self.log(f"{prefix}count_loss", count_loss, batch_size=batch_size, sync_dist=sync_dist)
+        else:
+            loss = self.criterion(outputs, targets)
+            self.log(f"{prefix}loss", loss, prog_bar=True, batch_size=batch_size, sync_dist=sync_dist)
              
         # Metrics
         metric_collection = self.train_metrics if prefix == "train_" else self.val_metrics

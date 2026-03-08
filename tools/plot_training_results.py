@@ -188,6 +188,56 @@ def plot_metrics(metrics_path, output_dir):
         plt.savefig(plots_dir / "pearson_log_counts_curve.png", dpi=300)
         plt.close()
 
+    # 6. Profile Loss
+    profile_loss_metrics = []
+    if "train_profile_loss" in df.columns:
+        profile_loss_metrics.append("train_profile_loss")
+    if "val_profile_loss" in df.columns:
+        profile_loss_metrics.append("val_profile_loss")
+
+    if profile_loss_metrics:
+        plt.figure(figsize=(10, 6))
+        for metric in profile_loss_metrics:
+            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            if metric_df.height > 0:
+                label = "Train Profile Loss" if "train" in metric else "Validation Profile Loss"
+                marker = None if "train" in metric else "o"
+                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker=marker, markersize=6)
+
+        plt.title("Profile Loss")
+        plt.xlabel("Step")
+        plt.ylabel("Profile Loss")
+        plt.xlim(step_min, step_max)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(plots_dir / "profile_loss_curve.png", dpi=300)
+        plt.close()
+
+    # 7. Count Loss
+    count_loss_metrics = []
+    if "train_count_loss" in df.columns:
+        count_loss_metrics.append("train_count_loss")
+    if "val_count_loss" in df.columns:
+        count_loss_metrics.append("val_count_loss")
+
+    if count_loss_metrics:
+        plt.figure(figsize=(10, 6))
+        for metric in count_loss_metrics:
+            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            if metric_df.height > 0:
+                label = "Train Count Loss" if "train" in metric else "Validation Count Loss"
+                marker = None if "train" in metric else "o"
+                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker=marker, markersize=6)
+
+        plt.title("Count Loss")
+        plt.xlabel("Step")
+        plt.ylabel("Count Loss")
+        plt.xlim(step_min, step_max)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(plots_dir / "count_loss_curve.png", dpi=300)
+        plt.close()
+
     logger.info(f"Plots saved to {plots_dir}")
 
 def main():
