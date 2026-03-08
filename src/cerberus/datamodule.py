@@ -117,7 +117,10 @@ class CerberusDataModule(pl.LightningDataModule):
         Returns None if the sampler type does not benefit from caching.
         """
         sampler_type = self.sampler_config["sampler_type"]
-        if sampler_type not in ("peak", "complexity_matched"):
+        # NOTE: Every sampler type that uses ComplexityMatchedSampler must be
+        # listed here, otherwise its metrics won't be cached to disk and will
+        # be recomputed from scratch on every run.
+        if sampler_type not in ("peak", "complexity_matched", "negative_peak"):
             return None
         return resolve_cache_dir(
             self.cache_dir,
@@ -160,6 +163,8 @@ class CerberusDataModule(pl.LightningDataModule):
         # Extract metrics_cache from the sampler
         sampler = tmp_dataset.sampler
         sampler_type = self.sampler_config["sampler_type"]
+        # NOTE: Keep in sync with _resolve_cache_dir — every sampler type
+        # listed there must have a branch here to extract its metrics_cache.
         if sampler_type == "complexity_matched":
             metrics_cache = sampler.metrics_cache  # type: ignore[union-attr]
         elif sampler_type == "peak":
@@ -168,6 +173,8 @@ class CerberusDataModule(pl.LightningDataModule):
             else:
                 logger.info("prepare_data: peak sampler has no negatives, nothing to cache")
                 return
+        elif sampler_type == "negative_peak":
+            metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
         else:
             return
 

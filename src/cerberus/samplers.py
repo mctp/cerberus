@@ -955,6 +955,12 @@ class ComplexityMatchedSampler(ProxySampler):
     This sampler bins the target intervals by their metrics and then selects
     intervals from the candidate sampler to match the count in each bin, scaled
     by `candidate_ratio`.
+
+    IMPORTANT: Any sampler type that uses ComplexityMatchedSampler must be
+    registered in CerberusDataModule._resolve_cache_dir() and
+    CerberusDataModule.prepare_data() so that its metrics_cache is persisted
+    to disk across runs. Without this, metrics are recomputed from scratch
+    every time (expensive FASTA reads).
     """
 
     def __init__(
