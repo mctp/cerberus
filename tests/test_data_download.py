@@ -57,8 +57,38 @@ def test_kidney_scatac_skips_existing(mock_download, tmp_path):
     assert results["h5ad"] == out_dir / "gene_activity.h5ad"
 
 
+@patch("cerberus.download._download_file")
+def test_k562_chrombpnet_download_mocked(mock_download, tmp_path):
+    """Test k562_chrombpnet download logic without actually downloading."""
+    results = download_dataset(tmp_path, name="k562_chrombpnet")
+
+    assert mock_download.call_count == 2
+    assert results["narrowPeak"].name == "peaks.bed"
+    assert results["bigwig"].name == "unstranded.bw"
+
+    urls_called = [call.args[0] for call in mock_download.call_args_list]
+    assert any("peaks.bed" in u for u in urls_called)
+    assert any("unstranded.bw" in u for u in urls_called)
+
+
+@patch("cerberus.download._download_file")
+def test_k562_chrombpnet_skips_existing(mock_download, tmp_path):
+    """Test that existing files are not re-downloaded."""
+    out_dir = tmp_path / "k562_chrombpnet"
+    out_dir.mkdir(parents=True)
+
+    (out_dir / "peaks.bed").touch()
+    (out_dir / "unstranded.bw").touch()
+
+    results = download_dataset(tmp_path, name="k562_chrombpnet")
+
+    assert mock_download.call_count == 0
+    assert results["narrowPeak"] == out_dir / "peaks.bed"
+    assert results["bigwig"] == out_dir / "unstranded.bw"
+
+
 def test_download_dataset_unknown_name(tmp_path):
     """Test that unknown dataset names raise ValueError."""
     import pytest
-    with pytest.raises(ValueError, match="Unknown dataset.*kidney_scatac"):
+    with pytest.raises(ValueError, match="Unknown dataset.*k562_chrombpnet"):
         download_dataset(tmp_path, name="nonexistent")

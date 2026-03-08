@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **k562_chrombpnet dataset** (`cerberus.download`): New downloadable dataset
+  from Zenodo (DOI: 10.5281/zenodo.15713376) with K562 ATAC-seq narrowPeak
+  and unstranded BigWig files for ChromBPNet benchmarking.
 - **NegativePeakSampler** (`cerberus.samplers`): Background-only sampler that
   generates complexity-matched non-peak intervals, excluding peak regions.
   Used for training bias-only models (Tn5 sequence bias) on non-peak regions.
@@ -29,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keyword arguments to the loss function.
 - Input length validation (center-crop or `ValueError`) added to all models:
   Pomeranian, BPNet, ConvNeXtDCNN, GlobalProfileCNN.
+- **`tools/train_dalmatian.py`**: Generic training tool for Dalmatian models.
+  Supports MSE and Poisson base losses, BiasNet/SignalNet filter overrides,
+  and all standard training options (multi-fold, precision, etc.).
+- **`examples/scatac_kidney_dalmatian.sh`**: Example training script for
+  Dalmatian on the kidney scATAC-seq pseudobulk dataset (renal
+  beta-intercalated cell by default).
 
 ### Changed
 - `tools/scatac_pseudobulk.py`: Reworked CLI flags and output naming:

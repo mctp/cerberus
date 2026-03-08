@@ -25,6 +25,8 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
         output_dir: Directory where the dataset files will be saved.
         name: Name of the dataset to download. Currently supported:
               - 'mdapca2b_ar': MDA-PCA-2b AR ChIP-seq data (BigWig and narrowPeak)
+              - 'k562_chrombpnet': K562 ChromBPNet example data from Zenodo
+                (DOI: 10.5281/zenodo.15713376; narrowPeak and BigWig)
               - 'kidney_scatac': Human kidney 10x scATAC-seq from CellxGene
                 (fragments, tabix index, and gene activity h5ad;
                  27,034 cells, 14 cell types, 5 donors, GRCh38)
@@ -32,6 +34,7 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
     Returns:
         Dictionary mapping file types to their local paths.
         For 'mdapca2b_ar': 'bigwig', 'narrowPeak'.
+        For 'k562_chrombpnet': 'narrowPeak', 'bigwig'.
         For 'kidney_scatac': 'fragments', 'fragments_index', 'h5ad'.
 
     Raises:
@@ -51,6 +54,25 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
         urls = {
             "bigwig": "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSM8605979&format=file&file=GSM8605979%5F05%5F0FP2%5F0255Genen%5FDMSO%2D3a%5FAR%5Fhs%5Fi37%5FR1%2Esrt%2Enodup%5Fx%5F00%5F0FPL%5F0255Genen%5FPooled%5FInput%5Fhs%5Fi67%5FR1%2Esrt%2Enodup%2Efc%2Esignal%2Ebigwig",
             "narrowPeak": "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSM8605979&format=file&file=GSM8605979%5F05%5F0FP2%5F0255Genen%5FDMSO%2D3a%5FAR%5Fhs%5Fi37%5FR1%2Esrt%2Enodup%5Fx%5F00%5F0FPL%5F0255Genen%5FPooled%5FInput%5Fhs%5Fi67%5FR1%2Esrt%2Enodup%2Epval0%2E01%2E500K%2Ebfilt%2EnarrowPeak%2Egz"
+        }
+
+        for key, filename in files.items():
+            filepath = out_dir / filename
+            if not filepath.exists():
+                logger.info(f"Downloading {filename}...")
+                _download_file(urls[key], filepath)
+            results[key] = filepath
+
+    elif name == "k562_chrombpnet":
+        _ZENODO_BASE = "https://zenodo.org/api/records/15713376/files"
+        files = {
+            "narrowPeak": "peaks.bed",
+            "bigwig": "unstranded.bw",
+        }
+
+        urls = {
+            key: f"{_ZENODO_BASE}/{filename}/content"
+            for key, filename in files.items()
         }
 
         for key, filename in files.items():
@@ -84,7 +106,7 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
     else:
         raise ValueError(
             f"Unknown dataset: {name}. "
-            f"Supported: ['mdapca2b_ar', 'kidney_scatac']"
+            f"Supported: ['mdapca2b_ar', 'k562_chrombpnet', 'kidney_scatac']"
         )
         
     return results
