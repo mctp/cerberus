@@ -25,6 +25,7 @@ BATCH_SIZE=32
 MAX_EPOCHS=50
 ALPHA=adaptive
 LOSS="bpnet"
+SEED=1234
 
 # Determine fold subdirectory based on --multi flag
 FOLD="single-fold"
@@ -45,6 +46,7 @@ python tools/train_pomeranian.py \
     --max-epochs "${MAX_EPOCHS}" \
     --alpha "${ALPHA}" \
     --loss "${LOSS}" \
+    --seed "${SEED}" \
     "$@"
 
 # --- Plot ---
@@ -58,6 +60,7 @@ python tools/export_predictions.py \
     --output "${MODEL_DIR}/predictions.tsv.gz" \
     --batch_size 128 \
     --device cuda \
+    --seed "${SEED}" \
     --eval-split test
 
 # --- Predict (cross-dataset: LNCaP — same TF, different cell line, test chromosomes only) ---
@@ -69,4 +72,5 @@ python tools/export_predictions.py \
     --output "${MODEL_DIR}/predictions_lncap.tsv.gz" \
     --batch_size 128 \
     --device cuda \
+    --seed "${SEED}" \
     --eval-split test

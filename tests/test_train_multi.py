@@ -59,6 +59,7 @@ def test_train_multi_loop():
             sampler_config,
             model_config,
             train_config,
+            seed=1234,
             root_dir="test_runs"
         )
         
@@ -75,7 +76,8 @@ def test_train_multi_loop():
             data_config=data_config,
             sampler_config=sampler_config,
             test_fold=0,
-            val_fold=1
+            val_fold=1,
+            seed=1234,
         )
         # Call 2: test=1, val=2
         mock_dm_cls.assert_any_call(
@@ -83,7 +85,8 @@ def test_train_multi_loop():
             data_config=data_config,
             sampler_config=sampler_config,
             test_fold=1,
-            val_fold=2
+            val_fold=2,
+            seed=1234,
         )
         # Call 3: test=2, val=0
         mock_dm_cls.assert_any_call(
@@ -91,7 +94,8 @@ def test_train_multi_loop():
             data_config=data_config,
             sampler_config=sampler_config,
             test_fold=2,
-            val_fold=0
+            val_fold=0,
+            seed=1234,
         )
         
         # Check logging directories passed to Trainer via CSVLogger check in train

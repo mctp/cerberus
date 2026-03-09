@@ -356,6 +356,7 @@ def train_single(
     root_dir: str | Path = ".",
     val_batch_size: int | None = None,
     run_test: bool = False,
+    seed: int | None = None,
     **trainer_kwargs,
 ) -> pl.Trainer:
     """
@@ -379,6 +380,7 @@ def train_single(
         matmul_precision: Precision for float32 matrix multiplication.
         precision: Mixed precision setting passed to pl.Trainer.
         root_dir: Root directory for saving logs and checkpoints.
+        seed: Optional base random seed for deterministic sampler initialization.
         run_test: If True, run ``trainer.test()`` on the test fold immediately
             after training using the best checkpoint. Metrics are logged to the
             same logger as training (default: False).
@@ -402,6 +404,7 @@ def train_single(
         sampler_config=sampler_config,
         test_fold=test_fold,
         val_fold=val_fold,
+        seed=seed,
     )
 
     # Update genome_config to reflect the actual folds used
@@ -463,6 +466,7 @@ def train_multi(
     root_dir: str | Path = ".",
     val_batch_size: int | None = None,
     run_test: bool = False,
+    seed: int | None = None,
     **trainer_kwargs,
 ) -> list[pl.Trainer]:
     """
@@ -484,6 +488,7 @@ def train_multi(
         precision: Mixed precision setting passed to pl.Trainer.
         root_dir: Root directory for saving logs and checkpoints.
                   Each fold will be saved in a subdirectory 'fold_{i}'.
+        seed: Optional base random seed for deterministic sampler initialization.
         run_test: If True, run ``trainer.test()`` after each fold's training
             using the best checkpoint (default: False).
         **trainer_kwargs: Additional arguments passed to pl.Trainer.
@@ -516,6 +521,7 @@ def train_multi(
             root_dir=root_dir,
             val_batch_size=val_batch_size,
             run_test=run_test,
+            seed=seed,
             **trainer_kwargs,
         )
 
