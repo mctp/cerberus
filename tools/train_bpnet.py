@@ -105,6 +105,22 @@ def get_args():
             "Compatible with DeepLIFT/DeepSHAP via captum."
         ),
     )
+    parser.add_argument(
+        "--residual-architecture",
+        type=str,
+        default="residual_post-activation_conv",
+        choices=[
+            "residual_post-activation_conv",
+            "residual_pre-activation_conv",
+            "activated_residual_pre-activation_conv",
+        ],
+        help=(
+            "Residual block formulation for BPNet tower: "
+            "'residual_post-activation_conv' (x + act(conv(x))), "
+            "'residual_pre-activation_conv' (x + conv(act(x))), "
+            "'activated_residual_pre-activation_conv' (act(x) + conv(act(x)))."
+        ),
+    )
 
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
@@ -253,6 +269,7 @@ def main():
     # Model Config
     activation = "gelu" if args.stable else "relu"
     use_weight_norm = args.stable
+    logging.info("Residual architecture: %s", args.residual_architecture)
 
     if args.use_1024:
         logging.info("Using BPNet1024 (2112bp -> 1024bp) Model...")
@@ -267,6 +284,7 @@ def main():
             "predict_total_count": True,
             "activation": activation,
             "weight_norm": use_weight_norm,
+            "residual_architecture": args.residual_architecture,
         }
         model_cls_name = "cerberus.models.bpnet.BPNet1024"
         model_name = "BPNet1024"
@@ -283,6 +301,7 @@ def main():
             "predict_total_count": True,
             "activation": activation,
             "weight_norm": use_weight_norm,
+            "residual_architecture": args.residual_architecture,
         }
         model_cls_name = "cerberus.models.bpnet.BPNet"
         model_name = "BPNet"

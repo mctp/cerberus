@@ -366,6 +366,62 @@ def test_dilated_residual_block_gelu():
     assert out_relu.shape == out_gelu.shape
 
 
+def test_dilated_residual_block_all_residual_architectures():
+    """All supported BPNet residual formulations should produce valid cropped outputs."""
+    filters, kernel_size, dilation, length = 16, 3, 2, 20
+    x = torch.randn(1, filters, length)
+    expected_shape = (1, filters, 16)  # valid conv: L - (k-1)*d = 20 - 4
+
+    for residual_architecture in (
+        "residual_post-activation_conv",
+        "residual_pre-activation_conv",
+        "activated_residual_pre-activation_conv",
+    ):
+        block = DilatedResidualBlock(
+            filters, kernel_size, dilation,
+            activation="relu",
+            residual_architecture=residual_architecture,
+        )
+        with torch.no_grad():
+            out = block(x)
+        assert out.shape == expected_shape
+
+
+def test_dilated_residual_block_residual_architecture_math():
+    """Verify the three residual formulas with an identity 1x1 convolution."""
+    filters, kernel_size, dilation, length = 2, 1, 1, 6
+    x = torch.tensor(
+        [[[1.0, -2.0, 0.5, -0.1, 3.0, -4.0],
+          [-1.0, 2.0, -0.5, 0.1, -3.0, 4.0]]]
+    )
+
+    def _identity_init(block: DilatedResidualBlock):
+        with torch.no_grad():
+            block.conv.weight.zero_()
+            for c in range(filters):
+                block.conv.weight[c, c, 0] = 1.0
+            if block.conv.bias is not None:
+                block.conv.bias.zero_()
+
+    expected_relu = torch.relu(x)
+    expected = {
+        "residual_post-activation_conv": x + expected_relu,
+        "residual_pre-activation_conv": x + expected_relu,
+        "activated_residual_pre-activation_conv": expected_relu + expected_relu,
+    }
+
+    for residual_architecture, expected_out in expected.items():
+        block = DilatedResidualBlock(
+            filters, kernel_size, dilation,
+            activation="relu",
+            residual_architecture=residual_architecture,
+        )
+        _identity_init(block)
+        with torch.no_grad():
+            out = block(x)
+        assert torch.allclose(out, expected_out, atol=1e-6), residual_architecture
+
+
 def test_dilated_residual_block_weight_norm():
     """DilatedResidualBlock with weight_norm=True parametrizes the conv weight."""
     filters, kernel_size, dilation = 16, 3, 2
@@ -387,6 +443,145 @@ def test_dilated_residual_block_invalid_activation():
     """DilatedResidualBlock raises ValueError for unknown activation strings."""
     with pytest.raises(ValueError, match="unsupported activation"):
         DilatedResidualBlock(16, 3, 2, activation="swish")
+
+
+def test_dilated_residual_block_invalid_residual_architecture():
+    """DilatedResidualBlock raises ValueError for unknown residual architecture strings."""
+    with pytest.raises(ValueError, match="unsupported residual_architecture"):
+        DilatedResidualBlock(16, 3, 2, residual_architecture="unknown_mode")
+
+
+def test_bpnet_all_residual_architectures_output_shapes():
+    """BPNet should support all residual architecture variants with unchanged output shapes."""
+    x = torch.randn(2, 4, 600)
+    for residual_architecture in (
+        "residual_post-activation_conv",
+        "residual_pre-activation_conv",
+        "activated_residual_pre-activation_conv",
+    ):
+        model = BPNet(
+            input_len=600,
+            output_len=350,
+            filters=8,
+            n_dilated_layers=3,
+            input_channels=["A", "C", "G", "T"],
+            output_channels=["signal"],
+            residual_architecture=residual_architecture,
+        )
+        with torch.no_grad():
+            out = model(x)
+        assert out.logits.shape == (2, 1, 350)
+        assert out.log_counts.shape == (2, 1)
+
+
+def test_bpnet_refactor_variants_apply_final_relu():
+    """Refactor-compatible residual variants apply a final ReLU after the dilated tower."""
+    input_len = 10
+    x = torch.zeros(1, 4, input_len)
+    x[:, 0, :] = 0.5
+
+    def _build(mode: str) -> BPNet:
+        model = BPNet(
+            input_len=input_len,
+            output_len=input_len,
+            filters=1,
+            n_dilated_layers=1,
+            conv_kernel_size=1,
+            dil_kernel_size=1,
+            profile_kernel_size=1,
+            input_channels=["A", "C", "G", "T"],
+            output_channels=["signal"],
+            residual_architecture=mode,
+            activation="relu",
+        )
+        with torch.no_grad():
+            # iconv: pass through channel A only
+            model.iconv.weight.zero_()
+            model.iconv.weight[0, 0, 0] = 1.0
+            model.iconv.bias.zero_()
+            # Dilated conv: constant negative output (-1)
+            block = model.res_layers[0]
+            block.conv.weight.zero_()
+            block.conv.bias.fill_(-1.0)
+            # Count head: identity over pooled latent
+            model.count_dense.weight.fill_(1.0)
+            model.count_dense.bias.zero_()
+        return model
+
+    model_post = _build("residual_post-activation_conv")
+    model_pre = _build("residual_pre-activation_conv")
+    model_act_pre = _build("activated_residual_pre-activation_conv")
+
+    with torch.no_grad():
+        out_post = model_post(x)
+        out_pre = model_pre(x)
+        out_act_pre = model_act_pre(x)
+
+    # Without final ReLU, residual_pre variants would output negative pooled latent here.
+    # final ReLU should clamp both pre-activation variants to zero.
+    assert out_pre.log_counts.item() == pytest.approx(0.0, abs=1e-6)
+    assert out_act_pre.log_counts.item() == pytest.approx(0.0, abs=1e-6)
+    assert out_post.log_counts.item() > 0.0
+
+
+def test_bpnet_preactivation_variants_skip_initial_iconv_activation():
+    """Pre-activation variants pass unactivated iconv output to the first residual block."""
+    input_len = 12
+    x = torch.zeros(1, 4, input_len)
+    x[:, 0, :] = torch.tensor([-1.0, -0.5, -2.0, -0.1, -3.0, -0.2, -1.5, -0.7, -0.9, -0.4, -2.5, -0.3])
+
+    def _build(mode: str) -> BPNet:
+        model = BPNet(
+            input_len=input_len,
+            output_len=input_len,
+            filters=1,
+            n_dilated_layers=1,
+            conv_kernel_size=1,
+            dil_kernel_size=1,
+            profile_kernel_size=1,
+            input_channels=["A", "C", "G", "T"],
+            output_channels=["signal"],
+            residual_architecture=mode,
+            activation="relu",
+        )
+        with torch.no_grad():
+            # iconv: pass through A channel so raw iconv output preserves negatives.
+            model.iconv.weight.zero_()
+            model.iconv.weight[0, 0, 0] = 1.0
+            model.iconv.bias.zero_()
+            # Make residual block a no-op in the conv branch for stability.
+            block = model.res_layers[0]
+            block.conv.weight.zero_()
+            block.conv.bias.zero_()
+        return model
+
+    for mode in (
+        "residual_post-activation_conv",
+        "residual_pre-activation_conv",
+        "activated_residual_pre-activation_conv",
+    ):
+        model = _build(mode)
+        captured = {}
+
+        def _hook(_module, args):
+            # args is a tuple containing block input.
+            captured["tower_input"] = args[0].detach().clone()
+
+        handle = model.res_layers[0].register_forward_pre_hook(_hook)
+        with torch.no_grad():
+            _ = model(x)
+        handle.remove()
+
+        assert "tower_input" in captured
+        raw_iconv = model.iconv(x).detach()
+
+        if mode == "residual_post-activation_conv":
+            expected = torch.relu(raw_iconv)
+            assert torch.allclose(captured["tower_input"], expected, atol=1e-6)
+            assert (captured["tower_input"] >= 0).all()
+        else:
+            assert torch.allclose(captured["tower_input"], raw_iconv, atol=1e-6)
+            assert (captured["tower_input"] < 0).any()
 
 
 def test_bpnet_stable_output_shapes():
@@ -527,16 +722,18 @@ def test_bpnet_stable_parameter_gradients():
 
 
 def test_bpnet1024_stable_passthrough():
-    """BPNet1024 correctly passes activation and weight_norm to the parent BPNet."""
+    """BPNet1024 correctly passes activation/weight_norm/residual architecture to BPNet."""
     model = BPNet1024(
         input_channels=["A", "C", "G", "T"], output_channels=["signal"],
         activation="gelu", weight_norm=True,
+        residual_architecture="residual_pre-activation_conv",
     )
     x = torch.randn(2, 4, 2112)
     with torch.no_grad():
         out = model(x)
     assert out.logits.shape == (2, 1, 1024)
     assert out.log_counts.shape == (2, 1)
+    assert model.residual_architecture == "residual_pre-activation_conv"
     # Confirm weight_norm was applied to iconv
     assert nn_parametrize.is_parametrized(model.iconv, 'weight'), \
         "weight is not parametrized on BPNet1024 iconv"

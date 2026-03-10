@@ -25,6 +25,7 @@ MAX_EPOCHS=50
 ALPHA=adaptive
 LOSS="bpnet"
 SEED=1234
+RESIDUAL_ARCHITECTURE="residual_post-activation_conv"
 
 # Determine fold subdirectory based on --multi flag
 FOLD="single-fold"
@@ -46,6 +47,7 @@ python tools/train_bpnet.py \
     --alpha "${ALPHA}" \
     --loss "${LOSS}" \
     --seed "${SEED}" \
+    --residual-architecture "${RESIDUAL_ARCHITECTURE}" \
     "$@"
 
 # --- Plot ---
