@@ -63,9 +63,6 @@ samtools_index_compat() {
     samtools index "${bam}"
 }
 
-is_integer() {
-    [[ "$1" =~ ^[0-9]+$ ]]
-}
 
 declare -a BAMS=()
 declare -a BEDS=()
@@ -137,28 +134,10 @@ done
 [[ ${#BEDS[@]} -gt 0 ]] || die "At least one --bed is required"
 [[ -n "${OUT_DIR}" ]] || die "--out-dir is required"
 [[ -n "${PREFIX}" ]] || die "--prefix is required"
-is_integer "${THREADS}" || die "--threads must be an integer"
-is_integer "${BIN_SIZE}" || die "--bin-size must be an integer"
-is_integer "${MAPQ}" || die "--mapq must be an integer"
-[[ "${THREADS}" -ge 1 ]] || die "--threads must be >= 1"
-[[ "${BIN_SIZE}" -ge 1 ]] || die "--bin-size must be >= 1"
-[[ "${MAPQ}" -ge 0 ]] || die "--mapq must be >= 0"
 
 require_cmd samtools
 require_cmd bamCoverage
 require_cmd gzip
-
-for bam in "${BAMS[@]}"; do
-    [[ -s "${bam}" ]] || die "BAM does not exist or is empty: ${bam}"
-done
-
-for bed in "${BEDS[@]}"; do
-    [[ -s "${bed}" ]] || die "BED does not exist or is empty: ${bed}"
-done
-
-if [[ -n "${BLACKLIST}" ]]; then
-    [[ -s "${BLACKLIST}" ]] || die "Blacklist does not exist or is empty: ${BLACKLIST}"
-fi
 
 mkdir -p "${OUT_DIR}"
 
