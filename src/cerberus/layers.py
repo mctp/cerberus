@@ -101,8 +101,8 @@ class ConvNeXtV2Block(nn.Module):
 class PGCBlock(nn.Module):
     """
     Projected Gated Convolution Block.
-    
-    Structure:
+
+    Full mode (expansion >= 1):
     1. Projection (Pointwise) -> Expansion
     2. RMSNorm
     3. Split into X, V
@@ -112,87 +112,120 @@ class PGCBlock(nn.Module):
     7. RMSNorm
     8. Dropout
     9. Residual Connection
-    
+
+    Depthwise-only mode (expansion = 0):
+    1. RMSNorm
+    2. Dilated Depthwise Conv
+    3. Dropout
+    4. Residual Connection
+
+    No pointwise projections or gating are used in depthwise-only mode.
+    The tower features remain independent per-channel — useful for ablation
+    studies testing whether inter-channel mixing matters.
+
     Args:
         dim (int): Input/Output dimension.
         kernel_size (int): Kernel size for depthwise convolution.
         dilation (int): Dilation rate.
         expansion (int): Expansion factor. Internal dimension = dim * expansion.
+            When set to 0, the block operates in depthwise-only mode.
         dropout (float): Dropout rate.
         padding (str): Padding mode. Default: 'same'.
     """
     def __init__(self, dim: int, kernel_size: int, dilation: int, expansion: int = 2, dropout: float = 0.1, padding: str = 'same'):
         super().__init__()
-        
+
         self.dim = dim
-        self.hidden_dim = dim * expansion
-        
-        # 1. Input Projection (Expansion)
-        # We project to 2 * hidden_dim to split into X and V
-        self.in_proj = nn.Conv1d(dim, 2 * self.hidden_dim, kernel_size=1)
-        
-        # 2. Norm after projection
-        self.norm1 = nn.RMSNorm(2 * self.hidden_dim)
-        
-        # 3. Depthwise Conv
-        # Applied to X part only (first half)
-        self.conv = nn.Conv1d(
-            self.hidden_dim, self.hidden_dim, 
-            kernel_size=kernel_size, 
-            dilation=dilation, 
-            groups=self.hidden_dim, # Depthwise
-            padding=padding
-        )
-        
-        # 4. Output Projection
-        self.out_proj = nn.Conv1d(self.hidden_dim, dim, kernel_size=1)
-        
-        # 5. Norm & Dropout
-        self.norm2 = nn.RMSNorm(dim)
-        self.dropout = nn.Dropout(dropout)
-        
+        self.depthwise_only = (expansion == 0)
+
+        if self.depthwise_only:
+            # Depthwise-only: norm -> conv -> dropout -> residual
+            self.norm = nn.RMSNorm(dim)
+            self.conv = nn.Conv1d(
+                dim, dim,
+                kernel_size=kernel_size,
+                dilation=dilation,
+                groups=dim,
+                padding=padding
+            )
+            self.dropout = nn.Dropout(dropout)
+        else:
+            self.hidden_dim = dim * expansion
+
+            # 1. Input Projection (Expansion)
+            # We project to 2 * hidden_dim to split into X and V
+            self.in_proj = nn.Conv1d(dim, 2 * self.hidden_dim, kernel_size=1)
+
+            # 2. Norm after projection
+            self.norm1 = nn.RMSNorm(2 * self.hidden_dim)
+
+            # 3. Depthwise Conv
+            # Applied to X part only (first half)
+            self.conv = nn.Conv1d(
+                self.hidden_dim, self.hidden_dim,
+                kernel_size=kernel_size,
+                dilation=dilation,
+                groups=self.hidden_dim, # Depthwise
+                padding=padding
+            )
+
+            # 4. Output Projection
+            self.out_proj = nn.Conv1d(self.hidden_dim, dim, kernel_size=1)
+
+            # 5. Norm & Dropout
+            self.norm2 = nn.RMSNorm(dim)
+            self.dropout = nn.Dropout(dropout)
+
     def forward(self, x):
         # x: (B, C, L)
         residual = x
-        
-        # 1. Project
-        x = self.in_proj(x)
-        
-        # 2. Norm (requires B, L, C)
-        x = x.transpose(1, 2) # (B, L, C)
-        x = self.norm1(x.float()).type_as(x)
-        x = x.transpose(1, 2) # (B, C, L)
-        
-        # 3. Split
-        x, v = torch.chunk(x, 2, dim=1)
-        
-        # 4. Depthwise Conv on X
-        x = self.conv(x)
-        
-        # If valid padding reduced x size, crop v to match
-        if x.shape[-1] != v.shape[-1]:
-            diff = v.shape[-1] - x.shape[-1]
-            if diff > 0:
-                crop_l = diff // 2
-                crop_r = diff - crop_l
-                v = v[..., crop_l:-crop_r]
-            elif diff < 0:
-                 raise ValueError(f"Conv output larger than input? {x.shape} vs {v.shape}")
-        
-        # 5. Gating
-        x = x * v
-        
-        # 6. Output Project
-        x = self.out_proj(x)
-        
-        # 7. Norm & Dropout (requires B, L, C)
-        x = x.transpose(1, 2)
-        x = self.norm2(x.float()).type_as(x)
-        x = x.transpose(1, 2)
-        
-        x = self.dropout(x)
-        
-        # 8. Residual
+
+        if self.depthwise_only:
+            # Pre-norm -> depthwise conv -> dropout
+            x = x.transpose(1, 2)
+            x = self.norm(x.float()).type_as(x)
+            x = x.transpose(1, 2)
+            x = self.conv(x)
+            x = self.dropout(x)
+        else:
+            # 1. Project
+            x = self.in_proj(x)
+
+            # 2. Norm (requires B, L, C)
+            x = x.transpose(1, 2) # (B, L, C)
+            x = self.norm1(x.float()).type_as(x)
+            x = x.transpose(1, 2) # (B, C, L)
+
+            # 3. Split
+            x, v = torch.chunk(x, 2, dim=1)
+
+            # 4. Depthwise Conv on X
+            x = self.conv(x)
+
+            # If valid padding reduced x size, crop v to match
+            if x.shape[-1] != v.shape[-1]:
+                diff = v.shape[-1] - x.shape[-1]
+                if diff > 0:
+                    crop_l = diff // 2
+                    crop_r = diff - crop_l
+                    v = v[..., crop_l:-crop_r]
+                elif diff < 0:
+                     raise ValueError(f"Conv output larger than input? {x.shape} vs {v.shape}")
+
+            # 5. Gating
+            x = x * v
+
+            # 6. Output Project
+            x = self.out_proj(x)
+
+            # 7. Norm & Dropout (requires B, L, C)
+            x = x.transpose(1, 2)
+            x = self.norm2(x.float()).type_as(x)
+            x = x.transpose(1, 2)
+
+            x = self.dropout(x)
+
+        # Residual connection
         # If valid padding reduced x size, crop residual to match
         if x.shape[-1] != residual.shape[-1]:
             diff = residual.shape[-1] - x.shape[-1]

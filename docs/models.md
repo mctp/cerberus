@@ -13,6 +13,7 @@ A lightweight, efficient model (~150k params) mirroring BPNet's valid-padding pa
 *   **Valid Padding**: Ensures no zero-padding artifacts; strictly maps input to output geometrically (2112bp -> 1024bp).
 *   **Factorized Stem**: Uses a 2-layer stem (`[11, 11]`) with dense and depthwise convolutions for efficient initial feature extraction.
 *   **PGC Body**: Stack of 8 Pointwise-Gated Convolution (PGC) blocks.
+*   **Depthwise-Only Mode** (`expansion=0`): When `expansion=0`, the PGC tower uses depthwise-only blocks — no pointwise projections or gating. Each block becomes `RMSNorm → Depthwise Conv → Dropout → Residual`. Geometry (input/output lengths) is unchanged. Useful for lightweight baselines and ablation studies testing whether inter-channel mixing matters.
 *   **Variants**:
     *   **Pomeranian** (Default): Uses Kernel=9 and Dilation=64 (max). Best for hardware efficiency and modeling large motifs.
     *   **PomeranianK5**: Uses Kernel=5 and Dilation=128 (max). Traditional small-kernel approach.

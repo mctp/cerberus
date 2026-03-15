@@ -44,6 +44,7 @@ class Pomeranian(nn.Module):
         dil_kernel_size (int | list[int]): Kernel size for dilated convolutions. Default: 9.
         profile_kernel_size (int): Kernel size for profile head convolution. Default: 45.
         expansion (int): Expansion factor for PGC blocks. Default: 1.
+            When set to 0, PGC blocks use depthwise-only mode (no channel mixing in the tower).
         dropout (float): Dropout rate. Default: 0.1.
         predict_total_count (bool): If True, predicts a single total count scalar. Default: True.
         stem_expansion (int): Expansion factor for Stem blocks. Default: 2.

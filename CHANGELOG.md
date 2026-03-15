@@ -7,10 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **PWMBiasModel** moved from `cerberus.models` to `debug/pwm_model/` as a
+  self-contained debug package. No longer part of the cerberus public API.
+  Includes `RegularizedProfileCountOutput` (output with optional reg_loss),
+  `RegularizedMSEMultinomialLoss` (loss wrapper that consumes reg_loss), and
+  cosine similarity decorrelation penalty (`decorrelation_weight` parameter)
+  for encouraging distinct PWM filters.
+
 ### Added
+- **Depthwise-only PGC mode** (`expansion=0`): Setting `expansion=0` in
+  Pomeranian/Dalmatian model args skips all pointwise projections and gating
+  in PGC tower blocks, producing a pure depthwise-convolution tower. Useful
+  for lightweight baselines and ablation studies.
 - **k562_chrombpnet dataset** (`cerberus.download`): New downloadable dataset
   from Zenodo (DOI: 10.5281/zenodo.15713376) with K562 ATAC-seq narrowPeak
   and unstranded BigWig files for ChromBPNet benchmarking.
+- **`examples/atac_k562_dalmatian.sh`**: Dalmatian training example for K562
+  ATAC-seq using the k562_chrombpnet Zenodo dataset (auto-downloaded).
 - **NegativePeakSampler** (`cerberus.samplers`): Background-only sampler that
   generates complexity-matched non-peak intervals, excluding peak regions.
   Used for training bias-only models (Tn5 sequence bias) on non-peak regions.
@@ -38,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`examples/scatac_kidney_dalmatian.sh`**: Example training script for
   Dalmatian on the kidney scATAC-seq pseudobulk dataset (renal
   beta-intercalated cell by default).
+
+### Fixed
+- **`negative_peak` sampler disk caching**: `NegativePeakSampler` was missing
+  from the cacheable sampler types in `CerberusDataModule`, causing complexity
+  metrics to be recomputed from scratch on every run instead of loading from
+  the `~/.cache/cerberus/` disk cache.
 
 ### Changed
 - `tools/scatac_pseudobulk.py`: Reworked CLI flags and output naming:
