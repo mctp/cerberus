@@ -159,6 +159,7 @@ data_module = CerberusDataModule(
 # %%
 # This initializes the underlying datasets and performs the split
 # We can also control memory usage here (in_memory=True/False)
+data_module.prepare_data()
 data_module.setup(batch_size=8, num_workers=0, in_memory=False)
 
 if data_module.train_dataset:

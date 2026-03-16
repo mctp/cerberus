@@ -143,6 +143,7 @@ datamodule = CerberusDataModule(
 # Setup datamodule for interactive exploration only.
 # _train() will call setup() again with the same parameters before fitting.
 # Note: num_workers=0 for compatibility in notebook
+datamodule.prepare_data()
 datamodule.setup(
     batch_size=train_config["batch_size"],
     num_workers=0,

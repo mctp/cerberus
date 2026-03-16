@@ -20,10 +20,12 @@ def test_generate_sub_seeds_uniqueness():
     assert seeds1 == seeds2, "Sub-seed generation should be deterministic"
     assert seeds1 != generate_sub_seeds(seed + 1, 5), "Different master seeds should produce different sub-seeds"
 
-def test_generate_sub_seeds_none():
-    """Verify behavior with None seed."""
-    seeds = generate_sub_seeds(None, 5)
-    assert seeds == [None] * 5
+def test_generate_sub_seeds_deterministic():
+    """Verify same master seed produces same sub-seeds."""
+    seeds1 = generate_sub_seeds(42, 5)
+    seeds2 = generate_sub_seeds(42, 5)
+    assert seeds1 == seeds2
+    assert all(isinstance(s, int) for s in seeds1)
 
 def test_random_sampler_resample():
     """Verify RandomSampler regenerates intervals on resample."""

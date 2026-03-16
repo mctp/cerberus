@@ -43,18 +43,10 @@ def test_multi_sampler_seeding(tmp_path):
     p.write_text("chr1\t100\t200\nchr1\t300\t400\n")
     
     # Function to create MS with a seed
-    def create_ms(seed):
-        # We need to replicate the seeding logic that create_sampler used to do for children
-        # s1: Interval (no seed needed really, but ScaledSampler wrapper needs it)
+    def create_ms(seed: int):
         s1 = IntervalSampler(p, chrom_sizes, 100, [], {})
-        # Scaling 0.5 (2 items -> 1 item)
-        seed1 = seed + 1 if seed is not None else None
-        s1_scaled = ScaledSampler(s1, num_samples=1, seed=seed1)
-        
-        # s2: Random
-        seed2 = seed + 2 if seed is not None else None
-        s2 = RandomSampler(chrom_sizes, 100, num_intervals=10, exclude_intervals={}, folds=[], seed=seed2)
-        
+        s1_scaled = ScaledSampler(s1, num_samples=1, seed=seed + 1)
+        s2 = RandomSampler(chrom_sizes, 100, num_intervals=10, exclude_intervals={}, folds=[], seed=seed + 2)
         return MultiSampler([s1_scaled, s2], chrom_sizes, folds=[], exclude_intervals={}, seed=seed)
 
     ms1 = create_ms(42)

@@ -48,6 +48,7 @@ def get_args():
     parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
     parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for data sampling (default: 42)")
     parser.add_argument("--silent", action="store_true", help="Disable tqdm progress bar during training")
 
     # Mode arguments
@@ -299,6 +300,7 @@ def main():
             log_every_n_steps=10,
             val_batch_size=args.batch_size * 4,
             enable_progress_bar=not args.silent,
+            seed=args.seed,
             **precision_args
         )
     else:
@@ -316,6 +318,7 @@ def main():
             log_every_n_steps=10,
             val_batch_size=args.batch_size * 4,
             enable_progress_bar=not args.silent,
+            seed=args.seed,
             **precision_args
         )
 

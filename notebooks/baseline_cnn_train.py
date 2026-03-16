@@ -144,6 +144,7 @@ datamodule = CerberusDataModule(
 # Setup datamodule for interactive exploration only.
 # _train() will call setup() again with the same parameters before fitting.
 # Note: num_workers=0 for compatibility in notebook
+datamodule.prepare_data()
 datamodule.setup(
     batch_size=train_config["batch_size"],
     num_workers=0,
@@ -228,7 +229,7 @@ print("Training finished.")
 # We inspect the training and validation loss over epochs.
 
 # %%
-import pandas as pd
+import csv
 import matplotlib.pyplot as plt
 
 # The trainer object from the previous cell contains the logger
@@ -237,25 +238,37 @@ metrics_path = f"{log_dir}/metrics.csv"
 print(f"Metrics saved to: {metrics_path}")
 
 try:
-    metrics = pd.read_csv(metrics_path)
-    
-    # Group by epoch to get one row per epoch (taking the last logged value for that epoch)
-    epoch_metrics = metrics.groupby("epoch").last()
-    
-    # Display Loss columns
-    loss_cols = [c for c in epoch_metrics.columns if "loss" in c]
+    with open(metrics_path) as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    # Group by epoch, keeping the last row per epoch
+    epoch_data: dict[int, dict[str, float]] = {}
+    for row in rows:
+        epoch = int(float(row.get("epoch", 0)))
+        parsed = {}
+        for k, v in row.items():
+            if v:
+                try:
+                    parsed[k] = float(v)
+                except ValueError:
+                    pass
+        epoch_data[epoch] = {**epoch_data.get(epoch, {}), **parsed}
+
+    loss_cols = [c for c in next(iter(epoch_data.values())) if "loss" in c]
     print("\nLoss per Epoch:")
-    print(epoch_metrics[loss_cols])
-    
+    for ep in sorted(epoch_data):
+        vals = "  ".join(f"{c}={epoch_data[ep].get(c, float('nan')):.4f}" for c in loss_cols)
+        print(f"  epoch {ep}: {vals}")
+
     # Plot
+    epochs = sorted(epoch_data)
     plt.figure(figsize=(10, 6))
     for col in loss_cols:
-        # separate train and val
-        if "train" in col:
-            plt.plot(epoch_metrics.index, epoch_metrics[col], label=col, marker='o')
-        elif "val" in col:
-            plt.plot(epoch_metrics.index, epoch_metrics[col], label=col, marker='x', linestyle='--')
-            
+        values = [epoch_data[ep].get(col) for ep in epochs]
+        style = dict(marker='o') if "train" in col else dict(marker='x', linestyle='--')
+        plt.plot(epochs, values, label=col, **style)
+
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.title("Training and Validation Loss")

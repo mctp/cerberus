@@ -51,6 +51,30 @@ class ProfileCountOutput(ProfileLogits):
             out_interval=self.out_interval
         )
 
+@dataclass
+class FactorizedProfileCountOutput(ProfileCountOutput):
+    """Combined output with decomposed sub-model outputs for the Dalmatian model.
+
+    Inherits combined logits and log_counts from ProfileCountOutput.
+    Adds decomposed bias and signal sub-model outputs for use by DalmatianLoss
+    during training and interpretation tools.
+    """
+    bias_logits: torch.Tensor       # (B, C, L) -- bias model profile logits
+    bias_log_counts: torch.Tensor   # (B, C)   -- bias model log counts
+    signal_logits: torch.Tensor     # (B, C, L) -- signal model profile logits
+    signal_log_counts: torch.Tensor # (B, C)   -- signal model log counts
+
+    def detach(self):
+        return FactorizedProfileCountOutput(
+            logits=self.logits.detach(),
+            log_counts=self.log_counts.detach(),
+            bias_logits=self.bias_logits.detach(),
+            bias_log_counts=self.bias_log_counts.detach(),
+            signal_logits=self.signal_logits.detach(),
+            signal_log_counts=self.signal_log_counts.detach(),
+            out_interval=self.out_interval,
+        )
+
 def unbatch_modeloutput(batched_output: ModelOutput, batch_size: int) -> list[dict[str, Any]]:
     """
     Splits a batched output (ModelOutput) into a list of individual interval dictionaries.

@@ -256,6 +256,8 @@ The `examples/` directory contains ready-to-run shell scripts covering all model
 | `examples/chip_prox1_tc32_bpnet.sh` | BPNet | TC32 PROX1 (local paths) |
 | `examples/chip_prox1_tc32_pomeranian.sh` | Pomeranian | TC32 PROX1 (local paths) |
 | `examples/chip_prox1_tc32_gopher.sh` | Gopher | TC32 PROX1 (local paths) |
+| `examples/scatac_kidney_pseudobulk.sh` | — | Kidney scATAC-seq pseudobulk BigWigs + peaks |
+| `examples/scatac_kidney_dalmatian.sh` | Dalmatian | Kidney scATAC-seq pseudobulk (bulk, all cell types) |
 
 ```bash
 # Run single-fold training (default)
@@ -318,19 +320,79 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher --multi
     ```
 
+
+*   `tools/train_dalmatian.py`: Train a Dalmatian model (2112bp → 1024bp, bias-factorized).
+    ```bash
+    # Default Dalmatian (MSE base loss)
+    python tools/train_dalmatian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_dalmatian
+
+    # Poisson base loss
+    python tools/train_dalmatian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_dalmatian --base-loss poisson
+
+    # Customized training
+    python tools/train_dalmatian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_dalmatian \
+        --signal-filters 128 --bias-weight 2.0
+    ```
+
 All tools support `--multi` (cross-validation), `--seed` (sampler seed, default `1234`), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
 
 | Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_gopher.py` |
 |---|---|---|---|
 | `--optimizer` | `adam` | `adamw` | `adamw` |
 | `--learning-rate` | `1e-3` | `5e-4` | `1e-3` |
-| `--weight-decay` | `0.0` | `0.01` | `0.01` |
+| `--weight-decay` | `0.0` | `0.01` | `1e-4` |
 | `--scheduler-type` | `default` (constant) | `cosine` | `cosine` |
 | `--input-len` | `2114` | `2112` | `2048` |
 | `--output-len` | `1000` | `1024` | `1024` |
 | `--output-bin-size` | `1` | `1` | `4` |
 | `--seed` | `1234` | `1234` | `1234` |
 | `--alpha` / loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | — (ProfilePoissonNLLLoss) |
+
+## scATAC-seq Pseudobulk Tools
+
+The `tools/scatac_pseudobulk.py` script generates per-cell-type pseudobulk BigWig coverage tracks and calls peaks from scATAC-seq fragment files using SnapATAC2. The output BigWig and narrowPeak files can be used directly as cerberus training targets and peak-based sampler intervals.
+
+```bash
+# Basic: per-cell-type BigWigs
+python tools/scatac_pseudobulk.py \
+    fragments.tsv.bgz gene_activity.h5ad output_dir/ \
+    --genome hg38 --groupby cell_type
+
+# Full pipeline: BigWigs + peaks + merged peak set
+python tools/scatac_pseudobulk.py \
+    fragments.tsv.bgz gene_activity.h5ad output_dir/ \
+    --genome hg38 --groupby cell_type \
+    --call-peaks --n-jobs 8
+```
+
+Key options:
+
+| Flag | Description |
+|---|---|
+| `--genome` | Built-in genome (hg38, hg19, mm10, mm39) or use `--chrom-sizes` for custom |
+| `--groupby` | obs column to group cells by (default: `cell_type`) |
+| `--call-peaks` | Call peaks with MACS3 after BigWig generation |
+| `--bulk-peaks` | Also call bulk (all-cells) peaks with MACS3 (slow, off by default) |
+| `--no-merge` | Disable merging per-group peaks into `bulk_merge.narrowPeak.bed.gz` |
+| `--overwrite` | Re-generate all outputs even if they already exist |
+| `--counting-strategy` | `insertion` (Tn5 cut sites), `fragment`, or `paired-insertion` |
+| `--normalization` | `raw`, `CPM`, `RPKM`, or `BPM` |
+| `--n-jobs` | Total concurrent thread/process budget (default: max(4, cpu_count//2)) |
+| `--sequential` | Disable parallel stage overlap |
+
+Output layout (all files in `output_dir/`):
+
+```
+cell_type_A.bw                       # per-group BigWig
+cell_type_A.narrowPeak.bed.gz        # per-group peaks (with --call-peaks)
+cell_type_A.narrowPeak.bed.gz.tbi
+...
+bulk.bw                              # bulk (all-cells) BigWig (always)
+bulk_call.narrowPeak.bed.gz          # with --bulk-peaks --call-peaks
+bulk_merge.narrowPeak.bed.gz         # merged per-group peaks (with --call-peaks)
+```
+
+See `examples/scatac_kidney_pseudobulk.sh` for a complete example using the kidney scATAC-seq dataset.
 
 ## Next Steps
 

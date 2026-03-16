@@ -106,10 +106,9 @@ class TestRandomnessConsistency(unittest.TestCase):
         
         self.assertNotEqual(seed1, seed2, "MultiSampler split seeds should change after resample(None)")
 
-    def test_complexity_matched_sampler_idempotency_unseeded(self):
+    def test_complexity_matched_sampler_idempotency(self):
         """
-        Verify ComplexityMatchedSampler idempotency when initialized with seed=None.
-        Fixed behavior: It should self-seed and be idempotent.
+        Verify ComplexityMatchedSampler idempotency with an explicit seed.
         """
         chrom_sizes = {"chr1": 10000}
         padded_size = 100
@@ -125,11 +124,7 @@ class TestRandomnessConsistency(unittest.TestCase):
         try:
             cerberus.samplers.compute_intervals_complexity = lambda sampler, fasta, metrics: np.full((len(sampler), len(metrics)), 0.5)
             
-            # Init with None
-            gc = ComplexityMatchedSampler(target, candidate, "dummy.fa", chrom_sizes, folds, {}, seed=None, metrics=["gc"])
-            
-            # Check self-seeding (Improvement: ComplexityMatchedSampler should ideally have a seed now, 
-            # but strict idempotency check is via split results)
+            gc = ComplexityMatchedSampler(target, candidate, "dummy.fa", chrom_sizes, folds, {}, seed=99, metrics=["gc"])
             
             t1, v1, te1 = gc.split_folds(test_fold=0, val_fold=1)
             t2, v2, te2 = gc.split_folds(test_fold=0, val_fold=1)

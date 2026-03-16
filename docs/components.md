@@ -244,6 +244,14 @@ Coupled version of `NegativeBinomialMultinomialLoss` for models predicting log-r
 *   **Behavior**: Derives predicted counts via LogSumExp.
 *   **Inputs**: `ProfileLogRates`.
 
+### DalmatianLoss
+Peak-conditioned loss for bias-factorized models. Wraps any profile+count base loss and adds bias-only reconstruction and signal suppression terms on background (non-peak) examples.
+
+*   **Terms**: `L_recon` (all examples) + `bias_weight * L_bias` (background) + `signal_background_weight * L_signal_bg` (background).
+*   **Args**: `base_loss_cls` (dotted class path), `base_loss_args`, `bias_weight` (default: 1.0), `signal_background_weight` (default: 0.1), `count_pseudocount` (default: 1.0).
+*   **Requires**: `peak_status` tensor passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context).
+*   **Inputs**: `FactorizedProfileCountOutput`.
+
 ## Model Outputs
 
 Models return standardized dataclasses (defined in `cerberus.output`) to ensure compatibility with losses and metrics.
@@ -259,6 +267,10 @@ Models return standardized dataclasses (defined in `cerberus.output`) to ensure 
 ### ProfileCountOutput
 *   **Content**: `logits` (Batch, Channels, Length) and `log_counts` (Batch, Channels).
 *   **Use Case**: BPNet-style models with separate heads for profile shape and total count.
+
+### FactorizedProfileCountOutput
+*   **Content**: Extends `ProfileCountOutput` with `bias_logits`, `bias_log_counts`, `signal_logits`, `signal_log_counts`.
+*   **Use Case**: Bias-factorized models (Dalmatian) that decompose predictions into bias and signal components. Fully compatible with losses/metrics expecting `ProfileCountOutput`.
 
 ## Metrics
 

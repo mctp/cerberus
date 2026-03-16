@@ -13,6 +13,7 @@ A lightweight, efficient model (~150k params) mirroring BPNet's valid-padding pa
 *   **Valid Padding**: Ensures no zero-padding artifacts; strictly maps input to output geometrically (2112bp -> 1024bp).
 *   **Factorized Stem**: Uses a 2-layer stem (`[11, 11]`) with dense and depthwise convolutions for efficient initial feature extraction.
 *   **PGC Body**: Stack of 8 Pointwise-Gated Convolution (PGC) blocks.
+*   **Depthwise-Only Mode** (`expansion=0`): When `expansion=0`, the PGC tower uses depthwise-only blocks — no pointwise projections or gating. Each block becomes `RMSNorm → Depthwise Conv → Dropout → Residual`. Geometry (input/output lengths) is unchanged. Useful for lightweight baselines and ablation studies testing whether inter-channel mixing matters.
 *   **Variants**:
     *   **Pomeranian** (Default): Uses Kernel=9 and Dilation=64 (max). Best for hardware efficiency and modeling large motifs.
     *   **PomeranianK5**: Uses Kernel=5 and Dilation=128 (max). Traditional small-kernel approach.
@@ -191,6 +192,169 @@ model = ConvNeXtDCNN(
     output_channels=["signal"],
 )
 # Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 512)
+```
+
+## Dalmatian
+
+**Implementation**: `cerberus.models.Dalmatian`
+**Source**: `src/cerberus/models/dalmatian.py`
+
+An end-to-end bias-factorized sequence-to-function model for ATAC-seq data. Replaces ChromBPNet's two-stage training (freeze bias, then train signal) with joint training of two Pomeranian sub-networks, using architectural constraints and a peak-conditioned loss to separate Tn5 enzyme bias from regulatory signal.
+
+The name "Dalmatian" follows the dog-breed naming convention (BPNet, Pomeranian) and alludes to the two-component spotted pattern.
+
+### Architecture
+
+Dalmatian composes two Pomeranian sub-networks:
+
+- **BiasNet** (~72K params): Small receptive field (~147bp) to capture local Tn5 sequence bias. Uses 64 filters, 4 dilated layers `[1,2,4,8]`, kernel size 9, stem kernel 11, profile kernel 17.
+- **SignalNet** (~2-3M params): Full receptive field (~1089bp) to capture regulatory grammar (TF footprints, nucleosome positioning). Uses 256 filters, 8 dilated layers `[1,1,2,4,8,16,32,64]`, kernel size 9, two-layer stem `[11,11]`, profile kernel 45.
+
+Their outputs are combined:
+- **Profile**: logit addition (`combined_logits = bias_logits + signal_logits`)
+- **Counts**: log-space addition via logsumexp (`combined_log_counts = logsumexp(bias_log_counts, signal_log_counts)`)
+
+### Key Features
+*   **Zero-initialized signal outputs**: At initialization, signal outputs are identity elements (logits=0, log_counts=-10), so the combined output equals the bias-only output. This ensures stable early training.
+*   **Per-channel counts**: Both sub-models use `predict_total_count=False` because ATAC-seq channels represent independent samples (not forward/reverse strands).
+*   **Clean geometry**: SignalNet shrinkage exactly maps `input_len` to `output_len` with no excess cropping. BiasNet receives a center-cropped input sized to its own receptive field needs.
+*   **Input validation**: Rejects configurations where SignalNet shrinkage doesn't produce the exact `output_len`.
+
+### Output: FactorizedProfileCountOutput
+
+Returns a `FactorizedProfileCountOutput` (extends `ProfileCountOutput`) containing both the combined predictions and the decomposed bias/signal components:
+
+```python
+@dataclass
+class FactorizedProfileCountOutput(ProfileCountOutput):
+    bias_logits: torch.Tensor       # (B, C, L)
+    bias_log_counts: torch.Tensor   # (B, C)
+    signal_logits: torch.Tensor     # (B, C, L)
+    signal_log_counts: torch.Tensor # (B, C)
+```
+
+This is fully compatible with existing losses and metrics that expect `ProfileCountOutput` (they see `logits` and `log_counts`), while the decomposed fields enable the peak-conditioned `DalmatianLoss`.
+
+### Loss: DalmatianLoss
+
+`DalmatianLoss` wraps any profile+count base loss (e.g., `MSEMultinomialLoss`) and adds peak-conditioned terms:
+
+```
+L = L_recon(combined, target)                          # all examples
+  + bias_weight * L_bias(bias_only, target)            # background only
+  + signal_background_weight * L_signal_bg(signal)     # background only
+```
+
+- **L_recon**: Standard reconstruction loss on the combined output (all examples).
+- **L_bias**: Reconstruction loss using only the bias component (background/non-peak examples only). Forces the bias model to explain background signal on its own.
+- **L_signal_bg**: L1 penalty on signal logits and counts in background regions. Suppresses the signal model from learning in non-peak regions.
+- **`peak_status`**: A per-example binary tensor passed as batch context via `**kwargs`. The `CerberusModule._shared_step` automatically forwards all non-input/target batch fields as keyword arguments.
+
+```python
+model_config = {
+    "name": "Dalmatian",
+    "model_cls": "cerberus.models.dalmatian.Dalmatian",
+    "loss_cls": "cerberus.loss.DalmatianLoss",
+    "loss_args": {
+        "base_loss_cls": "cerberus.loss.MSEMultinomialLoss",
+        "base_loss_args": {"count_per_channel": True},
+        "bias_weight": 1.0,
+        "signal_background_weight": 0.1,
+    },
+    "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
+    "metrics_args": {},
+    "model_args": {
+        "input_len": 2112,
+        "output_len": 1024,
+        "output_channels": ["sample1"],
+    },
+}
+```
+
+### Usage
+```python
+from cerberus.models import Dalmatian
+from cerberus.loss import DalmatianLoss
+
+# Default: 2112bp -> 1024bp
+model = Dalmatian(
+    input_len=2112,
+    output_len=1024,
+    input_channels=["A", "C", "G", "T"],
+    output_channels=["sample1"],
+)
+
+loss = DalmatianLoss(
+    base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+    bias_weight=1.0,
+    signal_background_weight=0.1,
+)
+
+# Returns FactorizedProfileCountOutput with combined + decomposed fields
+out = model(torch.randn(2, 4, 2112))
+# out.logits, out.log_counts       -- combined
+# out.bias_logits, out.bias_log_counts    -- bias component
+# out.signal_logits, out.signal_log_counts -- signal component
+```
+
+### Training Tool
+
+Use `tools/train_dalmatian.py` for command-line training:
+
+```bash
+# Bulk pseudobulk (all cell types merged)
+python tools/train_dalmatian.py \
+    --bigwig "tests/data/scatac_kidney_pseudobulk/bulk.bw" \
+    --peaks "tests/data/scatac_kidney_pseudobulk/bulk_merge.narrowPeak.bed.gz" \
+    --output-dir models/kidney_dalmatian
+
+# Or use the example script
+bash examples/scatac_kidney_dalmatian.sh
+```
+
+## PWMBiasModel (experimental)
+
+**Location**: `debug/pwm_model/pwm_bias.py` (not part of cerberus public API)
+
+A structured bias model that learns `n_motifs` position-weight matrix (PWM) filters of fixed `motif_width` and combines them via linear mixing. Designed for capturing enzymatic sequence bias (e.g., Tn5 transposase preference in ATAC-seq), where the bias is a short motif (~21bp) with low information content (~2 bits total).
+
+Self-contained in `debug/pwm_model/` with its own output type (`RegularizedProfileCountOutput`), loss wrapper (`RegularizedMSEMultinomialLoss`), and tests. Compatible with cerberus training infrastructure via `import_class`.
+
+### Key Features
+*   **Learnable PWM filters**: `Conv1d(4, n_motifs, motif_width, valid)` — each filter is a learnable PWM that can be extracted and visualized as a sequence logo.
+*   **Linear mixing**: `Conv1d(n_motifs, n_output_channels, 1)` — pointwise linear combination of filter activations. With linear mixing, multiple filters are mathematically equivalent to a single effective filter (provably via einsum folding).
+*   **Non-negative mixing** (`nonneg_mixing=True`): Applies softplus to mixing weights, preventing filter cancellation where filters learn opposing patterns.
+*   **ReLU activation** (`relu_activation=True`): Adds ReLU between PWM conv and profile mixing, breaking linear equivalence so each filter fires independently.
+*   **Decorrelation penalty** (`decorrelation_weight`): Cosine similarity penalty between flattened PWM filters, encouraging distinct motif patterns. Used with `RegularizedMSEMultinomialLoss`.
+*   **Exact geometry**: `input_len = output_len + motif_width - 1` (no cropping). Validates at construction time.
+*   **Count head**: `GlobalAvgPool → Linear → GELU → Linear` for log count prediction.
+*   **Output**: Returns `RegularizedProfileCountOutput(logits=..., log_counts=..., reg_loss=...)`, compatible with `MSEMultinomialLoss` and `RegularizedMSEMultinomialLoss`.
+
+### Architecture Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_motifs` | 2 | Number of learnable PWM filters |
+| `motif_width` | 21 | Width of each filter in bp |
+| `nonneg_mixing` | False | Softplus on mixing weights (prevents cancellation) |
+| `relu_activation` | False | ReLU between PWM conv and mixing (breaks linear equivalence) |
+| `decorrelation_weight` | 0.0 | Cosine similarity penalty weight (0=disabled) |
+| `predict_total_count` | True | Single total count vs per-channel counts |
+
+### Usage
+```python
+# Add debug/ to sys.path first
+from pwm_model.pwm_bias import PWMBiasModel
+
+model = PWMBiasModel(
+    input_len=1044, output_len=1024,
+    n_motifs=2, motif_width=21,
+    nonneg_mixing=True, relu_activation=True,
+    decorrelation_weight=0.1,
+)
+
+# After training, extract filters for visualization:
+pwm_weights = model.get_pwm_weights()   # (n_motifs, 4, motif_width)
+mixing = model.get_mixing_weights()      # (n_output_channels, n_motifs, 1)
 ```
 
 ## GlobalProfileCNN (Gopher)

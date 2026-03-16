@@ -38,20 +38,21 @@ def test_datamodule_setup(
     # Configs
     genome_config = cast(GenomeConfig, {"mock": "genome", "fold_args": {"test_fold": 0, "val_fold": 1}})
     data_config = cast(DataConfig, {"mock": "data"})
-    sampler_config = cast(SamplerConfig, {"mock": "sampler"})
+    sampler_config = cast(SamplerConfig, {"mock": "sampler", "sampler_type": "random"})
     
     dm = CerberusDataModule(genome_config, data_config, sampler_config)
     
     # Test setup with runtime params
     dm.setup(batch_size=16, num_workers=2)
     
-    # Verify Dataset init
+    # Verify Dataset init — seed is auto-generated when not provided
     mock_dataset_cls.assert_called_once_with(
         genome_config=genome_config,
         data_config=data_config,
         sampler_config=sampler_config,
         in_memory=False,
-        seed=None
+        seed=dm.seed,
+        prepare_cache=None,
     )
     
     # Verify validation was called
@@ -99,7 +100,7 @@ def test_datamodule_dataloaders(
     dm = CerberusDataModule(
         cast(GenomeConfig, {"fold_args": {"test_fold": 0, "val_fold": 1}}),
         cast(DataConfig, {}),
-        cast(SamplerConfig, {}),
+        cast(SamplerConfig, {"sampler_type": "random"}),
     )
     dm.setup(batch_size=16, num_workers=2)
     
@@ -144,7 +145,7 @@ def test_datamodule_resample_via_dataloader(
     dm = CerberusDataModule(
         cast(GenomeConfig, {"fold_args": {"test_fold": 0, "val_fold": 1}}),
         cast(DataConfig, {}),
-        cast(SamplerConfig, {}),
+        cast(SamplerConfig, {"sampler_type": "random"}),
     )
     dm.setup(batch_size=16, num_workers=2)
     
@@ -157,8 +158,8 @@ def test_datamodule_resample_via_dataloader(
     # Calling train_dataloader should trigger resample
     dm.train_dataloader()
     
-    # Check if resample was called with correct seed (epoch + rank = 1 + 0 = 1)
-    train_ds.resample.assert_called_once_with(seed=1)
+    # Check if resample was called with correct seed (seed + epoch*world + rank)
+    train_ds.resample.assert_called_once_with(seed=dm.seed + 1)
 
 @patch("cerberus.datamodule.validate_genome_config")
 @patch("cerberus.datamodule.validate_data_config")
@@ -187,7 +188,7 @@ def test_datamodule_drop_last(
     dm = CerberusDataModule(
         cast(GenomeConfig, {"fold_args": {"test_fold": 0, "val_fold": 1}}),
         cast(DataConfig, {}),
-        cast(SamplerConfig, {}),
+        cast(SamplerConfig, {"sampler_type": "random"}),
         drop_last=True
     )
     dm.setup(batch_size=16, num_workers=2)

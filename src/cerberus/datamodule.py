@@ -1,9 +1,11 @@
 import random
+from pathlib import Path
 import pytorch_lightning as pl
 import torch
 import numpy as np
 import logging
 from torch.utils.data import DataLoader
+from .cache import get_default_cache_dir, resolve_cache_dir, load_prepare_cache, save_prepare_cache
 from .dataset import CerberusDataset
 from .signal import UniversalExtractor
 from .config import (
@@ -36,8 +38,9 @@ class CerberusDataModule(pl.LightningDataModule):
         pin_memory: bool = True,
         persistent_workers: bool = True,
         multiprocessing_context: str | None = None,
-        seed: int | None = None,
+        seed: int = 42,
         drop_last: bool = False,
+        cache_dir: Path | str | None = None,
     ):
         """
         Args:
@@ -49,8 +52,11 @@ class CerberusDataModule(pl.LightningDataModule):
             pin_memory: Whether to pin memory in DataLoaders (recommended for GPU training).
             persistent_workers: Whether to use persistent workers in DataLoaders.
             multiprocessing_context: Context name for multiprocessing (e.g., 'spawn', 'fork').
-            seed: Optional random seed for sampler initialization.
+            seed: Random seed for sampler initialization and prepare_data
+                caching. Must be the same across all DDP ranks.
             drop_last: Whether to drop the last incomplete batch in training.
+            cache_dir: Base directory for prepare_data() cache. Defaults to
+                $XDG_CACHE_HOME/cerberus or ~/.cache/cerberus.
         """
         super().__init__()
         self.genome_config = validate_genome_config(genome_config)
@@ -81,6 +87,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.multiprocessing_context = multiprocessing_context
         self.seed = seed
         self.drop_last = drop_last
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else get_default_cache_dir()
 
         self.train_dataset: CerberusDataset | None = None
         self.val_dataset: CerberusDataset | None = None
@@ -102,6 +109,88 @@ class CerberusDataModule(pl.LightningDataModule):
         worker_seed = torch.initial_seed() % 2**32
         np.random.seed(worker_seed)
         random.seed(worker_seed)
+
+    def _resolve_cache_dir(self) -> Path | None:
+        """
+        Computes the deterministic cache subdirectory for the current config.
+
+        Returns None if the sampler type does not benefit from caching.
+        """
+        sampler_type = self.sampler_config["sampler_type"]
+        # NOTE: Every sampler type that uses ComplexityMatchedSampler must be
+        # listed here, otherwise its metrics won't be cached to disk and will
+        # be recomputed from scratch on every run.
+        if sampler_type not in ("peak", "complexity_matched", "negative_peak"):
+            return None
+        return resolve_cache_dir(
+            self.cache_dir,
+            fasta_path=self.genome_config["fasta_path"],
+            sampler_config=self.sampler_config,
+            seed=self.seed,
+            chrom_sizes=self.genome_config["chrom_sizes"],
+        )
+
+    def prepare_data(self) -> None:
+        """
+        Pre-computes complexity metrics and caches them to disk.
+
+        Called by Lightning on rank 0 only, before setup() runs on all ranks.
+        Creates a temporary sampler to trigger metric computation, then
+        serializes the resulting metrics_cache to disk so that all ranks can
+        load it in setup() without redundant FASTA reads.
+
+        No-op if the sampler type doesn't need caching or if a valid cache
+        already exists.
+        """
+        cache_dir = self._resolve_cache_dir()
+        if cache_dir is None:
+            return
+        if (cache_dir / "ready").exists():
+            logger.info(f"prepare_data cache already exists at {cache_dir}")
+            return
+
+        logger.info("prepare_data: computing complexity metrics for caching...")
+
+        # Create a temporary dataset to trigger sampler initialization and
+        # metric computation. This opens FASTA/BigWig files on rank 0 only.
+        tmp_dataset = CerberusDataset(
+            genome_config=self.genome_config,
+            data_config=self.data_config,
+            sampler_config=self.sampler_config,
+            seed=self.seed,
+        )
+
+        # Extract metrics_cache from the sampler
+        sampler = tmp_dataset.sampler
+        sampler_type = self.sampler_config["sampler_type"]
+        # NOTE: Keep in sync with _resolve_cache_dir — every sampler type
+        # listed there must have a branch here to extract its metrics_cache.
+        if sampler_type == "complexity_matched":
+            metrics_cache = sampler.metrics_cache  # type: ignore[union-attr]
+        elif sampler_type == "peak":
+            if sampler.negatives is not None:  # type: ignore[union-attr]
+                metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
+            else:
+                logger.info("prepare_data: peak sampler has no negatives, nothing to cache")
+                return
+        elif sampler_type == "negative_peak":
+            metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
+        else:
+            return
+
+        save_prepare_cache(cache_dir, metrics_cache)
+        logger.info(f"prepare_data: cached {len(metrics_cache)} entries to {cache_dir}")
+
+    def _load_prepare_cache(self) -> dict[str, np.ndarray] | None:
+        """
+        Loads the prepare_data cache from disk if available.
+
+        Returns None if the sampler type doesn't need caching or no cache exists.
+        """
+        cache_dir = self._resolve_cache_dir()
+        if cache_dir is None:
+            return None
+        return load_prepare_cache(cache_dir)
 
     def setup(
         self, 
@@ -142,6 +231,9 @@ class CerberusDataModule(pl.LightningDataModule):
 
         logger.info(f"Setting up DataModule (test_fold={self.test_fold}, val_fold={self.val_fold})...")
 
+        # Load cached complexity metrics if available (populated by prepare_data)
+        prepare_cache = self._load_prepare_cache()
+
         # Initialize full dataset
         full_dataset = CerberusDataset(
             genome_config=self.genome_config,
@@ -149,6 +241,7 @@ class CerberusDataModule(pl.LightningDataModule):
             sampler_config=self.sampler_config,
             in_memory=self.in_memory,
             seed=self.seed,
+            prepare_cache=prepare_cache,
         )
 
         # Split into folds
@@ -172,8 +265,7 @@ class CerberusDataModule(pl.LightningDataModule):
                 epoch = self.trainer.current_epoch
                 # Ensure unique seed per rank to maximize data coverage in DDP
                 world_size = self.trainer.world_size if self.trainer else 1
-                base_seed = self.seed if self.seed is not None else 0
-                seed = base_seed + (epoch * world_size) + rank
+                seed = self.seed + (epoch * world_size) + rank
                 self.train_dataset.resample(seed=seed)
             except (AttributeError, RuntimeError) as exc:
                 logger.warning("Could not resample train dataset: %s", exc)

@@ -119,6 +119,8 @@ class ConvNeXtDCNN(nn.Module):
             output_channels = ["signal"]
 
         # Default config from original model
+        self.input_len = input_len
+
         config = {
             'window_size': input_len,
             'bin_size': output_bin_size,
@@ -168,13 +170,15 @@ class ConvNeXtDCNN(nn.Module):
         )
     
     def forward(self, x: torch.Tensor) -> ProfileLogRates:
-        # Input x: (Batch, Channels, Length)
-        
-        # Original model did transpose here because it expected (Batch, Length, Channels)
-        # But cerberus provides (Batch, Channels, Length).
-        # ConvNeXtV2Block (init_conv) expects (Batch, Channels, Length).
-        # So we do NOT transpose here.
-        
+        # Center-crop or reject input based on expected input_len
+        if x.shape[-1] > self.input_len:
+            crop = (x.shape[-1] - self.input_len) // 2
+            x = x[..., crop : crop + self.input_len]
+        elif x.shape[-1] < self.input_len:
+            raise ValueError(
+                f"Input length {x.shape[-1]} is shorter than required {self.input_len}"
+            )
+
         x = self.init_conv(x)
         x = F.pad(x, (1, 0))
         x = self.init_pool(x)

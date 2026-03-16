@@ -44,6 +44,7 @@ class Pomeranian(nn.Module):
         dil_kernel_size (int | list[int]): Kernel size for dilated convolutions. Default: 9.
         profile_kernel_size (int): Kernel size for profile head convolution. Default: 45.
         expansion (int): Expansion factor for PGC blocks. Default: 1.
+            When set to 0, PGC blocks use depthwise-only mode (no channel mixing in the tower).
         dropout (float): Dropout rate. Default: 0.1.
         predict_total_count (bool): If True, predicts a single total count scalar. Default: True.
         stem_expansion (int): Expansion factor for Stem blocks. Default: 2.
@@ -169,6 +170,15 @@ class Pomeranian(nn.Module):
         )
 
     def forward(self, x) -> ProfileCountOutput:
+        # Center-crop or reject input based on expected input_len
+        if x.shape[-1] > self.input_len:
+            crop = (x.shape[-1] - self.input_len) // 2
+            x = x[..., crop : crop + self.input_len]
+        elif x.shape[-1] < self.input_len:
+            raise ValueError(
+                f"Input length {x.shape[-1]} is shorter than required {self.input_len}"
+            )
+
         # 1. Stem
         x = self.stem(x)
         
