@@ -209,7 +209,10 @@ class DilatedResidualBlock(nn.Module):
     """
     Dilated Residual Block for BPNet.
 
-    Structure: Input -> Dilated Conv -> Activation -> Add to cropped Input
+    Supported residual styles:
+    - ``residual_post-activation_conv``: ``x + act(conv(x))`` (current Cerberus/BPNet-lite BPNet style)
+    - ``residual_pre-activation_conv``: ``x + conv(act(x))`` (BasePairNet/bpnet-refactor pre-activation style)
+    - ``activated_residual_pre-activation_conv``: ``act(x) + conv(act(x))`` (bpnet-refactor post-activation style)
 
     Args:
         filters (int): Number of input and output channels.
@@ -224,9 +227,14 @@ class DilatedResidualBlock(nn.Module):
             normalization is a weight reparameterization, not an activation
             nonlinearity, so the Conv1d linear passthrough rule is unchanged.
             Default: ``False``.
+        residual_architecture (str): Residual block formulation. One of
+            ``"residual_post-activation_conv"``, ``"residual_pre-activation_conv"``,
+            or ``"activated_residual_pre-activation_conv"``.
+            Default: ``"residual_post-activation_conv"``.
     """
     def __init__(self, filters: int, kernel_size: int, dilation: int,
-                 activation: str = "relu", weight_norm: bool = False):
+                 activation: str = "relu", weight_norm: bool = False,
+                 residual_architecture: str = "residual_post-activation_conv"):
         super().__init__()
         conv = nn.Conv1d(
             filters, filters,
@@ -246,13 +254,50 @@ class DilatedResidualBlock(nn.Module):
                 f"DilatedResidualBlock: unsupported activation {activation!r}. "
                 "Must be 'relu' or 'gelu'."
             )
+        valid_architectures = {
+            "residual_post-activation_conv",
+            "residual_pre-activation_conv",
+            "activated_residual_pre-activation_conv",
+        }
+        if residual_architecture not in valid_architectures:
+            raise ValueError(
+                f"DilatedResidualBlock: unsupported residual_architecture {residual_architecture!r}. "
+                "Must be one of "
+                "'residual_post-activation_conv', 'residual_pre-activation_conv', "
+                "'activated_residual_pre-activation_conv'."
+            )
+        self.residual_architecture = residual_architecture
+
+    @staticmethod
+    def _center_crop_to_length(x: torch.Tensor, target_len: int) -> torch.Tensor:
+        """Center-crop tensor ``x`` along the last axis to ``target_len``."""
+        diff = x.shape[-1] - target_len
+        if diff < 0:
+            raise ValueError(
+                f"DilatedResidualBlock: cannot crop length {x.shape[-1]} to larger target {target_len}."
+            )
+        if diff == 0:
+            return x
+        crop_l = diff // 2
+        crop_r = diff - crop_l
+        return x[..., crop_l:-crop_r]
 
     def forward(self, x):
-        out = self.act(self.conv(x))
-        # Center crop x to match out due to 'valid' padding shrinking the sequence.
-        diff = x.shape[-1] - out.shape[-1]
-        if diff > 0:
-            crop_l = diff // 2
-            crop_r = diff - crop_l
-            x = x[..., crop_l:-crop_r]
-        return x + out
+        if self.residual_architecture == "residual_post-activation_conv":
+            # x + act(conv(x))
+            out = self.act(self.conv(x))
+            residual = self._center_crop_to_length(x, out.shape[-1])
+            return residual + out
+
+        if self.residual_architecture == "residual_pre-activation_conv":
+            # x + conv(act(x))
+            x_act = self.act(x)
+            out = self.conv(x_act)
+            residual = self._center_crop_to_length(x, out.shape[-1])
+            return residual + out
+
+        # activated_residual_pre-activation_conv: act(x) + conv(act(x))
+        x_act = self.act(x)
+        out = self.conv(x_act)
+        residual = self._center_crop_to_length(x_act, out.shape[-1])
+        return residual + out

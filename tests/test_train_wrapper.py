@@ -315,3 +315,33 @@ def test_train_single_run_test_skips_when_no_checkpoint():
             )
 
         mock_trainer.test.assert_not_called()
+
+
+def test_train_single_passes_seed_to_datamodule():
+    """train_single forwards seed to CerberusDataModule for deterministic sampling."""
+    with patch("cerberus.train._train") as mock_train, \
+         patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
+         patch("cerberus.train.update_ensemble_metadata"):
+
+        mock_train.return_value = MagicMock(spec=pl.Trainer)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            train_single(
+                genome_config=cast(GenomeConfig, {"fold_args": {"k": 3}}),
+                data_config=cast(DataConfig, {}),
+                sampler_config=cast(SamplerConfig, {}),
+                model_config=cast(ModelConfig, {}),
+                train_config=_make_train_config(),
+                test_fold=0,
+                root_dir=tmp_dir,
+                seed=1234,
+            )
+
+        mock_dm_cls.assert_called_once_with(
+            genome_config=cast(GenomeConfig, {"fold_args": {"k": 3}}),
+            data_config=cast(DataConfig, {}),
+            sampler_config=cast(SamplerConfig, {}),
+            test_fold=0,
+            val_fold=1,
+            seed=1234,
+        )

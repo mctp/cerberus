@@ -287,6 +287,9 @@ For quick training on custom data, use the model-specific scripts in the `tools/
 
     # Multi-fold cross-validation
     python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --multi
+
+    # Deterministic train/val/test sampler initialization (default seed is 1234)
+    python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --seed 1234
     ```
 
 *   `tools/train_pomeranian.py`: Train a Pomeranian model (2112bp → 1024bp).
@@ -299,7 +302,7 @@ For quick training on custom data, use the model-specific scripts in the `tools/
 
     # Customized training
     python tools/train_pomeranian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_pomeranian \
-        --learning-rate 0.001 --patience 15 --background-ratio 2.0
+        --learning-rate 0.001 --patience 15 --background-ratio 2.0 --seed 1234
     ```
 
 *   `tools/train_gopher.py`: Train a Gopher (GlobalProfileCNN) model (2048bp → 1024bp at 4bp resolution).
@@ -315,7 +318,7 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher --multi
     ```
 
-All tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
+All tools support `--multi` (cross-validation), `--seed` (sampler seed, default `1234`), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
 
 | Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_gopher.py` |
 |---|---|---|---|
@@ -326,6 +329,7 @@ All tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`ful
 | `--input-len` | `2114` | `2112` | `2048` |
 | `--output-len` | `1000` | `1024` | `1024` |
 | `--output-bin-size` | `1` | `1` | `4` |
+| `--seed` | `1234` | `1234` | `1234` |
 | `--alpha` / loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | — (ProfilePoissonNLLLoss) |
 
 ## Next Steps

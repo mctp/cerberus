@@ -137,3 +137,10 @@ notebooks/plots/
 
 # Claude Code
 .claude/
+
+# Additional test data
+data/
+records/
+records_previous_changes/
+test_bpnet/
+test_pomeranian/

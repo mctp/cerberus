@@ -79,6 +79,7 @@ def get_args():
     parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson", "nb"], help="Loss function to use")
     parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
     parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
+    parser.add_argument("--seed", type=int, default=1234, help="Base random seed for deterministic train/val/test sampler initialization")
     parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets (e.g., 1000 for fractional BigWig values)")
     parser.add_argument("--count-pseudocount", type=float, default=150.0, help="Additive offset before log-transforming count targets (in raw coverage units)")
 
@@ -102,6 +103,22 @@ def get_args():
             "Enable stable training mode: weight normalization + GELU activation in the "
             "dilated tower (AdamW optimizer and cosine LR schedule are set as defaults). "
             "Compatible with DeepLIFT/DeepSHAP via captum."
+        ),
+    )
+    parser.add_argument(
+        "--residual-architecture",
+        type=str,
+        default="residual_post-activation_conv",
+        choices=[
+            "residual_post-activation_conv",
+            "residual_pre-activation_conv",
+            "activated_residual_pre-activation_conv",
+        ],
+        help=(
+            "Residual block formulation for BPNet tower: "
+            "'residual_post-activation_conv' (x + act(conv(x))), "
+            "'residual_pre-activation_conv' (x + conv(act(x))), "
+            "'activated_residual_pre-activation_conv' (act(x) + conv(act(x)))."
         ),
     )
 
@@ -252,6 +269,7 @@ def main():
     # Model Config
     activation = "gelu" if args.stable else "relu"
     use_weight_norm = args.stable
+    logging.info("Residual architecture: %s", args.residual_architecture)
 
     if args.use_1024:
         logging.info("Using BPNet1024 (2112bp -> 1024bp) Model...")
@@ -266,6 +284,7 @@ def main():
             "predict_total_count": True,
             "activation": activation,
             "weight_norm": use_weight_norm,
+            "residual_architecture": args.residual_architecture,
         }
         model_cls_name = "cerberus.models.bpnet.BPNet1024"
         model_name = "BPNet1024"
@@ -282,6 +301,7 @@ def main():
             "predict_total_count": True,
             "activation": activation,
             "weight_norm": use_weight_norm,
+            "residual_architecture": args.residual_architecture,
         }
         model_cls_name = "cerberus.models.bpnet.BPNet"
         model_name = "BPNet"
@@ -388,6 +408,7 @@ def main():
             log_every_n_steps=10,
             val_batch_size=args.batch_size * 4,
             enable_progress_bar=not args.silent,
+            seed=args.seed,
             **precision_args
         )
     else:
@@ -405,6 +426,7 @@ def main():
             log_every_n_steps=10,
             val_batch_size=args.batch_size * 4,
             enable_progress_bar=not args.silent,
+            seed=args.seed,
             **precision_args
         )
 

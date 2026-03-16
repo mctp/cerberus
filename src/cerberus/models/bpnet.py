@@ -47,6 +47,14 @@ class BPNet(nn.Module):
             AdamW weight decay and cosine LR scheduling. Safe for DeepLIFT/DeepSHAP: weight
             normalisation is a weight reparameterisation, not an activation nonlinearity.
             Default: ``False``.
+        residual_architecture (str): Residual block formulation. One of:
+            ``"residual_post-activation_conv"`` (``x + act(conv(x))``, default),
+            ``"residual_pre-activation_conv"`` (``x + conv(act(x))``),
+            ``"activated_residual_pre-activation_conv"`` (``act(x) + conv(act(x))``).
+            The initial convolution output is activated before entering the tower
+            only for ``"residual_post-activation_conv"``.
+            To match ``bpnet-refactor`` semantics, the two pre-activation variants
+            apply an additional final ``ReLU`` after the full dilated tower.
     """
     def __init__(
         self,
@@ -63,6 +71,7 @@ class BPNet(nn.Module):
         predict_total_count: bool = True,
         activation: str = "relu",
         weight_norm: bool = False,
+        residual_architecture: str = "residual_post-activation_conv",
     ):
         super().__init__()
         if input_channels is None:
@@ -76,6 +85,12 @@ class BPNet(nn.Module):
         self.n_input_channels = len(input_channels)
         self.n_output_channels = len(output_channels)
         self.predict_total_count = predict_total_count
+        self.residual_architecture = residual_architecture
+        self._activate_iconv_before_tower = residual_architecture == "residual_post-activation_conv"
+        self._apply_final_tower_relu = residual_architecture in {
+            "residual_pre-activation_conv",
+            "activated_residual_pre-activation_conv",
+        }
 
         # 1. Initial Convolution (plain — weight_norm applied after reinit if requested)
         self.iconv: nn.Module = nn.Conv1d(
@@ -84,7 +99,8 @@ class BPNet(nn.Module):
             padding='valid'
         )
 
-        # Activation for the initial conv output (same as tower activation)
+        # Activation module used for the initial conv output when the selected
+        # residual architecture is post-activation.
         if activation == "relu":
             self.iconv_act: nn.Module = nn.ReLU()
         elif activation == "gelu":
@@ -99,7 +115,8 @@ class BPNet(nn.Module):
             dilation = 2**i
             self.res_layers.append(
                 DilatedResidualBlock(filters, dil_kernel_size, dilation,
-                                     activation=activation, weight_norm=False)
+                                     activation=activation, weight_norm=False,
+                                     residual_architecture=residual_architecture)
             )
 
         # 3. Profile Head
@@ -129,8 +146,11 @@ class BPNet(nn.Module):
                     _apply_weight_norm(block.conv)
 
         logger.info(
-            "BPNet initialized: filters=%d, n_dilated_layers=%d, activation=%s, weight_norm=%s",
-            filters, n_dilated_layers, activation, weight_norm,
+            "BPNet initialized: filters=%d, n_dilated_layers=%d, activation=%s, "
+            "weight_norm=%s, residual_architecture=%s, iconv_activation_before_tower=%s, "
+            "final_tower_relu=%s",
+            filters, n_dilated_layers, activation, weight_norm, residual_architecture,
+            self._activate_iconv_before_tower, self._apply_final_tower_relu,
         )
 
     def _tf_style_reinit(self):
@@ -164,12 +184,21 @@ class BPNet(nn.Module):
                 logits: (Batch, Out_Channels, Out_Len)
                 log_counts: (Batch, Out_Channels) - representing log(total_counts)
         """
-        # 1. Initial Conv + Activation
-        x = self.iconv_act(self.iconv(x))
+        # 1. Initial Conv
+        # bpnet-refactor pre-activation variants pass an unactivated tensor into
+        # the first dilated block. The post-activation variant applies activation here.
+        x = self.iconv(x)
+        if self._activate_iconv_before_tower:
+            x = self.iconv_act(x)
         
         # 2. Residual Tower
         for layer in self.res_layers:
             x = layer(x)
+
+        # bpnet-refactor applies a final ReLU after the dilated tower for both
+        # pre-activation variants (syntax_module final activation).
+        if self._apply_final_tower_relu:
+            x = F.relu(x)
             
         # --- Profile Head ---
         profile_logits = self.profile_conv(x) # (B, Out_Channels, Length)
@@ -237,6 +266,7 @@ class BPNet1024(BPNet):
         predict_total_count: bool = True,
         activation: str = "relu",
         weight_norm: bool = False,
+        residual_architecture: str = "residual_post-activation_conv",
     ):
         super().__init__(
             input_len=input_len,
@@ -252,6 +282,7 @@ class BPNet1024(BPNet):
             predict_total_count=predict_total_count,
             activation=activation,
             weight_norm=weight_norm,
+            residual_architecture=residual_architecture,
         )
 
 

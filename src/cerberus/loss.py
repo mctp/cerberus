@@ -116,33 +116,28 @@ class MSEMultinomialLoss(nn.Module):
             else:
                 return profile_loss_per_channel.sum(dim=-1).mean()
 
-    def forward(self, outputs, targets):
+    def loss_components(self, outputs, targets) -> tuple[torch.Tensor, torch.Tensor]:
+        """Returns (profile_loss, count_loss) without weighting."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if not isinstance(outputs, ProfileCountOutput):
-             raise TypeError("MSEMultinomialLoss requires ProfileCountOutput")
-
+            raise TypeError("MSEMultinomialLoss requires ProfileCountOutput")
         logits = outputs.logits
         pred_log_counts = outputs.log_counts
-
-        # --- Profile Loss ---
         profile_loss = self._compute_profile_loss(logits, targets)
-
-        # --- Count Loss (MSE) ---
         if self.count_per_channel:
-            target_counts = targets.sum(dim=2) # (B, C)
+            target_counts = targets.sum(dim=2)
             target_log_counts = torch.log(target_counts + self.count_pseudocount)
-            # pred_log_counts should be (B, C)
             count_loss = F.mse_loss(pred_log_counts, target_log_counts)
         else:
             target_global_count = targets.sum(dim=(1, 2))
             target_log_global_count = torch.log(target_global_count + self.count_pseudocount)
-            pred_log_counts = pred_log_counts.flatten()
-            count_loss = F.mse_loss(pred_log_counts, target_log_global_count)
-        
+            count_loss = F.mse_loss(pred_log_counts.flatten(), target_log_global_count)
+        return profile_loss, count_loss
+
+    def forward(self, outputs, targets):
+        profile_loss, count_loss = self.loss_components(outputs, targets)
         return self.profile_weight * profile_loss + self.count_weight * count_loss
 
 
@@ -150,47 +145,41 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
     """
     Multinomial NLL Profile Loss + MSE Count Loss (Coupled).
     Mathematically equivalent to MSEMultinomialLoss but derives counts from log_rates.
-    
+
     Objective:
       1. Profile Loss: Multinomial NLL.
       2. Count Loss: MSE of log(global_count).
-    
+
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp
     (interpreting inputs as log-intensities) over all channels and bins.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with MSEMultinomialLoss).
     """
-    def forward(self, outputs, targets):
+    def loss_components(self, outputs, targets) -> tuple[torch.Tensor, torch.Tensor]:
+        """Returns (profile_loss, count_loss) without weighting."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if isinstance(outputs, ProfileCountOutput):
             raise TypeError("CoupledMSEMultinomialLoss does not accept ProfileCountOutput. Use MSEMultinomialLoss instead.")
-
         if not isinstance(outputs, ProfileLogRates):
-             raise TypeError("CoupledMSEMultinomialLoss requires ProfileLogRates")
-        
+            raise TypeError("CoupledMSEMultinomialLoss requires ProfileLogRates")
         logits = outputs.log_rates
-
         if self.count_per_channel:
-            # Simulate log_counts per channel (Sum over Length)
-            pred_log_counts = torch.logsumexp(logits.float(), dim=2) # (B, C)
-            target_counts = targets.sum(dim=2) # (B, C)
+            pred_log_counts = torch.logsumexp(logits.float(), dim=2)
+            target_counts = targets.sum(dim=2)
             target_log_counts = torch.log(target_counts + self.count_pseudocount)
             count_loss = F.mse_loss(pred_log_counts, target_log_counts)
         else:
-            # Simulate log_counts from logits (Global Sum)
-            # Flatten channels and length to sum over everything
             logits_flat = logits.flatten(start_dim=1)
-            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1) # (B,)
+            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1)
             target_global_count = targets.sum(dim=(1, 2))
             target_log_global_count = torch.log(target_global_count + self.count_pseudocount)
             count_loss = F.mse_loss(pred_log_counts, target_log_global_count)
-        
-        # --- Profile Loss ---
         profile_loss = self._compute_profile_loss(logits, targets)
-        
+        return profile_loss, count_loss
+
+    def forward(self, outputs, targets):
+        profile_loss, count_loss = self.loss_components(outputs, targets)
         return self.profile_weight * profile_loss + self.count_weight * count_loss
 
 
@@ -249,76 +238,66 @@ class PoissonMultinomialLoss(nn.Module):
                  loss_shape = loss_shape_per_channel.sum(dim=-1).mean()
          return loss_shape
 
-    def forward(self, predictions, targets):
+    def loss_components(self, predictions, targets) -> tuple[torch.Tensor, torch.Tensor]:
+        """Returns (profile_loss, count_loss) without weighting."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if not isinstance(predictions, ProfileCountOutput):
-             raise TypeError("PoissonMultinomialLoss requires ProfileCountOutput")
-
+            raise TypeError("PoissonMultinomialLoss requires ProfileCountOutput")
         logits = predictions.logits
         pred_log_counts = predictions.log_counts
-        
         if self.count_per_channel:
-            target_counts = targets.sum(dim=2) # (B, C)
-            # pred_log_counts should be (B, C)
+            target_counts = targets.sum(dim=2)
             loss_count = self.count_loss_fn(pred_log_counts, target_counts)
         else:
-            # --- Count Loss (Global Count) ---
-            target_global_count = targets.sum(dim=(1, 2)) # (B,)
-            pred_log_counts = pred_log_counts.flatten() # (B,)
-            loss_count = self.count_loss_fn(pred_log_counts, target_global_count)
-
-        # --- Profile Loss ---
+            target_global_count = targets.sum(dim=(1, 2))
+            loss_count = self.count_loss_fn(pred_log_counts.flatten(), target_global_count)
         loss_shape = self._compute_profile_loss(logits, targets)
+        return loss_shape, loss_count
 
-        return self.count_weight * loss_count + self.profile_weight * loss_shape
+    def forward(self, predictions, targets):
+        profile_loss, count_loss = self.loss_components(predictions, targets)
+        return self.count_weight * count_loss + self.profile_weight * profile_loss
 
 
 class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
     """
     Poisson Multinomial Loss (Coupled/Global Count).
     Mathematically equivalent to PoissonMultinomialLoss but derives counts from log_rates.
-    
+
     Objective:
       1. Profile Loss: Cross Entropy.
       2. Count Loss: Poisson NLL on Global Count.
-    
+
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp of logits over all channels.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
     """
-    def forward(self, predictions, targets):
+    def loss_components(self, predictions, targets) -> tuple[torch.Tensor, torch.Tensor]:
+        """Returns (profile_loss, count_loss) without weighting."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if isinstance(predictions, ProfileCountOutput):
             raise TypeError("CoupledPoissonMultinomialLoss does not accept ProfileCountOutput. Use PoissonMultinomialLoss instead.")
-
         if not isinstance(predictions, ProfileLogRates):
-             raise TypeError("CoupledPoissonMultinomialLoss requires ProfileLogRates")
-
+            raise TypeError("CoupledPoissonMultinomialLoss requires ProfileLogRates")
         logits = predictions.log_rates
-
         if self.count_per_channel:
-            # Simulate log_counts per channel
-            pred_log_counts = torch.logsumexp(logits.float(), dim=2) # (B, C)
-            target_counts = targets.sum(dim=2) # (B, C)
+            pred_log_counts = torch.logsumexp(logits.float(), dim=2)
+            target_counts = targets.sum(dim=2)
             loss_count = self.count_loss_fn(pred_log_counts, target_counts)
         else:
-            # Simulate log_counts from logits (Global Sum)
             logits_flat = logits.flatten(start_dim=1)
-            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1) # (B,)
-            target_global_count = targets.sum(dim=(1, 2)) # (B,)
+            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1)
+            target_global_count = targets.sum(dim=(1, 2))
             loss_count = self.count_loss_fn(pred_log_counts, target_global_count)
-
-        # --- Profile Loss ---
         loss_shape = self._compute_profile_loss(logits, targets)
+        return loss_shape, loss_count
 
-        return self.count_weight * loss_count + self.profile_weight * loss_shape
+    def forward(self, predictions, targets):
+        profile_loss, count_loss = self.loss_components(predictions, targets)
+        return self.count_weight * count_loss + self.profile_weight * profile_loss
 
 
 class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
@@ -339,42 +318,31 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
         super().__init__(**kwargs)
         self.total_count = float(total_count)
         
-    def forward(self, predictions, targets):
+    def loss_components(self, predictions, targets) -> tuple[torch.Tensor, torch.Tensor]:
+        """Returns (profile_loss, count_loss) without weighting."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if not isinstance(predictions, ProfileCountOutput):
-             raise TypeError("NegativeBinomialMultinomialLoss requires ProfileCountOutput")
-
+            raise TypeError("NegativeBinomialMultinomialLoss requires ProfileCountOutput")
         logits = predictions.logits
         pred_log_counts = predictions.log_counts
-        
-        # Determine target counts
         if self.count_per_channel:
-            target_counts = targets.sum(dim=2) # (B, C)
+            target_counts = targets.sum(dim=2)
         else:
-            target_counts = targets.sum(dim=(1, 2)) # (B,)
+            target_counts = targets.sum(dim=(1, 2))
             if pred_log_counts.ndim > 1:
                 pred_log_counts = pred_log_counts.flatten()
-        
-        # --- Count Loss (Negative Binomial) ---
-        # pred_log_counts is log(mu)
-        # We need to construct NB distribution
-        # PyTorch NB parameterization: total_count (r), logits (log-odds)
-        # logits = pred_log_counts - log(r)
-        
         r_tensor = torch.tensor(self.total_count, device=pred_log_counts.device, dtype=pred_log_counts.dtype)
         nb_logits = pred_log_counts - torch.log(r_tensor)
-        
         nb_dist = torch.distributions.NegativeBinomial(total_count=r_tensor, logits=nb_logits)
         loss_count = -nb_dist.log_prob(target_counts).mean()
-
-        # --- Profile Loss ---
         loss_shape = self._compute_profile_loss(logits, targets)
+        return loss_shape, loss_count
 
-        return self.count_weight * loss_count + self.profile_weight * loss_shape
+    def forward(self, predictions, targets):
+        profile_loss, count_loss = self.loss_components(predictions, targets)
+        return self.count_weight * count_loss + self.profile_weight * profile_loss
 
 
 class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
@@ -382,38 +350,30 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
     Negative Binomial Multinomial Loss (Coupled).
     Mathematically equivalent to NegativeBinomialMultinomialLoss but derives counts from log_rates.
     """
-    def forward(self, predictions, targets):
+    def loss_components(self, predictions, targets) -> tuple[torch.Tensor, torch.Tensor]:
+        """Returns (profile_loss, count_loss) without weighting."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if isinstance(predictions, ProfileCountOutput):
             raise TypeError("CoupledNegativeBinomialMultinomialLoss does not accept ProfileCountOutput. Use NegativeBinomialMultinomialLoss instead.")
-
         if not isinstance(predictions, ProfileLogRates):
-             raise TypeError("CoupledNegativeBinomialMultinomialLoss requires ProfileLogRates")
-
+            raise TypeError("CoupledNegativeBinomialMultinomialLoss requires ProfileLogRates")
         logits = predictions.log_rates
-
         if self.count_per_channel:
-            # Simulate log_counts per channel
-            pred_log_counts = torch.logsumexp(logits.float(), dim=2) # (B, C)
-            target_counts = targets.sum(dim=2) # (B, C)
+            pred_log_counts = torch.logsumexp(logits.float(), dim=2)
+            target_counts = targets.sum(dim=2)
         else:
-            # Simulate log_counts from logits (Global Sum)
             logits_flat = logits.flatten(start_dim=1)
-            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1) # (B,)
-            target_counts = targets.sum(dim=(1, 2)) # (B,)
-
-        # --- Count Loss (Negative Binomial) ---
+            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1)
+            target_counts = targets.sum(dim=(1, 2))
         r_tensor = torch.tensor(self.total_count, device=pred_log_counts.device, dtype=pred_log_counts.dtype)
         nb_logits = pred_log_counts - torch.log(r_tensor)
-        
         nb_dist = torch.distributions.NegativeBinomial(total_count=r_tensor, logits=nb_logits)
         loss_count = -nb_dist.log_prob(target_counts).mean()
-
-        # --- Profile Loss ---
         loss_shape = self._compute_profile_loss(logits, targets)
+        return loss_shape, loss_count
 
-        return self.count_weight * loss_count + self.profile_weight * loss_shape
+    def forward(self, predictions, targets):
+        profile_loss, count_loss = self.loss_components(predictions, targets)
+        return self.count_weight * count_loss + self.profile_weight * profile_loss
