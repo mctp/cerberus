@@ -289,3 +289,40 @@ class DilatedResidualBlock(nn.Module):
             crop_r = diff - crop_l
             x = x[..., crop_l:-crop_r]
         return x + out
+
+
+class SimpleResidualBlock(nn.Module):
+    """Conv1d + ReLU residual block with valid padding.
+
+    Structure: Conv1d(dim, dim, k, dilation=d) → ReLU → Dropout [+ Residual]
+
+    With residual=True (default), the residual input is center-cropped to match
+    the valid-padded output and added back. All operations are nn.Module-based
+    (no ``F.relu``) for full DeepLIFT/DeepSHAP compatibility via captum.
+
+    Args:
+        dim: Number of input/output channels.
+        kernel_size: Convolution kernel size.
+        dilation: Dilation rate. Default: 1.
+        dropout: Dropout rate. Default: 0.1.
+        residual: Whether to add a residual connection. Default: True.
+    """
+    def __init__(self, dim: int, kernel_size: int, dilation: int = 1,
+                 dropout: float = 0.1, residual: bool = True):
+        super().__init__()
+        self.shrinkage = dilation * (kernel_size - 1)
+        self.residual = residual
+        self.conv = nn.Conv1d(dim, dim, kernel_size, dilation=dilation, padding=0)
+        self.act = nn.ReLU()
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.act(self.conv(x))
+        out = self.dropout(out)
+        if self.residual:
+            # Center-crop residual to match valid-padded output
+            if self.shrinkage > 0:
+                crop = self.shrinkage // 2
+                x = x[..., crop: crop + out.shape[-1]]
+            return out + x
+        return out

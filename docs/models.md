@@ -194,31 +194,70 @@ model = ConvNeXtDCNN(
 # Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 512)
 ```
 
+## BiasNet
+
+**Implementation**: `cerberus.models.BiasNet`
+**Source**: `src/cerberus/models/biasnet.py`
+
+A lightweight bias model for Tn5 enzymatic sequence preference. Uses a plain Conv1d + ReLU stack with residual connections and valid padding. Designed for ChromBPNet-style bias factorization in the Dalmatian model.
+
+All operations are `nn.Module`-based (no `F.relu`) for full DeepLIFT/DeepSHAP compatibility via captum.
+
+### Architecture
+
+- **Stem**: 2-layer `[11, 11]` Conv1d + ReLU (valid padding)
+- **Body**: 5 × SimpleResidualBlock (Conv1d + ReLU + Dropout + Residual, k=9, dilation=1)
+- **Head**: Single linear Conv1d(f, 1, 45) spatial conv (valid padding)
+- **Count**: GlobalAvgPool → Linear → ReLU → Linear
+
+Default configuration: 12 filters, 105bp RF, ~9.3K params.
+
+### Key Features
+*   **DeepLIFT/DeepSHAP compatible**: Only Conv1d, ReLU, and residual add — all have well-defined captum propagation rules.
+*   **Linear profile head**: A single spatial convolution (no pointwise + ReLU) maximizes interpretability for attribution methods.
+*   **Valid padding**: Ensures no zero-padding artifacts; strictly maps input to output geometrically.
+*   **Residual connections**: Enable gradient flow through the 5-layer tower without normalization layers.
+
+### Usage
+```python
+from cerberus.models import BiasNet
+
+model = BiasNet(
+    input_len=1128,
+    output_len=1024,
+    filters=12,
+    n_layers=5,
+)
+# Returns ProfileCountOutput(logits=..., log_counts=...)
+```
+
 ## Dalmatian
 
 **Implementation**: `cerberus.models.Dalmatian`
 **Source**: `src/cerberus/models/dalmatian.py`
 
-An end-to-end bias-factorized sequence-to-function model for ATAC-seq data. Replaces ChromBPNet's two-stage training (freeze bias, then train signal) with joint training of two Pomeranian sub-networks, using architectural constraints and a peak-conditioned loss to separate Tn5 enzyme bias from regulatory signal.
+An end-to-end bias-factorized sequence-to-function model for ATAC-seq data. Replaces ChromBPNet's two-stage training (freeze bias, then train signal) with joint training of a BiasNet and a Pomeranian SignalNet, using architectural constraints, gradient separation, and a peak-conditioned loss to separate Tn5 enzyme bias from regulatory signal.
 
 The name "Dalmatian" follows the dog-breed naming convention (BPNet, Pomeranian) and alludes to the two-component spotted pattern.
 
 ### Architecture
 
-Dalmatian composes two Pomeranian sub-networks:
+Dalmatian composes two sub-networks:
 
-- **BiasNet** (~72K params): Small receptive field (~147bp) to capture local Tn5 sequence bias. Uses 64 filters, 4 dilated layers `[1,2,4,8]`, kernel size 9, stem kernel 11, profile kernel 17.
-- **SignalNet** (~2-3M params): Full receptive field (~1089bp) to capture regulatory grammar (TF footprints, nucleosome positioning). Uses 256 filters, 8 dilated layers `[1,1,2,4,8,16,32,64]`, kernel size 9, two-layer stem `[11,11]`, profile kernel 45.
+- **BiasNet** (~9.3K params): Lightweight Conv1d+ReLU stack with short receptive field (~105bp) to capture local Tn5 sequence bias. Uses 12 filters, 5 residual tower layers (all dilation=1), kernel size 9, two-layer stem `[11,11]`, linear profile head (k=45). Fully DeepLIFT/DeepSHAP compatible.
+- **SignalNet** (~2-3M params): Full Pomeranian with long receptive field (~1089bp) to capture regulatory grammar (TF footprints, nucleosome positioning). Uses 256 filters, 8 dilated layers `[1,1,2,4,8,16,32,64]`, kernel size 9, two-layer stem `[11,11]`, profile kernel 45.
 
 Their outputs are combined:
 - **Profile**: logit addition (`combined_logits = bias_logits + signal_logits`)
 - **Counts**: log-space addition via logsumexp (`combined_log_counts = logsumexp(bias_log_counts, signal_log_counts)`)
 
 ### Key Features
+*   **Gradient separation**: Bias outputs are `.detach()`-ed before combining with signal outputs, so the combined reconstruction loss (L_recon) trains only SignalNet. BiasNet receives gradients exclusively from L_bias (background reconstruction). This replicates ChromBPNet's freeze-bias design without requiring a two-stage training procedure.
 *   **Zero-initialized signal outputs**: At initialization, signal outputs are identity elements (logits=0, log_counts=-10), so the combined output equals the bias-only output. This ensures stable early training.
 *   **Per-channel counts**: Both sub-models use `predict_total_count=False` because ATAC-seq channels represent independent samples (not forward/reverse strands).
 *   **Clean geometry**: SignalNet shrinkage exactly maps `input_len` to `output_len` with no excess cropping. BiasNet receives a center-cropped input sized to its own receptive field needs.
 *   **Input validation**: Rejects configurations where SignalNet shrinkage doesn't produce the exact `output_len`.
+*   **DeepLIFT-compatible bias model**: BiasNet uses only Conv1d + ReLU + residual add, all with well-defined captum propagation rules.
 
 ### Output: FactorizedProfileCountOutput
 
@@ -245,8 +284,8 @@ L = L_recon(combined, target)                          # all examples
   + signal_background_weight * L_signal_bg(signal)     # background only
 ```
 
-- **L_recon**: Standard reconstruction loss on the combined output (all examples).
-- **L_bias**: Reconstruction loss using only the bias component (background/non-peak examples only). Forces the bias model to explain background signal on its own.
+- **L_recon**: Standard reconstruction loss on the combined output (all examples). Gradients flow only to SignalNet (bias outputs are detached before combining).
+- **L_bias**: Reconstruction loss using only the bias component (background/non-peak examples only). This is the sole gradient source for BiasNet, forcing it to learn Tn5 bias rather than TF footprints.
 - **L_signal_bg**: L1 penalty on signal logits and counts in background regions. Suppresses the signal model from learning in non-peak regions.
 - **`peak_status`**: A per-example binary tensor passed as batch context via `**kwargs`. The `CerberusModule._shared_step` automatically forwards all non-input/target batch fields as keyword arguments.
 

@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Dalmatian gradient separation**: Bias outputs are `.detach()`-ed before
+  combining with signal outputs in `Dalmatian.forward()`. The combined
+  reconstruction loss (L_recon) now trains only SignalNet; BiasNet receives
+  gradients exclusively from L_bias (background reconstruction). This
+  replicates ChromBPNet's freeze-bias design without two-stage training,
+  preventing the bias model from learning TF footprints via L_recon.
+- **Dalmatian BiasNet replaced**: The bias sub-network in `Dalmatian` is now a
+  dedicated `BiasNet` (Conv1d + ReLU + residual, ~9.3K params, 105bp RF) instead
+  of a Pomeranian (~72K params, 147bp RF). BiasNet is fully DeepLIFT/DeepSHAP
+  compatible (no RMSNorm, GELU, or gating — only Conv1d, ReLU, and residual add).
+  Default config: f=12, 5 residual tower layers, linear profile head. The
+  `SimpleResidualBlock` layer is added to `cerberus.layers`. **Breaking change**:
+  Dalmatian bias parameter names changed from `bias_expansion`/`bias_stem_expansion`
+  to `bias_linear_head`/`bias_residual`. Default `bias_filters` changed from 64 to 12.
 - **PWMBiasModel** moved from `cerberus.models` to `debug/pwm_model/` as a
   self-contained debug package. No longer part of the cerberus public API.
   Includes `RegularizedProfileCountOutput` (output with optional reg_loss),
@@ -16,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for encouraging distinct PWM filters.
 
 ### Added
+- **BiasNet model** (`cerberus.models.BiasNet`): Lightweight bias model for
+  Tn5 enzymatic sequence preference. Plain Conv1d + ReLU + residual stack with
+  valid padding and linear profile head. 12 filters, 105bp RF, ~9.3K params.
+  Fully DeepLIFT/DeepSHAP compatible via captum. Used as the bias sub-network
+  in Dalmatian.
+- **SimpleResidualBlock** (`cerberus.layers`): Conv1d + ReLU residual block
+  with valid padding. All nn.Module-based (no F.relu) for captum compatibility.
 - **Depthwise-only PGC mode** (`expansion=0`): Setting `expansion=0` in
   Pomeranian/Dalmatian model args skips all pointwise projections and gating
   in PGC tower blocks, producing a pure depthwise-convolution tower. Useful

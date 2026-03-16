@@ -3,6 +3,7 @@
 import os
 import pytest
 import torch
+from cerberus.models.biasnet import BiasNet
 from cerberus.output import FactorizedProfileCountOutput, ProfileCountOutput, unbatch_modeloutput, compute_total_log_counts
 from cerberus.loss import DalmatianLoss
 from cerberus.models.dalmatian import Dalmatian
@@ -122,11 +123,16 @@ def test_dalmatian_combined_equals_bias_at_init():
 
 
 def test_dalmatian_backward():
-    """Gradients flow through both sub-models."""
+    """Gradients flow through both sub-models (via their respective loss paths)."""
     model = Dalmatian()
     x = torch.randn(2, 4, 2112)
     out = model(x)
-    loss = out.logits.sum() + out.log_counts.sum()
+    # Combined loss (L_recon) trains signal_model only (bias is detached)
+    # Bias-only loss (L_bias) trains bias_model
+    loss = (
+        out.logits.sum() + out.log_counts.sum()  # L_recon -> signal_model
+        + out.bias_logits.sum() + out.bias_log_counts.sum()  # L_bias -> bias_model
+    )
     loss.backward()
     for name, p in model.bias_model.named_parameters():
         if p.requires_grad:
@@ -136,24 +142,67 @@ def test_dalmatian_backward():
             assert p.grad is not None, f"signal_model.{name} has no gradient"
 
 
+def test_dalmatian_gradient_detach():
+    """L_recon gradients reach signal_model but NOT bias_model (gradient separation)."""
+    model = Dalmatian()
+    x = torch.randn(2, 4, 2112)
+    out = model(x)
+
+    # Only use combined outputs (simulates L_recon path)
+    loss = out.logits.sum() + out.log_counts.sum()
+    loss.backward()
+
+    # Signal model must receive gradients from L_recon
+    for name, p in model.signal_model.named_parameters():
+        if p.requires_grad:
+            assert p.grad is not None, f"signal_model.{name} missing gradient from L_recon"
+
+    # Bias model must NOT receive gradients from L_recon (detached)
+    for name, p in model.bias_model.named_parameters():
+        if p.requires_grad:
+            assert p.grad is None, f"bias_model.{name} has gradient from L_recon (detach failed)"
+
+
+def test_dalmatian_bias_receives_gradient_from_bias_loss():
+    """L_bias gradients reach bias_model but NOT signal_model."""
+    model = Dalmatian()
+    x = torch.randn(2, 4, 2112)
+    out = model(x)
+
+    # Only use bias outputs (simulates L_bias path)
+    loss = out.bias_logits.sum() + out.bias_log_counts.sum()
+    loss.backward()
+
+    # Bias model must receive gradients from L_bias
+    for name, p in model.bias_model.named_parameters():
+        if p.requires_grad:
+            assert p.grad is not None, f"bias_model.{name} missing gradient from L_bias"
+
+    # Signal model must NOT receive gradients from L_bias
+    for name, p in model.signal_model.named_parameters():
+        if p.requires_grad:
+            assert p.grad is None, f"signal_model.{name} has gradient from L_bias"
+
+
 def test_dalmatian_param_count():
     """Parameter count is in expected range."""
     model = Dalmatian()
     total = sum(p.numel() for p in model.parameters())
     bias_params = sum(p.numel() for p in model.bias_model.parameters())
     signal_params = sum(p.numel() for p in model.signal_model.parameters())
-    assert 20_000 < bias_params < 150_000, f"Bias params {bias_params} out of range"
+    assert 5_000 < bias_params < 20_000, f"Bias params {bias_params} out of range"
     assert 1_000_000 < signal_params < 5_000_000, f"Signal params {signal_params} out of range"
     assert total == bias_params + signal_params
 
 
 def test_dalmatian_bias_input_crop():
-    """BiasNet receives center-cropped input via Pomeranian's auto-crop."""
+    """BiasNet receives center-cropped input via auto-crop."""
     model = Dalmatian()
     # bias_input_len should be less than full input_len
     assert model.bias_input_len < model.input_len
-    # bias_input_len = output_len + bias_shrinkage = 1024 + 146 = 1170
-    assert model.bias_input_len == 1170
+    # bias_input_len = output_len + bias_shrinkage
+    # stem: (11-1)+(11-1)=20, tower: 5*1*(9-1)=40, head: 45-1=44 → shrinkage=104
+    assert model.bias_input_len == 1024 + 104  # 1128
     # Signal model uses full input
     assert model.signal_model.input_len == 2112
 
@@ -375,6 +424,12 @@ def test_dalmatian_convenience_import():
     """Dalmatian is importable from cerberus.models shortcut."""
     from cerberus.models import Dalmatian as D
     assert D is Dalmatian
+
+
+def test_dalmatian_bias_model_is_biasnet():
+    """Dalmatian's bias_model is a BiasNet instance (not Pomeranian)."""
+    model = Dalmatian()
+    assert isinstance(model.bias_model, BiasNet)
 
 
 # --- Step 6: End-to-end integration and additional tests ---
