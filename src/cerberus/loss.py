@@ -423,12 +423,13 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
 class DalmatianLoss(nn.Module):
     """Peak-conditioned factorized loss for the Dalmatian architecture.
 
-    Three loss terms:
+    Two loss terms:
       1. L_recon: Combined reconstruction loss on all examples (profile + count).
       2. L_bias: Bias-only reconstruction loss on non-peak (background) examples.
-      3. L_signal_bg: Signal suppression penalty on non-peak examples --
-         L1 on signal logits and log_counts, pushing them toward zero
-         (the identity elements for logit addition and logsumexp).
+
+    Gradient separation is handled architecturally (bias outputs are detached
+    before combining in Dalmatian.forward), so no explicit signal suppression
+    term is needed. Exp21 confirmed that L_signal_bg had zero measurable effect.
 
     The base loss (e.g. MSEMultinomialLoss) is instantiated internally from
     ``base_loss_cls`` / ``base_loss_args``, enabling nested config via YAML.
@@ -438,8 +439,6 @@ class DalmatianLoss(nn.Module):
             (e.g. ``"cerberus.loss.MSEMultinomialLoss"``).
         base_loss_args: Keyword arguments forwarded to the base loss constructor.
         bias_weight: Weight for the bias-only reconstruction term.
-        signal_background_weight: Weight for the signal suppression term on
-            background regions.
         count_pseudocount: Forwarded into ``base_loss_args`` (via setdefault)
             so that ``propagate_pseudocount`` works transparently.
     """
@@ -449,12 +448,11 @@ class DalmatianLoss(nn.Module):
         base_loss_cls: str,
         base_loss_args: dict[str, object] | None = None,
         bias_weight: float = 1.0,
-        signal_background_weight: float = 0.1,
         count_pseudocount: float = 1.0,
+        **kwargs: object,
     ):
         super().__init__()
         self.bias_weight = bias_weight
-        self.signal_background_weight = signal_background_weight
 
         loss_cls = import_class(base_loss_cls)
         args = dict(base_loss_args or {})
@@ -487,10 +485,9 @@ class DalmatianLoss(nn.Module):
         )
         l_recon = self.base_loss(combined, target)
 
-        # 2. Bias-only reconstruction + signal suppression (non-peak examples)
+        # 2. Bias-only reconstruction (non-peak examples)
         non_peak = peak_status == 0
         l_bias = torch.tensor(0.0, device=target.device)
-        l_signal_bg = torch.tensor(0.0, device=target.device)
 
         if non_peak.any():
             bias_out = ProfileCountOutput(
@@ -499,9 +496,4 @@ class DalmatianLoss(nn.Module):
             )
             l_bias = self.base_loss(bias_out, target[non_peak])
 
-            l_signal_bg = (
-                output.signal_logits[non_peak].abs().mean()
-                + output.signal_log_counts[non_peak].abs().mean()
-            )
-
-        return l_recon + self.bias_weight * l_bias + self.signal_background_weight * l_signal_bg
+        return l_recon + self.bias_weight * l_bias

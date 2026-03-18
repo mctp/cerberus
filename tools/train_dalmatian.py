@@ -6,6 +6,7 @@ This script implements a generic training tool for Dalmatian models.
 Dalmatian is an end-to-end bias-factorized sequence-to-function model
 that decomposes signal into BiasNet (local Tn5 bias, RF~105bp, Conv1d+ReLU)
 and SignalNet (regulatory grammar, RF~1089bp, Pomeranian) sub-networks.
+Loss: L_recon (combined, all examples) + bias_weight * L_bias (bias-only, background).
 
 Designed for ATAC-seq pseudobulk data: sequence+BED input, BigWig output.
 
@@ -69,7 +70,6 @@ def get_args():
                         choices=["mse", "poisson"],
                         help="Base loss function for DalmatianLoss (default: mse)")
     parser.add_argument("--bias-weight", type=float, default=1.0, help="Weight for bias-only reconstruction term")
-    parser.add_argument("--signal-background-weight", type=float, default=0.1, help="Weight for signal suppression on background")
 
     # BiasNet overrides
     parser.add_argument("--bias-filters", type=int, default=12, help="BiasNet filter count (default: 12)")
@@ -245,7 +245,6 @@ def main():
         "base_loss_cls": base_loss_cls,
         "base_loss_args": base_loss_args,
         "bias_weight": args.bias_weight,
-        "signal_background_weight": args.signal_background_weight,
         "count_pseudocount": args.count_pseudocount,
     }
 

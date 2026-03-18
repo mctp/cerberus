@@ -245,10 +245,10 @@ Coupled version of `NegativeBinomialMultinomialLoss` for models predicting log-r
 *   **Inputs**: `ProfileLogRates`.
 
 ### DalmatianLoss
-Peak-conditioned loss for bias-factorized models. Wraps any profile+count base loss and adds bias-only reconstruction and signal suppression terms on background (non-peak) examples.
+Peak-conditioned loss for bias-factorized models. Wraps any profile+count base loss and adds a bias-only reconstruction term on background (non-peak) examples. No explicit signal suppression needed — gradient detach handles it.
 
-*   **Terms**: `L_recon` (all examples) + `bias_weight * L_bias` (background) + `signal_background_weight * L_signal_bg` (background).
-*   **Args**: `base_loss_cls` (dotted class path), `base_loss_args`, `bias_weight` (default: 1.0), `signal_background_weight` (default: 0.1), `count_pseudocount` (default: 1.0).
+*   **Terms**: `L_recon` (all examples) + `bias_weight * L_bias` (background).
+*   **Args**: `base_loss_cls` (dotted class path), `base_loss_args`, `bias_weight` (default: 1.0), `count_pseudocount` (default: 1.0).
 *   **Requires**: `peak_status` tensor passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context).
 *   **Inputs**: `FactorizedProfileCountOutput`.
 

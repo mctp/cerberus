@@ -218,6 +218,44 @@ Default configuration: 12 filters, 105bp RF, ~9.3K params.
 *   **Valid padding**: Ensures no zero-padding artifacts; strictly maps input to output geometrically.
 *   **Residual connections**: Enable gradient flow through the 5-layer tower without normalization layers.
 
+### Recommended Training Settings
+
+| Parameter | Value |
+|---|---|
+| Optimizer | `adamw` |
+| Learning rate | `1e-3` |
+| Weight decay | `1e-4` |
+| Adam ε | `1e-8` |
+| Scheduler | `default` (constant) |
+| Loss | `MSEMultinomialLoss` (`count_weight="adaptive"`) |
+| Sampler | `negative_peak` (background regions only) |
+
+### Training Tool
+
+Use `tools/train_biasnet.py` for command-line training:
+
+```bash
+# Train on negative peaks (default — bias-only training)
+python tools/train_biasnet.py \
+    --bigwig path/to/signal.bw \
+    --peaks path/to/peaks.narrowPeak \
+    --output-dir models/my_bias_model
+
+# Train on peaks + background (like Pomeranian)
+python tools/train_biasnet.py \
+    --bigwig path/to/signal.bw \
+    --peaks path/to/peaks.narrowPeak \
+    --output-dir models/my_bias_model \
+    --sampler-type peak
+
+# Cosine schedule with warmup
+python tools/train_biasnet.py \
+    --bigwig path/to/signal.bw \
+    --peaks path/to/peaks.narrowPeak \
+    --output-dir models/my_bias_model \
+    --scheduler-type cosine --warmup-epochs 10
+```
+
 ### Usage
 ```python
 from cerberus.models import BiasNet
@@ -253,7 +291,8 @@ Their outputs are combined:
 
 ### Key Features
 *   **Gradient separation**: Bias outputs are `.detach()`-ed before combining with signal outputs, so the combined reconstruction loss (L_recon) trains only SignalNet. BiasNet receives gradients exclusively from L_bias (background reconstruction). This replicates ChromBPNet's freeze-bias design without requiring a two-stage training procedure.
-*   **Zero-initialized signal outputs**: At initialization, signal outputs are identity elements (logits=0, log_counts=-10), so the combined output equals the bias-only output. This ensures stable early training.
+*   **Zero-initialized signal outputs** (`zero_init`, default `False`): When enabled, signal outputs are identity elements (logits=0, log_counts=-10) at initialization, so the combined output equals the bias-only output. **Recommended: leave disabled.** Experiments (exp20) show zero-init is harmful with gradient detach — SignalNet wastes epochs "turning on" from zero output. Without detach it served a purpose (soft two-stage training); with detach it's just a bad initialization.
+*   **Signal presets**: `signal_preset="large"` (f=256, expansion=2, ~3.9M params) or `signal_preset="standard"` (default, f=64, expansion=1, ~150K params — matches standalone Pomeranian K9). Individual `signal_*` args override the preset. Experiments (exp20) show the 24x parameter difference buys <0.01 profile Pearson.
 *   **Per-channel counts**: Both sub-models use `predict_total_count=False` because ATAC-seq channels represent independent samples (not forward/reverse strands).
 *   **Clean geometry**: SignalNet shrinkage exactly maps `input_len` to `output_len` with no excess cropping. BiasNet receives a center-cropped input sized to its own receptive field needs.
 *   **Input validation**: Rejects configurations where SignalNet shrinkage doesn't produce the exact `output_len`.
@@ -276,18 +315,18 @@ This is fully compatible with existing losses and metrics that expect `ProfileCo
 
 ### Loss: DalmatianLoss
 
-`DalmatianLoss` wraps any profile+count base loss (e.g., `MSEMultinomialLoss`) and adds peak-conditioned terms:
+`DalmatianLoss` wraps any profile+count base loss (e.g., `MSEMultinomialLoss`) and adds a peak-conditioned bias term:
 
 ```
 L = L_recon(combined, target)                          # all examples
   + bias_weight * L_bias(bias_only, target)            # background only
-  + signal_background_weight * L_signal_bg(signal)     # background only
 ```
 
 - **L_recon**: Standard reconstruction loss on the combined output (all examples). Gradients flow only to SignalNet (bias outputs are detached before combining).
 - **L_bias**: Reconstruction loss using only the bias component (background/non-peak examples only). This is the sole gradient source for BiasNet, forcing it to learn Tn5 bias rather than TF footprints.
-- **L_signal_bg**: L1 penalty on signal logits and counts in background regions. Suppresses the signal model from learning in non-peak regions.
 - **`peak_status`**: A per-example binary tensor passed as batch context via `**kwargs`. The `CerberusModule._shared_step` automatically forwards all non-input/target batch fields as keyword arguments.
+
+No explicit signal suppression term is needed — gradient detach already prevents SignalNet from activating on background (verified in exp21: removing the L1 penalty had zero measurable effect).
 
 ```python
 model_config = {
@@ -298,7 +337,6 @@ model_config = {
         "base_loss_cls": "cerberus.loss.MSEMultinomialLoss",
         "base_loss_args": {"count_per_channel": True},
         "bias_weight": 1.0,
-        "signal_background_weight": 0.1,
     },
     "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
     "metrics_args": {},
@@ -326,7 +364,6 @@ model = Dalmatian(
 loss = DalmatianLoss(
     base_loss_cls="cerberus.loss.MSEMultinomialLoss",
     bias_weight=1.0,
-    signal_background_weight=0.1,
 )
 
 # Returns FactorizedProfileCountOutput with combined + decomposed fields

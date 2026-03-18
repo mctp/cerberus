@@ -98,8 +98,8 @@ def test_dalmatian_forward_shape():
 
 
 def test_dalmatian_zero_init():
-    """Signal model outputs are zero/negligible at initialization."""
-    model = Dalmatian()
+    """Signal model outputs are zero/negligible at initialization when zero_init=True."""
+    model = Dalmatian(zero_init=True)
     x = torch.randn(2, 4, 2112)
     with torch.no_grad():
         out = model(x)
@@ -109,9 +109,19 @@ def test_dalmatian_zero_init():
     assert (out.signal_log_counts < -9.0).all()
 
 
-def test_dalmatian_combined_equals_bias_at_init():
-    """At initialization, combined output ~ bias-only output."""
+def test_dalmatian_no_zero_init_default():
+    """Default Dalmatian does NOT zero-initialize signal outputs."""
     model = Dalmatian()
+    x = torch.randn(2, 4, 2112)
+    with torch.no_grad():
+        out = model(x)
+    # Signal logits should NOT be all zeros (random init)
+    assert not torch.allclose(out.signal_logits, torch.zeros_like(out.signal_logits), atol=1e-6)
+
+
+def test_dalmatian_combined_equals_bias_at_init():
+    """At initialization with zero_init, combined output ~ bias-only output."""
+    model = Dalmatian(zero_init=True)
     x = torch.randn(2, 4, 2112)
     with torch.no_grad():
         out = model(x)
@@ -185,14 +195,21 @@ def test_dalmatian_bias_receives_gradient_from_bias_loss():
 
 
 def test_dalmatian_param_count():
-    """Parameter count is in expected range."""
+    """Parameter count is in expected range for standard preset (default)."""
     model = Dalmatian()
     total = sum(p.numel() for p in model.parameters())
     bias_params = sum(p.numel() for p in model.bias_model.parameters())
     signal_params = sum(p.numel() for p in model.signal_model.parameters())
     assert 5_000 < bias_params < 20_000, f"Bias params {bias_params} out of range"
-    assert 1_000_000 < signal_params < 5_000_000, f"Signal params {signal_params} out of range"
+    assert 100_000 < signal_params < 300_000, f"Signal params {signal_params} out of range"
     assert total == bias_params + signal_params
+
+
+def test_dalmatian_param_count_large():
+    """Parameter count for large preset."""
+    model = Dalmatian(signal_preset="large")
+    signal_params = sum(p.numel() for p in model.signal_model.parameters())
+    assert 1_000_000 < signal_params < 5_000_000, f"Signal params {signal_params} out of range"
 
 
 def test_dalmatian_bias_input_crop():
@@ -242,11 +259,10 @@ def test_dalmatian_loss_instantiation():
 
 
 def test_dalmatian_loss_forward_mixed_batch():
-    """Loss computes all three terms with mixed peak/background batch."""
+    """Loss computes both terms with mixed peak/background batch."""
     loss_fn = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
         bias_weight=1.0,
-        signal_background_weight=0.1,
     )
     output = _make_factorized_output(batch_size=4)
     target = torch.rand(4, 1, 100).abs() + 0.1
@@ -258,11 +274,10 @@ def test_dalmatian_loss_forward_mixed_batch():
 
 
 def test_dalmatian_loss_all_peaks():
-    """When all examples are peaks, bias and signal_bg terms are zero."""
+    """When all examples are peaks, bias term is zero."""
     loss_fn = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
         bias_weight=1.0,
-        signal_background_weight=0.1,
     )
     output = _make_factorized_output(batch_size=4)
     target = torch.rand(4, 1, 100).abs() + 0.1
@@ -274,18 +289,16 @@ def test_dalmatian_loss_all_peaks():
     recon_only = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
         bias_weight=0.0,
-        signal_background_weight=0.0,
     )
     loss_recon = recon_only(output, target, peak_status=peak_status)
     assert torch.allclose(loss_all_peak, loss_recon)
 
 
 def test_dalmatian_loss_all_background():
-    """When all examples are background, all three terms contribute."""
+    """When all examples are background, both terms contribute."""
     loss_fn = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
         bias_weight=1.0,
-        signal_background_weight=0.1,
     )
     output = _make_factorized_output(batch_size=4)
     target = torch.rand(4, 1, 100).abs() + 0.1
@@ -297,11 +310,10 @@ def test_dalmatian_loss_all_background():
 
 
 def test_dalmatian_loss_backward():
-    """Gradients flow through all decomposed fields."""
+    """Gradients flow through combined and bias fields."""
     loss_fn = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
         bias_weight=1.0,
-        signal_background_weight=0.1,
     )
     output = _make_factorized_output(batch_size=4)
     target = torch.rand(4, 1, 100).abs() + 0.1
@@ -316,9 +328,6 @@ def test_dalmatian_loss_backward():
     # Bias fields get gradients from l_bias (non-peak examples exist)
     assert output.bias_logits.grad is not None
     assert output.bias_log_counts.grad is not None
-    # Signal fields get gradients from l_signal_bg
-    assert output.signal_logits.grad is not None
-    assert output.signal_log_counts.grad is not None
 
 
 def test_dalmatian_loss_pseudocount_forwarding():
@@ -432,11 +441,53 @@ def test_dalmatian_bias_model_is_biasnet():
     assert isinstance(model.bias_model, BiasNet)
 
 
+def test_dalmatian_signal_preset_standard():
+    """signal_preset='standard' creates a ~150K-param SignalNet (Pomeranian K9)."""
+    model = Dalmatian(signal_preset="standard")
+    signal_params = sum(p.numel() for p in model.signal_model.parameters())
+    assert 100_000 < signal_params < 250_000, f"Standard preset: {signal_params} params"
+    x = torch.randn(2, 4, 2112)
+    out = model(x)
+    assert out.logits.shape == (2, 1, 1024)
+
+
+def test_dalmatian_signal_preset_large():
+    """signal_preset='large' (default) creates a ~3.9M-param SignalNet."""
+    model = Dalmatian(signal_preset="large")
+    signal_params = sum(p.numel() for p in model.signal_model.parameters())
+    assert 3_000_000 < signal_params < 5_000_000, f"Large preset: {signal_params} params"
+
+
+def test_dalmatian_signal_preset_override():
+    """Explicit signal_filters overrides preset default."""
+    model = Dalmatian(signal_preset="standard", signal_filters=128)
+    signal_params = sum(p.numel() for p in model.signal_model.parameters())
+    # f=128 with expansion=1 (from standard preset) should be between standard and large
+    assert 400_000 < signal_params < 1_000_000, f"Override preset: {signal_params} params"
+
+
+def test_dalmatian_signal_preset_invalid():
+    """Invalid signal_preset raises ValueError."""
+    with pytest.raises(ValueError, match="Unknown signal_preset"):
+        Dalmatian(signal_preset="tiny")
+
+
+def test_dalmatian_no_zero_init():
+    """zero_init=False skips signal output zero-initialization."""
+    model = Dalmatian(zero_init=False)
+    x = torch.randn(2, 4, 2112)
+    with torch.no_grad():
+        out = model(x)
+    # Signal logits should NOT be all zeros (random init)
+    assert not torch.allclose(out.signal_logits, torch.zeros_like(out.signal_logits), atol=1e-6)
+
+
 # --- Step 6: End-to-end integration and additional tests ---
 
 
 def test_dalmatian_cerberus_module_training_step():
     """Full training step through CerberusModule with Dalmatian + DalmatianLoss."""
+    import tempfile
     import warnings
     import pytorch_lightning as pl
     from torch.utils.data import DataLoader, Dataset
@@ -479,21 +530,23 @@ def test_dalmatian_cerberus_module_training_step():
     dataset = DalmatianDataset(n=8)
     dataloader = DataLoader(dataset, batch_size=2, num_workers=0)
 
-    trainer = pl.Trainer(
-        max_epochs=1,
-        logger=False,
-        enable_checkpointing=False,
-        enable_model_summary=False,
-        enable_progress_bar=False,
-        accelerator="auto",
-        devices=1,
-        limit_train_batches=2,
-        limit_val_batches=1,
-    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        trainer = pl.Trainer(
+            max_epochs=1,
+            logger=False,
+            default_root_dir=tmp_dir,
+            enable_checkpointing=False,
+            enable_model_summary=False,
+            enable_progress_bar=False,
+            accelerator="auto",
+            devices=1,
+            limit_train_batches=2,
+            limit_val_batches=1,
+        )
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", ".*does not have many workers.*")
-        trainer.fit(module, train_dataloaders=dataloader, val_dataloaders=dataloader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", ".*does not have many workers.*")
+            trainer.fit(module, train_dataloaders=dataloader, val_dataloaders=dataloader)
 
 
 def test_pomeranian_metrics_with_factorized_output():
@@ -580,7 +633,6 @@ def test_dalmatian_optimization_reduces_loss():
     loss_fn = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
         bias_weight=1.0,
-        signal_background_weight=0.1,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 

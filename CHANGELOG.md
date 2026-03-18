@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`tools/train_biasnet.py`**: Standalone BiasNet training tool matching the
+  CLI conventions of `train_pomeranian.py` and `train_bpnet.py`. Defaults to
+  `negative_peak` sampler (background-only training), `MSEMultinomialLoss`,
+  and BiasNet architecture (f=12, 5 layers, linear head, ~9.3K params).
+  Supports all BiasNet architecture parameters, multi-fold cross-validation,
+  and cosine/warmup scheduling.
+- **`examples/scatac_kidney_biasnet.sh`**: BiasNet training example for kidney
+  scATAC-seq pseudobulk (negative peaks, reproduces exp19f).
+- **`examples/atac_k562_biasnet.sh`**: BiasNet training example for K562
+  ATAC-seq (negative peaks).
+- **Dalmatian `signal_preset`**: ``"large"`` (default, f=256, ~3.9M params) or
+  ``"standard"`` (f=64, ~150K params, matches Pomeranian K9). Individual
+  `signal_*` args override the preset.
+- **Dalmatian `zero_init` parameter**: Controls zero-initialization of signal
+  output layers. `--no-zero-init` flag added to `tools/train_dalmatian.py`.
+
 ### Changed
+- **DalmatianLoss simplified to 2-term loss**: Removed `signal_background_weight`
+  and L_signal_bg (L1 penalty on signal outputs in background regions). Exp21
+  confirmed this term had zero measurable effect on both kidney and K562 datasets
+  — gradient detach already prevents SignalNet from activating on background.
+  Loss is now `L_recon + bias_weight * L_bias`. The `signal_background_weight`
+  parameter is accepted but ignored for backwards compatibility.
 - **Dalmatian gradient separation**: Bias outputs are `.detach()`-ed before
   combining with signal outputs in `Dalmatian.forward()`. The combined
   reconstruction loss (L_recon) now trains only SignalNet; BiasNet receives
@@ -22,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SimpleResidualBlock` layer is added to `cerberus.layers`. **Breaking change**:
   Dalmatian bias parameter names changed from `bias_expansion`/`bias_stem_expansion`
   to `bias_linear_head`/`bias_residual`. Default `bias_filters` changed from 64 to 12.
+- **Dalmatian defaults updated** based on exp20 results: `zero_init` default
+  changed from `True` to `False` (zero-init is harmful with gradient detach).
+  `signal_preset` default changed from `"large"` to `"standard"` (24x fewer
+  params with <0.01 Pearson difference).
 - **PWMBiasModel** moved from `cerberus.models` to `debug/pwm_model/` as a
   self-contained debug package. No longer part of the cerberus public API.
   Includes `RegularizedProfileCountOutput` (output with optional reg_loss),
