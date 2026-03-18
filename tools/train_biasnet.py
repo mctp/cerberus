@@ -1,16 +1,33 @@
 #!/usr/bin/env python
 """
-Dalmatian Training Tool.
+BiasNet Training Tool.
 
-This script implements a generic training tool for Dalmatian models.
-Dalmatian is an end-to-end bias-factorized sequence-to-function model
-that decomposes signal into BiasNet (local Tn5 bias, RF~105bp, Conv1d+ReLU)
-and SignalNet (regulatory grammar, RF~1089bp, Pomeranian) sub-networks.
+This script trains a standalone BiasNet model (lightweight Conv1d + ReLU stack)
+for Tn5 enzymatic bias modeling. By default it trains on negative (non-peak)
+regions only, matching the ChromBPNet bias-model training paradigm.
 
-Designed for ATAC-seq pseudobulk data: sequence+BED input, BigWig output.
+BiasNet is fully DeepLIFT/DeepSHAP compatible (Conv1d + ReLU + residual add only).
+
+Default configuration (matching exp19f):
+  - Filters: 12, Stem: [11, 11], Body: 5 × (k=9, d=1), Head: k=45 linear
+  - RF: 105bp, ~9.3K params
+  - Loss: MSEMultinomialLoss (count_weight=adaptive)
+  - Sampler: negative_peak (background regions only)
+  - Optimizer: AdamW, lr=1e-3, wd=1e-4, no scheduler
 
 Usage:
-    python tools/train_dalmatian.py --bigwig path/to/signal.bw --peaks path/to/peaks.bed --output-dir models/my_model
+    # Train on ATAC-seq negative peaks (default)
+    python tools/train_biasnet.py \\
+        --bigwig path/to/signal.bw \\
+        --peaks path/to/peaks.narrowPeak \\
+        --output-dir models/my_bias_model
+
+    # Train on peaks + background (like Pomeranian)
+    python tools/train_biasnet.py \\
+        --bigwig path/to/signal.bw \\
+        --peaks path/to/peaks.narrowPeak \\
+        --output-dir models/my_bias_model \\
+        --sampler-type peak
 """
 
 import argparse
@@ -20,7 +37,6 @@ import torch
 from pathlib import Path
 from pprint import pformat
 
-# Cerberus imports
 import cerberus
 from cerberus.download import download_human_reference
 from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
@@ -28,12 +44,26 @@ from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
 
+def _parse_count_weight(value: str) -> "float | str":
+    """Accept a float or the literal string 'adaptive' for --count-weight."""
+    if value == "adaptive":
+        return "adaptive"
+    try:
+        return float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"--count-weight must be a float or 'adaptive', got: {value!r}"
+        )
+
+
 def get_args():
-    parser = argparse.ArgumentParser(description="Train Dalmatian models with Cerberus using any BigWig and BED file")
+    parser = argparse.ArgumentParser(
+        description="Train BiasNet (lightweight Tn5 bias model) with Cerberus"
+    )
 
     # Input files
-    parser.add_argument("--bigwig", type=str, required=True, help="Path to the BigWig file (target signal)")
-    parser.add_argument("--peaks", type=str, required=True, help="Path to the BED/narrowPeak file (training regions)")
+    parser.add_argument("--bigwig", type=str, required=True, help="Path to the BigWig file (signal)")
+    parser.add_argument("--peaks", type=str, required=True, help="Path to the BED/narrowPeak file (peak regions)")
 
     # Genome arguments
     parser.add_argument("--genome", type=str, default="hg38", help="Genome name (default: hg38)")
@@ -56,44 +86,46 @@ def get_args():
     parser.add_argument("--val-fold", type=int, default=1, help="Validation fold (for single-fold training)")
     parser.add_argument("--test-fold", type=int, default=0, help="Test fold")
 
-    # Hyperparameters
-    parser.add_argument("--input-len", type=int, default=2112, help="Input sequence length")
+    # Data hyperparameters
     parser.add_argument("--output-len", type=int, default=1024, help="Output signal length")
     parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
-    parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
-    parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets (1.0 for raw-count pseudobulk BigWig values)")
+    parser.add_argument("--sampler-type", type=str, default="negative_peak",
+                        choices=["peak", "negative_peak"],
+                        help="Sampler type (default: negative_peak for bias-only training)")
+    parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background intervals to peaks (for peak sampler)")
+    parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets")
     parser.add_argument("--count-pseudocount", type=float, default=1.0, help="Additive offset before log-transforming count targets")
 
-    # Loss arguments
-    parser.add_argument("--base-loss", type=str, default="mse",
-                        choices=["mse", "poisson"],
-                        help="Base loss function for DalmatianLoss (default: mse)")
-    parser.add_argument("--bias-weight", type=float, default=1.0, help="Weight for bias-only reconstruction term")
-    parser.add_argument("--signal-background-weight", type=float, default=0.1, help="Weight for signal suppression on background")
+    # Architecture
+    parser.add_argument("--filters", type=int, default=12, help="Number of conv filters (model dimension)")
+    parser.add_argument("--n-layers", type=int, default=5, help="Number of residual tower layers")
+    parser.add_argument("--dilations", type=int, nargs="+", default=[1, 1, 1, 1, 1],
+                        help="Dilation schedule for tower layers")
+    parser.add_argument("--dil-kernel-size", type=int, default=9, help="Tower conv kernel size")
+    parser.add_argument("--conv-kernel-size", type=int, nargs="+", default=[11, 11],
+                        help="Stem kernel size(s)")
+    parser.add_argument("--profile-kernel-size", type=int, default=45, help="Profile head spatial kernel size")
+    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
+    parser.add_argument("--no-residual", action="store_true", help="Disable residual connections in tower blocks")
+    parser.add_argument("--linear-head", action="store_true", default=True,
+                        help="Use single linear spatial conv for profile head (default: True)")
+    parser.add_argument("--no-linear-head", action="store_true",
+                        help="Use pointwise+ReLU+spatial conv for profile head")
 
-    # BiasNet overrides
-    parser.add_argument("--bias-filters", type=int, default=12, help="BiasNet filter count (default: 12)")
-    parser.add_argument("--bias-dropout", type=float, default=0.1, help="BiasNet dropout rate")
-
-    # SignalNet overrides
-    parser.add_argument("--signal-preset", type=str, default="standard",
-                        choices=["large", "standard"],
-                        help="SignalNet preset: 'standard' (f=64, ~150K, Pomeranian K9) or 'large' (f=256, ~3.9M)")
-    parser.add_argument("--signal-filters", type=int, default=None, help="SignalNet model dimension (overrides preset)")
-    parser.add_argument("--signal-dropout", type=float, default=0.1, help="SignalNet dropout rate")
-
-    # Initialization
-    parser.add_argument("--zero-init", action="store_true",
-                        help="Enable zero-initialization of signal output layers (not recommended with gradient detach)")
+    # Loss
+    parser.add_argument("--loss", type=str, default="mse", choices=["mse", "bpnet", "poisson"],
+                        help="Loss function (default: mse)")
+    parser.add_argument("--count-weight", type=_parse_count_weight, default="adaptive",
+                        help="Count loss weight. Use 'adaptive' (default) for data-derived, or a float.")
 
     # Training parameters
     parser.add_argument("--learning-rate", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay")
-    parser.add_argument("--patience", type=int, default=10, help="Patience for early stopping (higher than typical to survive Phase 1 plateau)")
+    parser.add_argument("--patience", type=int, default=10, help="Patience for early stopping")
     parser.add_argument("--optimizer", type=str, default="adamw", help="Optimizer type")
-    parser.add_argument("--scheduler-type", type=str, default="default", help="Learning rate scheduler type (default = constant)")
-    parser.add_argument("--warmup-epochs", type=int, default=0, help="Number of warmup epochs")
-    parser.add_argument("--min-lr", type=float, default=5e-6, help="Minimum learning rate")
+    parser.add_argument("--scheduler-type", type=str, default="default", help="Learning rate scheduler type")
+    parser.add_argument("--warmup-epochs", type=int, default=0, help="Number of warmup epochs (for cosine scheduler)")
+    parser.add_argument("--min-lr", type=float, default=5e-6, help="Minimum learning rate (for cosine scheduler)")
 
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
@@ -107,11 +139,14 @@ def get_args():
 
 
 def main():
-    # Setup logging
     cerberus.setup_logging()
-    logging.info("Starting Dalmatian training tool...")
+    logging.info("Starting BiasNet training tool...")
 
     args = get_args()
+
+    # Resolve --no-linear-head override
+    if args.no_linear_head:
+        args.linear_head = False
 
     # Setup directories
     data_dir = Path(args.data_dir).resolve()
@@ -144,28 +179,37 @@ def main():
 
     # 2. Configuration
 
-    # Build exclude_intervals dict, filtering out None values
     exclude_intervals = {}
     if blacklist_path:
         exclude_intervals["blacklist"] = blacklist_path
     if gaps_path:
         exclude_intervals["gaps"] = gaps_path
 
-    # Genome Config
     genome_config: GenomeConfig = create_genome_config(
         name=args.genome,
         fasta_path=fasta_path,
         species=args.species,
         fold_type="chrom_partition",
         fold_args={"k": 5, "val_fold": args.val_fold, "test_fold": args.test_fold},
-        exclude_intervals=exclude_intervals
+        exclude_intervals=exclude_intervals,
     )
 
-    # Data Config
-    input_len = args.input_len
+    # Compute input_len from architecture shrinkage
     output_len = args.output_len
-    output_bin_size = 1
+    stem_shrinkage = sum(k - 1 for k in args.conv_kernel_size)
+    tower_shrinkage = sum(d * (args.dil_kernel_size - 1) for d in args.dilations)
+    head_shrinkage = args.profile_kernel_size - 1
+    total_shrinkage = stem_shrinkage + tower_shrinkage + head_shrinkage
+    input_len = output_len + total_shrinkage
+
+    logging.info(
+        f"Architecture: RF={total_shrinkage + 1}bp, shrinkage={total_shrinkage} "
+        f"(stem={stem_shrinkage}, tower={tower_shrinkage}, head={head_shrinkage}), "
+        f"input_len={input_len}"
+    )
+
     max_jitter = args.jitter
+    padded_size = input_len + 2 * max_jitter
 
     data_config: DataConfig = {
         "inputs": {},
@@ -173,7 +217,7 @@ def main():
         "input_len": input_len,
         "output_len": output_len,
         "max_jitter": max_jitter,
-        "output_bin_size": output_bin_size,
+        "output_bin_size": 1,
         "encoding": "ACGT",
         "log_transform": False,
         "reverse_complement": True,
@@ -182,20 +226,15 @@ def main():
         "count_pseudocount": args.count_pseudocount,
     }
 
-    # Sampler Config - Peak Intervals
-    padded_size = input_len + 2 * max_jitter
-    logging.info(f"Using Peak Sampler (Positives + Negatives) with padded_size={padded_size}...")
-
     sampler_config: SamplerConfig = {
-        "sampler_type": "peak",
+        "sampler_type": args.sampler_type,
         "padded_size": padded_size,
         "sampler_args": {
             "intervals_path": args.peaks,
             "background_ratio": args.background_ratio,
-        }
+        },
     }
 
-    # Train Config
     train_config: TrainConfig = {
         "batch_size": args.batch_size,
         "max_epochs": args.max_epochs,
@@ -209,50 +248,48 @@ def main():
         "scheduler_args": {
             "num_epochs": args.max_epochs,
             "warmup_epochs": args.warmup_epochs,
-            "min_lr": args.min_lr
+            "min_lr": args.min_lr,
         },
         "adam_eps": 1e-8,
         "gradient_clip_val": None,
     }
 
     # Model Config
-    logging.info("Using Dalmatian (bias-factorized) Model...")
-
-    # input_len, output_len, output_bin_size are injected by instantiate_model
-    model_args: dict[str, object] = {
+    model_args = {
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],
-        "bias_filters": args.bias_filters,
-        "bias_dropout": args.bias_dropout,
-        "signal_preset": args.signal_preset,
-        "signal_dropout": args.signal_dropout,
-        "zero_init": args.zero_init,
+        "filters": args.filters,
+        "n_layers": args.n_layers,
+        "dilations": args.dilations,
+        "dil_kernel_size": args.dil_kernel_size,
+        "conv_kernel_size": args.conv_kernel_size,
+        "profile_kernel_size": args.profile_kernel_size,
+        "dropout": args.dropout,
+        "predict_total_count": True,
+        "residual": not args.no_residual,
+        "linear_head": args.linear_head,
     }
-    if args.signal_filters is not None:
-        model_args["signal_filters"] = args.signal_filters
 
-    # DalmatianLoss configuration
-    if args.base_loss == "poisson":
-        base_loss_cls = "cerberus.loss.PoissonMultinomialLoss"
-        base_loss_args: dict[str, object] = {"count_per_channel": True}
-        logging.info("Using DalmatianLoss with PoissonMultinomialLoss base...")
+    if args.loss == "poisson":
+        loss_cls = "cerberus.loss.PoissonMultinomialLoss"
+        loss_args: dict = {"count_weight": args.count_weight}
+        logging.info("Using PoissonMultinomialLoss (count_weight=%s)...", args.count_weight)
+    elif args.loss == "bpnet":
+        loss_cls = "cerberus.models.bpnet.BPNetLoss"
+        loss_args = {"alpha": args.count_weight}
+        logging.info("Using BPNetLoss (alpha=%s)...", args.count_weight)
     else:
-        base_loss_cls = "cerberus.loss.MSEMultinomialLoss"
-        base_loss_args = {"count_per_channel": True}
-        logging.info("Using DalmatianLoss with MSEMultinomialLoss base...")
-
-    loss_args: dict[str, object] = {
-        "base_loss_cls": base_loss_cls,
-        "base_loss_args": base_loss_args,
-        "bias_weight": args.bias_weight,
-        "signal_background_weight": args.signal_background_weight,
-        "count_pseudocount": args.count_pseudocount,
-    }
+        loss_cls = "cerberus.loss.MSEMultinomialLoss"
+        loss_args = {
+            "count_per_channel": True,
+            "count_weight": args.count_weight,
+        }
+        logging.info("Using MSEMultinomialLoss (count_weight=%s)...", args.count_weight)
 
     model_config: ModelConfig = {
-        "name": "Dalmatian",
-        "model_cls": "cerberus.models.dalmatian.Dalmatian",
-        "loss_cls": "cerberus.loss.DalmatianLoss",
+        "name": "BiasNet",
+        "model_cls": "cerberus.models.biasnet.BiasNet",
+        "loss_cls": loss_cls,
         "loss_args": loss_args,
         "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
         "metrics_args": {},
@@ -260,7 +297,6 @@ def main():
     }
 
     # 3. Training
-    # Handle devices argument
     devices = args.devices
     if devices != "auto":
         try:
@@ -268,20 +304,20 @@ def main():
         except ValueError:
             pass
 
-    # Hardware-specific optimization
     accelerator = args.accelerator
     num_workers = args.num_workers
 
-    # Auto-detect Apple Silicon (MPS)
     if accelerator == "auto" and torch.backends.mps.is_available():
         accelerator = "mps"
 
     if accelerator == "mps":
         logging.info("Using Apple Silicon (MPS) acceleration.")
         if num_workers > 0:
-            logging.warning("num_workers=%d may cause instability on MPS. Recommend setting --num-workers 0.", num_workers)
+            logging.warning(
+                "num_workers=%d may cause instability on MPS. Recommend setting --num-workers 0.",
+                num_workers,
+            )
 
-    # Precision settings
     if args.precision == "full":
         precision_args = {
             "precision": "32-true",
@@ -305,13 +341,12 @@ def main():
             "matmul_precision": "medium",
             "accelerator": accelerator,
             "devices": devices,
-            "strategy": "ddp_find_unused_parameters_false" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto",
+            "strategy": "auto",
             "benchmark": True,
             "compile": True,
         }
 
     logging.info("Configurations:")
-    logging.info("Genome Config:\n%s", pformat(genome_config))
     logging.info("Data Config:\n%s", pformat(data_config))
     logging.info("Sampler Config:\n%s", pformat(sampler_config))
     logging.info("Train Config:\n%s", pformat(train_config))
@@ -334,7 +369,7 @@ def main():
             val_batch_size=args.batch_size * 4,
             enable_progress_bar=not args.silent,
             seed=args.seed,
-            **precision_args
+            **precision_args,
         )
     else:
         logging.info("Starting Single Fold Training (train_single)...")
@@ -352,7 +387,7 @@ def main():
             val_batch_size=args.batch_size * 4,
             enable_progress_bar=not args.silent,
             seed=args.seed,
-            **precision_args
+            **precision_args,
         )
 
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
