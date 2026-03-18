@@ -22,7 +22,8 @@ def mock_configs():
         "loss_args": {},
         "metrics_cls": MagicMock(),
         "metrics_args": {},
-        "model_args": {}
+        "model_args": {},
+        "pretrained": [],
     } # type: ignore
     data_config: DataConfig = {
         "inputs": {},

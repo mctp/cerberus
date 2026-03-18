@@ -126,9 +126,10 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-## test data
+## test data (except committed fixtures)
 tmp/
-tests/data/
+tests/data/*
+!tests/data/fixtures/
 
 # VS Code
 *.code-workspace
@@ -137,3 +138,4 @@ notebooks/plots/
 
 # Claude Code
 .claude/
+debug/

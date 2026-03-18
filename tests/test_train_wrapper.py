@@ -39,6 +39,7 @@ def _make_model_config(loss_args: dict | None = None) -> ModelConfig:
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
         },
+        "pretrained": [],
     })
 
 

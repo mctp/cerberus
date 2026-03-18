@@ -46,7 +46,8 @@ def minimal_configs():
         "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "loss_args": {},
         "metrics_args": {},
-        "model_args": {}
+        "model_args": {},
+        "pretrained": [],
     }
 
     train_config: TrainConfig = {

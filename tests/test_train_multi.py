@@ -28,7 +28,8 @@ def test_train_multi_loop():
         "model_args": {
             "input_channels": ["A"],
             "output_channels": ["B"],
-        }
+        },
+        "pretrained": [],
     })
     
     train_config = cast(TrainConfig, {

@@ -18,7 +18,7 @@ from cerberus.train import _dump_config, _save_model_pt
 class TestDumpConfig:
 
     def test_writes_expected_json(self, tmp_path):
-        model_config = cast(ModelConfig, {"name": "test", "model_cls": "x.Y"})
+        model_config = cast(ModelConfig, {"name": "test", "model_cls": "x.Y", "pretrained": []})
         data_config = cast(DataConfig, {"input_len": 1000})
         train_config = cast(TrainConfig, {"batch_size": 32})
 

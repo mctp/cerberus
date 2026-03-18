@@ -45,9 +45,10 @@ def test_validate_model_config_strings():
         "model_args": {
             "input_channels": ["seq"],
             "output_channels": ["out"]
-        }
+        },
+        "pretrained": [],
     }
-    
+
     validated = validate_model_config(config)
     assert validated["model_cls"] == "cerberus.models.bpnet.BPNet"
 
@@ -62,7 +63,8 @@ def test_validate_model_config_invalid_types():
         "metrics_cls": "metrics",
         "metrics_args": {},
         "loss_args": {},
-        "model_args": {}
+        "model_args": {},
+        "pretrained": [],
     }
     
     with pytest.raises(TypeError, match="model_cls must be a string"):
@@ -114,7 +116,8 @@ def test_instantiate_model_with_strings():
             "metrics_cls": "dummy.Metrics",
             "loss_args": {},
             "metrics_args": {},
-            "model_args": {"hidden_dim": 64}
+            "model_args": {"hidden_dim": 64},
+            "pretrained": [],
         }
         
         data_config = {

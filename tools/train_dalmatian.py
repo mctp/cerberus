@@ -86,6 +86,12 @@ def get_args():
     parser.add_argument("--zero-init", action="store_true",
                         help="Enable zero-initialization of signal output layers (not recommended with gradient detach)")
 
+    # Pretrained weights
+    parser.add_argument("--pretrained-bias", type=str, default=None,
+                        help="Path to pretrained BiasNet model.pt for weight initialization")
+    parser.add_argument("--freeze-bias", action="store_true",
+                        help="Freeze BiasNet weights after loading (requires --pretrained-bias)")
+
     # Training parameters
     parser.add_argument("--learning-rate", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay")
@@ -112,6 +118,10 @@ def main():
     logging.info("Starting Dalmatian training tool...")
 
     args = get_args()
+
+    # Validate pretrained args
+    if args.freeze_bias and not args.pretrained_bias:
+        raise SystemExit("--freeze-bias requires --pretrained-bias")
 
     # Setup directories
     data_dir = Path(args.data_dir).resolve()
@@ -248,6 +258,16 @@ def main():
         "count_pseudocount": args.count_pseudocount,
     }
 
+    # Build pretrained weight configs
+    pretrained: list[dict[str, object]] = []
+    if args.pretrained_bias:
+        pretrained.append({
+            "weights_path": args.pretrained_bias,
+            "source": None,
+            "target": "bias_model",
+            "freeze": args.freeze_bias,
+        })
+
     model_config: ModelConfig = {
         "name": "Dalmatian",
         "model_cls": "cerberus.models.dalmatian.Dalmatian",
@@ -256,6 +276,7 @@ def main():
         "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
         "metrics_args": {},
         "model_args": model_args,
+        "pretrained": pretrained,
     }
 
     # 3. Training

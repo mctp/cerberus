@@ -58,6 +58,7 @@ def _model_config(loss_args: dict) -> ModelConfig:
         "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "metrics_args": {},
         "model_args": {},
+        "pretrained": [],
     })
 
 

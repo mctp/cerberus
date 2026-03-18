@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Pretrained weight loading** (`cerberus.pretrained`): Generic system for loading
+  pretrained weights into any model or sub-module. New `PretrainedConfig` TypedDict
+  and `pretrained` field on `ModelConfig`. Supports: whole-model warm-start,
+  sub-module loading (e.g., BiasNet → Dalmatian's `bias_model`), extracting
+  sub-module weights from full-model checkpoints (`source` prefix), and freezing
+  loaded parameters. All training tools gain `--pretrained` CLI arg;
+  `train_dalmatian.py` adds `--pretrained-bias` / `--freeze-bias`.
 - **`tools/train_biasnet.py`**: Standalone BiasNet training tool matching the
   CLI conventions of `train_pomeranian.py` and `train_bpnet.py`. Defaults to
   `negative_peak` sampler (background-only training), `MSEMultinomialLoss`,

@@ -98,7 +98,8 @@ def test_validate_model_config_valid():
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
             "output_type": "signal",
-        }
+        },
+        "pretrained": [],
     })
     validated = validate_model_config(config)
     assert validated["name"] == "test_model"
@@ -116,7 +117,8 @@ def test_validate_model_config_invalid_output_type():
             "input_channels": ["A"],
             "output_channels": ["B"],
             "output_type": "invalid_type",
-        }
+        },
+        "pretrained": [],
     })
     with pytest.raises(ValueError, match=r"model_args\['output_type'\] must be one of"):
         validate_model_config(config)
@@ -133,7 +135,8 @@ def test_validate_model_config_empty_channels():
             "input_channels": [],
             "output_channels": ["B"],
             "output_type": "signal",
-        }
+        },
+        "pretrained": [],
     })
     with pytest.raises(ValueError, match=r"model_args\['input_channels'\] must not be empty"):
         validate_model_config(config)
@@ -193,13 +196,14 @@ def test_validate_data_and_model_compatibility_valid():
         "use_sequence": True,
     })
     model_config = cast(ModelConfig, {
-        "name": "m", "model_cls": "torch.nn.Linear", "loss_cls": "tests.test_config_validation.DummyLoss", 
+        "name": "m", "model_cls": "torch.nn.Linear", "loss_cls": "tests.test_config_validation.DummyLoss",
         "loss_args": {}, "metrics_cls": "torchmetrics.MetricCollection", "metrics_args": {},
         "model_args": {
             "input_channels": ["track1", "A", "C", "G", "T"], # data inputs + sequence
             "output_channels": ["target1"],
             "output_type": "signal",
-        }
+        },
+        "pretrained": [],
     })
     
     validate_data_and_model_compatibility(data_config, model_config)
@@ -215,13 +219,14 @@ def test_validate_data_and_model_compatibility_invalid_targets():
         "use_sequence": True,
     })
     model_config = cast(ModelConfig, {
-        "name": "m", "model_cls": "torch.nn.Linear", "loss_cls": "tests.test_config_validation.DummyLoss", 
+        "name": "m", "model_cls": "torch.nn.Linear", "loss_cls": "tests.test_config_validation.DummyLoss",
         "loss_args": {}, "metrics_cls": "torchmetrics.MetricCollection", "metrics_args": {},
         "model_args": {
-            "input_channels": ["A"], 
+            "input_channels": ["A"],
             "output_channels": ["target2"], # Mismatch
             "output_type": "signal",
-        }
+        },
+        "pretrained": [],
     })
     
     with pytest.raises(ValueError, match="Model output channels"):
@@ -238,13 +243,14 @@ def test_validate_data_and_model_compatibility_invalid_inputs():
         "use_sequence": True,
     })
     model_config = cast(ModelConfig, {
-        "name": "m", "model_cls": "torch.nn.Linear", "loss_cls": "tests.test_config_validation.DummyLoss", 
+        "name": "m", "model_cls": "torch.nn.Linear", "loss_cls": "tests.test_config_validation.DummyLoss",
         "loss_args": {}, "metrics_cls": "torchmetrics.MetricCollection", "metrics_args": {},
         "model_args": {
             "input_channels": ["A"], # Missing track1
             "output_channels": [],
             "output_type": "signal",
-        }
+        },
+        "pretrained": [],
     })
     
     with pytest.raises(ValueError, match="Data inputs .* are not in model input channels"):
@@ -309,6 +315,7 @@ def test_count_pseudocount_injection_into_loss_and_metrics_args():
         "loss_cls": "torch.nn.Linear", "loss_args": {},
         "metrics_cls": "torchmetrics.MetricCollection", "metrics_args": {},
         "model_args": {},
+        "pretrained": [],
     })
 
     scaled_pseudocount = data_conf["count_pseudocount"] * data_conf["target_scale"]
@@ -327,6 +334,7 @@ def test_count_pseudocount_injection_does_not_override_explicit():
         "loss_cls": "torch.nn.Linear", "loss_args": {"count_pseudocount": 999.0},
         "metrics_cls": "torchmetrics.MetricCollection", "metrics_args": {},
         "model_args": {},
+        "pretrained": [],
     })
 
     scaled_pseudocount = data_conf["count_pseudocount"] * data_conf["target_scale"]

@@ -19,6 +19,7 @@ from .config import (
 )
 from .module import instantiate, configure_callbacks
 from .model_ensemble import update_ensemble_metadata
+from .pretrained import load_pretrained_weights
 
 logger = logging.getLogger(__name__)
 
@@ -333,10 +334,15 @@ def _train(
         sampler_config=sampler_config,
     )
 
-    # 5. Train
+    # 5. Load pretrained weights if specified in model_config
+    pretrained = model_config["pretrained"]
+    if pretrained:
+        load_pretrained_weights(module.model, pretrained)
+
+    # 6. Train
     trainer.fit(module, datamodule=datamodule)
 
-    # 6. Save clean state dict for inference (best checkpoint, no Lightning overhead)
+    # 7. Save clean state dict for inference (best checkpoint, no Lightning overhead)
     if root_dir is not None and trainer.is_global_zero:
         _save_model_pt(trainer, root_dir)
 

@@ -1081,7 +1081,7 @@ class TestTrainCallsPrepareThenSetup:
             mock_trainer_cls.return_value = mock_trainer
 
             _train(
-                model_config={"loss_args": {}, "model_args": {}},  # type: ignore
+                model_config={"loss_args": {}, "model_args": {}, "pretrained": []},  # type: ignore
                 data_config={},  # type: ignore
                 datamodule=mock_dm,
                 train_config={

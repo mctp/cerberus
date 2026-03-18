@@ -67,7 +67,8 @@ def test_parse_hparams_config_generated_success(tmp_path):
                 "input_channels": ["seq"],
                 "output_channels": ["out"],
                 "output_type": "signal"
-            }
+            },
+            "pretrained": [],
         }
     }
     

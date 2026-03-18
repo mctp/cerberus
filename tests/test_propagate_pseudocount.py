@@ -64,6 +64,7 @@ def _model_config(**overrides) -> ModelConfig:
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
         },
+        "pretrained": [],
     }
     cfg.update(overrides)
     return cast(ModelConfig, cfg)

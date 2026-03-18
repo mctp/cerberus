@@ -125,6 +125,7 @@ class TestValidateModelConfig:
             "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
             "metrics_args": {},
             "model_args": {},
+            "pretrained": [],
         })
 
     def test_valid_config(self):

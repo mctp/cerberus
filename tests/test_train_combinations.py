@@ -89,6 +89,7 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
         "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
         "metrics_args": {},
         "model_args": {},
+        "pretrained": [],
     })
     data_config = cast(DataConfig, {
         "input_len": 2114, "output_len": 1000, "output_bin_size": 1,

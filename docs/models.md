@@ -388,6 +388,36 @@ python tools/train_dalmatian.py \
 bash examples/scatac_kidney_dalmatian.sh
 ```
 
+### Pretrained Bias Loading
+
+Load a pre-trained BiasNet to skip bias re-training. This is equivalent to ChromBPNet's two-stage approach (freeze bias, train signal) but in a single training run:
+
+```bash
+# Frozen pre-trained bias (ChromBPNet-equivalent)
+python tools/train_dalmatian.py \
+    --bigwig signal.bw --peaks peaks.bed \
+    --pretrained-bias pretrained/biasnet/atac_k562.pt \
+    --freeze-bias \
+    --output-dir models/dalmatian_frozen_bias
+
+# Warm-start bias (fine-tune both sub-models)
+python tools/train_dalmatian.py \
+    --bigwig signal.bw --peaks peaks.bed \
+    --pretrained-bias pretrained/biasnet/atac_k562.pt \
+    --output-dir models/dalmatian_finetuned
+```
+
+The pretrained weight loading system is generic — any training tool supports `--pretrained` for whole-model warm-starting (e.g., `python tools/train_pomeranian.py --pretrained model.pt ...`).
+
+Internally, pretrained configs use `source` and `target` fields to support flexible weight mapping:
+
+| Use case | source | target |
+|----------|--------|--------|
+| Standalone BiasNet → Dalmatian bias | None | "bias_model" |
+| Full Dalmatian checkpoint → Dalmatian bias | "bias_model" | "bias_model" |
+| Full Dalmatian checkpoint → whole Dalmatian | None | None |
+| Standalone Pomeranian → Dalmatian signal | None | "signal_model" |
+
 ## PWMBiasModel (experimental)
 
 **Location**: `debug/pwm_model/pwm_bias.py` (not part of cerberus public API)

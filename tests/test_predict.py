@@ -85,9 +85,10 @@ def integration_setup(tmp_path):
         "loss_args": {},
         "metrics_cls": "torchmetrics.MetricCollection",
         "metrics_args": {"metrics": {}},
-        "model_args": {}
+        "model_args": {},
+        "pretrained": [],
     })
-    
+
     train_config = cast(TrainConfig, {
         "batch_size": 2,
         "max_epochs": 1,

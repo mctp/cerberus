@@ -1,14 +1,16 @@
 data_config:
+  count_pseudocount: 150.0
   encoding: ACGT
-  input_len: 2112
+  input_len: 2114
   inputs: {}
   log_transform: false
   max_jitter: 256
   output_bin_size: 1
-  output_len: 1024
+  output_len: 1000
   reverse_complement: true
+  target_scale: 1.0
   targets:
-    signal: /nfs/turbo/umms-mcieslik/mcieslik/code/cerberus/tests/data/dataset/mdapca2b_ar/mdapca2b-ar.bigwig
+    signal: tests/data/dataset/mdapca2b_ar/mdapca2b-ar.bigwig
   use_sequence: true
 genome_config:
   allowed_chroms:
@@ -67,32 +69,21 @@ genome_config:
   fasta_path: /nfs/turbo/umms-mcieslik/mcieslik/code/cerberus/tests/data/genome/hg38/hg38.fa
   fold_args:
     k: 5
-    test_fold: 3
-    val_fold: 4
+    test_fold: 0
+    val_fold: 1
   fold_type: chrom_partition
   name: hg38
 model_config:
   loss_args:
-    alpha: 1.0
+    alpha: 127.43417358398438
+    count_pseudocount: 150.0
   loss_cls: cerberus.models.bpnet.BPNetLoss
-  metrics_args: {}
-  metrics_cls: cerberus.models.pomeranian.PomeranianMetricCollection
+  metrics_args:
+    count_pseudocount: 150.0
+  metrics_cls: cerberus.models.bpnet.BPNetMetricCollection
   model_args:
-    conv_kernel_size:
-    - 11
-    - 11
-    dil_kernel_size: 9
-    dilations:
-    - 1
-    - 1
-    - 2
-    - 4
-    - 8
-    - 16
-    - 32
-    - 64
-    dropout: 0.1
-    expansion: 1
+    conv_kernel_size: 21
+    dil_kernel_size: 3
     filters: 64
     input_channels:
     - A
@@ -103,25 +94,28 @@ model_config:
     output_channels:
     - signal
     predict_total_count: true
-    profile_kernel_size: 45
-    stem_expansion: 2
-  model_cls: cerberus.models.pomeranian.Pomeranian
-  name: Pomeranian
+    profile_kernel_size: 75
+  model_cls: cerberus.models.bpnet.BPNet
+  name: BPNet
 sampler_config:
-  padded_size: 2624
+  padded_size: 2626
   sampler_args:
-    intervals_path: /nfs/turbo/umms-mcieslik/mcieslik/code/cerberus/tests/data/dataset/mdapca2b_ar/mdapca2b-ar.narrowPeak.gz
-  sampler_type: interval
+    background_ratio: 1.0
+    intervals_path: tests/data/dataset/mdapca2b_ar/mdapca2b-ar.narrowPeak.gz
+  sampler_type: peak
 train_config:
+  adam_eps: 1.0e-07
   batch_size: 32
   filter_bias_and_bn: true
-  learning_rate: 0.0005
+  gradient_clip_val: null
+  learning_rate: 0.001
   max_epochs: 50
-  optimizer: adamw
+  optimizer: adam
   patience: 10
+  reload_dataloaders_every_n_epochs: 0
   scheduler_args:
-    min_lr: 5.0e-06
+    min_lr: 1.0e-06
     num_epochs: 50
-    warmup_epochs: 10
-  scheduler_type: cosine
-  weight_decay: 0.01
+    warmup_epochs: 0
+  scheduler_type: default
+  weight_decay: 0.0

@@ -93,6 +93,7 @@ class TestInstantiateMetricsAndLoss:
             "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
             "metrics_args": {},
             "model_args": {},
+            "pretrained": [],
         })
 
     def test_without_device(self):

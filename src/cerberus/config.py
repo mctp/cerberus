@@ -157,6 +157,27 @@ class TrainConfig(TypedDict):
     gradient_clip_val: float | None
 
 
+class PretrainedConfig(TypedDict):
+    """Configuration for loading pretrained weights into a model or sub-module.
+
+    Attributes:
+        weights_path: Path to a .pt state dict file (clean, no "model." prefix).
+        source: Sub-module prefix to extract from the source state dict.
+            None uses all keys. E.g. ``"bias_model"`` extracts and strips keys
+            starting with ``"bias_model."``, enabling loading a sub-module
+            from a full-model checkpoint.
+        target: Named sub-module to load into. None loads into the whole model.
+            E.g. ``"bias_model"`` loads into ``model.bias_model``.
+        freeze: If True, freeze all parameters in the loaded (sub)module
+            by setting requires_grad=False.
+    """
+
+    weights_path: str
+    source: str | None
+    target: str | None
+    freeze: bool
+
+
 class ModelConfig(TypedDict):
     """
     Configuration for the model architecture.
@@ -166,9 +187,9 @@ class ModelConfig(TypedDict):
         model_cls: Fully qualified class name string of the model.
         loss_cls: Fully qualified class name string of the loss.
         metrics_cls: Fully qualified class name string of the metric collection.
-        input_channels: List of input channel names.
-        output_channels: List of output channel names.
-        output_type: Type of output ('signal' or 'decoupled').
+        model_args: Model-specific keyword arguments.
+        pretrained: List of pretrained weight configs to load after
+            model instantiation. Empty list means no pretrained weights.
     """
 
     name: str
@@ -178,6 +199,7 @@ class ModelConfig(TypedDict):
     metrics_cls: str
     metrics_args: dict[str, Any]
     model_args: dict[str, Any]
+    pretrained: list[PretrainedConfig]
 
 
 class CerberusConfig(TypedDict):
@@ -738,6 +760,7 @@ def validate_model_config(config: ModelConfig) -> ModelConfig:
         "metrics_cls": config["metrics_cls"],
         "metrics_args": config["metrics_args"],
         "model_args": config["model_args"],
+        "pretrained": config["pretrained"],
     }
 
 
@@ -865,7 +888,19 @@ def parse_hparams_config(
     genome_conf = validate_genome_config(data["genome_config"], search_paths=search_paths)
     data_conf = validate_data_config(data["data_config"], search_paths=search_paths)
     sampler_conf = validate_sampler_config(data["sampler_config"], search_paths=search_paths)
-    model_conf = validate_model_config(data["model_config"])
+    # Backfill pretrained for YAML files saved before the field existed.
+    # This backwards compatibility shim will be removed in a future release —
+    # retrain models to generate hparams.yaml files with the pretrained field.
+    raw_model_config = data["model_config"]
+    if "pretrained" not in raw_model_config:
+        logger.warning(
+            "hparams.yaml at %s is missing 'pretrained' field in model_config. "
+            "Defaulting to pretrained=[]. Retrain the model to update the config. "
+            "This backwards compatibility shim will be removed in a future release.",
+            p,
+        )
+        raw_model_config["pretrained"] = []
+    model_conf = validate_model_config(raw_model_config)
     
     # Cross-validation
     validate_data_and_sampler_compatibility(data_conf, sampler_conf)

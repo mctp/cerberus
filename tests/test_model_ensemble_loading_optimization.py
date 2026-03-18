@@ -64,7 +64,8 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
         "metrics_cls": "torchmetrics.MeanSquaredError", # Dummy
         "loss_args": {},
         "metrics_args": {},
-        "model_args": {"hidden_dim": 10}
+        "model_args": {"hidden_dim": 10},
+        "pretrained": [],
     }
     
     data_config = {

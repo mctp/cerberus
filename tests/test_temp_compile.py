@@ -26,7 +26,8 @@ def test_instantiate_model_compile():
         "metrics_cls": "dummy.Metrics",
         "model_args": {},
         "loss_args": {},
-        "metrics_args": {}
+        "metrics_args": {},
+        "pretrained": [],
     }
     
     data_config = {

@@ -685,3 +685,228 @@ def test_dalmatian_optimization_reduces_loss():
     assert (out.signal_log_counts > -5.0).all(), (
         f"Signal log_counts still near -10 init: {out.signal_log_counts}"
     )
+
+
+# --- Step 8: Pretrained weight loading tests ---
+
+
+from cerberus.pretrained import load_pretrained_weights
+
+
+def test_load_pretrained_biasnet_standalone(tmp_path):
+    """Load pretrained BiasNet weights into a new BiasNet (whole model)."""
+    model1 = BiasNet(input_len=1128, output_len=1024, filters=12)
+    torch.save(model1.state_dict(), tmp_path / "biasnet.pt")
+
+    model2 = BiasNet(input_len=1128, output_len=1024, filters=12)
+    load_pretrained_weights(model2, [
+        {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": None, "freeze": False},
+    ])
+
+    for (n1, p1), (n2, p2) in zip(model1.named_parameters(), model2.named_parameters()):
+        assert n1 == n2
+        assert torch.equal(p1, p2), f"Parameter {n1} mismatch after loading"
+
+
+def test_load_pretrained_biasnet_into_dalmatian(tmp_path):
+    """Load standalone BiasNet weights into Dalmatian's bias_model sub-module."""
+    bias = BiasNet(input_len=1128, output_len=1024, filters=12)
+    torch.save(bias.state_dict(), tmp_path / "biasnet.pt")
+
+    dalmatian = Dalmatian(input_len=2112, output_len=1024)
+
+    # Snapshot signal_model params before loading
+    signal_before = {n: p.clone() for n, p in dalmatian.signal_model.named_parameters()}
+
+    load_pretrained_weights(dalmatian, [
+        {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": "bias_model", "freeze": False},
+    ])
+
+    # Bias model should match the saved weights
+    for (n1, p1), (n2, p2) in zip(bias.named_parameters(), dalmatian.bias_model.named_parameters()):
+        assert torch.equal(p1, p2), f"bias_model.{n1} not loaded correctly"
+
+    # Signal model should be unchanged
+    for name, param in dalmatian.signal_model.named_parameters():
+        assert torch.equal(param, signal_before[name]), f"signal_model.{name} was modified"
+
+
+def test_load_dalmatian_bias_from_dalmatian_checkpoint(tmp_path):
+    """Load bias_model from a full Dalmatian checkpoint using source prefix."""
+    dalmatian1 = Dalmatian(input_len=2112, output_len=1024)
+    torch.save(dalmatian1.state_dict(), tmp_path / "dalmatian.pt")
+
+    dalmatian2 = Dalmatian(input_len=2112, output_len=1024)
+
+    load_pretrained_weights(dalmatian2, [
+        {"weights_path": str(tmp_path / "dalmatian.pt"), "source": "bias_model", "target": "bias_model", "freeze": False},
+    ])
+
+    # bias_model should match
+    for (n1, p1), (n2, p2) in zip(
+        dalmatian1.bias_model.named_parameters(),
+        dalmatian2.bias_model.named_parameters(),
+    ):
+        assert torch.equal(p1, p2), f"bias_model.{n1} mismatch"
+
+
+def test_load_full_dalmatian_checkpoint(tmp_path):
+    """Load a full Dalmatian checkpoint into a new Dalmatian (all weights)."""
+    dalmatian1 = Dalmatian(input_len=2112, output_len=1024)
+    torch.save(dalmatian1.state_dict(), tmp_path / "dalmatian.pt")
+
+    dalmatian2 = Dalmatian(input_len=2112, output_len=1024)
+
+    load_pretrained_weights(dalmatian2, [
+        {"weights_path": str(tmp_path / "dalmatian.pt"), "source": None, "target": None, "freeze": False},
+    ])
+
+    for (n1, p1), (n2, p2) in zip(
+        dalmatian1.named_parameters(), dalmatian2.named_parameters()
+    ):
+        assert torch.equal(p1, p2), f"{n1} mismatch"
+
+
+def test_load_multiple_submodules(tmp_path):
+    """Load bias and signal sub-modules from separate .pt files."""
+    bias = BiasNet(input_len=1128, output_len=1024, filters=12)
+    torch.save(bias.state_dict(), tmp_path / "bias.pt")
+
+    from cerberus.models.pomeranian import Pomeranian
+    signal = Pomeranian(input_len=2112, output_len=1024, predict_total_count=False)
+    torch.save(signal.state_dict(), tmp_path / "signal.pt")
+
+    dalmatian = Dalmatian(input_len=2112, output_len=1024)
+    load_pretrained_weights(dalmatian, [
+        {"weights_path": str(tmp_path / "bias.pt"), "source": None, "target": "bias_model", "freeze": True},
+        {"weights_path": str(tmp_path / "signal.pt"), "source": None, "target": "signal_model", "freeze": False},
+    ])
+
+    # Bias should match and be frozen
+    for (n1, p1), (n2, p2) in zip(bias.named_parameters(), dalmatian.bias_model.named_parameters()):
+        assert torch.equal(p1, p2), f"bias_model.{n1} mismatch"
+        assert not p2.requires_grad, f"bias_model.{n2} should be frozen"
+
+    # Signal should match and NOT be frozen
+    for (n1, p1), (n2, p2) in zip(signal.named_parameters(), dalmatian.signal_model.named_parameters()):
+        assert torch.equal(p1, p2), f"signal_model.{n1} mismatch"
+        assert p2.requires_grad, f"signal_model.{n2} should not be frozen"
+
+
+def test_freeze_pretrained_biasnet(tmp_path):
+    """Freezing sets requires_grad=False on all loaded parameters."""
+    model = BiasNet(input_len=1128, output_len=1024, filters=12)
+    torch.save(model.state_dict(), tmp_path / "biasnet.pt")
+
+    model2 = BiasNet(input_len=1128, output_len=1024, filters=12)
+    load_pretrained_weights(model2, [
+        {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": None, "freeze": True},
+    ])
+
+    for name, p in model2.named_parameters():
+        assert not p.requires_grad, f"{name} should be frozen"
+
+
+def test_freeze_bias_leaves_signal_unfrozen(tmp_path):
+    """Freezing bias_model in Dalmatian leaves signal_model trainable."""
+    bias = BiasNet(input_len=1128, output_len=1024, filters=12)
+    torch.save(bias.state_dict(), tmp_path / "biasnet.pt")
+
+    dalmatian = Dalmatian(input_len=2112, output_len=1024)
+    load_pretrained_weights(dalmatian, [
+        {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": "bias_model", "freeze": True},
+    ])
+
+    for name, p in dalmatian.bias_model.named_parameters():
+        assert not p.requires_grad, f"bias_model.{name} should be frozen"
+
+    for name, p in dalmatian.signal_model.named_parameters():
+        assert p.requires_grad, f"signal_model.{name} should NOT be frozen"
+
+
+def test_pretrained_architecture_mismatch_raises(tmp_path):
+    """Architecture mismatch (different filters) raises RuntimeError."""
+    model_f12 = BiasNet(input_len=1128, output_len=1024, filters=12)
+    torch.save(model_f12.state_dict(), tmp_path / "f12.pt")
+
+    model_f24 = BiasNet(input_len=1128, output_len=1024, filters=24)
+    with pytest.raises(RuntimeError):
+        load_pretrained_weights(model_f24, [
+            {"weights_path": str(tmp_path / "f12.pt"), "source": None, "target": None, "freeze": False},
+        ])
+
+
+def test_pretrained_source_prefix_not_found_raises(tmp_path):
+    """Invalid source prefix raises ValueError."""
+    model = BiasNet(input_len=1128, output_len=1024, filters=12)
+    torch.save(model.state_dict(), tmp_path / "biasnet.pt")
+
+    dalmatian = Dalmatian(input_len=2112, output_len=1024)
+    with pytest.raises(ValueError, match="No keys found"):
+        load_pretrained_weights(dalmatian, [
+            {"weights_path": str(tmp_path / "biasnet.pt"), "source": "nonexistent_module", "target": "bias_model", "freeze": False},
+        ])
+
+
+def test_pretrained_invalid_target_raises(tmp_path):
+    """Invalid target submodule name raises AttributeError."""
+    model = BiasNet(input_len=1128, output_len=1024, filters=12)
+    torch.save(model.state_dict(), tmp_path / "biasnet.pt")
+
+    dalmatian = Dalmatian(input_len=2112, output_len=1024)
+    with pytest.raises(AttributeError):
+        load_pretrained_weights(dalmatian, [
+            {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": "nonexistent_model", "freeze": False},
+        ])
+
+
+def test_load_real_pretrained_biasnet():
+    """Load actual trained BiasNet from tests/data/ (integration test)."""
+    pt_path = "pretrained/biasnet/atac_k562.pt"
+    if not os.path.exists(pt_path):
+        pytest.skip("Pretrained BiasNet not found at pretrained/biasnet/atac_k562.pt")
+
+    model = BiasNet(input_len=1128, output_len=1024, filters=12)
+    load_pretrained_weights(model, [
+        {"weights_path": pt_path, "source": None, "target": None, "freeze": False},
+    ])
+
+    # Verify model produces output
+    x = torch.randn(1, 4, 1128)
+    with torch.no_grad():
+        out = model(x)
+    assert out.logits.shape == (1, 1, 1024)
+
+
+def test_load_real_pretrained_biasnet_into_dalmatian():
+    """Load actual trained BiasNet into Dalmatian's bias_model (integration test)."""
+    pt_path = "pretrained/biasnet/atac_k562.pt"
+    if not os.path.exists(pt_path):
+        pytest.skip("Pretrained BiasNet not found at pretrained/biasnet/atac_k562.pt")
+
+    dalmatian = Dalmatian(input_len=2112, output_len=1024)
+    load_pretrained_weights(dalmatian, [
+        {"weights_path": pt_path, "source": None, "target": "bias_model", "freeze": True},
+    ])
+
+    # Verify frozen bias model produces output in combined model
+    x = torch.randn(1, 4, 2112)
+    with torch.no_grad():
+        out = dalmatian(x)
+    assert out.logits.shape == (1, 1, 1024)
+    assert out.bias_logits.shape == (1, 1, 1024)
+
+    # Verify bias is frozen
+    for name, p in dalmatian.bias_model.named_parameters():
+        assert not p.requires_grad, f"bias_model.{name} should be frozen"
+
+
+def test_pretrained_empty_list_is_noop():
+    """Empty pretrained list does nothing (no error)."""
+    model = BiasNet(input_len=1128, output_len=1024, filters=12)
+    params_before = {n: p.clone() for n, p in model.named_parameters()}
+
+    load_pretrained_weights(model, [])
+
+    for name, param in model.named_parameters():
+        assert torch.equal(param, params_before[name])

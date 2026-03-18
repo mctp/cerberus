@@ -71,6 +71,10 @@ def get_args():
     parser.add_argument("--filters1", type=int, default=128, help="Number of filters in the dilated convolution inside each residual block (default: 128)")
     parser.add_argument("--dropout", type=float, default=0.3, help="Dropout rate within residual blocks (default: 0.3)")
 
+    # Pretrained weights
+    parser.add_argument("--pretrained", type=str, default=None,
+                        help="Path to pretrained model.pt for warm-start / fine-tuning")
+
     # Training parameters
     parser.add_argument("--learning-rate", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--weight-decay", type=float, default=0.01, help="Weight decay")
@@ -202,6 +206,10 @@ def main():
 
     # Model Config
     logging.info("Using ConvNeXtDCNN (ASAP) Model...")
+    pretrained: list[dict[str, object]] = []
+    if args.pretrained:
+        pretrained.append({"weights_path": args.pretrained, "source": None, "target": None, "freeze": False})
+
     model_config: ModelConfig = {
         "name": "ConvNeXtDCNN",
         "model_cls": "cerberus.models.asap.ConvNeXtDCNN",
@@ -219,7 +227,8 @@ def main():
             "filters0": args.filters0,
             "filters1": args.filters1,
             "dropout": args.dropout,
-        }
+        },
+        "pretrained": pretrained,
     }
 
     # 3. Training

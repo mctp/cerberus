@@ -21,6 +21,7 @@ def _make_model_config(**overrides: Any) -> ModelConfig:
             "output_channels": ["signal"],
             "output_type": "signal",
         },
+        "pretrained": [],
     }
     config.update(overrides)
     return cast(ModelConfig, config)

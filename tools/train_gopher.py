@@ -66,6 +66,10 @@ def get_args():
     parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets")
     parser.add_argument("--count-pseudocount", type=float, default=1.0, help="Additive offset before log-transforming count targets (in raw coverage units)")
 
+    # Pretrained weights
+    parser.add_argument("--pretrained", type=str, default=None,
+                        help="Path to pretrained model.pt for warm-start / fine-tuning")
+
     # Training parameters
     parser.add_argument("--learning-rate", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--weight-decay", type=float, default=0.01, help="Weight decay")
@@ -197,6 +201,10 @@ def main():
 
     # Model Config
     logging.info("Using GlobalProfileCNN (Gopher) Model...")
+    pretrained: list[dict[str, object]] = []
+    if args.pretrained:
+        pretrained.append({"weights_path": args.pretrained, "source": None, "target": None, "freeze": False})
+
     model_config: ModelConfig = {
         "name": "GlobalProfileCNN",
         "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
@@ -211,7 +219,8 @@ def main():
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
             "bottleneck_channels": args.bottleneck_channels,
-        }
+        },
+        "pretrained": pretrained,
     }
 
     # 3. Training

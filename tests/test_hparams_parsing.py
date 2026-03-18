@@ -5,10 +5,7 @@ from cerberus.config import parse_hparams_config
 
 def test_parse_hparams_config_success():
     # Use existing hparams file
-    hparams_path = Path("tests/data/models/chip_ar_mdapca2b_bpnet/multi-fold/fold_0/lightning_logs/version_0/hparams.yaml")
-    
-    if not hparams_path.exists():
-        pytest.skip(f"Test hparams file not found at {hparams_path}")
+    hparams_path = Path("tests/data/fixtures/hparams_bpnet.yaml")
         
     config = parse_hparams_config(hparams_path)
     
