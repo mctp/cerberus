@@ -118,6 +118,30 @@ predict_to_bigwig(
 )
 ```
 
+`predict_to_bigwig` also supports a chrombpnet-style region mode for one chromosome
+(`peaks + nonpeaks`) and midpoint overlap stitching:
+
+```python
+predict_to_bigwig(
+    output_path="predictions.chrombpnet_style.bw",
+    dataset=dataset,
+    model_ensemble=ensemble,
+    region_generation="peaks_nonpeaks",
+    selected_chrom="chr1",
+    peaks_path="path/to/peaks.bed.gz",
+    nonpeaks_path="path/to/nonpeaks.bed.gz",  # optional
+    overlap_resolution="midpoint_between_summits",
+    use_folds=["test"],
+    batch_size=256,
+)
+```
+
+Modes:
+- `region_generation="sliding_window"` (default): genome/chromosome tiling via `SlidingWindowSampler`.
+- `region_generation="peaks_nonpeaks"`: chrombpnet-style fixed regions on one selected chromosome.
+- `overlap_resolution="average"` (default): average overlapping bins.
+- `overlap_resolution="midpoint_between_summits"`: split overlap at midpoint between adjacent region summits.
+
 ## CLI Tools
 
 Cerberus provides command-line tools for common prediction tasks.
@@ -174,8 +198,6 @@ where `p = count_pseudocount`, rather than the naive `logsumexp`, which would gi
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val` for multi-fold ensembles, `all` for single-fold. |
 | `--max_batches` | Limit the number of batches processed (useful for quick checks). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
-
-The helper script `examples/chip_foxa1_22rv1_shared_unique_predict_plot.sh` runs shared/unique exports on the `test` split, writes both peaks-only and `--include-background` outputs, and generates BigWigs for a single test chromosome (auto-selected unless `--test-chrom` is provided).
 
 ## Model Outputs
 
