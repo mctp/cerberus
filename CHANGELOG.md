@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Model loading prefers `model.pt`**: `ModelEnsemble` now loads the clean
+  `model.pt` state dict when available (written by training since the
+  pretrained-weight-loading update), falling back to Lightning `.ckpt` files
+  for backward compatibility. This eliminates checkpoint filename parsing and
+  prefix stripping overhead for new training runs.
+
 ### Added
 - **Pretrained weight loading** (`cerberus.pretrained`): Generic system for loading
   pretrained weights into any model or sub-module. New `PretrainedConfig` TypedDict

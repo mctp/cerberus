@@ -858,14 +858,18 @@ gap_condition = (window.start >= prev_input_start + output_len)
 
 **_ModelManager**: Handles checkpoint loading for ensemble
 
-**Checkpoint Selection:**
+**Loading Priority:**
+1. `model.pt` (clean state dict, preferred) — loaded via `_load_model_pt()` with `weights_only=True`
+2. `.ckpt` (Lightning checkpoint, fallback) — loaded via `_load_model_ckpt()` with prefix stripping
+
+**Checkpoint Selection (fallback path only):**
 ```python
 def _select_best_checkpoint(checkpoints: list[Path]) -> Path:
     # Parses val_loss from filename (e.g., "val_loss=0.1234.ckpt")
     # Returns checkpoint with lowest validation loss
 ```
 
-**State Dict Handling:**
+**State Dict Handling (fallback `.ckpt` path only):**
 ```python
 # Strip "model." prefix (CerberusModule wrapper)
 if k.startswith("model."):
@@ -875,7 +879,7 @@ if k.startswith("model."):
         key = key[10:]
 ```
 
-**Design Insight:** Ensemble loads only model backbones (not full CerberusModule), reducing memory overhead and avoiding unnecessary metric/loss initialization.
+**Design Insight:** Ensemble loads only model backbones (not full CerberusModule), reducing memory overhead and avoiding unnecessary metric/loss initialization. The `model.pt` path is preferred as it is already a clean state dict produced by `_save_model_pt()` during training.
 
 ### 6.7 Metadata Management
 

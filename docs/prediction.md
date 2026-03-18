@@ -6,7 +6,7 @@ Prediction in Cerberus involves applying a trained model (or ensemble of models)
 
 ### ModelEnsemble
 The `ModelEnsemble` class is the central entry point for prediction. It:
-1.  **Loads Models**: Automatically detects single-fold or multi-fold checkpoints and loads the appropriate model weights from a directory.
+1.  **Loads Models**: Automatically detects single-fold or multi-fold model directories and loads weights. Prefers clean `model.pt` state dicts (faster, no prefix stripping) and falls back to Lightning `.ckpt` checkpoints for backward compatibility.
 2.  **Manages Folds**: Identifies which model to run for a given genomic interval based on cross-validation fold definitions.
     *   **Rotation Logic**: Cerberus assumes a standard rotation where Model `i` uses Partition `i` as Test and Partition `(i+1)%k` as Validation.
     *   If you request `use_folds=["test"]`, the ensemble selects Model `i` for intervals falling in Partition `i`.

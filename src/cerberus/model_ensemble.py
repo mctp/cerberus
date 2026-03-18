@@ -473,6 +473,10 @@ class ModelEnsemble(nn.ModuleDict):
 class _ModelManager:
     """
     Manages loading and caching of models for different folds.
+
+    Prefers clean ``model.pt`` state dicts (written by training since the
+    pretrained-weight-loading update) and falls back to Lightning ``.ckpt``
+    checkpoints for backward compatibility with older training runs.
     """
     def __init__(
         self,
@@ -525,41 +529,78 @@ class _ModelManager:
     def load_models_and_folds(self) -> tuple[dict[str, nn.Module], list]:
         """
         Loads models and fold configuration.
+
+        Prefers ``model.pt`` (clean state dict) when available, falling back
+        to the best Lightning ``.ckpt`` checkpoint otherwise.
         """
         models_dict = {}
-        
+
         for fold_idx in self.fold_indices:
             fold_dir = self.checkpoint_path / f"fold_{fold_idx}"
-            
-            # Find checkpoint
+            key = f"fold_{fold_idx}"
+
+            # Prefer clean model.pt state dict
+            pt_path = fold_dir / "model.pt"
+            if pt_path.exists():
+                models_dict[str(fold_idx)] = self._load_model_pt(key, pt_path)
+                continue
+
+            # Fallback: find best Lightning checkpoint
+            logger.debug("model.pt not found for fold %s, falling back to .ckpt", fold_idx)
             checkpoints = list(fold_dir.glob("*.ckpt"))
             if not checkpoints:
                  checkpoints = list(fold_dir.rglob("*.ckpt"))
-            
+
             if checkpoints:
                 ckpt_path = self._select_best_checkpoint(checkpoints)
-                models_dict[str(fold_idx)] = self._load_model(f"fold_{fold_idx}", ckpt_path)
+                models_dict[str(fold_idx)] = self._load_model_ckpt(key, ckpt_path)
             else:
                 logger.warning(f"No checkpoint found for fold {fold_idx} in {fold_dir}")
-            
+
         return models_dict, self.folds
 
-    def _load_model(self, key: str, ckpt_file: Path) -> nn.Module:
+    def _load_model_pt(self, key: str, pt_file: Path) -> nn.Module:
         """
-        Loads a single model from a checkpoint file.
+        Loads a model from a clean ``.pt`` state dict file.
+
+        These files are produced by ``_save_model_pt`` during training and
+        contain a plain state dict with no ``model.`` or ``_orig_mod.``
+        prefixes, so no stripping is needed.
         """
         if key in self.cache:
             return self.cache[key]
-        
+
+        logger.info(f"Loading model from {pt_file} for {key}...")
+        model = instantiate_model(
+            model_config=self.model_config,
+            data_config=self.data_config,
+        )
+        state_dict = torch.load(pt_file, map_location=self.device, weights_only=True)
+        model.load_state_dict(state_dict, strict=True)
+        model.to(self.device)
+        model.eval()
+
+        self.cache[key] = model
+        return model
+
+    def _load_model_ckpt(self, key: str, ckpt_file: Path) -> nn.Module:
+        """
+        Loads a model from a Lightning ``.ckpt`` checkpoint (fallback path).
+
+        Strips the ``model.`` prefix added by CerberusModule and the
+        ``_orig_mod.`` prefix added by ``torch.compile``.
+        """
+        if key in self.cache:
+            return self.cache[key]
+
         logger.info(f"Loading model from {ckpt_file} for {key}...")
-        # Instantiate only the backbone model to avoid overhead of CerberusModule (metrics, loss, etc.)
         model = instantiate_model(
             model_config=self.model_config,
             data_config=self.data_config,
         )
         checkpoint = torch.load(ckpt_file, map_location=self.device, weights_only=False)
         state_dict = checkpoint["state_dict"]
-        
+
         # Strip "model." prefix from state_dict keys because we are loading into the backbone model directly,
         # not the CerberusModule wrapper where these weights were originally saved under 'self.model'.
         new_state_dict = {}
@@ -572,11 +613,11 @@ class _ModelManager:
                 if weight_key.startswith("_orig_mod."):
                     weight_key = weight_key[10:]
                 new_state_dict[weight_key] = v
-        
+
         model.load_state_dict(new_state_dict)
         model.to(self.device)
         model.eval()
-        
+
         self.cache[key] = model
         return model
 

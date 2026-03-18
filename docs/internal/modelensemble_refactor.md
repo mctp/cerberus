@@ -15,11 +15,15 @@ All training runs now enforce a consistent directory structure rooted in an "Exp
 Experiment_Root/
 ├── ensemble_metadata.yaml  # Manifesto of available folds
 ├── fold_0/                 # Subdirectory for Fold 0 (even for single models)
-│   ├── checkpoints/
-│   │   └── ...
+│   ├── model.pt            # Clean state dict (preferred for inference)
+│   ├── config.json         # Training configuration snapshot
 │   └── lightning_logs/
-│       └── ...
-│           └── hparams.yaml
+│       └── version_0/
+│           ├── hparams.yaml
+│           ├── metrics.csv
+│           └── checkpoints/
+│               ├── checkpoint-epoch=XX-val_loss=Y.ckpt
+│               └── last.ckpt
 ├── fold_1/
 │   └── ...
 ```
@@ -121,6 +125,13 @@ An `ensemble_metadata.yaml` file is now mandatory at the Experiment Root.
 ### 5. Cohesion & Architecture Refactor (January 2026)
 -   **Aggregation Logic Moved**: Static aggregation methods (`_unbatch_modeloutput`, `_aggregate_tensor_track_values`, etc.) were moved from `src/cerberus/model_ensemble.py` to `src/cerberus/output.py` to improve cohesion (logic stays with data structures).
 -   **Instantiation Logic Moved**: Factory functions `instantiate` and `instantiate_model` were moved from `src/cerberus.train.py` to `src/cerberus/module.py`. `entrypoints.py` now re-exports them but focuses on high-level training workflows.
+
+### 6. Model Loading Simplification: Prefer `model.pt` (March 2026)
+-   **Background**: Training now saves a clean `model.pt` state dict (no `model.`/`_orig_mod.` prefixes) in each fold directory via `_save_model_pt()`.
+-   **Change**: `_ModelManager.load_models_and_folds()` now checks for `fold_{i}/model.pt` first. If present, it loads directly via the new `_load_model_pt()` method using `torch.load(weights_only=True)` and `load_state_dict(strict=True)` — no prefix stripping needed.
+-   **Fallback**: When `model.pt` does not exist (older training runs), the original `.ckpt` loading path (`_load_model_ckpt`, formerly `_load_model`) is used with full prefix stripping.
+-   **Benefits**: Faster loading, safer (`weights_only=True`), eliminates duplicated prefix-stripping logic, consistent with the `pretrained.py` loading pattern.
+-   **Tests**: `tests/test_model_ensemble_loader.py` updated with `test_load_prefers_model_pt` and `test_load_fallback_to_ckpt`; `tests/test_refactor_verification.py` updated for the `_load_model` → `_load_model_ckpt` rename.
 
 ## ⚠️ Important: Repository History Rewrite
 

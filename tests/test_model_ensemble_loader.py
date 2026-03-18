@@ -108,86 +108,117 @@ def test_select_best_checkpoint(model_manager, tmp_path):
     best_no_metric = model_manager._select_best_checkpoint([p6, p5])
     assert best_no_metric == p5 # 'a.ckpt' comes before 'b.ckpt'
 
-def test_load_model_file(model_manager, tmp_path):
-    # Setup file
-    p2 = tmp_path / "ckpt2-val_loss=0.1.ckpt" 
+def test_load_model_ckpt(model_manager, tmp_path):
+    """_load_model_ckpt loads a Lightning checkpoint with prefix stripping."""
+    p2 = tmp_path / "ckpt2-val_loss=0.1.ckpt"
     p2.touch()
-    
+
     with patch("cerberus.model_ensemble.instantiate_model") as mock_instantiate_model, \
          patch("torch.load") as mock_load:
-        
+
         mock_model = MagicMock()
         mock_instantiate_model.return_value = mock_model
         mock_load.return_value = {"state_dict": {}}
-        
-        # Run loading from FILE
-        model = model_manager._load_model("test_dir", p2)
-        
-        # Should have loaded p2
+
+        model = model_manager._load_model_ckpt("test_dir", p2)
+
         mock_load.assert_called_with(p2, map_location=model_manager.device, weights_only=False)
+        assert model == mock_model
+
+def test_load_model_pt(model_manager, tmp_path):
+    """_load_model_pt loads a clean .pt state dict with weights_only=True."""
+    pt_path = tmp_path / "model.pt"
+    pt_path.touch()
+
+    with patch("cerberus.model_ensemble.instantiate_model") as mock_instantiate_model, \
+         patch("torch.load") as mock_load:
+
+        mock_model = MagicMock()
+        mock_instantiate_model.return_value = mock_model
+        mock_load.return_value = {}
+
+        model = model_manager._load_model_pt("test_key", pt_path)
+
+        mock_load.assert_called_with(pt_path, map_location=model_manager.device, weights_only=True)
         assert model == mock_model
 
 def test_load_model_caching(model_manager, tmp_path):
     ckpt_path = tmp_path / "model.ckpt"
     ckpt_path.touch()
-    
+
     # Pre-populate cache
     cached_model = MagicMock()
     model_manager.cache["cached_key"] = cached_model
-    
-    # Run
-    # Should return cached without calling instantiate_model/load
+
+    # Both loaders should return cached without calling instantiate_model
     with patch("cerberus.model_ensemble.instantiate_model") as mock_instantiate_model:
-        model = model_manager._load_model("cached_key", ckpt_path)
-        
-        assert model == cached_model
+        model_ckpt = model_manager._load_model_ckpt("cached_key", ckpt_path)
+        model_pt = model_manager._load_model_pt("cached_key", ckpt_path)
+
+        assert model_ckpt == cached_model
+        assert model_pt == cached_model
         mock_instantiate_model.assert_not_called()
 
-def test_load_models_and_folds(model_manager, tmp_path):
-    # Setup dummy single fold
-    # We configured "folds": ["single"] in fixture
+def test_load_models_and_folds_prefers_model_pt(model_manager, tmp_path):
+    """When model.pt exists, it is preferred over .ckpt files."""
+    fold_dir = tmp_path / "fold_single"
+    fold_dir.mkdir()
+    pt_path = fold_dir / "model.pt"
+    pt_path.touch()
+    ckpt_path = fold_dir / "model.ckpt"
+    ckpt_path.touch()
+
+    with patch.object(model_manager, "_load_model_pt") as mock_pt, \
+         patch.object(model_manager, "_load_model_ckpt") as mock_ckpt:
+        mock_pt.return_value = MagicMock(spec=nn.Module)
+
+        models, folds = model_manager.load_models_and_folds()
+
+        assert isinstance(models, dict)
+        assert len(models) == 1
+        assert "single" in models
+        mock_pt.assert_called_with("fold_single", pt_path)
+        mock_ckpt.assert_not_called()
+
+def test_load_models_and_folds_fallback_to_ckpt(model_manager, tmp_path):
+    """When model.pt does not exist, falls back to .ckpt."""
     fold_dir = tmp_path / "fold_single"
     fold_dir.mkdir()
     ckpt_path = fold_dir / "model.ckpt"
     ckpt_path.touch()
-    
-    # Mock _load_model to avoid instantiating real models
-    with patch.object(model_manager, "_load_model") as mock_load:
-        mock_load.return_value = MagicMock(spec=nn.Module)
-        
+
+    with patch.object(model_manager, "_load_model_pt") as mock_pt, \
+         patch.object(model_manager, "_load_model_ckpt") as mock_ckpt:
+        mock_ckpt.return_value = MagicMock(spec=nn.Module)
+
         models, folds = model_manager.load_models_and_folds()
-        
+
         assert isinstance(models, dict)
         assert len(models) == 1
         assert "single" in models
-        # It finds the checkpoint
-        mock_load.assert_called_with("fold_single", ckpt_path)
+        mock_pt.assert_not_called()
+        mock_ckpt.assert_called_with("fold_single", ckpt_path)
 
 def test_load_models_and_folds_multifold(model_manager, tmp_path):
-    # Update metadata for multifold
     import yaml
     with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
         yaml.dump({"folds": [0]}, f)
-        
-    # Reload metadata (hack since model_manager is already init)
+
     model_manager.fold_indices = [0]
-    
-    # Setup fold directories
+
     fold_dir = tmp_path / "fold_0"
     fold_dir.mkdir()
-    p1 = fold_dir / "model.ckpt"
-    p1.touch()
-    
-    with patch.object(model_manager, "_load_model") as mock_load:
-        mock_load.return_value = MagicMock(spec=nn.Module)
-        
+    pt_path = fold_dir / "model.pt"
+    pt_path.touch()
+
+    with patch.object(model_manager, "_load_model_pt") as mock_pt:
+        mock_pt.return_value = MagicMock(spec=nn.Module)
+
         models, folds = model_manager.load_models_and_folds()
-        
+
         assert isinstance(models, dict)
         assert len(models) == 1
-        # Should attempt to load fold 0
-        mock_load.assert_called()
-        # Verify it passed the checkpoint path selected
-        args, _ = mock_load.call_args
-        assert args[0] == "fold_0" # Key used for caching/loading
-        assert args[1] == p1
+        mock_pt.assert_called()
+        args, _ = mock_pt.call_args
+        assert args[0] == "fold_0"
+        assert args[1] == pt_path

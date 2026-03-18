@@ -198,7 +198,7 @@ def test_model_ensemble_init_success(mock_checkpoint_dir):
     """Test successful initialization with mocked models."""
     
     # Mock _load_model to avoid actual checkpoint loading
-    with patch("cerberus.model_ensemble._ModelManager._load_model") as mock_load, \
+    with patch("cerberus.model_ensemble._ModelManager._load_model_ckpt") as mock_load, \
          patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
          patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
         mock_load.return_value = torch.nn.Linear(1, 1)
@@ -224,7 +224,7 @@ def test_model_ensemble_init_success(mock_checkpoint_dir):
 def test_model_ensemble_predict_empty_intervals(mock_checkpoint_dir):
     """Test predict_intervals with empty input."""
     # Initialize ensemble (mocked)
-    with patch("cerberus.model_ensemble._ModelManager._load_model") as mock_load, \
+    with patch("cerberus.model_ensemble._ModelManager._load_model_ckpt") as mock_load, \
          patch("cerberus.model_ensemble.create_genome_folds") as mock_folds, \
          patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
          patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
@@ -247,7 +247,7 @@ def test_model_ensemble_predict_empty_intervals(mock_checkpoint_dir):
 def test_model_ensemble_predict_output_intervals_empty(mock_checkpoint_dir):
     """Test predict_output_intervals with empty input."""
     # Initialize ensemble (mocked)
-    with patch("cerberus.model_ensemble._ModelManager._load_model") as mock_load, \
+    with patch("cerberus.model_ensemble._ModelManager._load_model_ckpt") as mock_load, \
          patch("cerberus.model_ensemble.create_genome_folds") as mock_folds, \
          patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
          patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
@@ -302,38 +302,26 @@ def test_model_manager_select_best_checkpoint_tiebreaker():
         assert best.name == "a-val_loss=0.1.ckpt"
 
 def test_load_model_strips_prefix():
-    """Test that _load_model strips 'model.' prefix from state_dict keys."""
-    # Logic:
-    # 1. Mock torch.load to return state_dict with "model.layer1.weight"
-    # 2. Mock instantiate_model to return a mock model
-    # 3. Call _load_model
-    # 4. Verify model.load_state_dict was called with "layer1.weight"
-    
+    """Test that _load_model_ckpt strips 'model.' prefix from state_dict keys."""
     with patch("cerberus.model_ensemble._ModelManager.__init__", return_value=None):
         manager = cerberus.model_ensemble._ModelManager() # type: ignore
         manager.device = torch.device("cpu")
         manager.model_config = {} # type: ignore
         manager.data_config = {} # type: ignore
         manager.cache = {}
-        
+
         mock_model = MagicMock()
-        
+
         state_dict = {
             "model.layer1.weight": torch.tensor([1.0]),
             "model.layer1.bias": torch.tensor([0.0]),
-            "other_param": torch.tensor([2.0]) # Should be kept? The code says: "if k.startswith('model.'): new[k[6:]] = v". It iterates state_dict. So "other_param" is IGNORED?
-            # Code:
-            # new_state_dict = {}
-            # for k, v in state_dict.items():
-            #     if k.startswith("model."):
-            #         new_state_dict[k[6:]] = v
-            # So "other_param" is DROPPED.
+            "other_param": torch.tensor([2.0]) # Dropped: only "model." prefixed keys are kept
         }
-        
+
         with patch("cerberus.model_ensemble.instantiate_model", return_value=mock_model), \
              patch("torch.load", return_value={"state_dict": state_dict}):
-            
-            manager._load_model("fold_0", Path("dummy.ckpt"))
+
+            manager._load_model_ckpt("fold_0", Path("dummy.ckpt"))
             
             # Verify load_state_dict call
             args, _ = mock_model.load_state_dict.call_args

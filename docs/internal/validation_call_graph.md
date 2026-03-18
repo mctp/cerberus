@@ -121,7 +121,7 @@ ModelEnsemble.__init__()
   │    └─ validate_model_config                   ← 1st call
   │    └─ validate_data_and_sampler_compatibility ← 1st call
   │
-  └─ _ModelManager._load_model()
+  └─ _ModelManager._load_model_pt()/_load_model_ckpt()
        └─ instantiate_model()
             └─ validate_model_config              ← 2nd call (REDUNDANT)
             └─ validate_data_config               ← 2nd call (REDUNDANT)
@@ -185,7 +185,7 @@ instantiate()
 
 1. **`validate_train_config` in `instantiate()`** — only called here and in `parse_hparams_config()`, which is a different code path (inference only).
 
-2. **`validate_data_config` in `instantiate_model()`** — needed because `instantiate_model()` can be called independently from `_ModelManager._load_model()`.
+2. **`validate_data_config` in `instantiate_model()`** — needed because `instantiate_model()` can be called independently from `_ModelManager._load_model_pt()/_load_model_ckpt()`.
 
 3. **All validators in `CerberusDataModule.__init__()`** — needed because DataModule can be constructed independently of `parse_hparams_config()`.
 

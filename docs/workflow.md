@@ -35,7 +35,7 @@ The training phase is responsible for learning the mapping from DNA sequence to 
 1.  **Data Setup**: Download/Prepare genome FASTA and signal BigWigs.
 2.  **Config Definition**: Set up the configuration dictionaries.
 3.  **Execution**: Call `train_single` or `train_multi`.
-4.  **Output**: Cerberus saves model checkpoints (`.ckpt`) and logs to a `fold_X` subdirectory within the specified output directory.
+4.  **Output**: Cerberus saves model weights to a `fold_X` subdirectory within the specified output directory. Each fold contains a clean `model.pt` state dict (preferred for inference) alongside Lightning `.ckpt` checkpoints and training logs.
 
 **Example Reference**: `examples/chip_ar_mdapca2b.py` demonstrates a full training script that supports both single-fold and multi-fold training for Baseline CNN and BPNet architectures.
 
@@ -97,6 +97,6 @@ Models return standardized output objects (see [**Components: Model Outputs**](c
 | **GenomeConfig** | Defines genome & exclusions | Same (ensures consistent coordinates) |
 | **DataConfig** | Defines I/O shapes & Augmentations | Defines I/O shapes (Augmentations auto-disabled) |
 | **SamplerConfig** | Defines training batches (w/ jitter) | Not strictly used if providing explicit intervals |
-| **ModelEnsemble** | *Not used (created via Entrypoint)* | **Loads checkpoint & reinstantiates model** |
+| **ModelEnsemble** | *Not used (created via Entrypoint)* | **Loads `model.pt` (or `.ckpt` fallback) & reinstantiates model** |
 | **CerberusDataset** | Feeds DataLoader (`is_train=True`) | Feeds `predict_intervals` (`is_train=False`) |
 | **predict_intervals** | *N/A* | Executes forward pass & aggregation |
