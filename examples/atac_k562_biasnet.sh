@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# Dalmatian training example for K562 ATAC-seq data using Cerberus.
+# BiasNet training example for K562 ATAC-seq data using Cerberus.
 #
-# Trains Dalmatian (bias-factorized model) on the K562 ChromBPNet
+# Trains a standalone BiasNet (Tn5 bias model) on the K562 ChromBPNet
 # benchmark dataset from Zenodo (DOI: 10.5281/zenodo.15713376).
 # The dataset (narrowPeak + BigWig) is auto-downloaded on first run.
+# Trains on negative (non-peak) regions only by default.
 #
 # Usage:
-#   bash examples/atac_k562_dalmatian.sh
-#   bash examples/atac_k562_dalmatian.sh --multi
-#   bash examples/atac_k562_dalmatian.sh --precision full --num-workers 0
+#   bash examples/atac_k562_biasnet.sh
+#   bash examples/atac_k562_biasnet.sh --multi
+#   bash examples/atac_k562_biasnet.sh --precision full --num-workers 0
 
 set -euo pipefail
 
 # --- Variables ---
 DATA_DIR="tests/data"
 K562_DIR="${DATA_DIR}/k562_chrombpnet"
-OUTPUT_DIR="${DATA_DIR}/models/atac_k562_dalmatian"
+OUTPUT_DIR="${DATA_DIR}/models/atac_k562_biasnet"
 BATCH_SIZE=32
 MAX_EPOCHS=50
 
@@ -26,14 +27,11 @@ BIGWIG="${K562_DIR}/unstranded.bw"
 PEAKS="${K562_DIR}/peaks.bed"
 
 # --- Train ---
-python tools/train_dalmatian.py \
+python tools/train_biasnet.py \
     --bigwig "${BIGWIG}" \
     --peaks "${PEAKS}" \
     --data-dir "${DATA_DIR}" \
     --output-dir "${OUTPUT_DIR}" \
     --batch-size "${BATCH_SIZE}" \
     --max-epochs "${MAX_EPOCHS}" \
-    --base-loss mse \
-    --bias-weight 1.0 \
-    --signal-background-weight 0.1 \
     "$@"

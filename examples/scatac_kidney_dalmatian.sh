@@ -32,6 +32,6 @@ python tools/train_dalmatian.py \
     --batch-size "${BATCH_SIZE}" \
     --max-epochs "${MAX_EPOCHS}" \
     --base-loss mse \
-    --signal-background-weight 0.01 \
-    --bias-weight 0.5 \
+    --bias-weight 1.0 \
+    --signal-background-weight 0.1 \
     "$@"
