@@ -2,7 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from cerberus.output import ProfileCountOutput, ProfileLogRates
+from cerberus.config import import_class
+from cerberus.output import (
+    FactorizedProfileCountOutput,
+    ProfileCountOutput,
+    ProfileLogRates,
+)
 
 class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     """

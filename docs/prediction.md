@@ -102,6 +102,9 @@ outputs = ensemble.predict_output_intervals(
 ### 4. Genome-Wide Prediction (BigWig)
 Use `predict_to_bigwig` to generate a genome-wide signal track. This is useful for visualization in genome browsers.
 
+For BPNet-style outputs (`ProfileCountOutput`), the exported track is reconstructed as:
+`softmax(logits) * exp(log_counts)` (same profile reconstruction used by `chrombpnet-pytorch` export).
+
 ```python
 from cerberus.predict_bigwig import predict_to_bigwig
 
@@ -166,9 +169,13 @@ where `p = count_pseudocount`, rather than the naive `logsumexp`, which would gi
 
 | Argument | Description |
 |---|---|
+| `--eval-split` | Restrict intervals by chromosome split (`test`, `val`, `train`, `all`). Default is `test`. |
+| `--include-background` | Include complexity-matched non-peak negatives (requires a peak-trained sampler); adds `peak_status` output column. |
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val` for multi-fold ensembles, `all` for single-fold. |
 | `--max_batches` | Limit the number of batches processed (useful for quick checks). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
+
+The helper script `examples/chip_foxa1_22rv1_shared_unique_predict_plot.sh` runs shared/unique exports on the `test` split, writes both peaks-only and `--include-background` outputs, and generates BigWigs for a single test chromosome (auto-selected unless `--test-chrom` is provided).
 
 ## Model Outputs
 
