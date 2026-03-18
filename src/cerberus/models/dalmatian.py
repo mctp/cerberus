@@ -80,6 +80,10 @@ class Dalmatian(nn.Module):
         bias_dropout: Dropout rate for BiasNet. Default: 0.1.
         bias_linear_head: If True, BiasNet uses linear profile head. Default: True.
         bias_residual: If True, BiasNet uses residual connections. Default: True.
+        signal_preset: SignalNet preset. ``"standard"`` (default): f=64,
+            expansion=1, ~150K params — matches standalone Pomeranian K9.
+            ``"large"``: f=256, expansion=2, ~3.9M params.
+            Individual signal_* args override the preset.
         signal_filters: SignalNet model dimension.
         signal_n_layers: Number of dilated layers in SignalNet.
         signal_dilations: Dilation schedule for SignalNet. Full RF (~1089bp).
@@ -89,6 +93,9 @@ class Dalmatian(nn.Module):
         signal_expansion: PGC expansion factor for SignalNet.
         signal_stem_expansion: Stem expansion factor for SignalNet.
         signal_dropout: Dropout rate for SignalNet.
+        zero_init: If True, zero-initialize signal output layers
+            so combined output equals bias-only at initialization.
+            Default: False (exp20 showed zero-init is harmful with detach).
     """
 
     def __init__(
@@ -108,18 +115,37 @@ class Dalmatian(nn.Module):
         bias_dropout: float = 0.1,
         bias_linear_head: bool = True,
         bias_residual: bool = True,
-        # --- SignalNet configuration (RF=1089bp, ~2-3M params) ---
-        signal_filters: int = 256,
+        # --- SignalNet configuration (RF=1089bp) ---
+        signal_preset: str = "standard",
+        signal_filters: int | None = None,
         signal_n_layers: int = 8,
         signal_dilations: list[int] | None = None,
         signal_dil_kernel_size: int = 9,
         signal_conv_kernel_size: int | list[int] | None = None,
         signal_profile_kernel_size: int = 45,
-        signal_expansion: int = 2,
+        signal_expansion: int | None = None,
         signal_stem_expansion: int = 2,
         signal_dropout: float = 0.1,
+        # --- Initialization ---
+        zero_init: bool = False,
     ):
         super().__init__()
+
+        # Resolve signal preset defaults
+        _signal_presets: dict[str, tuple[int, int]] = {
+            "large": (256, 2),      # ~3.9M params
+            "standard": (64, 1),    # ~150K params (matches Pomeranian K9)
+        }
+        if signal_preset not in _signal_presets:
+            raise ValueError(
+                f"Unknown signal_preset={signal_preset!r}. "
+                f"Choose from {list(_signal_presets.keys())}."
+            )
+        _default_filters, _default_expansion = _signal_presets[signal_preset]
+        if signal_filters is None:
+            signal_filters = _default_filters
+        if signal_expansion is None:
+            signal_expansion = _default_expansion
 
         if bias_dilations is None:
             bias_dilations = [1] * bias_n_layers
@@ -196,7 +222,8 @@ class Dalmatian(nn.Module):
             predict_total_count=False,
         )
 
-        self._zero_init_signal_outputs()
+        if zero_init:
+            self._zero_init_signal_outputs()
 
         bias_params = sum(p.numel() for p in self.bias_model.parameters())
         signal_params = sum(p.numel() for p in self.signal_model.parameters())
