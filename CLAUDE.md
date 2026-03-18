@@ -28,3 +28,6 @@ After completing each task, always:
 ## Run and fix pyright (after each task)
 
 - npx pyright tests/ src/
+
+## DONT DO EMBARASSING THINGS
+
