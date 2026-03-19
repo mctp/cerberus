@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-component loss logging**: `_shared_step` now logs each named component
   (e.g. `train_profile_loss`, `val_count_loss`, `train_recon_loss`) as separate
   Lightning metrics alongside the combined `loss`, for all loss types.
+- `export_predictions.py`: `--eval-split` argument (`test`/`val`/`train`/`all`, default `test`) restricts evaluation to the correct held-out chromosome set, preventing data leakage from training chromosomes into reported metrics.
+- `export_predictions.py`: `--include-background` flag adds complexity-matched background intervals alongside peaks, replicating the training evaluation setup. The output TSV gains a `peak_status` column (1=peak, 0=background); background is fold-restricted to match the requested `--eval-split`. Also adds `--background-ratio` and `--seed`.
 - **`tools/export_bigwig.py`**: CLI tool for exporting genome-wide model
   predictions to BigWig format. Loads a model ensemble, slides windows across
   all allowed chromosomes, and streams predictions to a BigWig file via
@@ -225,6 +227,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extractor registry and enhanced `UniversalExtractor` functionality.
 - Validation and tests for reverse complement functionality.
 - Documentation system using mkdocs.
+
+### Changed
+- `export_predictions.py`: Default evaluation now covers only test-fold chromosomes (`--eval-split test`). Previous behaviour (all chromosomes) is available via `--eval-split all`.
 
 ## [0.9.1] - 2026-03-01
 

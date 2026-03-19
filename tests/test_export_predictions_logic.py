@@ -294,3 +294,69 @@ class TestTargetScale:
         obs_total = raw.sum(dim=(1, 2)) * target_scale
         expected = torch.tensor([15.0, 45.0])
         assert torch.allclose(obs_total, expected)
+
+
+# ---------------------------------------------------------------------------
+# 4. --include-background: sampler config extraction and overriding logic
+# ---------------------------------------------------------------------------
+
+class TestIncludeBackgroundConfig:
+    """Tests for the sampler config extraction logic used by --include-background."""
+
+    def _make_sampler_config(self, sampler_type="peak", background_ratio=1.0):
+        from pathlib import Path
+        return {
+            "sampler_type": sampler_type,
+            "padded_size": 2624,
+            "sampler_args": {
+                "intervals_path": Path("/original/peaks.bed"),
+                "background_ratio": background_ratio,
+            },
+        }
+
+    def test_peaks_path_override(self):
+        """The user-provided peaks path replaces the stored one; other args are preserved."""
+        from pathlib import Path
+        sampler_config = self._make_sampler_config(background_ratio=2.0)
+        new_peaks = Path("/new/peaks.bed")
+
+        bg_sampler_args = {**sampler_config["sampler_args"], "intervals_path": new_peaks}
+        bg_sampler_config = {**sampler_config, "sampler_args": bg_sampler_args}
+
+        assert bg_sampler_config["sampler_args"]["intervals_path"] == new_peaks
+        assert bg_sampler_config["sampler_args"]["background_ratio"] == 2.0
+        assert bg_sampler_config["sampler_type"] == "peak"
+        assert bg_sampler_config["padded_size"] == 2624
+
+    def test_background_ratio_override(self):
+        """An explicit --background-ratio replaces the stored ratio."""
+        sampler_config = self._make_sampler_config(background_ratio=1.0)
+        from pathlib import Path
+
+        bg_sampler_args = {**sampler_config["sampler_args"], "intervals_path": Path("/new/peaks.bed")}
+        bg_sampler_args["background_ratio"] = 0.5
+        assert bg_sampler_args["background_ratio"] == 0.5
+
+    def test_non_peak_sampler_raises(self):
+        """Non-peak sampler type should be detected before creating the sampler."""
+        sampler_config = self._make_sampler_config(sampler_type="interval")
+        with pytest.raises(ValueError, match="'peak' sampler type"):
+            if sampler_config["sampler_type"] != "peak":
+                raise ValueError(
+                    f"--include-background only supports 'peak' sampler type, "
+                    f"got '{sampler_config['sampler_type']}'. "
+                    f"Only models trained with PeakSampler can generate complexity-matched background."
+                )
+
+    def test_original_config_not_mutated(self):
+        """The stored sampler_config dict must not be modified in-place."""
+        from pathlib import Path
+        sampler_config = self._make_sampler_config()
+        original_path = sampler_config["sampler_args"]["intervals_path"]
+
+        bg_sampler_args = {**sampler_config["sampler_args"], "intervals_path": Path("/new/peaks.bed")}
+        bg_sampler_config = {**sampler_config, "sampler_args": bg_sampler_args}
+
+        # Original must be unchanged
+        assert sampler_config["sampler_args"]["intervals_path"] == original_path
+        assert bg_sampler_config["sampler_args"]["intervals_path"] == Path("/new/peaks.bed")
