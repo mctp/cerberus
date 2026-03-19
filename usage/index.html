@@ -16,14 +16,14 @@
         <link rel="prev" href="../overview/">
       
       
-        <link rel="next" href="../workflow/">
+        <link rel="next" href="../preprocessing/">
       
       
         
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -653,6 +653,78 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#scatac-seq-pseudobulk-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        scATAC-seq Pseudobulk Tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visualization-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualization Tools
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Visualization Tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#training-curves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Training Curves
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#biasnet-ism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BiasNet ISM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#biasnet-pairwise-ism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BiasNet Pairwise ISM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-architecture-inspector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model Architecture Inspector
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#next-steps" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -667,6 +739,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../preprocessing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Preprocessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1475,6 +1575,16 @@
 <td>Gopher</td>
 <td>TC32 PROX1 (local paths)</td>
 </tr>
+<tr>
+<td><code>examples/scatac_kidney_pseudobulk.sh</code></td>
+<td>—</td>
+<td>Kidney scATAC-seq pseudobulk BigWigs + peaks</td>
+</tr>
+<tr>
+<td><code>examples/scatac_kidney_dalmatian.sh</code></td>
+<td>Dalmatian</td>
+<td>Kidney scATAC-seq pseudobulk (bulk, all cell types)</td>
+</tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Run single-fold training (default)</span>
@@ -1532,15 +1642,37 @@
 <a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>python<span class="w"> </span>tools/train_gopher.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_gopher<span class="w"> </span>--multi
 </code></pre></div></p>
 </li>
+<li>
+<p><code>tools/train_dalmatian.py</code>: Train a Dalmatian model (2112bp → 1024bp, bias-factorized).
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Default Dalmatian (MSE base loss)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>python<span class="w"> </span>tools/train_dalmatian.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_dalmatian
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># Poisson base loss</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>python<span class="w"> </span>tools/train_dalmatian.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_dalmatian<span class="w"> </span>--base-loss<span class="w"> </span>poisson
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="c1"># Customized training</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>python<span class="w"> </span>tools/train_dalmatian.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_dalmatian<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span>--signal-filters<span class="w"> </span><span class="m">128</span><span class="w"> </span>--bias-weight<span class="w"> </span><span class="m">2</span>.0
+</code></pre></div></p>
+</li>
+<li>
+<p><code>tools/train_asap.py</code>: Train an ASAP (ConvNeXtDCNN) model (2048bp → 512 bins at 4bp resolution).
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>python<span class="w"> </span>tools/train_asap.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_asap
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>python<span class="w"> </span>tools/train_asap.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_asap<span class="w"> </span>--multi
+</code></pre></div></p>
+</li>
 </ul>
-<p>All tools support <code>--multi</code> (cross-validation), <code>--precision</code> (<code>bf16</code>/<code>mps</code>/<code>full</code>), <code>--accelerator</code>, <code>--devices</code>, and <code>--fasta</code>/<code>--blacklist</code>/<code>--gaps</code> for custom genome references. Key default differences reflect each model's canonical training recipe:</p>
+<p>All tools support <code>--multi</code> (cross-validation), <code>--seed</code> (sampler seed), <code>--precision</code> (<code>bf16</code>/<code>mps</code>/<code>full</code>), <code>--accelerator</code>, <code>--devices</code>, and <code>--fasta</code>/<code>--blacklist</code>/<code>--gaps</code> for custom genome references. Key default differences reflect each model's canonical training recipe:</p>
 <table>
 <thead>
 <tr>
 <th>Flag</th>
 <th><code>train_bpnet.py</code></th>
 <th><code>train_pomeranian.py</code></th>
+<th><code>train_dalmatian.py</code></th>
 <th><code>train_gopher.py</code></th>
+<th><code>train_asap.py</code></th>
 </tr>
 </thead>
 <tbody>
@@ -1549,21 +1681,29 @@
 <td><code>adam</code></td>
 <td><code>adamw</code></td>
 <td><code>adamw</code></td>
+<td><code>adamw</code></td>
+<td><code>adamw</code></td>
 </tr>
 <tr>
 <td><code>--learning-rate</code></td>
 <td><code>1e-3</code></td>
 <td><code>5e-4</code></td>
 <td><code>1e-3</code></td>
+<td><code>1e-3</code></td>
+<td><code>1e-3</code></td>
 </tr>
 <tr>
 <td><code>--weight-decay</code></td>
 <td><code>0.0</code></td>
 <td><code>0.01</code></td>
+<td><code>1e-4</code></td>
+<td><code>0.01</code></td>
 <td><code>0.01</code></td>
 </tr>
 <tr>
 <td><code>--scheduler-type</code></td>
+<td><code>default</code> (constant)</td>
+<td><code>cosine</code></td>
 <td><code>default</code> (constant)</td>
 <td><code>cosine</code></td>
 <td><code>cosine</code></td>
@@ -1572,6 +1712,8 @@
 <td><code>--input-len</code></td>
 <td><code>2114</code></td>
 <td><code>2112</code></td>
+<td><code>2112</code></td>
+<td><code>2048</code></td>
 <td><code>2048</code></td>
 </tr>
 <tr>
@@ -1579,21 +1721,124 @@
 <td><code>1000</code></td>
 <td><code>1024</code></td>
 <td><code>1024</code></td>
+<td><code>1024</code></td>
+<td><code>2048</code></td>
 </tr>
 <tr>
 <td><code>--output-bin-size</code></td>
 <td><code>1</code></td>
 <td><code>1</code></td>
+<td><code>1</code></td>
+<td><code>4</code></td>
 <td><code>4</code></td>
 </tr>
 <tr>
-<td><code>--alpha</code> / loss</td>
+<td>Loss</td>
 <td><code>adaptive</code> (BPNetLoss)</td>
 <td><code>adaptive</code> (BPNetLoss)</td>
+<td><code>mse</code> (DalmatianLoss)</td>
+<td>— (ProfilePoissonNLLLoss)</td>
 <td>— (ProfilePoissonNLLLoss)</td>
 </tr>
 </tbody>
 </table>
+<h2 id="scatac-seq-pseudobulk-tools">scATAC-seq Pseudobulk Tools<a class="headerlink" href="#scatac-seq-pseudobulk-tools" title="Permanent link">&para;</a></h2>
+<p>The <code>tools/scatac_pseudobulk.py</code> script generates per-cell-type pseudobulk BigWig coverage tracks and calls peaks from scATAC-seq fragment files using SnapATAC2. The output BigWig and narrowPeak files can be used directly as cerberus training targets and peak-based sampler intervals.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Basic: per-cell-type BigWigs</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>python<span class="w"> </span>tools/scatac_pseudobulk.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span>fragments.tsv.bgz<span class="w"> </span>gene_activity.h5ad<span class="w"> </span>output_dir/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span>--genome<span class="w"> </span>hg38<span class="w"> </span>--groupby<span class="w"> </span>cell_type
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="c1"># Full pipeline: BigWigs + peaks + merged peak set</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>python<span class="w"> </span>tools/scatac_pseudobulk.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">    </span>fragments.tsv.bgz<span class="w"> </span>gene_activity.h5ad<span class="w"> </span>output_dir/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">    </span>--genome<span class="w"> </span>hg38<span class="w"> </span>--groupby<span class="w"> </span>cell_type<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">    </span>--call-peaks<span class="w"> </span>--n-jobs<span class="w"> </span><span class="m">8</span>
+</code></pre></div>
+<p>Key options:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--genome</code></td>
+<td>Built-in genome (hg38, hg19, mm10, mm39) or use <code>--chrom-sizes</code> for custom</td>
+</tr>
+<tr>
+<td><code>--groupby</code></td>
+<td>obs column to group cells by (default: <code>cell_type</code>)</td>
+</tr>
+<tr>
+<td><code>--call-peaks</code></td>
+<td>Call peaks with MACS3 after BigWig generation</td>
+</tr>
+<tr>
+<td><code>--bulk-peaks</code></td>
+<td>Also call bulk (all-cells) peaks with MACS3 (slow, off by default)</td>
+</tr>
+<tr>
+<td><code>--no-merge</code></td>
+<td>Disable merging per-group peaks into <code>bulk_merge.narrowPeak.bed.gz</code></td>
+</tr>
+<tr>
+<td><code>--overwrite</code></td>
+<td>Re-generate all outputs even if they already exist</td>
+</tr>
+<tr>
+<td><code>--counting-strategy</code></td>
+<td><code>insertion</code> (Tn5 cut sites), <code>fragment</code>, or <code>paired-insertion</code></td>
+</tr>
+<tr>
+<td><code>--normalization</code></td>
+<td><code>raw</code>, <code>CPM</code>, <code>RPKM</code>, or <code>BPM</code></td>
+</tr>
+<tr>
+<td><code>--n-jobs</code></td>
+<td>Total concurrent thread/process budget (default: max(4, cpu_count//2))</td>
+</tr>
+<tr>
+<td><code>--sequential</code></td>
+<td>Disable parallel stage overlap</td>
+</tr>
+</tbody>
+</table>
+<p>Output layout (all files in <code>output_dir/</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>cell_type_A.bw                       # per-group BigWig
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>cell_type_A.narrowPeak.bed.gz        # per-group peaks (with --call-peaks)
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>cell_type_A.narrowPeak.bed.gz.tbi
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>...
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>bulk.bw                              # bulk (all-cells) BigWig (always)
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>bulk_call.narrowPeak.bed.gz          # with --bulk-peaks --call-peaks
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>bulk_merge.narrowPeak.bed.gz         # merged per-group peaks (with --call-peaks)
+</code></pre></div>
+<p>See <code>examples/scatac_kidney_pseudobulk.sh</code> for a complete example using the kidney scATAC-seq dataset.</p>
+<h2 id="visualization-tools">Visualization Tools<a class="headerlink" href="#visualization-tools" title="Permanent link">&para;</a></h2>
+<h3 id="training-curves">Training Curves<a class="headerlink" href="#training-curves" title="Permanent link">&para;</a></h3>
+<p><code>tools/plot_training_results.py</code> parses Lightning CSVLogger <code>metrics.csv</code> files and generates training curve plots.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>python<span class="w"> </span>tools/plot_training_results.py<span class="w"> </span>path/to/run_dir
+</code></pre></div>
+<p>Automatically generates plots for all available metrics: loss, profile Pearson, profile MSE, log counts MSE, log counts Pearson, profile loss, count loss, and Dalmatian-specific recon/bias loss. Outputs PNG files (300 dpi) to a <code>plots/</code> subdirectory next to each <code>metrics.csv</code>.</p>
+<h3 id="biasnet-ism">BiasNet ISM<a class="headerlink" href="#biasnet-ism" title="Permanent link">&para;</a></h3>
+<p><code>tools/plot_biasnet_ism.py</code> computes in-silico mutagenesis (ISM) for BiasNet models and generates IC logo + heatmap plots revealing learned sequence motifs.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>python<span class="w"> </span>tools/plot_biasnet_ism.py<span class="w"> </span>path/to/biasnet_model<span class="w"> </span>--n-seqs<span class="w"> </span><span class="m">1000</span><span class="w"> </span>--ism-window<span class="w"> </span><span class="m">31</span>
+</code></pre></div>
+<p>Works with both standalone BiasNet and Dalmatian models (extracts the bias subnetwork automatically). Outputs <code>{prefix}_biasnet_ism.png</code> and <code>{prefix}_biasnet_ism.csv</code>.</p>
+<h3 id="biasnet-pairwise-ism">BiasNet Pairwise ISM<a class="headerlink" href="#biasnet-pairwise-ism" title="Permanent link">&para;</a></h3>
+<p><code>tools/plot_biasnet_pairwise_ism.py</code> computes pairwise ISM to measure epistatic interactions between positions.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>python<span class="w"> </span>tools/plot_biasnet_pairwise_ism.py<span class="w"> </span>path/to/biasnet_model<span class="w"> </span>--n-seqs<span class="w"> </span><span class="m">200</span><span class="w"> </span>--detail-pair<span class="w"> </span><span class="m">11</span><span class="w"> </span><span class="m">19</span>
+</code></pre></div>
+<p>Outputs a 4-panel plot (IC logo, epistasis heatmap, interaction profile, 4×4 detail) and a long-format CSV. Computationally intensive (~850K forward passes for default settings).</p>
+<h3 id="model-architecture-inspector">Model Architecture Inspector<a class="headerlink" href="#model-architecture-inspector" title="Permanent link">&para;</a></h3>
+<p><code>tools/print_model_dims.py</code> prints layer-by-layer tensor shapes for any Cerberus model by running a dummy forward pass with hooks.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>Pomeranian
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>BPNet<span class="w"> </span>--input_len<span class="w"> </span><span class="m">2114</span><span class="w"> </span>--output_len<span class="w"> </span><span class="m">1000</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>BiasNet
+</code></pre></div>
+<p>Supports case-insensitive model name matching and automatically infers default dimensions from the model class.</p>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <p>Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.
 See <a href="../prediction/">Prediction (Inference)</a> for details on <code>ModelEnsemble</code>, <code>predict_intervals_batched</code>, and CLI tools like <code>tools/export_predictions.py</code>.</p>
@@ -1619,7 +1864,7 @@ See <a href="../prediction/">Prediction (Inference)</a> for details on <code>Mod
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 1, 2026 03:29:08 UTC">March 1, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 19, 2026 15:57:49 UTC">March 19, 2026</span>
   </span>
 
     
@@ -1681,13 +1926,13 @@ See <a href="../prediction/">Prediction (Inference)</a> for details on <code>Mod
         
         
           
-          <a href="../workflow/" class="md-footer__link md-footer__link--next" aria-label="Next: Workflow">
+          <a href="../preprocessing/" class="md-footer__link md-footer__link--next" aria-label="Next: Preprocessing">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Workflow
+                Preprocessing
               </div>
             </div>
             <div class="md-footer__button md-icon">

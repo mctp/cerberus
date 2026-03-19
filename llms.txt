@@ -30,6 +30,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class SamplerConfig(TypedDict)`** — Configuration for data samplers.
 - **`class DataConfig(TypedDict)`** — Configuration for input/output data handling.
 - **`class TrainConfig(TypedDict)`** — Configuration for training hyperparameters.
+- **`class PretrainedConfig(TypedDict)`** — Configuration for loading pretrained weights into a model or sub-module.
 - **`class ModelConfig(TypedDict)`** — Configuration for the model architecture.
 - **`class CerberusConfig(TypedDict)`** — Combined configuration for Cerberus.
 - **`validate_genome_config()`** — Validates the genome configuration and returns a GenomeConfig object.
@@ -104,6 +105,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class ScaledSampler(ProxySampler)`** — Wraps a sampler to resize it (subsample or oversample).
 - **`class ComplexityMatchedSampler(ProxySampler)`** — Selects candidates from a candidate_sampler that match the distributional properties
 - **`class PeakSampler(MultiSampler)`** — A specialized MultiSampler that combines a set of positive intervals (peaks)
+- **`class NegativePeakSampler(MultiSampler)`** — Background-only sampler: complexity-matched non-peak intervals.
 - **`create_sampler()`** — Factory function to create a Sampler from a config.
 
 ### `cerberus.transform`
@@ -146,17 +148,19 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 ### `cerberus.output`
 
 - **`class ModelOutput`** — Base class for model outputs.
-- **`class ProfileLogits(ModelOutput)`** — Output for models predicting a profile (shape) using unnormalized log-probabilities.
+- **`class ProfileLogits(ModelOutput)`** — Output for models predicting a profile shape as unnormalized log-probabilities.
 - **`class ProfileLogRates(ModelOutput)`** — Output for models predicting log-rates (log-intensities).
-- **`class ProfileCountOutput(ProfileLogits)`** — Output for models predicting profile (logits) and total counts.
-- **`unbatch_modeloutput()`** — Splits a batched output (ModelOutput) into a list of individual interval dictionaries.
-- **`aggregate_tensor_track_values()`** — Aggregates a list of tensors into a single merged array.
-- **`aggregate_intervals()`** — Aggregates overlapping predictions into a single merged output.
-- **`aggregate_models()`** — Aggregates a list of model outputs.
-- **`compute_total_log_counts()`** — Extracts total log counts from the model output.
+- **`class ProfileCountOutput(ProfileLogits)`** — Output for models with factored profile shape (logits) and total counts.
+- **`class FactorizedProfileCountOutput(ProfileCountOutput)`** — Combined output with decomposed sub-model outputs for the Dalmatian model.
+- **`unbatch_modeloutput()`** — Splits a batched ModelOutput into per-sample dictionaries.
+- **`aggregate_tensor_track_values()`** — Spatially merges overlapping prediction tensors by averaging overlapping bins.
+- **`aggregate_intervals()`** — Merges predictions from multiple genomic intervals into a single ModelOutput.
+- **`aggregate_models()`** — Ensembles outputs from multiple models by reducing each tensor field.
+- **`compute_total_log_counts()`** — Computes total log counts across all channels, returning shape (B,).
 
 ### `cerberus.loss`
 
+- **`class CerberusLoss(Protocol)`** — Protocol for all cerberus loss functions.
 - **`class ProfilePoissonNLLLoss(nn.PoissonNLLLoss)`** — Poisson NLL Loss on Profile LogRates.
 - **`class MSEMultinomialLoss(nn.Module)`** — Multinomial NLL Profile Loss + MSE Count Loss.
 - **`class CoupledMSEMultinomialLoss(MSEMultinomialLoss)`** — Multinomial NLL Profile Loss + MSE Count Loss (Coupled).
@@ -164,6 +168,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss)`** — Poisson Multinomial Loss (Coupled/Global Count).
 - **`class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss)`** — Negative Binomial Multinomial Loss.
 - **`class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss)`** — Negative Binomial Multinomial Loss (Coupled).
+- **`class DalmatianLoss(nn.Module)`** — Peak-conditioned factorized loss for the Dalmatian architecture.
 
 ### `cerberus.metrics`
 
@@ -181,6 +186,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class ConvNeXtV2Block(nn.Module)`** — ConvNeXt V2 Block adapted for 1D genomic data.
 - **`class PGCBlock(nn.Module)`** — Projected Gated Convolution Block.
 - **`class DilatedResidualBlock(nn.Module)`** — Dilated Residual Block for BPNet.
+- **`class SimpleResidualBlock(nn.Module)`** — Conv1d + ReLU residual block with valid padding.
 
 ### `cerberus.model_ensemble`
 
@@ -189,7 +195,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.predict_bigwig`
 
-- **`predict_to_bigwig()`** — Generates predictions for all chromosomes and writes to a BigWig file.
+- **`predict_to_bigwig()`** — Generates predictions and writes to a BigWig file.
 
 ### `cerberus.download`
 

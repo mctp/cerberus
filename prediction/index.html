@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -511,6 +511,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../preprocessing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Preprocessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../workflow/" class="md-nav__link">
         
   
@@ -887,6 +915,34 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#export-bigwig-toolsexport_bigwigpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export BigWig (tools/export_bigwig.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Export BigWig (tools/export_bigwig.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#optional-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional arguments
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#export-predictions-toolsexport_predictionspy" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -921,7 +977,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#optional-arguments" class="md-nav__link">
+  <a href="#optional-arguments_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Optional arguments
@@ -1296,7 +1352,7 @@
 <h2 id="core-concepts">Core Concepts<a class="headerlink" href="#core-concepts" title="Permanent link">&para;</a></h2>
 <h3 id="modelensemble">ModelEnsemble<a class="headerlink" href="#modelensemble" title="Permanent link">&para;</a></h3>
 <p>The <code>ModelEnsemble</code> class is the central entry point for prediction. It:
-1.  <strong>Loads Models</strong>: Automatically detects single-fold or multi-fold checkpoints and loads the appropriate model weights from a directory.
+1.  <strong>Loads Models</strong>: Automatically detects single-fold or multi-fold model directories and loads weights. Prefers clean <code>model.pt</code> state dicts (faster, no prefix stripping) and falls back to Lightning <code>.ckpt</code> checkpoints for backward compatibility.
 2.  <strong>Manages Folds</strong>: Identifies which model to run for a given genomic interval based on cross-validation fold definitions.
     *   <strong>Rotation Logic</strong>: Cerberus assumes a standard rotation where Model <code>i</code> uses Partition <code>i</code> as Test and Partition <code>(i+1)%k</code> as Validation.
     *   If you request <code>use_folds=["test"]</code>, the ensemble selects Model <code>i</code> for intervals falling in Partition <code>i</code>.
@@ -1385,15 +1441,66 @@ Prediction starts are floored to the nearest bin relative to the merged interval
 </code></pre></div>
 <h2 id="cli-tools">CLI Tools<a class="headerlink" href="#cli-tools" title="Permanent link">&para;</a></h2>
 <p>Cerberus provides command-line tools for common prediction tasks.</p>
+<h3 id="export-bigwig-toolsexport_bigwigpy">Export BigWig (<code>tools/export_bigwig.py</code>)<a class="headerlink" href="#export-bigwig-toolsexport_bigwigpy" title="Permanent link">&para;</a></h3>
+<p>Exports genome-wide model predictions as a BigWig signal track for visualization in genome browsers (e.g., IGV, UCSC).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python<span class="w"> </span>tools/export_bigwig.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>--output<span class="w"> </span>predictions.bw<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span>--stride<span class="w"> </span><span class="m">50</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span>--batch_size<span class="w"> </span><span class="m">256</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span>--device<span class="w"> </span>cuda
+</code></pre></div>
+<p>This tool:
+1. Loads the model ensemble and automatically resolves dataset paths.
+2. Clears target extractors (no observed signal is needed — only sequence inputs are used).
+3. Slides a window across all allowed chromosomes, grouping contiguous windows into islands.
+4. Reconstructs linear signal per window (softmax × counts for BPNet, exp for log-rates) then spatially merges overlapping predictions using a streaming accumulator.
+5. Automatically reads <code>count_pseudocount</code> from the model config and subtracts it when inverting <code>log_counts</code> (MSE-trained models).</p>
+<p>The exported track contains the reconstructed linear signal (counts per bp). For multi-channel models, only channel 0 is written (BigWig is single-track).</p>
+<h4 id="optional-arguments">Optional arguments<a class="headerlink" href="#optional-arguments" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--output</code></td>
+<td>Output BigWig path (default: <code>predictions.bw</code>).</td>
+</tr>
+<tr>
+<td><code>--stride</code></td>
+<td>Sliding window stride in bp. Defaults to <code>output_len // 2</code> (50% overlap).</td>
+</tr>
+<tr>
+<td><code>--use_folds</code></td>
+<td>Folds to use, e.g. <code>test</code>, <code>test+val</code>, <code>all</code>. Defaults to <code>test+val</code>.</td>
+</tr>
+<tr>
+<td><code>--batch_size</code></td>
+<td>Batch size for inference (default: 64).</td>
+</tr>
+<tr>
+<td><code>--device</code></td>
+<td>Override device selection (<code>cuda</code>, <code>mps</code>, <code>cpu</code>).</td>
+</tr>
+<tr>
+<td><code>--count-pseudocount</code></td>
+<td>Override pseudocount for log_counts inversion. Auto-read from config if omitted.</td>
+</tr>
+</tbody>
+</table>
 <h3 id="export-predictions-toolsexport_predictionspy">Export Predictions (<code>tools/export_predictions.py</code>)<a class="headerlink" href="#export-predictions-toolsexport_predictionspy" title="Permanent link">&para;</a></h3>
 <p>Exports predicted vs observed log-counts for a set of peaks to a TSV file. This is useful for evaluating model performance on peak sets.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python<span class="w"> </span>tools/export_predictions.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>path/to/peaks.bed<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span>path/to/observed.bigwig<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span>--output<span class="w"> </span>predictions.tsv.gz<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span>--batch_size<span class="w"> </span><span class="m">128</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span>--device<span class="w"> </span>cuda
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python<span class="w"> </span>tools/export_predictions.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span>path/to/peaks.bed<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span>path/to/observed.bigwig<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span>--output<span class="w"> </span>predictions.tsv.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span>--batch_size<span class="w"> </span><span class="m">128</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span>--device<span class="w"> </span>cuda
 </code></pre></div>
 <p>This tool:
 1. Loads the model and automatically resolves dataset paths.
@@ -1428,10 +1535,10 @@ Prediction starts are floored to the nearest bin relative to the merged interval
 <p>The observed total is computed from raw BigWig signal (bypassing transforms) and then multiplied by <code>data_config["target_scale"]</code> before the log transform, matching what the loss was trained against.</p>
 <h4 id="multi-channel-models-count_per_channeltrue">Multi-channel models (<code>count_per_channel=True</code>)<a class="headerlink" href="#multi-channel-models-count_per_channeltrue" title="Permanent link">&para;</a></h4>
 <p>When the model has multiple output channels and was trained with <code>count_per_channel=True</code> under an MSE loss, each channel's <code>log_counts</code> is in <code>log(count + count_pseudocount)</code> space. The tool correctly aggregates these to a single global log-count via:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>log((exp(lc_ch0) - p) + (exp(lc_ch1) - p) + ... + p)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>log((exp(lc_ch0) - p) + (exp(lc_ch1) - p) + ... + p)
 </code></pre></div>
 <p>where <code>p = count_pseudocount</code>, rather than the naive <code>logsumexp</code>, which would give <code>log(n_channels * p + total_counts)</code>.</p>
-<h4 id="optional-arguments">Optional arguments<a class="headerlink" href="#optional-arguments" title="Permanent link">&para;</a></h4>
+<h4 id="optional-arguments_1">Optional arguments<a class="headerlink" href="#optional-arguments_1" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
 <tr>
@@ -1440,6 +1547,22 @@ Prediction starts are floored to the nearest bin relative to the merged interval
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>--eval-split</code></td>
+<td>Which chromosome split to evaluate on: <code>test</code> (default, held-out test chromosomes), <code>val</code>, <code>train</code>, or <code>all</code>. Use <code>all</code> only for exploratory analysis — it includes training chromosomes and inflates metrics.</td>
+</tr>
+<tr>
+<td><code>--include-background</code></td>
+<td>Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a <code>peak</code> sampler. Adds a <code>peak_status</code> column to the output (1=peak, 0=background).</td>
+</tr>
+<tr>
+<td><code>--background-ratio</code></td>
+<td>Ratio of background intervals to peaks (default: taken from model's sampler config). Only used with <code>--include-background</code>.</td>
+</tr>
+<tr>
+<td><code>--seed</code></td>
+<td>Random seed for background interval generation (default: 1234). Only used with <code>--include-background</code>.</td>
+</tr>
 <tr>
 <td><code>--use_folds</code></td>
 <td>Folds to use, e.g. <code>test</code>, <code>test+val</code>, <code>all</code>. Defaults to <code>test+val</code> for multi-fold ensembles, <code>all</code> for single-fold.</td>
@@ -1464,12 +1587,12 @@ Prediction starts are floored to the nearest bin relative to the merged interval
 <p>You typically need to detach and post-process these (e.g., applying Softmax or Exponentials) for analysis.</p>
 <h3 id="extracting-total-log-counts">Extracting total log-counts<a class="headerlink" href="#extracting-total-log-counts" title="Permanent link">&para;</a></h3>
 <p><code>cerberus.output.compute_total_log_counts</code> aggregates a <code>ModelOutput</code> into a scalar log-count per interval in the batch:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_total_log_counts</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># log_counts_include_pseudocount=True for MSEMultinomialLoss / CoupledMSEMultinomialLoss</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># log_counts_include_pseudocount=False (default) for Poisson / NB losses</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">log_counts</span> <span class="o">=</span> <span class="n">compute_total_log_counts</span><span class="p">(</span><span class="n">batch_output</span><span class="p">,</span> <span class="n">log_counts_include_pseudocount</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># → tensor of shape (batch_size,)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_total_log_counts</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># log_counts_include_pseudocount=True for MSEMultinomialLoss / CoupledMSEMultinomialLoss</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># log_counts_include_pseudocount=False (default) for Poisson / NB losses</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">log_counts</span> <span class="o">=</span> <span class="n">compute_total_log_counts</span><span class="p">(</span><span class="n">batch_output</span><span class="p">,</span> <span class="n">log_counts_include_pseudocount</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># → tensor of shape (batch_size,)</span>
 </code></pre></div>
 <p>The <code>log_counts_include_pseudocount</code> parameter matters only for multi-channel <code>ProfileCountOutput</code> (i.e. <code>count_per_channel=True</code>):</p>
 <ul>
@@ -1499,7 +1622,7 @@ Prediction starts are floored to the nearest bin relative to the merged interval
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 1, 2026 03:09:28 UTC">March 1, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 19, 2026 14:48:34 UTC">March 19, 2026</span>
   </span>
 
     

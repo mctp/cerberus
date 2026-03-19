@@ -25,6 +25,7 @@ Cerberus is a PyTorch-based framework for genomic sequence-to-function (S2F) mod
 *   [**Sequence Complexity**](complexity.md): Reference for GC, DUST, and CpG complexity metrics.
 *   [**Models**](models.md): Overview of built-in model architectures.
 *   [**Usage**](usage.md): Step-by-step guide to setting up a training pipeline.
+*   [**Preprocessing**](preprocessing.md): Convert BAM/BED inputs into Cerberus-ready BigWig/BED files.
 *   [**Prediction**](prediction.md): Detailed guide to inference, tiling, and BigWig generation.
 *   [**Workflow Lifecycle**](workflow.md): High-level overview of Training, Prediction, and Model Exploration.
 *   [**Codebase Structure**](structure.md): Guide to the file organization and module responsibilities.
@@ -337,6 +338,8 @@ The `examples/` directory contains ready-to-run shell scripts covering all model
 | `examples/chip_prox1_tc32_bpnet.sh` | BPNet | TC32 PROX1 (local paths) |
 | `examples/chip_prox1_tc32_pomeranian.sh` | Pomeranian | TC32 PROX1 (local paths) |
 | `examples/chip_prox1_tc32_gopher.sh` | Gopher | TC32 PROX1 (local paths) |
+| `examples/scatac_kidney_pseudobulk.sh` | — | Kidney scATAC-seq pseudobulk BigWigs + peaks |
+| `examples/scatac_kidney_dalmatian.sh` | Dalmatian | Kidney scATAC-seq pseudobulk (bulk, all cell types) |
 
 ```bash
 # Run single-fold training (default)
@@ -396,18 +399,128 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     python tools/train_gopher.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_gopher --multi
     ```
 
-All tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
+*   `tools/train_dalmatian.py`: Train a Dalmatian model (2112bp → 1024bp, bias-factorized).
+    ```bash
+    # Default Dalmatian (MSE base loss)
+    python tools/train_dalmatian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_dalmatian
 
-| Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_gopher.py` |
-|---|---|---|---|
-| `--optimizer` | `adam` | `adamw` | `adamw` |
-| `--learning-rate` | `1e-3` | `5e-4` | `1e-3` |
-| `--weight-decay` | `0.0` | `0.01` | `0.01` |
-| `--scheduler-type` | `default` (constant) | `cosine` | `cosine` |
-| `--input-len` | `2114` | `2112` | `2048` |
-| `--output-len` | `1000` | `1024` | `1024` |
-| `--output-bin-size` | `1` | `1` | `4` |
-| `--alpha` / loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | — (ProfilePoissonNLLLoss) |
+    # Poisson base loss
+    python tools/train_dalmatian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_dalmatian --base-loss poisson
+
+    # Customized training
+    python tools/train_dalmatian.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_dalmatian \
+        --signal-filters 128 --bias-weight 2.0
+    ```
+
+*   `tools/train_asap.py`: Train an ASAP (ConvNeXtDCNN) model (2048bp → 512 bins at 4bp resolution).
+    ```bash
+    python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap
+
+    python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap --multi
+    ```
+
+All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
+
+| Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_dalmatian.py` | `train_gopher.py` | `train_asap.py` |
+|---|---|---|---|---|---|
+| `--optimizer` | `adam` | `adamw` | `adamw` | `adamw` | `adamw` |
+| `--learning-rate` | `1e-3` | `5e-4` | `1e-3` | `1e-3` | `1e-3` |
+| `--weight-decay` | `0.0` | `0.01` | `1e-4` | `0.01` | `0.01` |
+| `--scheduler-type` | `default` (constant) | `cosine` | `default` (constant) | `cosine` | `cosine` |
+| `--input-len` | `2114` | `2112` | `2112` | `2048` | `2048` |
+| `--output-len` | `1000` | `1024` | `1024` | `1024` | `2048` |
+| `--output-bin-size` | `1` | `1` | `1` | `4` | `4` |
+| Loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | `mse` (DalmatianLoss) | — (ProfilePoissonNLLLoss) | — (ProfilePoissonNLLLoss) |
+
+## scATAC-seq Pseudobulk Tools
+
+The `tools/scatac_pseudobulk.py` script generates per-cell-type pseudobulk BigWig coverage tracks and calls peaks from scATAC-seq fragment files using SnapATAC2. The output BigWig and narrowPeak files can be used directly as cerberus training targets and peak-based sampler intervals.
+
+```bash
+# Basic: per-cell-type BigWigs
+python tools/scatac_pseudobulk.py \
+    fragments.tsv.bgz gene_activity.h5ad output_dir/ \
+    --genome hg38 --groupby cell_type
+
+# Full pipeline: BigWigs + peaks + merged peak set
+python tools/scatac_pseudobulk.py \
+    fragments.tsv.bgz gene_activity.h5ad output_dir/ \
+    --genome hg38 --groupby cell_type \
+    --call-peaks --n-jobs 8
+```
+
+Key options:
+
+| Flag | Description |
+|---|---|
+| `--genome` | Built-in genome (hg38, hg19, mm10, mm39) or use `--chrom-sizes` for custom |
+| `--groupby` | obs column to group cells by (default: `cell_type`) |
+| `--call-peaks` | Call peaks with MACS3 after BigWig generation |
+| `--bulk-peaks` | Also call bulk (all-cells) peaks with MACS3 (slow, off by default) |
+| `--no-merge` | Disable merging per-group peaks into `bulk_merge.narrowPeak.bed.gz` |
+| `--overwrite` | Re-generate all outputs even if they already exist |
+| `--counting-strategy` | `insertion` (Tn5 cut sites), `fragment`, or `paired-insertion` |
+| `--normalization` | `raw`, `CPM`, `RPKM`, or `BPM` |
+| `--n-jobs` | Total concurrent thread/process budget (default: max(4, cpu_count//2)) |
+| `--sequential` | Disable parallel stage overlap |
+
+Output layout (all files in `output_dir/`):
+
+```
+cell_type_A.bw                       # per-group BigWig
+cell_type_A.narrowPeak.bed.gz        # per-group peaks (with --call-peaks)
+cell_type_A.narrowPeak.bed.gz.tbi
+...
+bulk.bw                              # bulk (all-cells) BigWig (always)
+bulk_call.narrowPeak.bed.gz          # with --bulk-peaks --call-peaks
+bulk_merge.narrowPeak.bed.gz         # merged per-group peaks (with --call-peaks)
+```
+
+See `examples/scatac_kidney_pseudobulk.sh` for a complete example using the kidney scATAC-seq dataset.
+
+## Visualization Tools
+
+### Training Curves
+
+`tools/plot_training_results.py` parses Lightning CSVLogger `metrics.csv` files and generates training curve plots.
+
+```bash
+python tools/plot_training_results.py path/to/run_dir
+```
+
+Automatically generates plots for all available metrics: loss, profile Pearson, profile MSE, log counts MSE, log counts Pearson, profile loss, count loss, and Dalmatian-specific recon/bias loss. Outputs PNG files (300 dpi) to a `plots/` subdirectory next to each `metrics.csv`.
+
+### BiasNet ISM
+
+`tools/plot_biasnet_ism.py` computes in-silico mutagenesis (ISM) for BiasNet models and generates IC logo + heatmap plots revealing learned sequence motifs.
+
+```bash
+python tools/plot_biasnet_ism.py path/to/biasnet_model --n-seqs 1000 --ism-window 31
+```
+
+Works with both standalone BiasNet and Dalmatian models (extracts the bias subnetwork automatically). Outputs `{prefix}_biasnet_ism.png` and `{prefix}_biasnet_ism.csv`.
+
+### BiasNet Pairwise ISM
+
+`tools/plot_biasnet_pairwise_ism.py` computes pairwise ISM to measure epistatic interactions between positions.
+
+```bash
+python tools/plot_biasnet_pairwise_ism.py path/to/biasnet_model --n-seqs 200 --detail-pair 11 19
+```
+
+Outputs a 4-panel plot (IC logo, epistasis heatmap, interaction profile, 4×4 detail) and a long-format CSV. Computationally intensive (~850K forward passes for default settings).
+
+### Model Architecture Inspector
+
+`tools/print_model_dims.py` prints layer-by-layer tensor shapes for any Cerberus model by running a dummy forward pass with hooks.
+
+```bash
+python tools/print_model_dims.py Pomeranian
+python tools/print_model_dims.py BPNet --input_len 2114 --output_len 1000
+python tools/print_model_dims.py BiasNet
+```
+
+Supports case-insensitive model name matching and automatically infers default dimensions from the model class.
 
 ## Next Steps
 
@@ -453,7 +566,7 @@ The training phase is responsible for learning the mapping from DNA sequence to 
 1.  **Data Setup**: Download/Prepare genome FASTA and signal BigWigs.
 2.  **Config Definition**: Set up the configuration dictionaries.
 3.  **Execution**: Call `train_single` or `train_multi`.
-4.  **Output**: Cerberus saves model checkpoints (`.ckpt`) and logs to a `fold_X` subdirectory within the specified output directory.
+4.  **Output**: Cerberus saves model weights to a `fold_X` subdirectory within the specified output directory. Each fold contains a clean `model.pt` state dict (preferred for inference) alongside Lightning `.ckpt` checkpoints and training logs.
 
 **Example Reference**: `examples/chip_ar_mdapca2b.py` demonstrates a full training script that supports both single-fold and multi-fold training for Baseline CNN and BPNet architectures.
 
@@ -515,7 +628,7 @@ Models return standardized output objects (see [**Components: Model Outputs**](c
 | **GenomeConfig** | Defines genome & exclusions | Same (ensures consistent coordinates) |
 | **DataConfig** | Defines I/O shapes & Augmentations | Defines I/O shapes (Augmentations auto-disabled) |
 | **SamplerConfig** | Defines training batches (w/ jitter) | Not strictly used if providing explicit intervals |
-| **ModelEnsemble** | *Not used (created via Entrypoint)* | **Loads checkpoint & reinstantiates model** |
+| **ModelEnsemble** | *Not used (created via Entrypoint)* | **Loads `model.pt` (or `.ckpt` fallback) & reinstantiates model** |
 | **CerberusDataset** | Feeds DataLoader (`is_train=True`) | Feeds `predict_intervals` (`is_train=False`) |
 | **predict_intervals** | *N/A* | Executes forward pass & aggregation |
 
@@ -914,6 +1027,13 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Splitting**: Splits both the positive and negative samplers consistent with folds.
 *   **Peak labelling**: Because `PeakSampler` extends `MultiSampler`, each batch item returned by `CerberusDataset` includes a `peak_status` field: `1` for peak intervals (from `IntervalSampler`) and `0` for background intervals (from `ComplexityMatchedSampler`). This label is always consistent with `__getitem__` — both read from the same internal index table.
 
+### NegativePeakSampler
+*   **Function**: Background-only variant of `PeakSampler`. Loads peaks for exclusion and complexity reference, but only includes the complexity-matched background intervals in the training set. Peaks are never sampled.
+*   **Use case**: Training bias-only models (e.g., Tn5 sequence bias) on non-peak regions where enzymatic bias dominates, following the ChromBPNet protocol.
+*   **Config type**: `"negative_peak"` — same args as `"peak"` (`intervals_path`, `background_ratio`).
+*   **Epoch size**: Controlled by `background_ratio` (number of background intervals = num_peaks × background_ratio).
+*   **Peak labelling**: `get_peak_status()` always returns `0` (all intervals are background).
+
 ## Best Practices for Users
 
 1.  **Global Configuration**: Set a single random seed in your configuration. The `create_sampler` factory will propagate this seed correctly to all nested samplers.
@@ -1138,12 +1258,20 @@ When `transforms` are not explicitly provided to `CerberusDataset`, they are aut
 
 Cerberus provides specialized loss functions for genomic signal prediction.
 
+### CerberusLoss Protocol
+All loss classes implement the `CerberusLoss` protocol, which requires:
+*   `loss_components(outputs, targets, **kwargs) -> dict[str, Tensor]`: Returns named, unweighted loss components.
+*   `__call__(outputs, targets, **kwargs) -> Tensor`: Returns the combined weighted scalar loss.
+
+`CerberusModule._shared_step` calls both methods: `forward()` for the training loss and `loss_components()` to log each component as a separate Lightning metric (e.g., `train_profile_loss`, `val_count_loss`).
+
 ### ProfilePoissonNLLLoss
 Standard Poisson NLL loss for models predicting log-rates (log-intensities).
 
 *   **Behavior**: Computes `PoissonNLL(exp(log_rates), targets)`.
 *   **Use Case**: Models predicting unnormalized log-counts directly (e.g., `ConvNeXtDCNN`).
 *   **Inputs**: `ProfileLogRates`.
+*   **Components**: `{"poisson_nll_loss": ...}`.
 
 ### MSEMultinomialLoss (BPNetLoss)
 Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).
@@ -1155,6 +1283,7 @@ Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).
     *   `flatten_channels` (default: `False`): If `False`, computes Multinomial NLL independently per channel. If `True`, flattens all channels and length into a single dimension.
     *   `log1p_targets`: If targets are already log-transformed, reverses them before loss calculation.
 *   **Inputs**: `ProfileCountOutput`.
+*   **Components**: `{"profile_loss": ..., "count_loss": ...}`.
 
 ### CoupledMSEMultinomialLoss
 Coupled version of `MSEMultinomialLoss` for models predicting log-rates directly.
@@ -1190,6 +1319,15 @@ Coupled version of `NegativeBinomialMultinomialLoss` for models predicting log-r
 *   **Behavior**: Derives predicted counts via LogSumExp.
 *   **Inputs**: `ProfileLogRates`.
 
+### DalmatianLoss
+Peak-conditioned loss for bias-factorized models. Wraps any profile+count base loss and adds a bias-only reconstruction term on background (non-peak) examples. No explicit signal suppression needed — gradient detach handles it.
+
+*   **Terms**: `L_recon` (all examples) + `bias_weight * L_bias` (background).
+*   **Args**: `base_loss_cls` (dotted class path), `base_loss_args`, `bias_weight` (default: 1.0), `count_pseudocount` (default: 1.0).
+*   **Requires**: `peak_status` tensor passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context).
+*   **Inputs**: `FactorizedProfileCountOutput`.
+*   **Components**: `{"recon_loss": ..., "bias_loss": ...}`.
+
 ## Model Outputs
 
 Models return standardized dataclasses (defined in `cerberus.output`) to ensure compatibility with losses and metrics.
@@ -1205,6 +1343,10 @@ Models return standardized dataclasses (defined in `cerberus.output`) to ensure 
 ### ProfileCountOutput
 *   **Content**: `logits` (Batch, Channels, Length) and `log_counts` (Batch, Channels).
 *   **Use Case**: BPNet-style models with separate heads for profile shape and total count.
+
+### FactorizedProfileCountOutput
+*   **Content**: Extends `ProfileCountOutput` with `bias_logits`, `bias_log_counts`, `signal_logits`, `signal_log_counts`.
+*   **Use Case**: Bias-factorized models (Dalmatian) that decompose predictions into bias and signal components. Fully compatible with losses/metrics expecting `ProfileCountOutput`.
 
 ## Metrics
 
@@ -1266,7 +1408,7 @@ Prediction in Cerberus involves applying a trained model (or ensemble of models)
 
 ### ModelEnsemble
 The `ModelEnsemble` class is the central entry point for prediction. It:
-1.  **Loads Models**: Automatically detects single-fold or multi-fold checkpoints and loads the appropriate model weights from a directory.
+1.  **Loads Models**: Automatically detects single-fold or multi-fold model directories and loads weights. Prefers clean `model.pt` state dicts (faster, no prefix stripping) and falls back to Lightning `.ckpt` checkpoints for backward compatibility.
 2.  **Manages Folds**: Identifies which model to run for a given genomic interval based on cross-validation fold definitions.
     *   **Rotation Logic**: Cerberus assumes a standard rotation where Model `i` uses Partition `i` as Test and Partition `(i+1)%k` as Validation.
     *   If you request `use_folds=["test"]`, the ensemble selects Model `i` for intervals falling in Partition `i`.
@@ -1379,6 +1521,38 @@ predict_to_bigwig(
 
 Cerberus provides command-line tools for common prediction tasks.
 
+### Export BigWig (`tools/export_bigwig.py`)
+Exports genome-wide model predictions as a BigWig signal track for visualization in genome browsers (e.g., IGV, UCSC).
+
+```bash
+python tools/export_bigwig.py \
+    path/to/model_dir \
+    --output predictions.bw \
+    --stride 50 \
+    --batch_size 256 \
+    --device cuda
+```
+
+This tool:
+1. Loads the model ensemble and automatically resolves dataset paths.
+2. Clears target extractors (no observed signal is needed — only sequence inputs are used).
+3. Slides a window across all allowed chromosomes, grouping contiguous windows into islands.
+4. Reconstructs linear signal per window (softmax × counts for BPNet, exp for log-rates) then spatially merges overlapping predictions using a streaming accumulator.
+5. Automatically reads `count_pseudocount` from the model config and subtracts it when inverting `log_counts` (MSE-trained models).
+
+The exported track contains the reconstructed linear signal (counts per bp). For multi-channel models, only channel 0 is written (BigWig is single-track).
+
+#### Optional arguments
+
+| Argument | Description |
+|---|---|
+| `--output` | Output BigWig path (default: `predictions.bw`). |
+| `--stride` | Sliding window stride in bp. Defaults to `output_len // 2` (50% overlap). |
+| `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val`. |
+| `--batch_size` | Batch size for inference (default: 64). |
+| `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
+| `--count-pseudocount` | Override pseudocount for log_counts inversion. Auto-read from config if omitted. |
+
 ### Export Predictions (`tools/export_predictions.py`)
 Exports predicted vs observed log-counts for a set of peaks to a TSV file. This is useful for evaluating model performance on peak sets.
 
@@ -1426,6 +1600,10 @@ where `p = count_pseudocount`, rather than the naive `logsumexp`, which would gi
 
 | Argument | Description |
 |---|---|
+| `--eval-split` | Which chromosome split to evaluate on: `test` (default, held-out test chromosomes), `val`, `train`, or `all`. Use `all` only for exploratory analysis — it includes training chromosomes and inflates metrics. |
+| `--include-background` | Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a `peak` sampler. Adds a `peak_status` column to the output (1=peak, 0=background). |
+| `--background-ratio` | Ratio of background intervals to peaks (default: taken from model's sampler config). Only used with `--include-background`. |
+| `--seed` | Random seed for background interval generation (default: 1234). Only used with `--include-background`. |
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val` for multi-fold ensembles, `all` for single-fold. |
 | `--max_batches` | Limit the number of batches processed (useful for quick checks). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
@@ -1530,6 +1708,7 @@ A lightweight, efficient model (~150k params) mirroring BPNet's valid-padding pa
 *   **Valid Padding**: Ensures no zero-padding artifacts; strictly maps input to output geometrically (2112bp -> 1024bp).
 *   **Factorized Stem**: Uses a 2-layer stem (`[11, 11]`) with dense and depthwise convolutions for efficient initial feature extraction.
 *   **PGC Body**: Stack of 8 Pointwise-Gated Convolution (PGC) blocks.
+*   **Depthwise-Only Mode** (`expansion=0`): When `expansion=0`, the PGC tower uses depthwise-only blocks — no pointwise projections or gating. Each block becomes `RMSNorm → Depthwise Conv → Dropout → Residual`. Geometry (input/output lengths) is unchanged. Useful for lightweight baselines and ablation studies testing whether inter-channel mixing matters.
 *   **Variants**:
     *   **Pomeranian** (Default): Uses Kernel=9 and Dilation=64 (max). Best for hardware efficiency and modeling large motifs.
     *   **PomeranianK5**: Uses Kernel=5 and Dilation=128 (max). Traditional small-kernel approach.
@@ -1596,6 +1775,22 @@ model = BPNet(
     activation="gelu",
     weight_norm=True,
 )
+```
+
+### Residual Architecture Variants
+
+The `residual_architecture` parameter controls the residual block formulation in the dilated tower:
+
+| Variant | Formula | Description |
+|---|---|---|
+| `residual_post-activation_conv` (default) | `x + act(conv(x))` | Current Cerberus/BPNet-lite style. Initial conv output is activated before the tower. |
+| `residual_pre-activation_conv` | `x + conv(act(x))` | BasePairNet/bpnet-refactor pre-activation style. Initial conv is *not* activated before the tower; a final ReLU is applied after the tower. |
+| `activated_residual_pre-activation_conv` | `act(x) + conv(act(x))` | bpnet-refactor post-activation style. Both the residual and conv branch are activated. Final ReLU after the tower. |
+
+The default (`residual_post-activation_conv`) preserves existing behavior. From the training script:
+```bash
+python tools/train_bpnet.py --residual-architecture residual_pre-activation_conv \
+    --bigwig signal.bw --peaks peaks.bed --output-dir models/my_model
 ```
 
 ### Loss: BPNetLoss
@@ -1708,6 +1903,275 @@ model = ConvNeXtDCNN(
     output_channels=["signal"],
 )
 # Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 512)
+```
+
+## BiasNet
+
+**Implementation**: `cerberus.models.BiasNet`
+**Source**: `src/cerberus/models/biasnet.py`
+
+A lightweight bias model for Tn5 enzymatic sequence preference. Uses a plain Conv1d + ReLU stack with residual connections and valid padding. Designed for ChromBPNet-style bias factorization in the Dalmatian model.
+
+All operations are `nn.Module`-based (no `F.relu`) for full DeepLIFT/DeepSHAP compatibility via captum.
+
+### Architecture
+
+- **Stem**: 2-layer `[11, 11]` Conv1d + ReLU (valid padding)
+- **Body**: 5 × SimpleResidualBlock (Conv1d + ReLU + Dropout + Residual, k=9, dilation=1)
+- **Head**: Single linear Conv1d(f, 1, 45) spatial conv (valid padding)
+- **Count**: GlobalAvgPool → Linear → ReLU → Linear
+
+Default configuration: 12 filters, 105bp RF, ~9.3K params.
+
+### Key Features
+*   **DeepLIFT/DeepSHAP compatible**: Only Conv1d, ReLU, and residual add — all have well-defined captum propagation rules.
+*   **Linear profile head**: A single spatial convolution (no pointwise + ReLU) maximizes interpretability for attribution methods.
+*   **Valid padding**: Ensures no zero-padding artifacts; strictly maps input to output geometrically.
+*   **Residual connections**: Enable gradient flow through the 5-layer tower without normalization layers.
+
+### Recommended Training Settings
+
+| Parameter | Value |
+|---|---|
+| Optimizer | `adamw` |
+| Learning rate | `1e-3` |
+| Weight decay | `1e-4` |
+| Adam ε | `1e-8` |
+| Scheduler | `default` (constant) |
+| Loss | `MSEMultinomialLoss` (`count_weight="adaptive"`) |
+| Sampler | `negative_peak` (background regions only) |
+
+### Training Tool
+
+Use `tools/train_biasnet.py` for command-line training:
+
+```bash
+# Train on negative peaks (default — bias-only training)
+python tools/train_biasnet.py \
+    --bigwig path/to/signal.bw \
+    --peaks path/to/peaks.narrowPeak \
+    --output-dir models/my_bias_model
+
+# Train on peaks + background (like Pomeranian)
+python tools/train_biasnet.py \
+    --bigwig path/to/signal.bw \
+    --peaks path/to/peaks.narrowPeak \
+    --output-dir models/my_bias_model \
+    --sampler-type peak
+
+# Cosine schedule with warmup
+python tools/train_biasnet.py \
+    --bigwig path/to/signal.bw \
+    --peaks path/to/peaks.narrowPeak \
+    --output-dir models/my_bias_model \
+    --scheduler-type cosine --warmup-epochs 10
+```
+
+### Usage
+```python
+from cerberus.models import BiasNet
+
+model = BiasNet(
+    input_len=1128,
+    output_len=1024,
+    filters=12,
+    n_layers=5,
+)
+# Returns ProfileCountOutput(logits=..., log_counts=...)
+```
+
+## Dalmatian
+
+**Implementation**: `cerberus.models.Dalmatian`
+**Source**: `src/cerberus/models/dalmatian.py`
+
+An end-to-end bias-factorized sequence-to-function model for ATAC-seq data. Replaces ChromBPNet's two-stage training (freeze bias, then train signal) with joint training of a BiasNet and a Pomeranian SignalNet, using architectural constraints, gradient separation, and a peak-conditioned loss to separate Tn5 enzyme bias from regulatory signal.
+
+The name "Dalmatian" follows the dog-breed naming convention (BPNet, Pomeranian) and alludes to the two-component spotted pattern.
+
+### Architecture
+
+Dalmatian composes two sub-networks:
+
+- **BiasNet** (~9.3K params): Lightweight Conv1d+ReLU stack with short receptive field (~105bp) to capture local Tn5 sequence bias. Uses 12 filters, 5 residual tower layers (all dilation=1), kernel size 9, two-layer stem `[11,11]`, linear profile head (k=45). Fully DeepLIFT/DeepSHAP compatible.
+- **SignalNet** (~2-3M params): Full Pomeranian with long receptive field (~1089bp) to capture regulatory grammar (TF footprints, nucleosome positioning). Uses 256 filters, 8 dilated layers `[1,1,2,4,8,16,32,64]`, kernel size 9, two-layer stem `[11,11]`, profile kernel 45.
+
+Their outputs are combined:
+- **Profile**: logit addition (`combined_logits = bias_logits + signal_logits`)
+- **Counts**: log-space addition via logsumexp (`combined_log_counts = logsumexp(bias_log_counts, signal_log_counts)`)
+
+### Key Features
+*   **Gradient separation**: Bias outputs are `.detach()`-ed before combining with signal outputs, so the combined reconstruction loss (L_recon) trains only SignalNet. BiasNet receives gradients exclusively from L_bias (background reconstruction). This replicates ChromBPNet's freeze-bias design without requiring a two-stage training procedure.
+*   **Zero-initialized signal outputs** (`zero_init`, default `False`): When enabled, signal outputs are identity elements (logits=0, log_counts=-10) at initialization, so the combined output equals the bias-only output. **Recommended: leave disabled.** Experiments (exp20) show zero-init is harmful with gradient detach — SignalNet wastes epochs "turning on" from zero output. Without detach it served a purpose (soft two-stage training); with detach it's just a bad initialization.
+*   **Signal presets**: `signal_preset="large"` (f=256, expansion=2, ~3.9M params) or `signal_preset="standard"` (default, f=64, expansion=1, ~150K params — matches standalone Pomeranian K9). Individual `signal_*` args override the preset. Experiments (exp20) show the 24x parameter difference buys <0.01 profile Pearson.
+*   **Per-channel counts**: Both sub-models use `predict_total_count=False` because ATAC-seq channels represent independent samples (not forward/reverse strands).
+*   **Clean geometry**: SignalNet shrinkage exactly maps `input_len` to `output_len` with no excess cropping. BiasNet receives a center-cropped input sized to its own receptive field needs.
+*   **Input validation**: Rejects configurations where SignalNet shrinkage doesn't produce the exact `output_len`.
+*   **DeepLIFT-compatible bias model**: BiasNet uses only Conv1d + ReLU + residual add, all with well-defined captum propagation rules.
+
+### Output: FactorizedProfileCountOutput
+
+Returns a `FactorizedProfileCountOutput` (extends `ProfileCountOutput`) containing both the combined predictions and the decomposed bias/signal components:
+
+```python
+@dataclass
+class FactorizedProfileCountOutput(ProfileCountOutput):
+    bias_logits: torch.Tensor       # (B, C, L)
+    bias_log_counts: torch.Tensor   # (B, C)
+    signal_logits: torch.Tensor     # (B, C, L)
+    signal_log_counts: torch.Tensor # (B, C)
+```
+
+This is fully compatible with existing losses and metrics that expect `ProfileCountOutput` (they see `logits` and `log_counts`), while the decomposed fields enable the peak-conditioned `DalmatianLoss`.
+
+### Loss: DalmatianLoss
+
+`DalmatianLoss` wraps any profile+count base loss (e.g., `MSEMultinomialLoss`) and adds a peak-conditioned bias term:
+
+```
+L = L_recon(combined, target)                          # all examples
+  + bias_weight * L_bias(bias_only, target)            # background only
+```
+
+- **L_recon**: Standard reconstruction loss on the combined output (all examples). Gradients flow only to SignalNet (bias outputs are detached before combining).
+- **L_bias**: Reconstruction loss using only the bias component (background/non-peak examples only). This is the sole gradient source for BiasNet, forcing it to learn Tn5 bias rather than TF footprints.
+- **`peak_status`**: A per-example binary tensor passed as batch context via `**kwargs`. The `CerberusModule._shared_step` automatically forwards all non-input/target batch fields as keyword arguments.
+
+No explicit signal suppression term is needed — gradient detach already prevents SignalNet from activating on background (verified in exp21: removing the L1 penalty had zero measurable effect).
+
+```python
+model_config = {
+    "name": "Dalmatian",
+    "model_cls": "cerberus.models.dalmatian.Dalmatian",
+    "loss_cls": "cerberus.loss.DalmatianLoss",
+    "loss_args": {
+        "base_loss_cls": "cerberus.loss.MSEMultinomialLoss",
+        "base_loss_args": {"count_per_channel": True},
+        "bias_weight": 1.0,
+    },
+    "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
+    "metrics_args": {},
+    "model_args": {
+        "input_len": 2112,
+        "output_len": 1024,
+        "output_channels": ["sample1"],
+    },
+}
+```
+
+### Usage
+```python
+from cerberus.models import Dalmatian
+from cerberus.loss import DalmatianLoss
+
+# Default: 2112bp -> 1024bp
+model = Dalmatian(
+    input_len=2112,
+    output_len=1024,
+    input_channels=["A", "C", "G", "T"],
+    output_channels=["sample1"],
+)
+
+loss = DalmatianLoss(
+    base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+    bias_weight=1.0,
+)
+
+# Returns FactorizedProfileCountOutput with combined + decomposed fields
+out = model(torch.randn(2, 4, 2112))
+# out.logits, out.log_counts       -- combined
+# out.bias_logits, out.bias_log_counts    -- bias component
+# out.signal_logits, out.signal_log_counts -- signal component
+```
+
+### Training Tool
+
+Use `tools/train_dalmatian.py` for command-line training:
+
+```bash
+# Bulk pseudobulk (all cell types merged)
+python tools/train_dalmatian.py \
+    --bigwig "tests/data/scatac_kidney_pseudobulk/bulk.bw" \
+    --peaks "tests/data/scatac_kidney_pseudobulk/bulk_merge.narrowPeak.bed.gz" \
+    --output-dir models/kidney_dalmatian
+
+# Or use the example script
+bash examples/scatac_kidney_dalmatian.sh
+```
+
+### Pretrained Bias Loading
+
+Load a pre-trained BiasNet to skip bias re-training. This is equivalent to ChromBPNet's two-stage approach (freeze bias, train signal) but in a single training run:
+
+```bash
+# Frozen pre-trained bias (ChromBPNet-equivalent)
+python tools/train_dalmatian.py \
+    --bigwig signal.bw --peaks peaks.bed \
+    --pretrained-bias pretrained/biasnet/atac_k562.pt \
+    --freeze-bias \
+    --output-dir models/dalmatian_frozen_bias
+
+# Warm-start bias (fine-tune both sub-models)
+python tools/train_dalmatian.py \
+    --bigwig signal.bw --peaks peaks.bed \
+    --pretrained-bias pretrained/biasnet/atac_k562.pt \
+    --output-dir models/dalmatian_finetuned
+```
+
+The pretrained weight loading system is generic — any training tool supports `--pretrained` for whole-model warm-starting (e.g., `python tools/train_pomeranian.py --pretrained model.pt ...`).
+
+Internally, pretrained configs use `source` and `target` fields to support flexible weight mapping:
+
+| Use case | source | target |
+|----------|--------|--------|
+| Standalone BiasNet → Dalmatian bias | None | "bias_model" |
+| Full Dalmatian checkpoint → Dalmatian bias | "bias_model" | "bias_model" |
+| Full Dalmatian checkpoint → whole Dalmatian | None | None |
+| Standalone Pomeranian → Dalmatian signal | None | "signal_model" |
+
+## PWMBiasModel (experimental)
+
+**Location**: `debug/pwm_model/pwm_bias.py` (not part of cerberus public API)
+
+A structured bias model that learns `n_motifs` position-weight matrix (PWM) filters of fixed `motif_width` and combines them via linear mixing. Designed for capturing enzymatic sequence bias (e.g., Tn5 transposase preference in ATAC-seq), where the bias is a short motif (~21bp) with low information content (~2 bits total).
+
+Self-contained in `debug/pwm_model/` with its own output type (`RegularizedProfileCountOutput`), loss wrapper (`RegularizedMSEMultinomialLoss`), and tests. Compatible with cerberus training infrastructure via `import_class`.
+
+### Key Features
+*   **Learnable PWM filters**: `Conv1d(4, n_motifs, motif_width, valid)` — each filter is a learnable PWM that can be extracted and visualized as a sequence logo.
+*   **Linear mixing**: `Conv1d(n_motifs, n_output_channels, 1)` — pointwise linear combination of filter activations. With linear mixing, multiple filters are mathematically equivalent to a single effective filter (provably via einsum folding).
+*   **Non-negative mixing** (`nonneg_mixing=True`): Applies softplus to mixing weights, preventing filter cancellation where filters learn opposing patterns.
+*   **ReLU activation** (`relu_activation=True`): Adds ReLU between PWM conv and profile mixing, breaking linear equivalence so each filter fires independently.
+*   **Decorrelation penalty** (`decorrelation_weight`): Cosine similarity penalty between flattened PWM filters, encouraging distinct motif patterns. Used with `RegularizedMSEMultinomialLoss`.
+*   **Exact geometry**: `input_len = output_len + motif_width - 1` (no cropping). Validates at construction time.
+*   **Count head**: `GlobalAvgPool → Linear → GELU → Linear` for log count prediction.
+*   **Output**: Returns `RegularizedProfileCountOutput(logits=..., log_counts=..., reg_loss=...)`, compatible with `MSEMultinomialLoss` and `RegularizedMSEMultinomialLoss`.
+
+### Architecture Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_motifs` | 2 | Number of learnable PWM filters |
+| `motif_width` | 21 | Width of each filter in bp |
+| `nonneg_mixing` | False | Softplus on mixing weights (prevents cancellation) |
+| `relu_activation` | False | ReLU between PWM conv and mixing (breaks linear equivalence) |
+| `decorrelation_weight` | 0.0 | Cosine similarity penalty weight (0=disabled) |
+| `predict_total_count` | True | Single total count vs per-channel counts |
+
+### Usage
+```python
+# Add debug/ to sys.path first
+from pwm_model.pwm_bias import PWMBiasModel
+
+model = PWMBiasModel(
+    input_len=1044, output_len=1024,
+    n_motifs=2, motif_width=21,
+    nonneg_mixing=True, relu_activation=True,
+    decorrelation_weight=0.1,
+)
+
+# After training, extract filters for visualization:
+pwm_weights = model.get_pwm_weights()   # (n_motifs, 4, motif_width)
+mixing = model.get_mixing_weights()      # (n_output_channels, n_motifs, 1)
 ```
 
 ## GlobalProfileCNN (Gopher)
@@ -2167,7 +2631,8 @@ class SamplerConfig(TypedDict):
     Configuration for data samplers.
 
     Attributes:
-        sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random', 'complexity_matched', 'peak').
+        sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random',
+            'complexity_matched', 'peak', 'negative_peak').
         padded_size: Length of the intervals yielded by the sampler (after padding/centering).
         sampler_args: Dictionary of arguments specific to the sampler type.
 
@@ -2187,6 +2652,9 @@ class SamplerConfig(TypedDict):
     - 'peak':
         - intervals_path: Path to peaks file.
         - background_ratio: Ratio of background intervals to peaks (default: 1.0).
+    - 'negative_peak':
+        - intervals_path: Path to peaks file (used for exclusion and complexity reference).
+        - background_ratio: Number of background intervals per peak (controls epoch size).
     """
 
     sampler_type: str
@@ -2265,6 +2733,27 @@ class TrainConfig(TypedDict):
     gradient_clip_val: float | None
 
 
+class PretrainedConfig(TypedDict):
+    """Configuration for loading pretrained weights into a model or sub-module.
+
+    Attributes:
+        weights_path: Path to a .pt state dict file (clean, no "model." prefix).
+        source: Sub-module prefix to extract from the source state dict.
+            None uses all keys. E.g. ``"bias_model"`` extracts and strips keys
+            starting with ``"bias_model."``, enabling loading a sub-module
+            from a full-model checkpoint.
+        target: Named sub-module to load into. None loads into the whole model.
+            E.g. ``"bias_model"`` loads into ``model.bias_model``.
+        freeze: If True, freeze all parameters in the loaded (sub)module
+            by setting requires_grad=False.
+    """
+
+    weights_path: str
+    source: str | None
+    target: str | None
+    freeze: bool
+
+
 class ModelConfig(TypedDict):
     """
     Configuration for the model architecture.
@@ -2274,9 +2763,9 @@ class ModelConfig(TypedDict):
         model_cls: Fully qualified class name string of the model.
         loss_cls: Fully qualified class name string of the loss.
         metrics_cls: Fully qualified class name string of the metric collection.
-        input_channels: List of input channel names.
-        output_channels: List of output channel names.
-        output_type: Type of output ('signal' or 'decoupled').
+        model_args: Model-specific keyword arguments.
+        pretrained: List of pretrained weight configs to load after
+            model instantiation. Empty list means no pretrained weights.
     """
 
     name: str
@@ -2286,6 +2775,7 @@ class ModelConfig(TypedDict):
     metrics_cls: str
     metrics_args: dict[str, Any]
     model_args: dict[str, Any]
+    pretrained: list[PretrainedConfig]
 
 
 class CerberusConfig(TypedDict):
@@ -2633,6 +3123,12 @@ def validate_sampler_config(
             missing = required_args - config["sampler_args"].keys()
             raise ValueError(f"PeakSampler args missing required keys: {missing}")
 
+    elif config["sampler_type"] == "negative_peak":
+        required_args = {"intervals_path"}
+        if not all(k in config["sampler_args"] for k in required_args):
+            missing = required_args - config["sampler_args"].keys()
+            raise ValueError(f"NegativePeakSampler args missing required keys: {missing}")
+
     return {
         "sampler_type": config["sampler_type"],
         "padded_size": config["padded_size"],
@@ -2840,6 +3336,7 @@ def validate_model_config(config: ModelConfig) -> ModelConfig:
         "metrics_cls": config["metrics_cls"],
         "metrics_args": config["metrics_args"],
         "model_args": config["model_args"],
+        "pretrained": config["pretrained"],
     }
 
 
@@ -2967,7 +3464,19 @@ def parse_hparams_config(
     genome_conf = validate_genome_config(data["genome_config"], search_paths=search_paths)
     data_conf = validate_data_config(data["data_config"], search_paths=search_paths)
     sampler_conf = validate_sampler_config(data["sampler_config"], search_paths=search_paths)
-    model_conf = validate_model_config(data["model_config"])
+    # Backfill pretrained for YAML files saved before the field existed.
+    # This backwards compatibility shim will be removed in a future release —
+    # retrain models to generate hparams.yaml files with the pretrained field.
+    raw_model_config = data["model_config"]
+    if "pretrained" not in raw_model_config:
+        logger.warning(
+            "hparams.yaml at %s is missing 'pretrained' field in model_config. "
+            "Defaulting to pretrained=[]. Retrain the model to update the config. "
+            "This backwards compatibility shim will be removed in a future release.",
+            p,
+        )
+        raw_model_config["pretrained"] = []
+    model_conf = validate_model_config(raw_model_config)
     
     # Cross-validation
     validate_data_and_sampler_compatibility(data_conf, sampler_conf)
@@ -4580,12 +5089,10 @@ def _select_from_bins(
     return selected_indices
 
 
-def generate_sub_seeds(seed: int | None, n: int) -> list[int | None]:
+def generate_sub_seeds(seed: int, n: int) -> list[int]:
     """
     Generates n independent seeds from a master seed.
     """
-    if seed is None:
-        return [None] * n
     rng = random.Random(seed)
     return [rng.getrandbits(32) for _ in range(n)]
 
@@ -4838,7 +5345,7 @@ class MultiSampler(BaseSampler):
         chrom_sizes: dict[str, int] | None = None,
         folds: list[dict[str, InterLap]] | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
-        seed: int | None = None,
+        seed: int = 42,
         generate_on_init: bool = True,
     ):
         """
@@ -4847,7 +5354,7 @@ class MultiSampler(BaseSampler):
             chrom_sizes: Dictionary of chromosome sizes.
             folds: List of fold definitions.
             exclude_intervals: Dictionary of excluded regions.
-            seed: Optional random seed for initialization.
+            seed: Random seed for initialization.
             generate_on_init: Whether to generate samples immediately (default: True).
         """
         if chrom_sizes is None:
@@ -4875,7 +5382,7 @@ class MultiSampler(BaseSampler):
         )
         self.samplers = samplers
         self._indices: list[tuple[int, int]] = []  # List of (sampler_idx, interval_idx)
-        self.seed: int | None = seed
+        self.seed: int = seed
         self.rng = random.Random(seed)
         if generate_on_init:
             self.resample(seed=seed)
@@ -5044,7 +5551,7 @@ class RandomSampler(BaseSampler):
         folds: list[dict[str, InterLap]] | None = None,
         exclude_intervals: dict[str, InterLap] | None = None,
         regions: dict[str, InterLap] | None = None,
-        seed: int | None = None,
+        seed: int = 42,
         generate_on_init: bool = True,
     ):
         super().__init__(
@@ -5055,7 +5562,7 @@ class RandomSampler(BaseSampler):
         self.padded_size = padded_size
         self.num_intervals = num_intervals
         self.regions = regions
-        self.seed = seed
+        self.seed: int = seed
         self.rng = random.Random(seed)
         self._intervals: list[Interval] = []
         if generate_on_init:
@@ -5405,7 +5912,7 @@ class ScaledSampler(ProxySampler):
         self,
         sampler: Sampler,
         num_samples: int,
-        seed: int | None = None,
+        seed: int = 42,
         generate_on_init: bool = True,
     ):
         """
@@ -5423,7 +5930,7 @@ class ScaledSampler(ProxySampler):
         self.sampler = sampler
         self.num_samples = int(num_samples)
         self._indices: list[int] = []
-        self.seed = seed
+        self.seed: int = seed
         self.rng = random.Random(seed)
         if generate_on_init:
             self.resample(seed=seed)
@@ -5494,6 +6001,12 @@ class ComplexityMatchedSampler(ProxySampler):
     This sampler bins the target intervals by their metrics and then selects
     intervals from the candidate sampler to match the count in each bin, scaled
     by `candidate_ratio`.
+
+    IMPORTANT: Any sampler type that uses ComplexityMatchedSampler must be
+    registered in CerberusDataModule._resolve_cache_dir() and
+    CerberusDataModule.prepare_data() so that its metrics_cache is persisted
+    to disk across runs. Without this, metrics are recomputed from scratch
+    every time (expensive FASTA reads).
     """
 
     def __init__(
@@ -5507,7 +6020,7 @@ class ComplexityMatchedSampler(ProxySampler):
         bins: int = 20,
         candidate_ratio: float = 1.0,
         metrics: list[str] | None = None,
-        seed: int | None = None,
+        seed: int = 42,
         generate_on_init: bool = True,
         metrics_cache: dict[str, np.ndarray] | None = None,
     ):
@@ -5536,7 +6049,7 @@ class ComplexityMatchedSampler(ProxySampler):
         self.fasta_path = Path(fasta_path)
         self.bins = bins
         self.candidate_ratio = candidate_ratio
-        self.seed = seed
+        self.seed: int = seed
         self.rng = random.Random(seed)
 
         if metrics is None:
@@ -5744,7 +6257,8 @@ class PeakSampler(MultiSampler):
         background_ratio: float = 1.0,
         min_candidates: int = 10000,
         candidate_oversample_factor: float = 5.0,
-        seed: int | None = None,
+        seed: int = 42,
+        prepare_cache: dict[str, np.ndarray] | None = None,
     ):
         """
         Args:
@@ -5754,11 +6268,12 @@ class PeakSampler(MultiSampler):
             padded_size: Interval size.
             folds: Fold definitions.
             exclude_intervals: Excluded regions.
-            background_ratio: Ratio of background intervals to peaks. 
+            background_ratio: Ratio of background intervals to peaks.
                               e.g. 1.0 = 1:1, 2.0 = 2 backgrounds per peak.
             min_candidates: Minimum number of candidate intervals to generate.
             candidate_oversample_factor: Factor to oversample candidates relative to peaks.
             seed: Random seed.
+            prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
         """
         self.intervals_path = Path(intervals_path)
         self.background_ratio = background_ratio
@@ -5806,7 +6321,7 @@ class PeakSampler(MultiSampler):
                 num_intervals=n_candidates,
                 folds=folds,
                 exclude_intervals=neg_excludes,
-                seed=None,
+                seed=seed,
                 generate_on_init=False,
             )
 
@@ -5819,9 +6334,10 @@ class PeakSampler(MultiSampler):
                 folds=folds,
                 exclude_intervals=neg_excludes, # Use the augmented excludes
                 candidate_ratio=background_ratio,
-                seed=None,
+                seed=seed,
                 generate_on_init=False,
                 metrics=["gc", "dust", "cpg"],
+                metrics_cache=prepare_cache,
             )
             samplers.append(self.negatives)
         else:
@@ -5837,6 +6353,113 @@ class PeakSampler(MultiSampler):
         )
 
 
+class NegativePeakSampler(MultiSampler):
+    """Background-only sampler: complexity-matched non-peak intervals.
+
+    Like PeakSampler, loads peaks and generates complexity-matched background
+    intervals that exclude peak regions. Unlike PeakSampler, the peaks
+    themselves are NOT included in the training set — only the background
+    intervals are used. All intervals have peak_status=0.
+
+    Used for training bias-only models (e.g., Tn5 sequence bias in ChromBPNet /
+    Dalmatian) on non-peak regions where enzymatic bias dominates.
+
+    Args:
+        intervals_path: Path to peaks (used for exclusion and complexity reference).
+        fasta_path: Path to genome FASTA.
+        chrom_sizes: Chromosome sizes.
+        padded_size: Interval size.
+        folds: Fold definitions.
+        exclude_intervals: Excluded regions.
+        background_ratio: Number of background intervals per peak.
+            Controls epoch size: num_intervals = num_peaks * background_ratio.
+        min_candidates: Minimum number of candidate intervals to generate.
+        candidate_oversample_factor: Factor to oversample candidates relative to peaks.
+        seed: Random seed.
+        prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
+    """
+
+    def __init__(
+        self,
+        intervals_path: Path | str,
+        fasta_path: Path | str,
+        chrom_sizes: dict[str, int],
+        padded_size: int,
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+        background_ratio: float = 1.0,
+        min_candidates: int = 10000,
+        candidate_oversample_factor: float = 5.0,
+        seed: int = 42,
+        prepare_cache: dict[str, np.ndarray] | None = None,
+    ):
+        self.intervals_path = Path(intervals_path)
+        self.background_ratio = background_ratio
+
+        logger.info(f"NegativePeakSampler: Loading peak intervals from {self.intervals_path} (for exclusion/complexity reference)...")
+        # 1. Load peaks (for exclusion and complexity reference only — not included in training)
+        self.positives = IntervalSampler(
+            file_path=self.intervals_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+        )
+        logger.info(f"NegativePeakSampler: Loaded {len(self.positives)} peak intervals (reference only).")
+
+        if exclude_intervals is None:
+            exclude_intervals = {}
+
+        # 2. Exclusions for negatives (original excludes + peaks)
+        neg_excludes = copy.deepcopy(exclude_intervals)
+        for interval in self.positives:
+            if interval.chrom not in neg_excludes:
+                neg_excludes[interval.chrom] = InterLap()
+            neg_excludes[interval.chrom].add((interval.start, interval.end))
+
+        # 3. Candidates (random background, excluding peaks)
+        n_peaks = len(self.positives)
+        n_candidates = max(
+            min_candidates,
+            int(n_peaks * background_ratio * candidate_oversample_factor),
+        )
+        self.candidates = RandomSampler(
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            num_intervals=n_candidates,
+            folds=folds,
+            exclude_intervals=neg_excludes,
+            seed=seed,
+            generate_on_init=False,
+        )
+
+        # 4. Negatives (complexity matched to peaks)
+        self.negatives = ComplexityMatchedSampler(
+            target_sampler=self.positives,
+            candidate_sampler=self.candidates,
+            fasta_path=fasta_path,
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=neg_excludes,
+            candidate_ratio=background_ratio,
+            seed=seed,
+            generate_on_init=False,
+            metrics=["gc", "dust", "cpg"],
+            metrics_cache=prepare_cache,
+        )
+
+        # 5. Initialize MultiSampler with only negatives
+        super().__init__(
+            samplers=[self.negatives],
+            chrom_sizes=chrom_sizes,
+            exclude_intervals=exclude_intervals,
+            seed=seed,
+        )
+
+    def get_peak_status(self, idx: int) -> int:
+        """All intervals are background (non-peak). Always returns 0."""
+        return 0
+
 
 def create_sampler(
     config: dict | SamplerConfig,
@@ -5844,21 +6467,24 @@ def create_sampler(
     folds: list[dict[str, InterLap]],
     exclude_intervals: dict[str, InterLap],
     fasta_path: Path | str | None = None,
-    seed: int | None = None,
+    seed: int = 42,
+    prepare_cache: dict[str, np.ndarray] | None = None,
 ) -> Sampler:
     """
     Factory function to create a Sampler from a config.
-    
+
     Args:
         config: Sampler configuration dictionary.
         chrom_sizes: Chromosome sizes dictionary.
         folds: List of fold definitions.
         exclude_intervals: Dictionary of excluded regions.
         fasta_path: Path to the genome FASTA file (required for ComplexityMatchedSampler/PeakSampler).
-        
+        seed: Random seed.
+        prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
+
     Returns:
         Sampler: An instantiated sampler object.
-        
+
     Raises:
         ValueError: If sampler_type is unsupported.
     """
@@ -5937,11 +6563,12 @@ def create_sampler(
             candidate_ratio=sampler_args["candidate_ratio"],
             seed=seed,
             metrics=sampler_args["metrics"],
+            metrics_cache=prepare_cache,
         )
 
     elif sampler_type == "peak":
         background_ratio = sampler_args["background_ratio"]
-        
+
         if fasta_path is None:
             raise ValueError("PeakSampler requires 'fasta_path' to be provided.")
 
@@ -5954,6 +6581,25 @@ def create_sampler(
             exclude_intervals=exclude_intervals,
             background_ratio=background_ratio,
             seed=seed,
+            prepare_cache=prepare_cache,
+        )
+
+    elif sampler_type == "negative_peak":
+        background_ratio = sampler_args["background_ratio"]
+
+        if fasta_path is None:
+            raise ValueError("NegativePeakSampler requires 'fasta_path' to be provided.")
+
+        return NegativePeakSampler(
+            intervals_path=sampler_args["intervals_path"],
+            fasta_path=fasta_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+            background_ratio=background_ratio,
+            seed=seed,
+            prepare_cache=prepare_cache,
         )
 
     else:
@@ -6343,6 +6989,7 @@ def create_default_transforms(
 ## src/cerberus/dataset.py
 
 from typing import Any
+import numpy as np
 import torch
 import logging
 from torch.utils.data import Dataset
@@ -6408,7 +7055,8 @@ class CerberusDataset(Dataset):
         deterministic_transforms: list[DataTransform] | None = None,
         in_memory: bool = False,
         is_train: bool = True,
-        seed: int | None = None,
+        seed: int = 42,
+        prepare_cache: dict[str, np.ndarray] | None = None,
     ):
         """
         Initializes the CerberusDataset.
@@ -6423,12 +7071,13 @@ class CerberusDataset(Dataset):
             sampler: Optional custom sampler. If None, created based on config.
             exclude_intervals: Optional pre-computed exclude intervals. If None, loaded from config.
             transforms: Optional list of transforms for training. If None, defaults are created from data_config.
-            deterministic_transforms: Optional list of deterministic transforms for val/test. 
+            deterministic_transforms: Optional list of deterministic transforms for val/test.
                                       Must be provided if transforms is provided.
             in_memory: Whether to load data into memory (default: False).
             is_train: Whether this dataset is used for training (enables random transforms).
-            seed: Optional random seed for sampler initialization.
-        
+            seed: Random seed for sampler initialization.
+            prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
+
         Raises:
             ValueError: If configurations are invalid.
         """
@@ -6438,7 +7087,8 @@ class CerberusDataset(Dataset):
         self.in_memory = in_memory
         self.is_train = is_train
         self.seed = seed
-        
+        self.prepare_cache = prepare_cache
+
         if sampler_config is not None:
             self.sampler_config = validate_sampler_config(sampler_config)
             validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
@@ -6551,6 +7201,7 @@ class CerberusDataset(Dataset):
             exclude_intervals=self.exclude_intervals,
             fasta_path=self.genome_config["fasta_path"],
             seed=self.seed,
+            prepare_cache=self.prepare_cache,
         )
 
     def __len__(self) -> int:
@@ -6782,11 +7433,13 @@ class CerberusDataset(Dataset):
 ## src/cerberus/datamodule.py
 
 import random
+from pathlib import Path
 import pytorch_lightning as pl
 import torch
 import numpy as np
 import logging
 from torch.utils.data import DataLoader
+from .cache import get_default_cache_dir, resolve_cache_dir, load_prepare_cache, save_prepare_cache
 from .dataset import CerberusDataset
 from .signal import UniversalExtractor
 from .config import (
@@ -6819,8 +7472,9 @@ class CerberusDataModule(pl.LightningDataModule):
         pin_memory: bool = True,
         persistent_workers: bool = True,
         multiprocessing_context: str | None = None,
-        seed: int | None = None,
+        seed: int = 42,
         drop_last: bool = False,
+        cache_dir: Path | str | None = None,
     ):
         """
         Args:
@@ -6832,8 +7486,11 @@ class CerberusDataModule(pl.LightningDataModule):
             pin_memory: Whether to pin memory in DataLoaders (recommended for GPU training).
             persistent_workers: Whether to use persistent workers in DataLoaders.
             multiprocessing_context: Context name for multiprocessing (e.g., 'spawn', 'fork').
-            seed: Optional random seed for sampler initialization.
+            seed: Random seed for sampler initialization and prepare_data
+                caching. Must be the same across all DDP ranks.
             drop_last: Whether to drop the last incomplete batch in training.
+            cache_dir: Base directory for prepare_data() cache. Defaults to
+                $XDG_CACHE_HOME/cerberus or ~/.cache/cerberus.
         """
         super().__init__()
         self.genome_config = validate_genome_config(genome_config)
@@ -6864,6 +7521,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.multiprocessing_context = multiprocessing_context
         self.seed = seed
         self.drop_last = drop_last
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else get_default_cache_dir()
 
         self.train_dataset: CerberusDataset | None = None
         self.val_dataset: CerberusDataset | None = None
@@ -6885,6 +7543,88 @@ class CerberusDataModule(pl.LightningDataModule):
         worker_seed = torch.initial_seed() % 2**32
         np.random.seed(worker_seed)
         random.seed(worker_seed)
+
+    def _resolve_cache_dir(self) -> Path | None:
+        """
+        Computes the deterministic cache subdirectory for the current config.
+
+        Returns None if the sampler type does not benefit from caching.
+        """
+        sampler_type = self.sampler_config["sampler_type"]
+        # NOTE: Every sampler type that uses ComplexityMatchedSampler must be
+        # listed here, otherwise its metrics won't be cached to disk and will
+        # be recomputed from scratch on every run.
+        if sampler_type not in ("peak", "complexity_matched", "negative_peak"):
+            return None
+        return resolve_cache_dir(
+            self.cache_dir,
+            fasta_path=self.genome_config["fasta_path"],
+            sampler_config=self.sampler_config,
+            seed=self.seed,
+            chrom_sizes=self.genome_config["chrom_sizes"],
+        )
+
+    def prepare_data(self) -> None:
+        """
+        Pre-computes complexity metrics and caches them to disk.
+
+        Called by Lightning on rank 0 only, before setup() runs on all ranks.
+        Creates a temporary sampler to trigger metric computation, then
+        serializes the resulting metrics_cache to disk so that all ranks can
+        load it in setup() without redundant FASTA reads.
+
+        No-op if the sampler type doesn't need caching or if a valid cache
+        already exists.
+        """
+        cache_dir = self._resolve_cache_dir()
+        if cache_dir is None:
+            return
+        if (cache_dir / "ready").exists():
+            logger.info(f"prepare_data cache already exists at {cache_dir}")
+            return
+
+        logger.info("prepare_data: computing complexity metrics for caching...")
+
+        # Create a temporary dataset to trigger sampler initialization and
+        # metric computation. This opens FASTA/BigWig files on rank 0 only.
+        tmp_dataset = CerberusDataset(
+            genome_config=self.genome_config,
+            data_config=self.data_config,
+            sampler_config=self.sampler_config,
+            seed=self.seed,
+        )
+
+        # Extract metrics_cache from the sampler
+        sampler = tmp_dataset.sampler
+        sampler_type = self.sampler_config["sampler_type"]
+        # NOTE: Keep in sync with _resolve_cache_dir — every sampler type
+        # listed there must have a branch here to extract its metrics_cache.
+        if sampler_type == "complexity_matched":
+            metrics_cache = sampler.metrics_cache  # type: ignore[union-attr]
+        elif sampler_type == "peak":
+            if sampler.negatives is not None:  # type: ignore[union-attr]
+                metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
+            else:
+                logger.info("prepare_data: peak sampler has no negatives, nothing to cache")
+                return
+        elif sampler_type == "negative_peak":
+            metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
+        else:
+            return
+
+        save_prepare_cache(cache_dir, metrics_cache)
+        logger.info(f"prepare_data: cached {len(metrics_cache)} entries to {cache_dir}")
+
+    def _load_prepare_cache(self) -> dict[str, np.ndarray] | None:
+        """
+        Loads the prepare_data cache from disk if available.
+
+        Returns None if the sampler type doesn't need caching or no cache exists.
+        """
+        cache_dir = self._resolve_cache_dir()
+        if cache_dir is None:
+            return None
+        return load_prepare_cache(cache_dir)
 
     def setup(
         self, 
@@ -6925,6 +7665,9 @@ class CerberusDataModule(pl.LightningDataModule):
 
         logger.info(f"Setting up DataModule (test_fold={self.test_fold}, val_fold={self.val_fold})...")
 
+        # Load cached complexity metrics if available (populated by prepare_data)
+        prepare_cache = self._load_prepare_cache()
+
         # Initialize full dataset
         full_dataset = CerberusDataset(
             genome_config=self.genome_config,
@@ -6932,6 +7675,7 @@ class CerberusDataModule(pl.LightningDataModule):
             sampler_config=self.sampler_config,
             in_memory=self.in_memory,
             seed=self.seed,
+            prepare_cache=prepare_cache,
         )
 
         # Split into folds
@@ -6955,8 +7699,7 @@ class CerberusDataModule(pl.LightningDataModule):
                 epoch = self.trainer.current_epoch
                 # Ensure unique seed per rank to maximize data coverage in DDP
                 world_size = self.trainer.world_size if self.trainer else 1
-                base_seed = self.seed if self.seed is not None else 0
-                seed = base_seed + (epoch * world_size) + rank
+                seed = self.seed + (epoch * world_size) + rank
                 self.train_dataset.resample(seed=seed)
             except (AttributeError, RuntimeError) as exc:
                 logger.warning("Could not resample train dataset: %s", exc)
@@ -7079,10 +7822,11 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from torchmetrics import MetricCollection
 import logging
-from typing import Callable, Any
+from typing import Any
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
+from cerberus.loss import CerberusLoss
 from cerberus.output import compute_total_log_counts
 from cerberus.plots import save_count_scatter
 from cerberus.config import (
@@ -7116,7 +7860,7 @@ class CerberusModule(pl.LightningModule):
     def __init__(
         self,
         model: nn.Module,
-        criterion: nn.Module | Callable,
+        criterion: CerberusLoss,
         metrics: MetricCollection,
         train_config: TrainConfig | None = None,
         # Optional logging configuration
@@ -7213,18 +7957,20 @@ class CerberusModule(pl.LightningModule):
     def _shared_step(self, batch, batch_idx, prefix):
         inputs = batch["inputs"]
         targets = batch["targets"]
-        
+
         # Forward pass
         outputs = self.model(inputs)
 
-        # Calculate loss
-        loss = self.criterion(outputs, targets)
-        
-        # Logging
+        # Calculate loss and log named components
+        batch_context = {k: v for k, v in batch.items() if k not in ("inputs", "targets")}
         batch_size = inputs.shape[0]
-        # Sync dist for validation to avoid warning and ensure correct epoch accumulation
         sync_dist = (prefix == "val_")
+
+        loss = self.criterion(outputs, targets, **batch_context)
         self.log(f"{prefix}loss", loss, prog_bar=True, batch_size=batch_size, sync_dist=sync_dist)
+        components = self.criterion.loss_components(outputs, targets, **batch_context)
+        for name, value in components.items():
+            self.log(f"{prefix}{name}", value, batch_size=batch_size, sync_dist=sync_dist)
              
         # Metrics
         metric_collection = self.train_metrics if prefix == "train_" else self.val_metrics
@@ -7505,6 +8251,7 @@ from .config import (
 )
 from .module import instantiate, configure_callbacks
 from .model_ensemble import update_ensemble_metadata
+from .pretrained import load_pretrained_weights
 
 logger = logging.getLogger(__name__)
 
@@ -7791,7 +8538,10 @@ def _train(
             sampler_config=sampler_config,
         )
 
-    # 1. Setup DataModule — must happen before adaptive resolution and instantiation.
+    # 1. Pre-compute and cache complexity metrics (rank 0 only in DDP).
+    datamodule.prepare_data()
+
+    # 2. Setup DataModule — must happen before adaptive resolution and instantiation.
     datamodule.setup(
         batch_size=train_config["batch_size"],
         val_batch_size=val_batch_size,
@@ -7799,12 +8549,12 @@ def _train(
         in_memory=in_memory,
     )
 
-    # 2. Resolve any "adaptive" sentinels in loss_args to data-derived floats.
+    # 3. Resolve any "adaptive" sentinels in loss_args to data-derived floats.
     # Returns a new ModelConfig; the input is not modified so train_multi can
     # safely reuse the same model_config dict across folds.
     model_config = resolve_adaptive_loss_args(model_config, datamodule)
 
-    # 3. Instantiate module with the resolved model_config.
+    # 4. Instantiate module with the resolved model_config.
     # Note: propagate_pseudocount is called inside instantiate(), which is the
     # single owner of pseudocount propagation into loss_args/metrics_args.
     module = instantiate(
@@ -7816,10 +8566,15 @@ def _train(
         sampler_config=sampler_config,
     )
 
-    # 4. Train
+    # 5. Load pretrained weights if specified in model_config
+    pretrained = model_config["pretrained"]
+    if pretrained:
+        load_pretrained_weights(module.model, pretrained)
+
+    # 6. Train
     trainer.fit(module, datamodule=datamodule)
 
-    # 5. Save clean state dict for inference (best checkpoint, no Lightning overhead)
+    # 7. Save clean state dict for inference (best checkpoint, no Lightning overhead)
     if root_dir is not None and trainer.is_global_zero:
         _save_model_pt(trainer, root_dir)
 
@@ -7842,6 +8597,7 @@ def train_single(
     root_dir: str | Path = ".",
     val_batch_size: int | None = None,
     run_test: bool = False,
+    seed: int = 42,
     **trainer_kwargs,
 ) -> pl.Trainer:
     """
@@ -7868,6 +8624,8 @@ def train_single(
         run_test: If True, run ``trainer.test()`` on the test fold immediately
             after training using the best checkpoint. Metrics are logged to the
             same logger as training (default: False).
+        seed: Random seed for data sampling. Must be deterministic across DDP
+            ranks (default: 42).
         **trainer_kwargs: Additional arguments passed to pl.Trainer.
 
     Returns:
@@ -7888,6 +8646,7 @@ def train_single(
         sampler_config=sampler_config,
         test_fold=test_fold,
         val_fold=val_fold,
+        seed=seed,
     )
 
     # Update genome_config to reflect the actual folds used
@@ -7949,6 +8708,7 @@ def train_multi(
     root_dir: str | Path = ".",
     val_batch_size: int | None = None,
     run_test: bool = False,
+    seed: int = 42,
     **trainer_kwargs,
 ) -> list[pl.Trainer]:
     """
@@ -7972,6 +8732,8 @@ def train_multi(
                   Each fold will be saved in a subdirectory 'fold_{i}'.
         run_test: If True, run ``trainer.test()`` after each fold's training
             using the best checkpoint (default: False).
+        seed: Random seed for data sampling. Must be deterministic across DDP
+            ranks (default: 42).
         **trainer_kwargs: Additional arguments passed to pl.Trainer.
 
     Returns:
@@ -8002,6 +8764,7 @@ def train_multi(
             root_dir=root_dir,
             val_batch_size=val_batch_size,
             run_test=run_test,
+            seed=seed,
             **trainer_kwargs,
         )
 
@@ -8032,9 +8795,9 @@ class ModelOutput:
 
 @dataclass
 class ProfileLogits(ModelOutput):
-    """
-    Output for models predicting a profile (shape) using unnormalized log-probabilities.
-    Interpretation: softmax(logits) = probabilities.
+    """Output for models predicting a profile shape as unnormalized log-probabilities.
+
+    softmax(logits, dim=-1) gives the per-position probability distribution.
     """
     logits: torch.Tensor # (Batch, Channels, Length)
 
@@ -8043,9 +8806,9 @@ class ProfileLogits(ModelOutput):
 
 @dataclass
 class ProfileLogRates(ModelOutput):
-    """
-    Output for models predicting log-rates (log-intensities).
-    Interpretation: exp(log_rates) = counts.
+    """Output for models predicting log-rates (log-intensities).
+
+    exp(log_rates) gives expected counts per bin.
     """
     log_rates: torch.Tensor # (Batch, Channels, Length)
 
@@ -8054,7 +8817,11 @@ class ProfileLogRates(ModelOutput):
 
 @dataclass
 class ProfileCountOutput(ProfileLogits):
-    """Output for models predicting profile (logits) and total counts."""
+    """Output for models with factored profile shape (logits) and total counts.
+
+    The profile shape and total count are predicted independently:
+    predicted_counts = softmax(logits) * exp(log_counts).
+    """
     log_counts: torch.Tensor # (Batch, Channels)
 
     def detach(self):
@@ -8064,34 +8831,58 @@ class ProfileCountOutput(ProfileLogits):
             out_interval=self.out_interval
         )
 
+@dataclass
+class FactorizedProfileCountOutput(ProfileCountOutput):
+    """Combined output with decomposed sub-model outputs for the Dalmatian model.
+
+    Inherits combined logits and log_counts from ProfileCountOutput.
+    Adds decomposed bias and signal sub-model outputs for use by DalmatianLoss
+    during training and interpretation tools.
+    """
+    bias_logits: torch.Tensor       # (B, C, L) -- bias model profile logits
+    bias_log_counts: torch.Tensor   # (B, C)   -- bias model log counts
+    signal_logits: torch.Tensor     # (B, C, L) -- signal model profile logits
+    signal_log_counts: torch.Tensor # (B, C)   -- signal model log counts
+
+    def detach(self):
+        return FactorizedProfileCountOutput(
+            logits=self.logits.detach(),
+            log_counts=self.log_counts.detach(),
+            bias_logits=self.bias_logits.detach(),
+            bias_log_counts=self.bias_log_counts.detach(),
+            signal_logits=self.signal_logits.detach(),
+            signal_log_counts=self.signal_log_counts.detach(),
+            out_interval=self.out_interval,
+        )
+
 def unbatch_modeloutput(batched_output: ModelOutput, batch_size: int) -> list[dict[str, Any]]:
-    """
-    Splits a batched output (ModelOutput) into a list of individual interval dictionaries.
-    
+    """Splits a batched ModelOutput into per-sample dictionaries.
+
+    Tensor fields are unbound along dim=0. Non-tensor fields (e.g. out_interval)
+    are replicated to every sample.
+
     Args:
-        batched_output: The batched ModelOutput object to split.
-        batch_size: The number of items in the batch.
-        
+        batched_output: Batched ModelOutput with tensors of shape (B, ...).
+        batch_size: Number of samples in the batch.
+
     Returns:
-        list[dict[str, Any]]: A list of dictionaries, each representing an unbatched output.
+        List of dicts, one per sample, with the same keys as the dataclass fields.
     """
-    batched_output_dict = dataclasses.asdict(batched_output)
+    batched_output_dict = {f.name: getattr(batched_output, f.name) for f in dataclasses.fields(batched_output)}
 
     unbatched_components = {}
     for key, val in batched_output_dict.items():
         if isinstance(val, torch.Tensor):
             unbatched_components[key] = list(torch.unbind(val, dim=0))
         else:
-            # For metadata fields like out_interval, replicate
             unbatched_components[key] = [val] * batch_size
-    
-    # Reassemble into list of dicts
+
     result_list = []
     keys = unbatched_components.keys()
     for i in range(batch_size):
         item = {key: unbatched_components[key][i] for key in keys}
         result_list.append(item)
-        
+
     return result_list
 
 def aggregate_tensor_track_values(
@@ -8101,87 +8892,72 @@ def aggregate_tensor_track_values(
     output_len: int,
     output_bin_size: int,
 ) -> np.ndarray:
-    """
-    Aggregates a list of tensors into a single merged array.
-    
-    This function handles the spatial alignment of multiple (potentially overlapping)
-    prediction tracks into a single contiguous track. It computes the average value
-    for bins where multiple predictions overlap.
-    
-    Note on Alignment (Snap-to-Grid):
-    When output_bin_size > 1, the function snaps interval starts to the nearest bin
-    (flooring behavior). Sub-bin shifts (e.g. from Jitter) are effectively Aliased/Quantized
-    to the bin grid defined by merged_interval.start.
-    
+    """Spatially merges overlapping prediction tensors by averaging overlapping bins.
+
+    Each tensor is placed into a unified bin grid defined by merged_interval. Where
+    multiple predictions overlap, their values are averaged. Tensors are classified
+    as profile (spatial) or scalar based on whether their last dimension matches the
+    expected bin count for their interval.
+
+    Snap-to-grid: when output_bin_size > 1, interval starts are floored to the
+    nearest bin boundary. Sub-bin shifts (e.g. from jitter) are quantized away.
+
     Args:
-        outputs: List of tensors to aggregate.
-        intervals: List of intervals corresponding to the tensors.
-        merged_interval: The overall interval covering all inputs.
-        output_len: The expected length of profile outputs.
-        output_bin_size: The bin size of the outputs.
-        
+        outputs: Per-interval tensors, each (C, L) for profiles or (C,) for scalars.
+        intervals: Genomic interval for each tensor (same length as outputs).
+        merged_interval: Union interval covering all inputs.
+        output_len: Expected profile length in bins (currently unused, reserved).
+        output_bin_size: Bin resolution in base pairs.
+
     Returns:
-        np.ndarray: The aggregated values as a numpy array.
+        For profiles: (C, n_bins) array over the merged interval.
+        For scalars: (C,) array — overlap-weighted mean, excluding empty gaps.
     """
-    # Merged extent
     min_start = merged_interval.start
     max_end = merged_interval.end
-    
+
     span_bp = max_end - min_start
     n_bins = span_bp // output_bin_size
-    
-    # outputs[0] is (C, L) or (C,)
-    sample_out = outputs[0]
-    n_channels = sample_out.shape[0]
-    
-    # Accumulators
+
+    n_channels = outputs[0].shape[0]
+
     accumulator = np.zeros((n_channels, n_bins), dtype=np.float32)
     counts = np.zeros((1, n_bins), dtype=np.float32)
-    
+    has_scalar = False
+
     for out_tensor, interval in zip(outputs, intervals):
-        # Convert to numpy
-        val = out_tensor.cpu().numpy() # (C, L) or (C,)
-        
-        # Relative start bin
+        val = out_tensor.cpu().numpy()  # (C, L) or (C,)
+
         rel_start_bp = interval.start - min_start
         rel_start_bin = rel_start_bp // output_bin_size
+        interval_bins = (interval.end - interval.start) // output_bin_size
+        end_bin = rel_start_bin + interval_bins
 
-        # Expected bins for this interval
-        interval_len_bp = interval.end - interval.start
-        interval_bins = interval_len_bp // output_bin_size
-        
-        # Check dimensions
-        # It is a profile/track if it has spatial dimension and matches the interval length
         is_profile = (val.ndim >= 2 and val.shape[-1] == interval_bins)
-        
+
         if is_profile:
-            # val is (C, L_bins)
-            end_bin = rel_start_bin + interval_bins
-            
-            # Bounds check (simple clipping or assume fits)
-            # Since intervals are within merged_interval, it should fit unless precision issues
-            
             accumulator[:, rel_start_bin : end_bin] += val
             counts[:, rel_start_bin : end_bin] += 1.0
         else:
-            # Scalar (C,)
-            # Broadcast to interval length to create a constant track over the interval
-            # Interval length in bins
-            end_bin = rel_start_bin + interval_bins
-            
-            # val is (C,) -> (C, int_bins)
-            if val.ndim == 1:
-                val_b = np.expand_dims(val, -1)
-            else:
-                val_b = val
-
+            has_scalar = True
+            # Broadcast scalar (C,) → (C, 1) for overlap-aware spatial averaging
+            val_b = np.expand_dims(val, -1) if val.ndim == 1 else val
             accumulator[:, rel_start_bin : end_bin] += val_b
             counts[:, rel_start_bin : end_bin] += 1.0
 
-    # Average
+    raw_counts = counts.copy()
     counts = np.maximum(counts, 1.0)
     final_values = accumulator / counts
-    
+
+    if has_scalar:
+        # Collapse spatial grid back to (C,). Only average over bins that
+        # received contributions to avoid dilution from empty gaps.
+        valid_mask = raw_counts[0] > 0
+        if valid_mask.any():
+            final_values = final_values[:, valid_mask].mean(axis=-1)
+        else:
+            final_values = np.zeros(n_channels, dtype=np.float32)
+
     return final_values
 
 def aggregate_intervals(
@@ -8191,42 +8967,36 @@ def aggregate_intervals(
     output_bin_size: int,
     output_cls: type[ModelOutput] | None = None,
 ) -> ModelOutput:
-    """
-    Aggregates overlapping predictions into a single merged output.
-    
-    This high-level function unifies predictions from multiple genomic intervals (e.g. tiles)
-    into a single ModelOutput object covering the union of all input intervals.
-    It delegates to `aggregate_tensor_track_values` for spatial merging of profile tracks.
-    
+    """Merges predictions from multiple genomic intervals into a single ModelOutput.
+
+    Delegates per-tensor spatial merging to ``aggregate_tensor_track_values``.
+    All intervals must be on the same chromosome and strand.
+
     Args:
-        outputs: List of unbatched output dictionaries.
-        intervals: List of intervals corresponding to the outputs.
-        output_len: The length of the output profile in bins/bp (used for profile detection).
-        output_bin_size: The size of each bin in base pairs.
-        output_cls: The ModelOutput class to use for the result.
-        
+        outputs: Per-interval output dicts (from ``unbatch_modeloutput``).
+        intervals: Genomic interval for each output (same length as outputs).
+        output_len: Profile length in bins (passed through; currently unused).
+        output_bin_size: Bin resolution in base pairs.
+        output_cls: ModelOutput subclass to construct the result.
+
     Returns:
-        ModelOutput: The merged output object covering the union of intervals.
+        A single ModelOutput covering the union of all input intervals.
     """
-    # Filter for keys that are tensors (ignore metadata like out_interval)
     keys = [k for k in outputs[0].keys() if isinstance(outputs[0][k], torch.Tensor)]
 
-    # Compute merged interval, assuming all intervals are on the same chrom and strand
     chrom = intervals[0].chrom
     strand = intervals[0].strand
     min_start = min(i.start for i in intervals)
     max_end = max(i.end for i in intervals)
     merged_interval = Interval(chrom, min_start, max_end, strand)
-    
+
     aggregated_components = {}
-    
     for key in keys:
-        component_outputs = [out[key] for out in outputs] # list[Tensor]
-        agg_comp = aggregate_tensor_track_values(
+        component_outputs = [out[key] for out in outputs]
+        agg_np = aggregate_tensor_track_values(
             component_outputs, intervals, merged_interval, output_len, output_bin_size
         )
-        # Convert numpy to tensor (CPU)
-        aggregated_components[key] = torch.from_numpy(agg_comp)
+        aggregated_components[key] = torch.from_numpy(agg_np)
 
     if output_cls is None:
         raise ValueError("output_cls must be provided to aggregate_intervals")
@@ -8237,65 +9007,57 @@ def aggregate_intervals(
 def aggregate_models(
     outputs: Sequence[ModelOutput], method: str
 ) -> ModelOutput:
-    """
-    Aggregates a list of model outputs.
-    
+    """Ensembles outputs from multiple models by reducing each tensor field.
+
+    All outputs must be the same ModelOutput subclass with identically-shaped
+    tensors. The out_interval is taken from the first output (all models
+    predict on the same intervals).
+
     Args:
-        outputs: List of outputs to aggregate.
-        method: Aggregation method ("mean" or "median").
-        
+        outputs: One ModelOutput per model, all for the same input batch.
+        method: Reduction across models — "mean" or "median".
+
     Returns:
-        ModelOutput: The aggregated output.
+        A single ModelOutput of the same type with ensembled tensor fields.
     """
-    output_dicts = [dataclasses.asdict(out) for out in outputs]
-    # Filter tensor keys
+    output_dicts = [{f.name: getattr(out, f.name) for f in dataclasses.fields(out)} for out in outputs]
     keys = [k for k in output_dicts[0].keys() if isinstance(output_dicts[0][k], torch.Tensor)]
-    
+
     aggregated_elements = {}
-    
     for key in keys:
         stacked = torch.stack([out[key] for out in output_dicts])
-        
         if method == "mean":
-            # mean over N_Models dimension (dim 0)
             aggregated_elements[key] = torch.mean(stacked, dim=0)
         elif method == "median":
-            # median over N_Models dimension (dim 0)
             aggregated_elements[key] = torch.median(stacked, dim=0).values
         else:
             raise ValueError(f"Unknown aggregation method: {method}")
-    
-    # Reconstruct object
+
     cls = type(outputs[0])
-    # Preserve out_interval if consistent? 
-    # Usually for batched aggregation, out_interval is None or same.
-    # We take the first one.
     out_int = outputs[0].out_interval
 
     logger.debug(f"Aggregated {len(outputs)} model outputs using '{method}'")
     return cls(**aggregated_elements, out_interval=out_int)
 
 def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseudocount: bool = False, pseudocount: float = 1.0) -> torch.Tensor:
-    """
-    Extracts total log counts from the model output.
-    Supports ProfileCountOutput and ProfileLogRates.
+    """Computes total log counts across all channels, returning shape (B,).
+
+    Supports ProfileCountOutput (explicit log_counts) and ProfileLogRates
+    (total count derived by summing per-bin rates).
 
     Args:
-        model_output: The output from the model.
-        log_counts_include_pseudocount: If True, indicates that per-channel log_counts
-            are in log(count + pseudocount) space (as trained by MSEMultinomialLoss with
-            count_per_channel=True). In this case, multi-channel counts are aggregated
-            by inverting the log transform per channel, summing, then reapplying it —
-            giving the correct log(total + pseudocount) rather than the incorrect
-            log(n_channels + total) that logsumexp would produce.
-            If False (default), log_counts are treated as being in log space (Poisson/NB
-            losses), where logsumexp correctly gives log(total).
-        pseudocount: Additive offset used when log_counts_include_pseudocount=True to
-            invert and reapply the log transform. Must match the count_pseudocount used
-            during training. Default 1.0 reproduces the original log1p behaviour.
+        model_output: A ProfileCountOutput or ProfileLogRates instance.
+        log_counts_include_pseudocount: If True, per-channel log_counts are in
+            log(count + pseudocount) space (MSE losses). Aggregation inverts
+            the transform per channel, sums, then reapplies — avoiding the
+            incorrect log(n_channels * pseudocount + total) that logsumexp
+            would give. If False (default, Poisson/NB losses), logsumexp
+            correctly gives log(total).
+        pseudocount: Offset for the pseudocount inversion. Must match the
+            count_pseudocount used during training. Default 1.0.
 
     Returns:
-        A tensor of shape (batch_size,) containing the total log counts.
+        Tensor of shape (B,) with total log counts per sample.
     """
     if isinstance(model_output, ProfileCountOutput):
         log_counts = model_output.log_counts
@@ -8311,20 +9073,36 @@ def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseud
             
     elif isinstance(model_output, ProfileLogRates):
         log_rates = model_output.log_rates
-        if log_rates.shape[1] > 1:
-            return torch.logsumexp(log_rates.float().flatten(start_dim=1), dim=-1)
-        else:
-            return torch.logsumexp(log_rates.float(), dim=(1,2)).flatten()
+        return torch.logsumexp(log_rates.float().flatten(start_dim=1), dim=-1)
             
     raise ValueError(f"Model output type {type(model_output)} not supported for total log counts extraction.")
 
 ## src/cerberus/loss.py
 
+from typing import Protocol
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from cerberus.output import ProfileCountOutput, ProfileLogRates
+from cerberus.config import import_class
+from cerberus.output import FactorizedProfileCountOutput, ProfileCountOutput, ProfileLogRates
+
+
+class CerberusLoss(Protocol):
+    """Protocol for all cerberus loss functions.
+
+    Every loss must implement ``loss_components`` (returning a dict of named
+    scalar tensors) and ``__call__`` (returning the combined scalar loss).
+    """
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object,
+    ) -> dict[str, torch.Tensor]: ...
+
+    def __call__(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object,
+    ) -> torch.Tensor: ...
 
 class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     """
@@ -8344,18 +9122,23 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
         # count_pseudocount is accepted for compatibility with propagate_pseudocount
         # but not used (PoissonNLLLoss handles count loss directly).
 
-    def forward(self, log_input, target):
-        target = target.float()
-        
-        if not isinstance(log_input, ProfileLogRates):
+    def loss_components(self, outputs, targets, **kwargs) -> dict[str, torch.Tensor]:
+        """Returns named loss components."""
+        targets = targets.float()
+
+        if not isinstance(outputs, ProfileLogRates):
              raise TypeError("ProfilePoissonNLLLoss requires ProfileLogRates")
 
-        log_input = log_input.log_rates
+        log_input = outputs.log_rates
 
         if self.log1p_targets:
-            target = torch.expm1(target).clamp_min(0.0)
+            targets = torch.expm1(targets).clamp_min(0.0)
 
-        return super().forward(log_input, target)
+        return {"poisson_nll_loss": super().forward(log_input, targets)}
+
+    def forward(self, outputs, targets, **kwargs):  # type: ignore[override]
+        components = self.loss_components(outputs, targets, **kwargs)
+        return components["poisson_nll_loss"]
 
 
 class MSEMultinomialLoss(nn.Module):
@@ -8438,82 +9221,71 @@ class MSEMultinomialLoss(nn.Module):
             else:
                 return profile_loss_per_channel.sum(dim=-1).mean()
 
-    def forward(self, outputs, targets):
+    def loss_components(self, outputs, targets, **kwargs) -> dict[str, torch.Tensor]:
+        """Returns named loss components."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if not isinstance(outputs, ProfileCountOutput):
-             raise TypeError("MSEMultinomialLoss requires ProfileCountOutput")
-
+            raise TypeError("MSEMultinomialLoss requires ProfileCountOutput")
         logits = outputs.logits
         pred_log_counts = outputs.log_counts
-
-        # --- Profile Loss ---
         profile_loss = self._compute_profile_loss(logits, targets)
-
-        # --- Count Loss (MSE) ---
         if self.count_per_channel:
-            target_counts = targets.sum(dim=2) # (B, C)
+            target_counts = targets.sum(dim=2)
             target_log_counts = torch.log(target_counts + self.count_pseudocount)
-            # pred_log_counts should be (B, C)
             count_loss = F.mse_loss(pred_log_counts, target_log_counts)
         else:
             target_global_count = targets.sum(dim=(1, 2))
             target_log_global_count = torch.log(target_global_count + self.count_pseudocount)
-            pred_log_counts = pred_log_counts.flatten()
-            count_loss = F.mse_loss(pred_log_counts, target_log_global_count)
-        
-        return self.profile_weight * profile_loss + self.count_weight * count_loss
+            count_loss = F.mse_loss(pred_log_counts.flatten(), target_log_global_count)
+        return {"profile_loss": profile_loss, "count_loss": count_loss}
+
+    def forward(self, outputs, targets, **kwargs):
+        components = self.loss_components(outputs, targets, **kwargs)
+        return self.profile_weight * components["profile_loss"] + self.count_weight * components["count_loss"]
 
 
 class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
     """
     Multinomial NLL Profile Loss + MSE Count Loss (Coupled).
     Mathematically equivalent to MSEMultinomialLoss but derives counts from log_rates.
-    
+
     Objective:
       1. Profile Loss: Multinomial NLL.
       2. Count Loss: MSE of log(global_count).
-    
+
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp
     (interpreting inputs as log-intensities) over all channels and bins.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with MSEMultinomialLoss).
     """
-    def forward(self, outputs, targets):
+    def loss_components(self, outputs, targets, **kwargs) -> dict[str, torch.Tensor]:
+        """Returns named loss components."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if isinstance(outputs, ProfileCountOutput):
             raise TypeError("CoupledMSEMultinomialLoss does not accept ProfileCountOutput. Use MSEMultinomialLoss instead.")
-
         if not isinstance(outputs, ProfileLogRates):
-             raise TypeError("CoupledMSEMultinomialLoss requires ProfileLogRates")
-        
+            raise TypeError("CoupledMSEMultinomialLoss requires ProfileLogRates")
         logits = outputs.log_rates
-
         if self.count_per_channel:
-            # Simulate log_counts per channel (Sum over Length)
-            pred_log_counts = torch.logsumexp(logits.float(), dim=2) # (B, C)
-            target_counts = targets.sum(dim=2) # (B, C)
+            pred_log_counts = torch.logsumexp(logits.float(), dim=2)
+            target_counts = targets.sum(dim=2)
             target_log_counts = torch.log(target_counts + self.count_pseudocount)
             count_loss = F.mse_loss(pred_log_counts, target_log_counts)
         else:
-            # Simulate log_counts from logits (Global Sum)
-            # Flatten channels and length to sum over everything
             logits_flat = logits.flatten(start_dim=1)
-            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1) # (B,)
+            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1)
             target_global_count = targets.sum(dim=(1, 2))
             target_log_global_count = torch.log(target_global_count + self.count_pseudocount)
             count_loss = F.mse_loss(pred_log_counts, target_log_global_count)
-        
-        # --- Profile Loss ---
         profile_loss = self._compute_profile_loss(logits, targets)
-        
-        return self.profile_weight * profile_loss + self.count_weight * count_loss
+        return {"profile_loss": profile_loss, "count_loss": count_loss}
+
+    def forward(self, outputs, targets, **kwargs):
+        components = self.loss_components(outputs, targets, **kwargs)
+        return self.profile_weight * components["profile_loss"] + self.count_weight * components["count_loss"]
 
 
 class PoissonMultinomialLoss(nn.Module):
@@ -8571,76 +9343,66 @@ class PoissonMultinomialLoss(nn.Module):
                  loss_shape = loss_shape_per_channel.sum(dim=-1).mean()
          return loss_shape
 
-    def forward(self, predictions, targets):
+    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+        """Returns named loss components."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if not isinstance(predictions, ProfileCountOutput):
-             raise TypeError("PoissonMultinomialLoss requires ProfileCountOutput")
-
+            raise TypeError("PoissonMultinomialLoss requires ProfileCountOutput")
         logits = predictions.logits
         pred_log_counts = predictions.log_counts
-        
         if self.count_per_channel:
-            target_counts = targets.sum(dim=2) # (B, C)
-            # pred_log_counts should be (B, C)
-            loss_count = self.count_loss_fn(pred_log_counts, target_counts)
+            target_counts = targets.sum(dim=2)
+            count_loss = self.count_loss_fn(pred_log_counts, target_counts)
         else:
-            # --- Count Loss (Global Count) ---
-            target_global_count = targets.sum(dim=(1, 2)) # (B,)
-            pred_log_counts = pred_log_counts.flatten() # (B,)
-            loss_count = self.count_loss_fn(pred_log_counts, target_global_count)
+            target_global_count = targets.sum(dim=(1, 2))
+            count_loss = self.count_loss_fn(pred_log_counts.flatten(), target_global_count)
+        profile_loss = self._compute_profile_loss(logits, targets)
+        return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-        # --- Profile Loss ---
-        loss_shape = self._compute_profile_loss(logits, targets)
-
-        return self.count_weight * loss_count + self.profile_weight * loss_shape
+    def forward(self, predictions, targets, **kwargs):
+        components = self.loss_components(predictions, targets, **kwargs)
+        return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
 
 class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
     """
     Poisson Multinomial Loss (Coupled/Global Count).
     Mathematically equivalent to PoissonMultinomialLoss but derives counts from log_rates.
-    
+
     Objective:
       1. Profile Loss: Cross Entropy.
       2. Count Loss: Poisson NLL on Global Count.
-    
+
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp of logits over all channels.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
     """
-    def forward(self, predictions, targets):
+    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+        """Returns named loss components."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if isinstance(predictions, ProfileCountOutput):
             raise TypeError("CoupledPoissonMultinomialLoss does not accept ProfileCountOutput. Use PoissonMultinomialLoss instead.")
-
         if not isinstance(predictions, ProfileLogRates):
-             raise TypeError("CoupledPoissonMultinomialLoss requires ProfileLogRates")
-
+            raise TypeError("CoupledPoissonMultinomialLoss requires ProfileLogRates")
         logits = predictions.log_rates
-
         if self.count_per_channel:
-            # Simulate log_counts per channel
-            pred_log_counts = torch.logsumexp(logits.float(), dim=2) # (B, C)
-            target_counts = targets.sum(dim=2) # (B, C)
-            loss_count = self.count_loss_fn(pred_log_counts, target_counts)
+            pred_log_counts = torch.logsumexp(logits.float(), dim=2)
+            target_counts = targets.sum(dim=2)
+            count_loss = self.count_loss_fn(pred_log_counts, target_counts)
         else:
-            # Simulate log_counts from logits (Global Sum)
             logits_flat = logits.flatten(start_dim=1)
-            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1) # (B,)
-            target_global_count = targets.sum(dim=(1, 2)) # (B,)
-            loss_count = self.count_loss_fn(pred_log_counts, target_global_count)
+            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1)
+            target_global_count = targets.sum(dim=(1, 2))
+            count_loss = self.count_loss_fn(pred_log_counts, target_global_count)
+        profile_loss = self._compute_profile_loss(logits, targets)
+        return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-        # --- Profile Loss ---
-        loss_shape = self._compute_profile_loss(logits, targets)
-
-        return self.count_weight * loss_count + self.profile_weight * loss_shape
+    def forward(self, predictions, targets, **kwargs):
+        components = self.loss_components(predictions, targets, **kwargs)
+        return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
 
 class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
@@ -8661,42 +9423,31 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
         super().__init__(**kwargs)
         self.total_count = float(total_count)
         
-    def forward(self, predictions, targets):
+    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+        """Returns named loss components."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if not isinstance(predictions, ProfileCountOutput):
-             raise TypeError("NegativeBinomialMultinomialLoss requires ProfileCountOutput")
-
+            raise TypeError("NegativeBinomialMultinomialLoss requires ProfileCountOutput")
         logits = predictions.logits
         pred_log_counts = predictions.log_counts
-        
-        # Determine target counts
         if self.count_per_channel:
-            target_counts = targets.sum(dim=2) # (B, C)
+            target_counts = targets.sum(dim=2)
         else:
-            target_counts = targets.sum(dim=(1, 2)) # (B,)
+            target_counts = targets.sum(dim=(1, 2))
             if pred_log_counts.ndim > 1:
                 pred_log_counts = pred_log_counts.flatten()
-        
-        # --- Count Loss (Negative Binomial) ---
-        # pred_log_counts is log(mu)
-        # We need to construct NB distribution
-        # PyTorch NB parameterization: total_count (r), logits (log-odds)
-        # logits = pred_log_counts - log(r)
-        
         r_tensor = torch.tensor(self.total_count, device=pred_log_counts.device, dtype=pred_log_counts.dtype)
         nb_logits = pred_log_counts - torch.log(r_tensor)
-        
         nb_dist = torch.distributions.NegativeBinomial(total_count=r_tensor, logits=nb_logits)
         loss_count = -nb_dist.log_prob(target_counts).mean()
-
-        # --- Profile Loss ---
         loss_shape = self._compute_profile_loss(logits, targets)
+        return {"profile_loss": loss_shape, "count_loss": loss_count}
 
-        return self.count_weight * loss_count + self.profile_weight * loss_shape
+    def forward(self, predictions, targets, **kwargs):
+        components = self.loss_components(predictions, targets, **kwargs)
+        return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
 
 class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
@@ -8704,41 +9455,131 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
     Negative Binomial Multinomial Loss (Coupled).
     Mathematically equivalent to NegativeBinomialMultinomialLoss but derives counts from log_rates.
     """
-    def forward(self, predictions, targets):
+    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+        """Returns named loss components."""
         targets = targets.float()
-        
         if self.log1p_targets:
             targets = torch.expm1(targets).clamp_min(0.0)
-
         if isinstance(predictions, ProfileCountOutput):
             raise TypeError("CoupledNegativeBinomialMultinomialLoss does not accept ProfileCountOutput. Use NegativeBinomialMultinomialLoss instead.")
-
         if not isinstance(predictions, ProfileLogRates):
-             raise TypeError("CoupledNegativeBinomialMultinomialLoss requires ProfileLogRates")
-
+            raise TypeError("CoupledNegativeBinomialMultinomialLoss requires ProfileLogRates")
         logits = predictions.log_rates
-
         if self.count_per_channel:
-            # Simulate log_counts per channel
-            pred_log_counts = torch.logsumexp(logits.float(), dim=2) # (B, C)
-            target_counts = targets.sum(dim=2) # (B, C)
+            pred_log_counts = torch.logsumexp(logits.float(), dim=2)
+            target_counts = targets.sum(dim=2)
         else:
-            # Simulate log_counts from logits (Global Sum)
             logits_flat = logits.flatten(start_dim=1)
-            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1) # (B,)
-            target_counts = targets.sum(dim=(1, 2)) # (B,)
-
-        # --- Count Loss (Negative Binomial) ---
+            pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1)
+            target_counts = targets.sum(dim=(1, 2))
         r_tensor = torch.tensor(self.total_count, device=pred_log_counts.device, dtype=pred_log_counts.dtype)
         nb_logits = pred_log_counts - torch.log(r_tensor)
-        
         nb_dist = torch.distributions.NegativeBinomial(total_count=r_tensor, logits=nb_logits)
         loss_count = -nb_dist.log_prob(target_counts).mean()
-
-        # --- Profile Loss ---
         loss_shape = self._compute_profile_loss(logits, targets)
+        return {"profile_loss": loss_shape, "count_loss": loss_count}
 
-        return self.count_weight * loss_count + self.profile_weight * loss_shape
+    def forward(self, predictions, targets, **kwargs):
+        components = self.loss_components(predictions, targets, **kwargs)
+        return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
+
+
+class DalmatianLoss(nn.Module):
+    """Peak-conditioned factorized loss for the Dalmatian architecture.
+
+    Two loss terms:
+      1. L_recon: Combined reconstruction loss on all examples (profile + count).
+      2. L_bias: Bias-only reconstruction loss on non-peak (background) examples.
+
+    Gradient separation is handled architecturally (bias outputs are detached
+    before combining in Dalmatian.forward), so no explicit signal suppression
+    term is needed. Exp21 confirmed that L_signal_bg had zero measurable effect.
+
+    The base loss (e.g. MSEMultinomialLoss) is instantiated internally from
+    ``base_loss_cls`` / ``base_loss_args``, enabling nested config via YAML.
+
+    Args:
+        base_loss_cls: Fully qualified class name for the base loss
+            (e.g. ``"cerberus.loss.MSEMultinomialLoss"``).
+        base_loss_args: Keyword arguments forwarded to the base loss constructor.
+        bias_weight: Weight for the bias-only reconstruction term.
+        count_pseudocount: Forwarded into ``base_loss_args`` (via setdefault)
+            so that ``propagate_pseudocount`` works transparently.
+    """
+
+    def __init__(
+        self,
+        base_loss_cls: str,
+        base_loss_args: dict[str, object] | None = None,
+        bias_weight: float = 1.0,
+        count_pseudocount: float = 1.0,
+        **kwargs: object,
+    ):
+        super().__init__()
+        self.bias_weight = bias_weight
+
+        loss_cls = import_class(base_loss_cls)
+        args = dict(base_loss_args or {})
+        args.setdefault("count_pseudocount", count_pseudocount)
+        self.base_loss: nn.Module = loss_cls(**args)
+
+    def loss_components(
+        self,
+        outputs: object,
+        targets: torch.Tensor,
+        **kwargs: object,
+    ) -> dict[str, torch.Tensor]:
+        """Returns named loss components.
+
+        Args:
+            outputs: Model output with combined and decomposed fields.
+            targets: Ground-truth target tensor (B, C, L).
+            **kwargs: Batch context. Must contain ``peak_status`` (B,) tensor
+                with 1 for peak and 0 for background examples.
+        """
+        if not isinstance(outputs, FactorizedProfileCountOutput):
+            raise TypeError("DalmatianLoss requires FactorizedProfileCountOutput")
+        peak_status = kwargs["peak_status"]
+        assert isinstance(peak_status, torch.Tensor)
+
+        # 1. Combined reconstruction loss (all examples)
+        combined = ProfileCountOutput(
+            logits=outputs.logits, log_counts=outputs.log_counts,
+        )
+        l_recon = self.base_loss(combined, targets)
+
+        # 2. Bias-only reconstruction (non-peak examples)
+        non_peak = peak_status == 0
+        l_bias = torch.tensor(0.0, device=targets.device)
+
+        if non_peak.any():
+            bias_out = ProfileCountOutput(
+                logits=outputs.bias_logits[non_peak],
+                log_counts=outputs.bias_log_counts[non_peak],
+            )
+            l_bias = self.base_loss(bias_out, targets[non_peak])
+
+        return {"recon_loss": l_recon, "bias_loss": l_bias}
+
+    def forward(
+        self,
+        outputs: object,
+        targets: torch.Tensor,
+        **kwargs: object,
+    ) -> torch.Tensor:
+        """Compute factorized loss.
+
+        Args:
+            outputs: Model output with combined and decomposed fields.
+            targets: Ground-truth target tensor (B, C, L).
+            **kwargs: Batch context. Must contain ``peak_status`` (B,) tensor
+                with 1 for peak and 0 for background examples.
+
+        Returns:
+            Scalar loss tensor.
+        """
+        components = self.loss_components(outputs, targets, **kwargs)
+        return components["recon_loss"] + self.bias_weight * components["bias_loss"]
 
 ## src/cerberus/metrics.py
 
@@ -9176,8 +10017,8 @@ class ConvNeXtV2Block(nn.Module):
 class PGCBlock(nn.Module):
     """
     Projected Gated Convolution Block.
-    
-    Structure:
+
+    Full mode (expansion >= 1):
     1. Projection (Pointwise) -> Expansion
     2. RMSNorm
     3. Split into X, V
@@ -9187,87 +10028,120 @@ class PGCBlock(nn.Module):
     7. RMSNorm
     8. Dropout
     9. Residual Connection
-    
+
+    Depthwise-only mode (expansion = 0):
+    1. RMSNorm
+    2. Dilated Depthwise Conv
+    3. Dropout
+    4. Residual Connection
+
+    No pointwise projections or gating are used in depthwise-only mode.
+    The tower features remain independent per-channel — useful for ablation
+    studies testing whether inter-channel mixing matters.
+
     Args:
         dim (int): Input/Output dimension.
         kernel_size (int): Kernel size for depthwise convolution.
         dilation (int): Dilation rate.
         expansion (int): Expansion factor. Internal dimension = dim * expansion.
+            When set to 0, the block operates in depthwise-only mode.
         dropout (float): Dropout rate.
         padding (str): Padding mode. Default: 'same'.
     """
     def __init__(self, dim: int, kernel_size: int, dilation: int, expansion: int = 2, dropout: float = 0.1, padding: str = 'same'):
         super().__init__()
-        
+
         self.dim = dim
-        self.hidden_dim = dim * expansion
-        
-        # 1. Input Projection (Expansion)
-        # We project to 2 * hidden_dim to split into X and V
-        self.in_proj = nn.Conv1d(dim, 2 * self.hidden_dim, kernel_size=1)
-        
-        # 2. Norm after projection
-        self.norm1 = nn.RMSNorm(2 * self.hidden_dim)
-        
-        # 3. Depthwise Conv
-        # Applied to X part only (first half)
-        self.conv = nn.Conv1d(
-            self.hidden_dim, self.hidden_dim, 
-            kernel_size=kernel_size, 
-            dilation=dilation, 
-            groups=self.hidden_dim, # Depthwise
-            padding=padding
-        )
-        
-        # 4. Output Projection
-        self.out_proj = nn.Conv1d(self.hidden_dim, dim, kernel_size=1)
-        
-        # 5. Norm & Dropout
-        self.norm2 = nn.RMSNorm(dim)
-        self.dropout = nn.Dropout(dropout)
-        
+        self.depthwise_only = (expansion == 0)
+
+        if self.depthwise_only:
+            # Depthwise-only: norm -> conv -> dropout -> residual
+            self.norm = nn.RMSNorm(dim)
+            self.conv = nn.Conv1d(
+                dim, dim,
+                kernel_size=kernel_size,
+                dilation=dilation,
+                groups=dim,
+                padding=padding
+            )
+            self.dropout = nn.Dropout(dropout)
+        else:
+            self.hidden_dim = dim * expansion
+
+            # 1. Input Projection (Expansion)
+            # We project to 2 * hidden_dim to split into X and V
+            self.in_proj = nn.Conv1d(dim, 2 * self.hidden_dim, kernel_size=1)
+
+            # 2. Norm after projection
+            self.norm1 = nn.RMSNorm(2 * self.hidden_dim)
+
+            # 3. Depthwise Conv
+            # Applied to X part only (first half)
+            self.conv = nn.Conv1d(
+                self.hidden_dim, self.hidden_dim,
+                kernel_size=kernel_size,
+                dilation=dilation,
+                groups=self.hidden_dim, # Depthwise
+                padding=padding
+            )
+
+            # 4. Output Projection
+            self.out_proj = nn.Conv1d(self.hidden_dim, dim, kernel_size=1)
+
+            # 5. Norm & Dropout
+            self.norm2 = nn.RMSNorm(dim)
+            self.dropout = nn.Dropout(dropout)
+
     def forward(self, x):
         # x: (B, C, L)
         residual = x
-        
-        # 1. Project
-        x = self.in_proj(x)
-        
-        # 2. Norm (requires B, L, C)
-        x = x.transpose(1, 2) # (B, L, C)
-        x = self.norm1(x.float()).type_as(x)
-        x = x.transpose(1, 2) # (B, C, L)
-        
-        # 3. Split
-        x, v = torch.chunk(x, 2, dim=1)
-        
-        # 4. Depthwise Conv on X
-        x = self.conv(x)
-        
-        # If valid padding reduced x size, crop v to match
-        if x.shape[-1] != v.shape[-1]:
-            diff = v.shape[-1] - x.shape[-1]
-            if diff > 0:
-                crop_l = diff // 2
-                crop_r = diff - crop_l
-                v = v[..., crop_l:-crop_r]
-            elif diff < 0:
-                 raise ValueError(f"Conv output larger than input? {x.shape} vs {v.shape}")
-        
-        # 5. Gating
-        x = x * v
-        
-        # 6. Output Project
-        x = self.out_proj(x)
-        
-        # 7. Norm & Dropout (requires B, L, C)
-        x = x.transpose(1, 2)
-        x = self.norm2(x.float()).type_as(x)
-        x = x.transpose(1, 2)
-        
-        x = self.dropout(x)
-        
-        # 8. Residual
+
+        if self.depthwise_only:
+            # Pre-norm -> depthwise conv -> dropout
+            x = x.transpose(1, 2)
+            x = self.norm(x.float()).type_as(x)
+            x = x.transpose(1, 2)
+            x = self.conv(x)
+            x = self.dropout(x)
+        else:
+            # 1. Project
+            x = self.in_proj(x)
+
+            # 2. Norm (requires B, L, C)
+            x = x.transpose(1, 2) # (B, L, C)
+            x = self.norm1(x.float()).type_as(x)
+            x = x.transpose(1, 2) # (B, C, L)
+
+            # 3. Split
+            x, v = torch.chunk(x, 2, dim=1)
+
+            # 4. Depthwise Conv on X
+            x = self.conv(x)
+
+            # If valid padding reduced x size, crop v to match
+            if x.shape[-1] != v.shape[-1]:
+                diff = v.shape[-1] - x.shape[-1]
+                if diff > 0:
+                    crop_l = diff // 2
+                    crop_r = diff - crop_l
+                    v = v[..., crop_l:-crop_r]
+                elif diff < 0:
+                     raise ValueError(f"Conv output larger than input? {x.shape} vs {v.shape}")
+
+            # 5. Gating
+            x = x * v
+
+            # 6. Output Project
+            x = self.out_proj(x)
+
+            # 7. Norm & Dropout (requires B, L, C)
+            x = x.transpose(1, 2)
+            x = self.norm2(x.float()).type_as(x)
+            x = x.transpose(1, 2)
+
+            x = self.dropout(x)
+
+        # Residual connection
         # If valid padding reduced x size, crop residual to match
         if x.shape[-1] != residual.shape[-1]:
             diff = residual.shape[-1] - x.shape[-1]
@@ -9284,7 +10158,10 @@ class DilatedResidualBlock(nn.Module):
     """
     Dilated Residual Block for BPNet.
 
-    Structure: Input -> Dilated Conv -> Activation -> Add to cropped Input
+    Supported residual styles:
+    - ``residual_post-activation_conv``: ``x + act(conv(x))`` (current Cerberus/BPNet-lite BPNet style)
+    - ``residual_pre-activation_conv``: ``x + conv(act(x))`` (BasePairNet/bpnet-refactor pre-activation style)
+    - ``activated_residual_pre-activation_conv``: ``act(x) + conv(act(x))`` (bpnet-refactor post-activation style)
 
     Args:
         filters (int): Number of input and output channels.
@@ -9299,9 +10176,14 @@ class DilatedResidualBlock(nn.Module):
             normalization is a weight reparameterization, not an activation
             nonlinearity, so the Conv1d linear passthrough rule is unchanged.
             Default: ``False``.
+        residual_architecture (str): Residual block formulation. One of
+            ``"residual_post-activation_conv"``, ``"residual_pre-activation_conv"``,
+            or ``"activated_residual_pre-activation_conv"``.
+            Default: ``"residual_post-activation_conv"``.
     """
     def __init__(self, filters: int, kernel_size: int, dilation: int,
-                 activation: str = "relu", weight_norm: bool = False):
+                 activation: str = "relu", weight_norm: bool = False,
+                 residual_architecture: str = "residual_post-activation_conv"):
         super().__init__()
         conv = nn.Conv1d(
             filters, filters,
@@ -9321,16 +10203,90 @@ class DilatedResidualBlock(nn.Module):
                 f"DilatedResidualBlock: unsupported activation {activation!r}. "
                 "Must be 'relu' or 'gelu'."
             )
+        valid_architectures = {
+            "residual_post-activation_conv",
+            "residual_pre-activation_conv",
+            "activated_residual_pre-activation_conv",
+        }
+        if residual_architecture not in valid_architectures:
+            raise ValueError(
+                f"DilatedResidualBlock: unsupported residual_architecture {residual_architecture!r}. "
+                "Must be one of "
+                "'residual_post-activation_conv', 'residual_pre-activation_conv', "
+                "'activated_residual_pre-activation_conv'."
+            )
+        self.residual_architecture = residual_architecture
+
+    @staticmethod
+    def _center_crop_to_length(x: torch.Tensor, target_len: int) -> torch.Tensor:
+        """Center-crop tensor ``x`` along the last axis to ``target_len``."""
+        diff = x.shape[-1] - target_len
+        if diff < 0:
+            raise ValueError(
+                f"DilatedResidualBlock: cannot crop length {x.shape[-1]} to larger target {target_len}."
+            )
+        if diff == 0:
+            return x
+        crop_l = diff // 2
+        crop_r = diff - crop_l
+        return x[..., crop_l:-crop_r]
 
     def forward(self, x):
+        if self.residual_architecture == "residual_post-activation_conv":
+            # x + act(conv(x))
+            out = self.act(self.conv(x))
+            residual = self._center_crop_to_length(x, out.shape[-1])
+            return residual + out
+
+        if self.residual_architecture == "residual_pre-activation_conv":
+            # x + conv(act(x))
+            x_act = self.act(x)
+            out = self.conv(x_act)
+            residual = self._center_crop_to_length(x, out.shape[-1])
+            return residual + out
+
+        # activated_residual_pre-activation_conv: act(x) + conv(act(x))
+        x_act = self.act(x)
+        out = self.conv(x_act)
+        residual = self._center_crop_to_length(x_act, out.shape[-1])
+        return residual + out
+
+
+class SimpleResidualBlock(nn.Module):
+    """Conv1d + ReLU residual block with valid padding.
+
+    Structure: Conv1d(dim, dim, k, dilation=d) → ReLU → Dropout [+ Residual]
+
+    With residual=True (default), the residual input is center-cropped to match
+    the valid-padded output and added back. All operations are nn.Module-based
+    (no ``F.relu``) for full DeepLIFT/DeepSHAP compatibility via captum.
+
+    Args:
+        dim: Number of input/output channels.
+        kernel_size: Convolution kernel size.
+        dilation: Dilation rate. Default: 1.
+        dropout: Dropout rate. Default: 0.1.
+        residual: Whether to add a residual connection. Default: True.
+    """
+    def __init__(self, dim: int, kernel_size: int, dilation: int = 1,
+                 dropout: float = 0.1, residual: bool = True):
+        super().__init__()
+        self.shrinkage = dilation * (kernel_size - 1)
+        self.residual = residual
+        self.conv = nn.Conv1d(dim, dim, kernel_size, dilation=dilation, padding=0)
+        self.act = nn.ReLU()
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.act(self.conv(x))
-        # Center crop x to match out due to 'valid' padding shrinking the sequence.
-        diff = x.shape[-1] - out.shape[-1]
-        if diff > 0:
-            crop_l = diff // 2
-            crop_r = diff - crop_l
-            x = x[..., crop_l:-crop_r]
-        return x + out
+        out = self.dropout(out)
+        if self.residual:
+            # Center-crop residual to match valid-padded output
+            if self.shrinkage > 0:
+                crop = self.shrinkage // 2
+                x = x[..., crop: crop + out.shape[-1]]
+            return out + x
+        return out
 
 ## src/cerberus/model_ensemble.py
 
@@ -9809,6 +10765,10 @@ class ModelEnsemble(nn.ModuleDict):
 class _ModelManager:
     """
     Manages loading and caching of models for different folds.
+
+    Prefers clean ``model.pt`` state dicts (written by training since the
+    pretrained-weight-loading update) and falls back to Lightning ``.ckpt``
+    checkpoints for backward compatibility with older training runs.
     """
     def __init__(
         self,
@@ -9861,41 +10821,78 @@ class _ModelManager:
     def load_models_and_folds(self) -> tuple[dict[str, nn.Module], list]:
         """
         Loads models and fold configuration.
+
+        Prefers ``model.pt`` (clean state dict) when available, falling back
+        to the best Lightning ``.ckpt`` checkpoint otherwise.
         """
         models_dict = {}
-        
+
         for fold_idx in self.fold_indices:
             fold_dir = self.checkpoint_path / f"fold_{fold_idx}"
-            
-            # Find checkpoint
+            key = f"fold_{fold_idx}"
+
+            # Prefer clean model.pt state dict
+            pt_path = fold_dir / "model.pt"
+            if pt_path.exists():
+                models_dict[str(fold_idx)] = self._load_model_pt(key, pt_path)
+                continue
+
+            # Fallback: find best Lightning checkpoint
+            logger.debug("model.pt not found for fold %s, falling back to .ckpt", fold_idx)
             checkpoints = list(fold_dir.glob("*.ckpt"))
             if not checkpoints:
                  checkpoints = list(fold_dir.rglob("*.ckpt"))
-            
+
             if checkpoints:
                 ckpt_path = self._select_best_checkpoint(checkpoints)
-                models_dict[str(fold_idx)] = self._load_model(f"fold_{fold_idx}", ckpt_path)
+                models_dict[str(fold_idx)] = self._load_model_ckpt(key, ckpt_path)
             else:
                 logger.warning(f"No checkpoint found for fold {fold_idx} in {fold_dir}")
-            
+
         return models_dict, self.folds
 
-    def _load_model(self, key: str, ckpt_file: Path) -> nn.Module:
+    def _load_model_pt(self, key: str, pt_file: Path) -> nn.Module:
         """
-        Loads a single model from a checkpoint file.
+        Loads a model from a clean ``.pt`` state dict file.
+
+        These files are produced by ``_save_model_pt`` during training and
+        contain a plain state dict with no ``model.`` or ``_orig_mod.``
+        prefixes, so no stripping is needed.
         """
         if key in self.cache:
             return self.cache[key]
-        
+
+        logger.info(f"Loading model from {pt_file} for {key}...")
+        model = instantiate_model(
+            model_config=self.model_config,
+            data_config=self.data_config,
+        )
+        state_dict = torch.load(pt_file, map_location=self.device, weights_only=True)
+        model.load_state_dict(state_dict, strict=True)
+        model.to(self.device)
+        model.eval()
+
+        self.cache[key] = model
+        return model
+
+    def _load_model_ckpt(self, key: str, ckpt_file: Path) -> nn.Module:
+        """
+        Loads a model from a Lightning ``.ckpt`` checkpoint (fallback path).
+
+        Strips the ``model.`` prefix added by CerberusModule and the
+        ``_orig_mod.`` prefix added by ``torch.compile``.
+        """
+        if key in self.cache:
+            return self.cache[key]
+
         logger.info(f"Loading model from {ckpt_file} for {key}...")
-        # Instantiate only the backbone model to avoid overhead of CerberusModule (metrics, loss, etc.)
         model = instantiate_model(
             model_config=self.model_config,
             data_config=self.data_config,
         )
         checkpoint = torch.load(ckpt_file, map_location=self.device, weights_only=False)
         state_dict = checkpoint["state_dict"]
-        
+
         # Strip "model." prefix from state_dict keys because we are loading into the backbone model directly,
         # not the CerberusModule wrapper where these weights were originally saved under 'self.model'.
         new_state_dict = {}
@@ -9908,11 +10905,11 @@ class _ModelManager:
                 if weight_key.startswith("_orig_mod."):
                     weight_key = weight_key[10:]
                 new_state_dict[weight_key] = v
-        
+
         model.load_state_dict(new_state_dict)
         model.to(self.device)
         model.eval()
-        
+
         self.cache[key] = model
         return model
 
@@ -9946,16 +10943,20 @@ def update_ensemble_metadata(root_dir: Path | str, fold: int):
 
 ## src/cerberus/predict_bigwig.py
 
+import numpy as np
 import torch
 import logging
 from collections.abc import Iterable
 import pybigtools
 from pathlib import Path
-import dataclasses
 
 from cerberus.interval import Interval
 from cerberus.dataset import CerberusDataset
 from cerberus.model_ensemble import ModelEnsemble
+from cerberus.output import (
+    ModelOutput, ProfileCountOutput, ProfileLogRates,
+    unbatch_modeloutput,
+)
 from cerberus.samplers import SlidingWindowSampler
 
 logger = logging.getLogger(__name__)
@@ -9967,15 +10968,18 @@ def predict_to_bigwig(
     model_ensemble: ModelEnsemble,
     stride: int | None = None,
     use_folds: list[str] | None = None,
-    aggregation: str = "model",
     batch_size: int = 64,
+    regions: list[Interval] | None = None,
+    count_pseudocount: float = 0.0,
 ) -> None:
-    """
-    Generates predictions for all chromosomes and writes to a BigWig file.
+    """Generates predictions and writes to a BigWig file.
 
-    This function processes the genome chromosome-by-chromosome using a SlidingWindowSampler
-    to generate valid input windows (respecting blacklists) and predict_intervals to
-    aggregate predictions into contiguous islands. The results are streamed to a BigWig file.
+    If *regions* is None (default), processes the entire genome chromosome-by-
+    chromosome using a SlidingWindowSampler (respecting blacklists).  If *regions*
+    is provided, only predicts within those intervals.
+
+    Per-window signal is reconstructed via softmax + count scaling before spatial
+    merging, so model aggregation is always "model" (per-window outputs required).
 
     Args:
         output_path: Path to the output BigWig file.
@@ -9983,9 +10987,13 @@ def predict_to_bigwig(
         model_ensemble: Initialized ModelEnsemble (provides models).
         stride: Stride for sliding window predictions. If None, defaults to output_len // 2.
         use_folds: Folds to use.
-        aggregation: Aggregation mode.
-        device: Device to run inference on.
         batch_size: Batch size for inference.
+        regions: Optional list of Intervals to restrict prediction to.
+            When provided, only these regions are predicted (no blacklist filtering).
+        count_pseudocount: Pseudocount to subtract when inverting log_counts for
+            ProfileCountOutput models trained with MSE loss. Set to
+            data_config["count_pseudocount"] * data_config["target_scale"] for
+            MSE losses; leave at 0.0 for Poisson/NB losses. Default 0.0.
     """
     genome_config = dataset.genome_config
     data_config = dataset.data_config
@@ -9999,63 +11007,127 @@ def predict_to_bigwig(
     # Prepare generator for pybigtools
     def stream_generator() -> Iterable[tuple[str, int, int, float]]:
         chrom_sizes = genome_config["chrom_sizes"]
-        allowed_chroms = genome_config["allowed_chroms"]
         input_len = data_config["input_len"]
         output_len = data_config["output_len"]
-        exclude_intervals = dataset.exclude_intervals
+        offset = (input_len - output_len) // 2
 
-        for chrom in allowed_chroms:
-            if chrom not in chrom_sizes:
-                continue
+        if regions is not None:
+            # Predict only within specified regions
+            # Sort by chrom then start for BigWig write order
+            sorted_regions = sorted(regions, key=lambda r: (r.chrom, r.start))
+            for region in sorted_regions:
+                if region.chrom not in chrom_sizes:
+                    logger.warning(f"Skipping region on unknown chrom: {region.chrom}")
+                    continue
+                # Tile the region with input-length windows
+                windows: list[Interval] = []
+                pos = region.start - offset
+                while pos + input_len <= region.end + offset + input_len:
+                    win_start = max(0, pos)
+                    win_end = win_start + input_len
+                    if win_end > chrom_sizes[region.chrom]:
+                        break
+                    windows.append(Interval(region.chrom, win_start, win_end, "+"))
+                    pos += stride
+                    if win_end >= region.end + offset:
+                        break
+                if windows:
+                    yield from _process_island(
+                        windows, dataset, model_ensemble,
+                        use_folds, batch_size, count_pseudocount,
+                    )
+        else:
+            # Genome-wide prediction
+            allowed_chroms = genome_config["allowed_chroms"]
+            exclude_intervals = dataset.exclude_intervals
 
-            # Create specific sampler for this chromosome to generate windows
-            # We use input_len as padded_size because predict_intervals expects inputs of that length
-            sampler = SlidingWindowSampler(
-                chrom_sizes={chrom: chrom_sizes[chrom]},
-                padded_size=input_len,
-                stride=stride,  # type: ignore (checked above)
-                exclude_intervals=exclude_intervals,
-                folds=[],  # No folds needed for prediction generation
-            )
+            for chrom in allowed_chroms:
+                if chrom not in chrom_sizes:
+                    continue
 
-            current_island: list[Interval] = []
-            prev_input_start = -999999
+                sampler = SlidingWindowSampler(
+                    chrom_sizes={chrom: chrom_sizes[chrom]},
+                    padded_size=input_len,
+                    stride=stride,  # type: ignore (checked above)
+                    exclude_intervals=exclude_intervals,
+                    folds=[],
+                )
 
-            for window in sampler:
-                # Check for gaps:
-                # - Model output start: `window.start + offset`
-                # - Previous window output end: `prev_input_start + offset + output_len`
-                # - Gap (no overlap) condition: `Output_Start >= Previous_Output_End`
-                # - `window.start + offset >= prev_input_start + offset + output_len`
-                # - `window.start >= prev_input_start + output_len`
-                if current_island and (window.start >= prev_input_start + output_len):
+                current_island: list[Interval] = []
+                prev_input_start = -999999
+
+                for window in sampler:
+                    if current_island and (window.start >= prev_input_start + output_len):
+                        yield from _process_island(
+                            current_island,
+                            dataset,
+                            model_ensemble,
+                            use_folds,
+                            batch_size,
+                            count_pseudocount,
+                        )
+                        current_island = []
+
+                    current_island.append(window)
+                    prev_input_start = window.start
+
+                if current_island:
                     yield from _process_island(
                         current_island,
                         dataset,
                         model_ensemble,
                         use_folds,
-                        aggregation,
                         batch_size,
+                        count_pseudocount,
                     )
-                    current_island = []
-
-                current_island.append(window)
-                prev_input_start = window.start
-
-            if current_island:
-                yield from _process_island(
-                    current_island,
-                    dataset,
-                    model_ensemble,
-                    use_folds,
-                    aggregation,
-                    batch_size,
-                )
 
     logger.info(f"Writing BigWig to {output_path}...")
-    # Using pybigtools to write the stream
     bw = pybigtools.open(str(output_path), "w")  # type: ignore
-    bw.write(genome_config["chrom_sizes"], stream_generator())
+    try:
+        bw.write(genome_config["chrom_sizes"], stream_generator())
+    finally:
+        bw.close()
+
+
+def _reconstruct_linear_signal(output: ModelOutput, count_pseudocount: float = 0.0) -> torch.Tensor:
+    """
+    Converts a per-window model output to linear signal (counts per bin).
+
+    Reconstruction depends on the output type:
+      - ProfileCountOutput (BPNet/Dalmatian): softmax(logits) * (exp(log_counts) - pseudocount)
+      - ProfileLogRates: exp(log_rates)
+      - ProfileLogits (fallback): raw logits (no absolute scale)
+
+    Args:
+        output: A single (unbatched) model output with shape (C, L) tensors.
+        count_pseudocount: Pseudocount to subtract from exp(log_counts) for
+            models trained with MSE loss in log(count + pseudocount) space.
+            0.0 means no inversion (Poisson/NB losses).
+
+    Returns:
+        Tensor of shape (C, L) with linear signal values.
+    """
+    if isinstance(output, ProfileCountOutput):
+        logits = output.logits.float()       # (C, L)
+        log_counts = output.log_counts.float()  # (C,)
+        # Numerically stable softmax over the length axis
+        logits_shifted = logits - logits.max(dim=-1, keepdim=True).values
+        exp_logits = torch.exp(logits_shifted)
+        probs = exp_logits / exp_logits.sum(dim=-1, keepdim=True)  # (C, L)
+        total_counts = (torch.exp(log_counts) - count_pseudocount).clamp_min(0.0).unsqueeze(-1)  # (C, 1)
+        return probs * total_counts
+    elif isinstance(output, ProfileLogRates):
+        return torch.exp(output.log_rates.float())
+    elif hasattr(output, "logits"):
+        logger.warning(
+            "Model output has logits but no log_counts or log_rates. "
+            "Exporting raw logits — values will not match input BigWig scale."
+        )
+        return output.logits  # type: ignore[union-attr]
+    else:
+        raise ValueError(
+            f"Cannot extract profile track from output type {type(output).__name__}"
+        )
 
 
 def _process_island(
@@ -10063,40 +11135,80 @@ def _process_island(
     dataset: CerberusDataset,
     model_ensemble: ModelEnsemble,
     use_folds: list[str],
-    aggregation: str,
     batch_size: int,
+    count_pseudocount: float,
 ) -> Iterable[tuple[str, int, int, float]]:
+    """Runs prediction on a contiguous island of intervals and yields
+    per-bp linear counts matching the scale of the input BigWig.
+
+    Linear signal is reconstructed per-window (softmax + count scaling)
+    and accumulated into a streaming accumulator, so memory usage is bounded
+    by the accumulator array rather than the number of windows.
+
+    The result is divided by target_scale and output_bin_size to undo the
+    training target transforms and produce average per-bp signal.
     """
-    Runs prediction on a contiguous island of intervals and yields values.
-    """
-    # predict_intervals aggregates the island into one result
-    output = model_ensemble.predict_intervals(
+    if not island_intervals:
+        return
+
+    target_scale = dataset.data_config["target_scale"]
+    output_bin_size = dataset.data_config["output_bin_size"]
+    output_len = dataset.data_config["output_len"]
+    input_len = dataset.data_config["input_len"]
+    offset = (input_len - output_len) // 2
+
+    # Compute merged output interval upfront from input intervals
+    chrom = island_intervals[0].chrom
+    min_start = min(iv.start + offset for iv in island_intervals)
+    max_end = max(iv.start + offset + output_len for iv in island_intervals)
+    merged_interval = Interval(chrom, min_start, max_end, island_intervals[0].strand)
+
+    span_bp = max_end - min_start
+    n_bins = span_bp // output_bin_size
+    interval_bins = output_len // output_bin_size
+
+    # Streaming accumulator — allocated on first signal (need n_channels)
+    accumulator: np.ndarray | None = None
+    counts = np.zeros((1, n_bins), dtype=np.float32)
+
+    for batched_output, batch_intervals in model_ensemble.predict_intervals_batched(
         island_intervals,
         dataset,
         use_folds=use_folds,
-        aggregation=aggregation,
+        aggregation="model",
         batch_size=batch_size,
-    )
-    aggregated_output = dataclasses.asdict(output)
-    merged_interval = output.out_interval
-    if merged_interval is None:
-        raise ValueError("ModelOutput.out_interval is None, but expected a merged interval.")
+    ):
+        unbatched = unbatch_modeloutput(batched_output, len(batch_intervals))
+        output_cls = type(batched_output)
 
-    # aggregated_output is a dict[str, np.ndarray]
-    # We attempt to retrieve the primary profile track
-    if "log_rates" in aggregated_output:
-        track_data = aggregated_output["log_rates"]
-    elif "logits" in aggregated_output:
-        track_data = aggregated_output["logits"]
-    else:
-        raise ValueError(
-            f"Could not identify a profile track in output keys: {list(aggregated_output.keys())}"
-        )
-    
-    # TODO(#32): Add a `channel` parameter to predict_to_bigwig / _process_island
-    # so callers can choose which channel to export. BigWig is single-track, so
-    # multi-channel export would require one file per channel or an aggregation
-    # strategy (sum/mean).  For now we always take the first channel.
+        for interval, out_dict in zip(batch_intervals, unbatched):
+            single_output = output_cls(**out_dict)
+            signal = _reconstruct_linear_signal(single_output, count_pseudocount)
+            val = signal.cpu().numpy()  # (C, L)
+
+            out_start = interval.start + offset
+            rel_start_bin = (out_start - min_start) // output_bin_size
+            end_bin = rel_start_bin + interval_bins
+
+            if accumulator is None:
+                n_channels = val.shape[0]
+                accumulator = np.zeros((n_channels, n_bins), dtype=np.float32)
+
+            accumulator[:, rel_start_bin:end_bin] += val
+            counts[:, rel_start_bin:end_bin] += 1.0
+
+    if accumulator is None:
+        return
+
+    # Average overlapping predictions
+    counts = np.maximum(counts, 1.0)
+    track_data = accumulator / counts
+
+    # Undo training transforms (Scale then Bin) to recover per-bp signal.
+    # Training: raw * target_scale → binned. Inverse: / target_scale / bin_size.
+    track_data = track_data / target_scale / output_bin_size
+
+    # Select first channel for BigWig output
     n_channels = track_data.shape[0]
     if n_channels > 1:
         logger.warning(
@@ -10104,22 +11216,22 @@ def _process_island(
             "only channel 0 will be exported. Other channels are discarded.",
             n_channels,
         )
-    values = track_data[0]  # Shape: (Bins,)
+    values = track_data[0]  # (n_bins,)
 
-    chrom = merged_interval.chrom
     start = merged_interval.start
-    output_bin_size = dataset.data_config["output_bin_size"]
+    logger.info("island: %s:%d-%d  len=%d", chrom, start, merged_interval.end, len(values))
 
     for i, val in enumerate(values):
         bin_start = start + i * output_bin_size
         bin_end = bin_start + output_bin_size
-        
         yield (chrom, bin_start, bin_end, float(val))
 
 ## src/cerberus/download.py
 
 import logging
 from pathlib import Path
+import subprocess
+import urllib.error
 import urllib.request
 import shutil
 import gzip
@@ -10128,13 +11240,25 @@ import pyfaidx
 logger = logging.getLogger(__name__)
 
 def _download_file(url: str, dest: Path):
-    """Downloads a file from a URL to a destination path."""
-    # Use a custom user agent to avoid potential 403s from some servers
-    req = urllib.request.Request(
-        url, headers={"User-Agent": "Mozilla/5.0"}
-    )
-    with urllib.request.urlopen(req) as response, open(dest, "wb") as out_file:
-        shutil.copyfileobj(response, out_file)
+    """Downloads a file from a URL to a destination path.
+
+    Tries urllib first, falls back to curl if blocked (HTTP 403).
+    """
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(req) as response, open(dest, "wb") as out_file:
+            shutil.copyfileobj(response, out_file)
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            logger.info("urllib blocked (403), falling back to curl...")
+            subprocess.run(
+                ["curl", "-fSL", "-o", str(dest), url],
+                check=True,
+            )
+        else:
+            raise
 
 def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
     """
@@ -10144,10 +11268,18 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
         output_dir: Directory where the dataset files will be saved.
         name: Name of the dataset to download. Currently supported:
               - 'mdapca2b_ar': MDA-PCA-2b AR ChIP-seq data (BigWig and narrowPeak)
+              - 'k562_chrombpnet': K562 ChromBPNet example data from Zenodo
+                (DOI: 10.5281/zenodo.15713376; narrowPeak and BigWig)
+              - 'kidney_scatac': Human kidney 10x scATAC-seq from CellxGene
+                (fragments, tabix index, and gene activity h5ad;
+                 27,034 cells, 14 cell types, 5 donors, GRCh38)
 
     Returns:
-        Dictionary mapping file types (e.g., 'bigwig', 'narrowPeak') to their local paths.
-    
+        Dictionary mapping file types to their local paths.
+        For 'mdapca2b_ar': 'bigwig', 'narrowPeak'.
+        For 'k562_chrombpnet': 'narrowPeak', 'bigwig'.
+        For 'kidney_scatac': 'fragments', 'fragments_index', 'h5ad'.
+
     Raises:
         ValueError: If the dataset name is not supported.
     """
@@ -10161,21 +11293,64 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
             "bigwig": "mdapca2b-ar.bigwig",
             "narrowPeak": "mdapca2b-ar.narrowPeak.gz"
         }
-        
+
         urls = {
             "bigwig": "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSM8605979&format=file&file=GSM8605979%5F05%5F0FP2%5F0255Genen%5FDMSO%2D3a%5FAR%5Fhs%5Fi37%5FR1%2Esrt%2Enodup%5Fx%5F00%5F0FPL%5F0255Genen%5FPooled%5FInput%5Fhs%5Fi67%5FR1%2Esrt%2Enodup%2Efc%2Esignal%2Ebigwig",
             "narrowPeak": "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSM8605979&format=file&file=GSM8605979%5F05%5F0FP2%5F0255Genen%5FDMSO%2D3a%5FAR%5Fhs%5Fi37%5FR1%2Esrt%2Enodup%5Fx%5F00%5F0FPL%5F0255Genen%5FPooled%5FInput%5Fhs%5Fi67%5FR1%2Esrt%2Enodup%2Epval0%2E01%2E500K%2Ebfilt%2EnarrowPeak%2Egz"
         }
-        
+
         for key, filename in files.items():
             filepath = out_dir / filename
             if not filepath.exists():
                 logger.info(f"Downloading {filename}...")
                 _download_file(urls[key], filepath)
             results[key] = filepath
-            
+
+    elif name == "k562_chrombpnet":
+        _ZENODO_BASE = "https://zenodo.org/records/15713376/files"
+        files = {
+            "narrowPeak": "peaks.bed",
+            "bigwig": "unstranded.bw",
+        }
+
+        urls = {
+            key: f"{_ZENODO_BASE}/{filename}?download=1"
+            for key, filename in files.items()
+        }
+
+        for key, filename in files.items():
+            filepath = out_dir / filename
+            if not filepath.exists():
+                logger.info(f"Downloading {filename}...")
+                _download_file(urls[key], filepath)
+            results[key] = filepath
+
+    elif name == "kidney_scatac":
+        files = {
+            "fragments": "fragments.tsv.bgz",
+            "fragments_index": "fragments.tsv.bgz.tbi",
+            "h5ad": "gene_activity.h5ad",
+        }
+
+        _CELLXGENE_BASE = "https://datasets.cellxgene.cziscience.com"
+        urls = {
+            "fragments": f"{_CELLXGENE_BASE}/214d3c72-6dfc-4806-9077-e24060eba55a-fragment.tsv.bgz",
+            "fragments_index": f"{_CELLXGENE_BASE}/214d3c72-6dfc-4806-9077-e24060eba55a-fragment.tsv.bgz.tbi",
+            "h5ad": f"{_CELLXGENE_BASE}/43513175-baf7-4881-9564-c4daa2416026.h5ad",
+        }
+
+        for key, filename in files.items():
+            filepath = out_dir / filename
+            if not filepath.exists():
+                logger.info(f"Downloading {filename}...")
+                _download_file(urls[key], filepath)
+            results[key] = filepath
+
     else:
-        raise ValueError(f"Unknown dataset: {name}. Supported: ['mdapca2b_ar']")
+        raise ValueError(
+            f"Unknown dataset: {name}. "
+            f"Supported: ['mdapca2b_ar', 'k562_chrombpnet', 'kidney_scatac']"
+        )
         
     return results
 
@@ -10357,7 +11532,9 @@ def setup_logging(level: int = logging.INFO) -> None:
 ## src/cerberus/models/__init__.py
 
 from .asap import ConvNeXtDCNN
+from .biasnet import BiasNet
 from .bpnet import BPNet, BPNet1024, BPNetLoss, BPNetMetricCollection
+from .dalmatian import Dalmatian
 from .gopher import GlobalProfileCNN
 from .pomeranian import Pomeranian, PomeranianK5, PomeranianMetricCollection
 
@@ -10435,6 +11612,8 @@ class GlobalProfileCNN(nn.Module):
             input_channels = ["A", "C", "G", "T"]
         if output_channels is None:
             output_channels = ["signal"]
+
+        self.input_len = input_len
 
         num_input_channels = len(input_channels)
         num_output_channels = len(output_channels)
@@ -10529,8 +11708,17 @@ class GlobalProfileCNN(nn.Module):
         self.head = nn.Conv1d(256, num_output_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> ProfileLogRates:
+        # Center-crop or reject input based on expected input_len
+        if x.shape[-1] > self.input_len:
+            crop = (x.shape[-1] - self.input_len) // 2
+            x = x[..., crop : crop + self.input_len]
+        elif x.shape[-1] < self.input_len:
+            raise ValueError(
+                f"Input length {x.shape[-1]} is shorter than required {self.input_len}"
+            )
+
         # x: (Batch, Channels, Length)
-        
+
         # Conv Blocks
         x = self.block1(x)
         x = self.block2(x)
@@ -10602,6 +11790,14 @@ class BPNet(nn.Module):
             AdamW weight decay and cosine LR scheduling. Safe for DeepLIFT/DeepSHAP: weight
             normalisation is a weight reparameterisation, not an activation nonlinearity.
             Default: ``False``.
+        residual_architecture (str): Residual block formulation. One of:
+            ``"residual_post-activation_conv"`` (``x + act(conv(x))``, default),
+            ``"residual_pre-activation_conv"`` (``x + conv(act(x))``),
+            ``"activated_residual_pre-activation_conv"`` (``act(x) + conv(act(x))``).
+            The initial convolution output is activated before entering the tower
+            only for ``"residual_post-activation_conv"``.
+            To match ``bpnet-refactor`` semantics, the two pre-activation variants
+            apply an additional final ``ReLU`` after the full dilated tower.
     """
     def __init__(
         self,
@@ -10618,6 +11814,7 @@ class BPNet(nn.Module):
         predict_total_count: bool = True,
         activation: str = "relu",
         weight_norm: bool = False,
+        residual_architecture: str = "residual_post-activation_conv",
     ):
         super().__init__()
         if input_channels is None:
@@ -10631,6 +11828,12 @@ class BPNet(nn.Module):
         self.n_input_channels = len(input_channels)
         self.n_output_channels = len(output_channels)
         self.predict_total_count = predict_total_count
+        self.residual_architecture = residual_architecture
+        self._activate_iconv_before_tower = residual_architecture == "residual_post-activation_conv"
+        self._apply_final_tower_relu = residual_architecture in {
+            "residual_pre-activation_conv",
+            "activated_residual_pre-activation_conv",
+        }
 
         # 1. Initial Convolution (plain — weight_norm applied after reinit if requested)
         self.iconv: nn.Module = nn.Conv1d(
@@ -10639,7 +11842,8 @@ class BPNet(nn.Module):
             padding='valid'
         )
 
-        # Activation for the initial conv output (same as tower activation)
+        # Activation module used for the initial conv output when the selected
+        # residual architecture is post-activation.
         if activation == "relu":
             self.iconv_act: nn.Module = nn.ReLU()
         elif activation == "gelu":
@@ -10654,7 +11858,8 @@ class BPNet(nn.Module):
             dilation = 2**i
             self.res_layers.append(
                 DilatedResidualBlock(filters, dil_kernel_size, dilation,
-                                     activation=activation, weight_norm=False)
+                                     activation=activation, weight_norm=False,
+                                     residual_architecture=residual_architecture)
             )
 
         # 3. Profile Head
@@ -10684,8 +11889,11 @@ class BPNet(nn.Module):
                     _apply_weight_norm(block.conv)
 
         logger.info(
-            "BPNet initialized: filters=%d, n_dilated_layers=%d, activation=%s, weight_norm=%s",
-            filters, n_dilated_layers, activation, weight_norm,
+            "BPNet initialized: filters=%d, n_dilated_layers=%d, activation=%s, "
+            "weight_norm=%s, residual_architecture=%s, iconv_activation_before_tower=%s, "
+            "final_tower_relu=%s",
+            filters, n_dilated_layers, activation, weight_norm, residual_architecture,
+            self._activate_iconv_before_tower, self._apply_final_tower_relu,
         )
 
     def _tf_style_reinit(self):
@@ -10710,21 +11918,39 @@ class BPNet(nn.Module):
     def forward(self, x) -> ProfileCountOutput:
         """
         Forward pass.
-        
+
         Args:
             x (Tensor): Input sequence (Batch, Channels, Input_Len)
-            
+
         Returns:
             ProfileCountOutput: Contains profile_logits and log_counts.
                 logits: (Batch, Out_Channels, Out_Len)
                 log_counts: (Batch, Out_Channels) - representing log(total_counts)
         """
-        # 1. Initial Conv + Activation
-        x = self.iconv_act(self.iconv(x))
+        # Center-crop or reject input based on expected input_len
+        if x.shape[-1] > self.input_len:
+            crop = (x.shape[-1] - self.input_len) // 2
+            x = x[..., crop : crop + self.input_len]
+        elif x.shape[-1] < self.input_len:
+            raise ValueError(
+                f"Input length {x.shape[-1]} is shorter than required {self.input_len}"
+            )
+
+        # 1. Initial Conv
+        # bpnet-refactor pre-activation variants pass an unactivated tensor into
+        # the first dilated block. The post-activation variant applies activation here.
+        x = self.iconv(x)
+        if self._activate_iconv_before_tower:
+            x = self.iconv_act(x)
         
         # 2. Residual Tower
         for layer in self.res_layers:
             x = layer(x)
+
+        # bpnet-refactor applies a final ReLU after the dilated tower for both
+        # pre-activation variants (syntax_module final activation).
+        if self._apply_final_tower_relu:
+            x = F.relu(x)
             
         # --- Profile Head ---
         profile_logits = self.profile_conv(x) # (B, Out_Channels, Length)
@@ -10792,6 +12018,7 @@ class BPNet1024(BPNet):
         predict_total_count: bool = True,
         activation: str = "relu",
         weight_norm: bool = False,
+        residual_architecture: str = "residual_post-activation_conv",
     ):
         super().__init__(
             input_len=input_len,
@@ -10807,6 +12034,7 @@ class BPNet1024(BPNet):
             predict_total_count=predict_total_count,
             activation=activation,
             weight_norm=weight_norm,
+            residual_architecture=residual_architecture,
         )
 
 
@@ -10943,6 +12171,7 @@ class Pomeranian(nn.Module):
         dil_kernel_size (int | list[int]): Kernel size for dilated convolutions. Default: 9.
         profile_kernel_size (int): Kernel size for profile head convolution. Default: 45.
         expansion (int): Expansion factor for PGC blocks. Default: 1.
+            When set to 0, PGC blocks use depthwise-only mode (no channel mixing in the tower).
         dropout (float): Dropout rate. Default: 0.1.
         predict_total_count (bool): If True, predicts a single total count scalar. Default: True.
         stem_expansion (int): Expansion factor for Stem blocks. Default: 2.
@@ -11068,6 +12297,15 @@ class Pomeranian(nn.Module):
         )
 
     def forward(self, x) -> ProfileCountOutput:
+        # Center-crop or reject input based on expected input_len
+        if x.shape[-1] > self.input_len:
+            crop = (x.shape[-1] - self.input_len) // 2
+            x = x[..., crop : crop + self.input_len]
+        elif x.shape[-1] < self.input_len:
+            raise ValueError(
+                f"Input length {x.shape[-1]} is shorter than required {self.input_len}"
+            )
+
         # 1. Stem
         x = self.stem(x)
         
@@ -11306,6 +12544,8 @@ class ConvNeXtDCNN(nn.Module):
             output_channels = ["signal"]
 
         # Default config from original model
+        self.input_len = input_len
+
         config = {
             'window_size': input_len,
             'bin_size': output_bin_size,
@@ -11355,13 +12595,15 @@ class ConvNeXtDCNN(nn.Module):
         )
     
     def forward(self, x: torch.Tensor) -> ProfileLogRates:
-        # Input x: (Batch, Channels, Length)
-        
-        # Original model did transpose here because it expected (Batch, Length, Channels)
-        # But cerberus provides (Batch, Channels, Length).
-        # ConvNeXtV2Block (init_conv) expects (Batch, Channels, Length).
-        # So we do NOT transpose here.
-        
+        # Center-crop or reject input based on expected input_len
+        if x.shape[-1] > self.input_len:
+            crop = (x.shape[-1] - self.input_len) // 2
+            x = x[..., crop : crop + self.input_len]
+        elif x.shape[-1] < self.input_len:
+            raise ValueError(
+                f"Input length {x.shape[-1]} is shorter than required {self.input_len}"
+            )
+
         x = self.init_conv(x)
         x = F.pad(x, (1, 0))
         x = self.init_pool(x)

@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -491,6 +491,34 @@
     
   
     Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../preprocessing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Preprocessing
   
 
     
@@ -1014,6 +1042,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#cerberusloss-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CerberusLoss Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#profilepoissonnllloss" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1090,6 +1129,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#dalmatianloss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DalmatianLoss
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1134,6 +1184,17 @@
     <span class="md-ellipsis">
       
         ProfileCountOutput
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#factorizedprofilecountoutput" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FactorizedProfileCountOutput
       
     </span>
   </a>
@@ -1787,12 +1848,18 @@
 </ol>
 <h2 id="losses">Losses<a class="headerlink" href="#losses" title="Permanent link">&para;</a></h2>
 <p>Cerberus provides specialized loss functions for genomic signal prediction.</p>
+<h3 id="cerberusloss-protocol">CerberusLoss Protocol<a class="headerlink" href="#cerberusloss-protocol" title="Permanent link">&para;</a></h3>
+<p>All loss classes implement the <code>CerberusLoss</code> protocol, which requires:
+*   <code>loss_components(outputs, targets, **kwargs) -&gt; dict[str, Tensor]</code>: Returns named, unweighted loss components.
+*   <code>__call__(outputs, targets, **kwargs) -&gt; Tensor</code>: Returns the combined weighted scalar loss.</p>
+<p><code>CerberusModule._shared_step</code> calls both methods: <code>forward()</code> for the training loss and <code>loss_components()</code> to log each component as a separate Lightning metric (e.g., <code>train_profile_loss</code>, <code>val_count_loss</code>).</p>
 <h3 id="profilepoissonnllloss">ProfilePoissonNLLLoss<a class="headerlink" href="#profilepoissonnllloss" title="Permanent link">&para;</a></h3>
 <p>Standard Poisson NLL loss for models predicting log-rates (log-intensities).</p>
 <ul>
 <li><strong>Behavior</strong>: Computes <code>PoissonNLL(exp(log_rates), targets)</code>.</li>
 <li><strong>Use Case</strong>: Models predicting unnormalized log-counts directly (e.g., <code>ConvNeXtDCNN</code>).</li>
 <li><strong>Inputs</strong>: <code>ProfileLogRates</code>.</li>
+<li><strong>Components</strong>: <code>{"poisson_nll_loss": ...}</code>.</li>
 </ul>
 <h3 id="msemultinomialloss-bpnetloss">MSEMultinomialLoss (BPNetLoss)<a class="headerlink" href="#msemultinomialloss-bpnetloss" title="Permanent link">&para;</a></h3>
 <p>Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).</p>
@@ -1806,6 +1873,7 @@
 </ul>
 </li>
 <li><strong>Inputs</strong>: <code>ProfileCountOutput</code>.</li>
+<li><strong>Components</strong>: <code>{"profile_loss": ..., "count_loss": ...}</code>.</li>
 </ul>
 <h3 id="coupledmsemultinomialloss">CoupledMSEMultinomialLoss<a class="headerlink" href="#coupledmsemultinomialloss" title="Permanent link">&para;</a></h3>
 <p>Coupled version of <code>MSEMultinomialLoss</code> for models predicting log-rates directly.</p>
@@ -1841,6 +1909,15 @@
 <li><strong>Behavior</strong>: Derives predicted counts via LogSumExp.</li>
 <li><strong>Inputs</strong>: <code>ProfileLogRates</code>.</li>
 </ul>
+<h3 id="dalmatianloss">DalmatianLoss<a class="headerlink" href="#dalmatianloss" title="Permanent link">&para;</a></h3>
+<p>Peak-conditioned loss for bias-factorized models. Wraps any profile+count base loss and adds a bias-only reconstruction term on background (non-peak) examples. No explicit signal suppression needed — gradient detach handles it.</p>
+<ul>
+<li><strong>Terms</strong>: <code>L_recon</code> (all examples) + <code>bias_weight * L_bias</code> (background).</li>
+<li><strong>Args</strong>: <code>base_loss_cls</code> (dotted class path), <code>base_loss_args</code>, <code>bias_weight</code> (default: 1.0), <code>count_pseudocount</code> (default: 1.0).</li>
+<li><strong>Requires</strong>: <code>peak_status</code> tensor passed as keyword argument (automatically forwarded by <code>CerberusModule._shared_step</code> from batch context).</li>
+<li><strong>Inputs</strong>: <code>FactorizedProfileCountOutput</code>.</li>
+<li><strong>Components</strong>: <code>{"recon_loss": ..., "bias_loss": ...}</code>.</li>
+</ul>
 <h2 id="model-outputs">Model Outputs<a class="headerlink" href="#model-outputs" title="Permanent link">&para;</a></h2>
 <p>Models return standardized dataclasses (defined in <code>cerberus.output</code>) to ensure compatibility with losses and metrics.</p>
 <h3 id="profilelogits">ProfileLogits<a class="headerlink" href="#profilelogits" title="Permanent link">&para;</a></h3>
@@ -1857,6 +1934,11 @@
 <ul>
 <li><strong>Content</strong>: <code>logits</code> (Batch, Channels, Length) and <code>log_counts</code> (Batch, Channels).</li>
 <li><strong>Use Case</strong>: BPNet-style models with separate heads for profile shape and total count.</li>
+</ul>
+<h3 id="factorizedprofilecountoutput">FactorizedProfileCountOutput<a class="headerlink" href="#factorizedprofilecountoutput" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Content</strong>: Extends <code>ProfileCountOutput</code> with <code>bias_logits</code>, <code>bias_log_counts</code>, <code>signal_logits</code>, <code>signal_log_counts</code>.</li>
+<li><strong>Use Case</strong>: Bias-factorized models (Dalmatian) that decompose predictions into bias and signal components. Fully compatible with losses/metrics expecting <code>ProfileCountOutput</code>.</li>
 </ul>
 <h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
 <h3 id="profilepearsoncorrcoef">ProfilePearsonCorrCoef<a class="headerlink" href="#profilepearsoncorrcoef" title="Permanent link">&para;</a></h3>
@@ -1927,7 +2009,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 3, 2026 21:19:07 UTC">March 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 19, 2026 14:14:24 UTC">March 19, 2026</span>
   </span>
 
     
