@@ -330,18 +330,25 @@ For quick training on custom data, use the model-specific scripts in the `tools/
         --signal-filters 128 --bias-weight 2.0
     ```
 
-All tools support `--multi` (cross-validation), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
+*   `tools/train_asap.py`: Train an ASAP (ConvNeXtDCNN) model (2048bp → 512 bins at 4bp resolution).
+    ```bash
+    python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap
 
-| Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_dalmatian.py` | `train_gopher.py` |
-|---|---|---|---|---|
-| `--optimizer` | `adam` | `adamw` | `adamw` | `adamw` |
-| `--learning-rate` | `1e-3` | `5e-4` | `1e-3` | `1e-3` |
-| `--weight-decay` | `0.0` | `0.01` | `1e-4` | `0.01` |
-| `--scheduler-type` | `default` (constant) | `cosine` | `default` (constant) | `cosine` |
-| `--input-len` | `2114` | `2112` | `2112` | `2048` |
-| `--output-len` | `1000` | `1024` | `1024` | `1024` |
-| `--output-bin-size` | `1` | `1` | `1` | `4` |
-| Loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | `mse` (DalmatianLoss) | — (ProfilePoissonNLLLoss) |
+    python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap --multi
+    ```
+
+All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
+
+| Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_dalmatian.py` | `train_gopher.py` | `train_asap.py` |
+|---|---|---|---|---|---|
+| `--optimizer` | `adam` | `adamw` | `adamw` | `adamw` | `adamw` |
+| `--learning-rate` | `1e-3` | `5e-4` | `1e-3` | `1e-3` | `1e-3` |
+| `--weight-decay` | `0.0` | `0.01` | `1e-4` | `0.01` | `0.01` |
+| `--scheduler-type` | `default` (constant) | `cosine` | `default` (constant) | `cosine` | `cosine` |
+| `--input-len` | `2114` | `2112` | `2112` | `2048` | `2048` |
+| `--output-len` | `1000` | `1024` | `1024` | `1024` | `2048` |
+| `--output-bin-size` | `1` | `1` | `1` | `4` | `4` |
+| Loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | `mse` (DalmatianLoss) | — (ProfilePoissonNLLLoss) | — (ProfilePoissonNLLLoss) |
 
 ## scATAC-seq Pseudobulk Tools
 
@@ -388,6 +395,50 @@ bulk_merge.narrowPeak.bed.gz         # merged per-group peaks (with --call-peaks
 ```
 
 See `examples/scatac_kidney_pseudobulk.sh` for a complete example using the kidney scATAC-seq dataset.
+
+## Visualization Tools
+
+### Training Curves
+
+`tools/plot_training_results.py` parses Lightning CSVLogger `metrics.csv` files and generates training curve plots.
+
+```bash
+python tools/plot_training_results.py path/to/run_dir
+```
+
+Automatically generates plots for all available metrics: loss, profile Pearson, profile MSE, log counts MSE, log counts Pearson, profile loss, count loss, and Dalmatian-specific recon/bias loss. Outputs PNG files (300 dpi) to a `plots/` subdirectory next to each `metrics.csv`.
+
+### BiasNet ISM
+
+`tools/plot_biasnet_ism.py` computes in-silico mutagenesis (ISM) for BiasNet models and generates IC logo + heatmap plots revealing learned sequence motifs.
+
+```bash
+python tools/plot_biasnet_ism.py path/to/biasnet_model --n-seqs 1000 --ism-window 31
+```
+
+Works with both standalone BiasNet and Dalmatian models (extracts the bias subnetwork automatically). Outputs `{prefix}_biasnet_ism.png` and `{prefix}_biasnet_ism.csv`.
+
+### BiasNet Pairwise ISM
+
+`tools/plot_biasnet_pairwise_ism.py` computes pairwise ISM to measure epistatic interactions between positions.
+
+```bash
+python tools/plot_biasnet_pairwise_ism.py path/to/biasnet_model --n-seqs 200 --detail-pair 11 19
+```
+
+Outputs a 4-panel plot (IC logo, epistasis heatmap, interaction profile, 4×4 detail) and a long-format CSV. Computationally intensive (~850K forward passes for default settings).
+
+### Model Architecture Inspector
+
+`tools/print_model_dims.py` prints layer-by-layer tensor shapes for any Cerberus model by running a dummy forward pass with hooks.
+
+```bash
+python tools/print_model_dims.py Pomeranian
+python tools/print_model_dims.py BPNet --input_len 2114 --output_len 1000
+python tools/print_model_dims.py BiasNet
+```
+
+Supports case-insensitive model name matching and automatically infers default dimensions from the model class.
 
 ## Next Steps
 
