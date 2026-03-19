@@ -323,8 +323,8 @@ def compute_ism_real(model: torch.nn.Module, sequences: list[np.ndarray],
     """
     model.eval()
     device = next(model.parameters()).device
-    output_len = model.output_len
-    input_len = model.input_len
+    output_len: int = model.output_len  # type: ignore[assignment]
+    input_len: int = model.input_len  # type: ignore[assignment]
     input_center = input_len // 2
     start = input_center - window // 2
 
@@ -508,14 +508,16 @@ def main():
     if args.background:
         chrom_sizes = config["genome_config"]["chrom_sizes"]
         logger.info(f"Sampling background sequences outside peaks from {peaks_path}...")
+        input_len: int = model.input_len  # type: ignore[assignment]
         sequences = get_background_sequences(
-            fasta, Path(peaks_path), chrom_sizes, model.input_len,
+            fasta, Path(peaks_path), chrom_sizes, input_len,
             n_seqs=args.n_seqs,
         )
     else:
         logger.info(f"Loading peak intervals from {peaks_path}...")
+        input_len: int = model.input_len  # type: ignore[assignment]
         intervals = load_peak_intervals(Path(peaks_path), n=args.n_seqs * 3)
-        sequences = get_real_sequences(fasta, intervals, model.input_len,
+        sequences = get_real_sequences(fasta, intervals, input_len,
                                        n_seqs=args.n_seqs)
 
     # Compute ISM
@@ -548,7 +550,7 @@ def main():
     vmax = np.abs(ism).max()
     im = ax_heat.imshow(ism, aspect="auto", cmap="RdBu_r",
                         vmin=-vmax, vmax=vmax, interpolation="nearest",
-                        extent=[-0.5, window - 0.5, 3.5, -0.5])
+                        extent=(-0.5, window - 0.5, 3.5, -0.5))
     ax_heat.set_yticks(range(4))
     ax_heat.set_yticklabels(NUCLEOTIDES, fontsize=8)
     ax_heat.set_xlabel("Position (centered)", fontsize=8)

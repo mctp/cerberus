@@ -325,8 +325,8 @@ def compute_pairwise_ism(
     """
     model.eval()
     device = next(model.parameters()).device
-    output_len = model.output_len
-    input_len = model.input_len
+    output_len: int = model.output_len  # type: ignore[assignment]
+    input_len: int = model.input_len  # type: ignore[assignment]
     input_center = input_len // 2
     win_start = input_center - window // 2
     output_center = output_len // 2
@@ -594,17 +594,18 @@ def main():
     fasta = pyfaidx.Fasta(fasta_path)
 
     # Extract sequences
+    input_len: int = model.input_len  # type: ignore[assignment]
     if args.background:
         chrom_sizes = config["genome_config"]["chrom_sizes"]
         logger.info(f"Sampling background sequences outside peaks from {peaks_path}...")
         sequences = get_background_sequences(
-            fasta, Path(peaks_path), chrom_sizes, model.input_len,
+            fasta, Path(peaks_path), chrom_sizes, input_len,
             n_seqs=args.n_seqs,
         )
     else:
         logger.info(f"Loading peak intervals from {peaks_path}...")
         intervals = load_peak_intervals(Path(peaks_path), n=args.n_seqs * 3)
-        sequences = get_real_sequences(fasta, intervals, model.input_len,
+        sequences = get_real_sequences(fasta, intervals, input_len,
                                        n_seqs=args.n_seqs)
 
     # Compute pairwise ISM
@@ -666,13 +667,13 @@ def main():
     im = ax_heat.imshow(
         eps_collapsed, aspect="equal", cmap="inferno",
         vmin=0, vmax=vmax, interpolation="nearest",
-        extent=[-0.5, window - 0.5, window - 0.5, -0.5],
+        extent=(-0.5, window - 0.5, window - 0.5, -0.5),
     )
     ax_heat.set_xlabel("Position", fontsize=8)
     ax_heat.set_ylabel("Position", fontsize=8)
     ax_heat.set_title(f"Pairwise epistasis  max|ε|  ({n_pairs} pairs)", fontsize=9)
     # Mark detail pair on heatmap
-    if dp_i is not None:
+    if dp_i is not None and dp_j is not None:
         ax_heat.plot(dp_j, dp_i, "s", markersize=8, markeredgecolor="white",
                      markerfacecolor="none", markeredgewidth=1.5)
         ax_heat.plot(dp_i, dp_j, "s", markersize=8, markeredgecolor="white",

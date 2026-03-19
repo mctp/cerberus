@@ -181,7 +181,7 @@ class TestUnbatchModelOutput:
         batched = ProfileLogits(logits=logits, out_interval=None)
         items = unbatch_modeloutput(batched, batch_size=2)
         # unbind creates views that share storage with the original
-        assert items[0]["logits"].storage().data_ptr() == logits.storage().data_ptr()
+        assert items[0]["logits"].untyped_storage().data_ptr() == logits.untyped_storage().data_ptr()
 
     def test_none_interval(self):
         """out_interval=None is replicated as None."""

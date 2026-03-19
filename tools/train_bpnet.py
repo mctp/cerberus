@@ -23,7 +23,7 @@ from pprint import pformat
 # Cerberus imports
 import cerberus
 from cerberus.download import download_human_reference
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig, PretrainedConfig
 from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
@@ -324,7 +324,7 @@ def main():
         loss_args = {"alpha": args.alpha}
         logging.info("Using BPNetLoss (alpha=%s)...", args.alpha)
 
-    pretrained: list[dict[str, object]] = []
+    pretrained: list[PretrainedConfig] = []
     if args.pretrained:
         pretrained.append({"weights_path": args.pretrained, "source": None, "target": None, "freeze": False})
 
