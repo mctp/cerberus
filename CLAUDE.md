@@ -29,5 +29,14 @@ After completing each task, always:
 
 - npx pyright tests/ src/
 
+## Documentation (mkdocs)
+
+- Public docs live in `docs/` as plain markdown. Nav structure is in `mkdocs.yml`.
+- Files in `docs/internal/` are excluded from the published site.
+- After changing docs, regenerate LLM context files: `python tools/generate_llms_txt.py`
+- Preview locally: `mkdocs serve` (live-reload at `http://127.0.0.1:8000/cerberus/`)
+- Deploy: `mkdocs gh-deploy` (pushes to `gh-pages` branch, site updates at `https://mctp.github.io/cerberus/`)
+- To add a new page: create a `.md` file in `docs/`, then add it to `nav:` in `mkdocs.yml`.
+
 ## DONT DO EMBARASSING THINGS
 
