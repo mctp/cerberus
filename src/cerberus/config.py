@@ -806,17 +806,14 @@ def validate_data_and_model_compatibility(
             raise ValueError(f"Data inputs {missing} are not in model input channels")
 
 
-_MSE_LOSS_NAMES = {"MSEMultinomialLoss", "CoupledMSEMultinomialLoss"}
-
-
 def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
     """Determines log-count transform parameters from the model configuration.
 
-    MSE-family losses (MSEMultinomialLoss, CoupledMSEMultinomialLoss) train
+    Losses with ``uses_count_pseudocount = True`` (MSE-family, Dalmatian) train
     log_counts in log(count + pseudocount) space, while Poisson/NB losses use
-    log(count) directly.  This function inspects the loss class and returns the
-    two parameters needed by ``compute_total_log_counts`` and observed-count
-    transforms.
+    log(count) directly.  This function inspects the loss class attribute and
+    returns the two parameters needed by ``compute_total_log_counts`` and
+    observed-count transforms.
 
     The returned pseudocount is in **scaled** units (i.e. already multiplied by
     target_scale via ``propagate_pseudocount``), matching the space that model
@@ -830,16 +827,15 @@ def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
         Tuple of (log_counts_include_pseudocount, count_pseudocount):
             - log_counts_include_pseudocount: True if the loss uses
               log(count + pseudocount) space.
-            - count_pseudocount: The pseudocount value from the loss
-              (scaled units).  Defaults to 1.0 for MSE losses without an
-              explicit value, or 1.0 as a no-op for non-MSE losses.
+            - count_pseudocount: The pseudocount value from loss_args
+              (scaled units), or 0.0 for losses that don't use pseudocount.
     """
     loss_cls = import_class(model_config["loss_cls"])
-    log_counts_include_pseudocount = loss_cls.__name__ in _MSE_LOSS_NAMES
+    log_counts_include_pseudocount = loss_cls.uses_count_pseudocount
     if log_counts_include_pseudocount:
-        count_pseudocount = model_config["loss_args"].get("count_pseudocount", 1.0)
+        count_pseudocount = model_config["loss_args"]["count_pseudocount"]
     else:
-        count_pseudocount = 1.0
+        count_pseudocount = 0.0
     return log_counts_include_pseudocount, count_pseudocount
 
 

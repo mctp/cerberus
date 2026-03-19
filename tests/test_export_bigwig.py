@@ -88,7 +88,15 @@ class LogRatesModel(nn.Module):
 # ---------------------------------------------------------------------------
 
 
-def _make_setup(tmp_path, model_cls, model_cls_path, target_scale=1.0, output_bin_size=1):
+def _make_setup(
+    tmp_path,
+    model_cls,
+    model_cls_path,
+    target_scale=1.0,
+    output_bin_size=1,
+    loss_cls="cerberus.loss.PoissonMultinomialLoss",
+    loss_args=None,
+):
     """Create genome + dataset + ensemble with a given model class."""
     genome = tmp_path / "genome.fa"
     with open(genome, "w") as f:
@@ -117,7 +125,7 @@ def _make_setup(tmp_path, model_cls, model_cls_path, target_scale=1.0, output_bi
             "log_transform": False,
             "reverse_complement": False,
             "target_scale": target_scale,
-            "count_pseudocount": 1.0,
+            "count_pseudocount": 0.0,
             "use_sequence": True,
         },
     )
@@ -138,8 +146,8 @@ def _make_setup(tmp_path, model_cls, model_cls_path, target_scale=1.0, output_bi
         {
             "name": "dummy",
             "model_cls": model_cls_path,
-            "loss_cls": "torch.nn.MSELoss",
-            "loss_args": {},
+            "loss_cls": loss_cls,
+            "loss_args": loss_args or {"count_pseudocount": 0.0},
             "metrics_cls": "torchmetrics.MetricCollection",
             "metrics_args": {"metrics": {}},
             "model_args": {},
@@ -210,7 +218,6 @@ def test_predict_to_bigwig_creates_file(bigwig_setup):
         model_ensemble=ensemble,
         use_folds=["test", "val"],
         batch_size=4,
-        count_pseudocount=0.0,
     )
 
     assert output_path.exists()
@@ -272,7 +279,6 @@ def test_bpnet_bigwig_values_are_positive(bpnet_setup):
         model_ensemble=ensemble,
         use_folds=["test", "val"],
         batch_size=4,
-        count_pseudocount=0.0,
     )
 
     entries = _read_bigwig_values(output_path)
@@ -294,7 +300,7 @@ def test_bpnet_target_scale_halves_values(tmp_path):
         target_scale=1.0,
     )
     out1 = dir1 / "out.bw"
-    predict_to_bigwig(out1, ds1, ens1, use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0)
+    predict_to_bigwig(out1, ds1, ens1, use_folds=["test", "val"], batch_size=4)
 
     # Scale=2
     dir2 = tmp_path / "s2"
@@ -304,7 +310,7 @@ def test_bpnet_target_scale_halves_values(tmp_path):
         target_scale=2.0,
     )
     out2 = dir2 / "out.bw"
-    predict_to_bigwig(out2, ds2, ens2, use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0)
+    predict_to_bigwig(out2, ds2, ens2, use_folds=["test", "val"], batch_size=4)
 
     vals1 = [e[3] for e in _read_bigwig_values(out1)]
     vals2 = [e[3] for e in _read_bigwig_values(out2)]
@@ -335,7 +341,6 @@ def test_logrates_reconstruction_values(logrates_setup):
         model_ensemble=ensemble,
         use_folds=["test", "val"],
         batch_size=4,
-        count_pseudocount=0.0,
     )
 
     entries = _read_bigwig_values(output_path)
@@ -362,7 +367,6 @@ def test_logrates_with_target_scale(tmp_path):
         model_ensemble=ensemble,
         use_folds=["test", "val"],
         batch_size=4,
-        count_pseudocount=0.0,
     )
 
     entries = _read_bigwig_values(output_path)
@@ -634,6 +638,8 @@ def test_pseudocount_inversion_bigwig_end_to_end(tmp_path):
     """End-to-end: BigWig values reflect pseudocount-corrected signal."""
     ds, ens, _ = _make_setup(
         tmp_path, MSEBPNetModel, "tests.test_export_bigwig.MSEBPNetModel",
+        loss_cls="cerberus.loss.MSEMultinomialLoss",
+        loss_args={"count_pseudocount": 150.0},
     )
     output_path = tmp_path / "pseudo.bw"
 
@@ -643,7 +649,6 @@ def test_pseudocount_inversion_bigwig_end_to_end(tmp_path):
         model_ensemble=ens,
         use_folds=["test", "val"],
         batch_size=4,
-        count_pseudocount=150.0,
     )
 
     entries = _read_bigwig_values(output_path)
@@ -876,14 +881,14 @@ def test_predict_to_bigwig_region_smaller_than_genome_wide(bpnet_setup):
     gw_path = tmp_path / "gw.bw"
     predict_to_bigwig(
         gw_path, dataset, ensemble,
-        use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+        use_folds=["test", "val"], batch_size=4,
     )
 
     # Single small region
     region_path = tmp_path / "region.bw"
     predict_to_bigwig(
         region_path, dataset, ensemble,
-        use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+        use_folds=["test", "val"], batch_size=4,
         regions=[Interval("chr1", 800, 900, "+")],
     )
 
@@ -930,7 +935,7 @@ def test_predict_to_bigwig_region_values_match_genome_wide(bpnet_setup):
     region_path = tmp_path / "region_vals.bw"
     predict_to_bigwig(
         region_path, dataset, ensemble,
-        use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+        use_folds=["test", "val"], batch_size=4,
         regions=[Interval("chr1", 600, 800, "+")],
     )
 

@@ -24,6 +24,7 @@ src/cerberus/
 ├── module.py           # PyTorch Lightning Module wrapper (CerberusModule)
 ├── output.py           # Model output dataclasses (ProfileLogits, ProfileLogRates, ProfileCountOutput)
 ├── predict_bigwig.py   # Genome-wide BigWig generation
+├── predict_misc.py     # High-level inference utilities (dataset, intervals, log-count prediction)
 ├── samplers.py         # Sampling logic (IntervalSampler, SlidingWindowSampler, PeakSampler, etc.)
 ├── sequence.py         # DNA sequence extraction from FASTA files
 ├── signal.py           # Signal extraction from BigWig files
@@ -50,9 +51,10 @@ These are the main entry points.
 *   `module.py`: `CerberusModule` (PL wrapper), optimization configuration, and model factory logic (`instantiate`).
 *   `layers.py`: Reusable neural network blocks (PGC, ConvNeXtV2, GRN).
 
-### Prediction (`model_ensemble.py`, `predict_bigwig.py`)
+### Prediction (`model_ensemble.py`, `predict_bigwig.py`, `predict_misc.py`)
 *   `model_ensemble.py`: Manages loading models (single or multi-fold) and selecting models for intervals. Delegates aggregation to `output.py`.
 *   `predict_bigwig.py`: Streamlines genome-wide prediction generation into BigWig files.
+*   `predict_misc.py`: High-level inference utilities — `create_eval_dataset`, `load_bed_intervals`, `get_eval_intervals`, `predict_log_counts`.
 
 ### Sampling (`samplers.py`)
 Contains the logic for generating lists of `Interval` objects. This is decoupled from data reading, allowing lightweight iteration and manipulation of genomic regions before any heavy I/O occurs.

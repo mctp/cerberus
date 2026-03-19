@@ -396,3 +396,66 @@ def test_propagate_pseudocount_no_warn_for_mse(caplog):
     with caplog.at_level(logging.WARNING):
         propagate_pseudocount(data_conf, model_conf)
     assert "has no effect" not in caplog.text
+
+
+# --- get_log_count_params ---
+
+from cerberus.config import get_log_count_params
+
+
+def test_get_log_count_params_mse():
+    """MSE loss returns uses_pseudocount=True and reads count_pseudocount from loss_args."""
+    conf = _model_config_with_loss(
+        "cerberus.loss.MSEMultinomialLoss",
+        loss_args={"count_pseudocount": 50.0},
+    )
+    includes, pseudocount = get_log_count_params(conf)
+    assert includes is True
+    assert pseudocount == 50.0
+
+
+def test_get_log_count_params_coupled_mse():
+    """CoupledMSEMultinomialLoss inherits uses_count_pseudocount=True."""
+    conf = _model_config_with_loss(
+        "cerberus.loss.CoupledMSEMultinomialLoss",
+        loss_args={"count_pseudocount": 25.0},
+    )
+    includes, pseudocount = get_log_count_params(conf)
+    assert includes is True
+    assert pseudocount == 25.0
+
+
+def test_get_log_count_params_poisson():
+    """Poisson loss returns uses_pseudocount=False and pseudocount=0.0."""
+    conf = _model_config_with_loss(
+        "cerberus.loss.PoissonMultinomialLoss",
+        loss_args={"count_pseudocount": 99.0},  # present but ignored
+    )
+    includes, pseudocount = get_log_count_params(conf)
+    assert includes is False
+    assert pseudocount == 0.0
+
+
+def test_get_log_count_params_dalmatian():
+    """DalmatianLoss has uses_count_pseudocount=True."""
+    conf = _model_config_with_loss(
+        "cerberus.loss.DalmatianLoss",
+        loss_args={
+            "base_loss_cls": "cerberus.loss.MSEMultinomialLoss",
+            "count_pseudocount": 100.0,
+        },
+    )
+    includes, pseudocount = get_log_count_params(conf)
+    assert includes is True
+    assert pseudocount == 100.0
+
+
+def test_get_log_count_params_negative_binomial():
+    """NegativeBinomialMultinomialLoss inherits uses_count_pseudocount=False."""
+    conf = _model_config_with_loss(
+        "cerberus.loss.NegativeBinomialMultinomialLoss",
+        loss_args={"count_pseudocount": 1.0},
+    )
+    includes, pseudocount = get_log_count_params(conf)
+    assert includes is False
+    assert pseudocount == 0.0

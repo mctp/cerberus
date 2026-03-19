@@ -12,6 +12,7 @@ from cerberus.output import (
     ModelOutput, ProfileCountOutput, ProfileLogRates,
     unbatch_modeloutput,
 )
+from cerberus.config import get_log_count_params
 from cerberus.samplers import SlidingWindowSampler
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,6 @@ def predict_to_bigwig(
     use_folds: list[str] | None = None,
     batch_size: int = 64,
     regions: list[Interval] | None = None,
-    count_pseudocount: float = 0.0,
 ) -> None:
     """Generates predictions and writes to a BigWig file.
 
@@ -36,6 +36,9 @@ def predict_to_bigwig(
     Per-window signal is reconstructed via softmax + count scaling before spatial
     merging, so model aggregation is always "model" (per-window outputs required).
 
+    The pseudocount for inverting log_counts (MSE-trained models) is determined
+    automatically from the model configuration via ``get_log_count_params``.
+
     Args:
         output_path: Path to the output BigWig file.
         dataset: Initialized CerberusDataset (provides data configuration and extractors).
@@ -45,13 +48,12 @@ def predict_to_bigwig(
         batch_size: Batch size for inference.
         regions: Optional list of Intervals to restrict prediction to.
             When provided, only these regions are predicted (no blacklist filtering).
-        count_pseudocount: Pseudocount to subtract when inverting log_counts for
-            ProfileCountOutput models trained with MSE loss. Set to
-            data_config["count_pseudocount"] * data_config["target_scale"] for
-            MSE losses; leave at 0.0 for Poisson/NB losses. Default 0.0.
     """
     genome_config = dataset.genome_config
     data_config = dataset.data_config
+
+    _, count_pseudocount = get_log_count_params(model_ensemble.cerberus_config["model_config"])
+    logger.info("count_pseudocount=%.4g (from model config)", count_pseudocount)
 
     if use_folds is None:
         use_folds = ["test", "val"]

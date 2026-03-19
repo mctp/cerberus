@@ -14,9 +14,9 @@ from cerberus.dataset import CerberusDataset
 from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
 from cerberus.genome import create_genome_folds
 from cerberus.exclude import get_exclude_intervals
-from cerberus.output import compute_total_log_counts
+from cerberus.output import compute_total_log_counts, compute_obs_log_counts
+from cerberus.config import get_log_count_params
 from cerberus.module import instantiate_metrics_and_loss
-from cerberus.loss import MSEMultinomialLoss, CoupledMSEMultinomialLoss
 
 logger = logging.getLogger(__name__)
 
@@ -224,21 +224,10 @@ def main():
     logger.info("Configuring metrics and loss...")
     metrics, criterion = instantiate_metrics_and_loss(model_config, device=device)
 
-    # MSE losses train log_counts against log(total_counts + pseudocount).
-    # Poisson/NB losses use PoissonNLLLoss(log_input=True) against raw counts,
-    # so log_counts ≈ log(total_counts) — not log(counts + pseudocount). Using the
-    # wrong transform creates a systematic offset in the predicted vs observed comparison.
-    # log_counts_include_pseudocount also controls multi-channel aggregation in compute_total_log_counts:
-    # for MSE with count_per_channel=True, per-channel log_counts are in
-    # log(count + pseudocount) space and must be converted back before summing
-    # (logsumexp gives log(n_ch * pseudocount + total), not log(pseudocount + total)).
-    log_counts_include_pseudocount = isinstance(criterion, (MSEMultinomialLoss, CoupledMSEMultinomialLoss))
-    if log_counts_include_pseudocount:
-        count_pseudocount = getattr(criterion, "count_pseudocount", 1.0)
-        obs_log_count_fn = lambda x: torch.log(x + count_pseudocount)
-    else:
-        count_pseudocount = 1.0
-        obs_log_count_fn = lambda x: torch.log(x.clamp_min(1.0))
+    # Determine pseudocount parameters from the loss class.
+    # MSE losses train log_counts in log(count + pseudocount) space;
+    # Poisson/NB losses use log(count) directly.
+    log_counts_include_pseudocount, count_pseudocount = get_log_count_params(model_config)
 
     total_loss = 0.0
     total_samples = 0
@@ -295,10 +284,13 @@ def main():
         targets = torch.stack(targets_list)
 
         # Calculate observed total from RAW counts, in the same log-space as the loss.
-        # Apply target_scale so the observed is on the same scale as the training targets.
         raw_obs = torch.stack(raw_obs_list)
-        obs_total = raw_obs.sum(dim=(1, 2)) * data_config["target_scale"]
-        obs_log_total = obs_log_count_fn(obs_total)
+        obs_log_total = compute_obs_log_counts(
+            raw_obs,
+            target_scale=data_config["target_scale"],
+            log_counts_include_pseudocount=log_counts_include_pseudocount,
+            pseudocount=count_pseudocount,
+        )
         obs_batch = obs_log_total.numpy()
 
         # 4c. Update Metrics and Loss

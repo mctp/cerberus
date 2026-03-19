@@ -40,6 +40,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`validate_train_config()`** — Validates the training configuration dictionary.
 - **`validate_model_config()`** — Validates the model configuration dictionary.
 - **`validate_data_and_model_compatibility()`** — Validates compatibility between data and model configurations.
+- **`get_log_count_params()`** — Determines log-count transform parameters from the model configuration.
 - **`propagate_pseudocount()`** — Propagate the scaled count_pseudocount from data_config into model_config's
 - **`parse_hparams_config()`** — Parses a hparams.yaml file and returns validated configuration objects.
 
@@ -157,6 +158,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`aggregate_intervals()`** — Merges predictions from multiple genomic intervals into a single ModelOutput.
 - **`aggregate_models()`** — Ensembles outputs from multiple models by reducing each tensor field.
 - **`compute_total_log_counts()`** — Computes total log counts across all channels, returning shape (B,).
+- **`compute_obs_log_counts()`** — Computes observed total log-counts from raw target counts.
 
 ### `cerberus.loss`
 

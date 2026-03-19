@@ -116,17 +116,6 @@ def main():
         default=None,
         help="BED file with regions to predict (columns: chrom, start, end).",
     )
-    parser.add_argument(
-        "--count-pseudocount",
-        type=float,
-        default=None,
-        help=(
-            "Pseudocount to subtract when inverting log_counts. "
-            "Required for MSE-trained models (BPNet/Pomeranian/Dalmatian). "
-            "Read from data_config if not specified."
-        ),
-    )
-
     args = parser.parse_args()
 
     if args.region and args.regions_bed:
@@ -198,15 +187,7 @@ def main():
         regions = _parse_bed(args.regions_bed)
         logger.info(f"Predicting {len(regions)} regions from {args.regions_bed}")
 
-    # 6. Determine count_pseudocount
-    if args.count_pseudocount is not None:
-        count_pseudocount = args.count_pseudocount
-    else:
-        # Auto-read from config: scaled pseudocount = raw * target_scale
-        count_pseudocount = data_config["count_pseudocount"] * data_config["target_scale"]
-    logger.info(f"Using count_pseudocount={count_pseudocount}")
-
-    # 7. Run prediction and write BigWig
+    # 6. Run prediction and write BigWig
     output_path = Path(args.output)
     mode = f"{len(regions)} region(s)" if regions else "genome-wide"
     logger.info(f"Starting {mode} prediction (stride={args.stride}, batch_size={args.batch_size})...")
@@ -219,7 +200,6 @@ def main():
         use_folds=use_folds,
         batch_size=args.batch_size,
         regions=regions,
-        count_pseudocount=count_pseudocount,
     )
 
     logger.info(f"BigWig written to {output_path}")

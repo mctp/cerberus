@@ -300,3 +300,32 @@ def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseud
         return torch.logsumexp(log_rates.float().flatten(start_dim=1), dim=-1)
             
     raise ValueError(f"Model output type {type(model_output)} not supported for total log counts extraction.")
+
+
+def compute_obs_log_counts(
+    raw_counts: torch.Tensor,
+    target_scale: float,
+    log_counts_include_pseudocount: bool,
+    pseudocount: float = 0.0,
+) -> torch.Tensor:
+    """Computes observed total log-counts from raw target counts.
+
+    Applies target_scale to raw counts (to match the training target space),
+    then applies the appropriate log transform matching the loss function.
+
+    Args:
+        raw_counts: Raw observed counts, shape (B, C, L).
+        target_scale: Multiplicative scaling factor from data_config.
+        log_counts_include_pseudocount: If True (MSE losses), uses
+            log(total + pseudocount).  If False (Poisson/NB), uses
+            log(total) with a clamp floor of 1.0 to avoid log(0).
+        pseudocount: The scaled pseudocount value (from ``get_log_count_params``).
+
+    Returns:
+        Tensor of shape (B,) with observed total log-counts.
+    """
+    obs_total = raw_counts.sum(dim=(1, 2)) * target_scale
+    if log_counts_include_pseudocount:
+        return torch.log(obs_total + pseudocount)
+    else:
+        return torch.log(obs_total.clamp_min(1.0))

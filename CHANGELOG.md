@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`uses_count_pseudocount` class attribute** on all loss classes: declares
+  whether the loss trains log_counts in `log(count + pseudocount)` space.
+  Eliminates `isinstance` checks against specific loss classes throughout
+  inference code.
+- **`get_log_count_params(model_config)`** in `config.py`: reads
+  `uses_count_pseudocount` from the loss class and returns
+  `(log_counts_include_pseudocount, count_pseudocount)`. Single source of
+  truth for pseudocount transform parameters at inference time.
+- **`compute_obs_log_counts`** in `output.py`: utility for computing observed
+  total log-counts from raw targets, matching the loss function's transform.
+
+### Changed
+- `count_pseudocount` validation relaxed from `> 0` to `>= 0` — allows `0.0`
+  for Poisson/NB losses that do not use a pseudocount offset.
+- `propagate_pseudocount` now warns when `count_pseudocount > 0` is paired
+  with a loss that ignores it.
+- `predict_to_bigwig` no longer takes a `count_pseudocount` parameter —
+  auto-detects from the model config via `get_log_count_params`.
+- `export_bigwig.py` CLI: removed `--count-pseudocount` argument (now automatic).
+- `export_predictions.py`: replaced `isinstance` + `getattr` pseudocount
+  detection with `get_log_count_params`; uses `compute_obs_log_counts`.
+
 ## [0.9.4] - 2026-03-19
 
 ### Added

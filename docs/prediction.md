@@ -149,7 +149,6 @@ The exported track contains the reconstructed linear signal (counts per bp). For
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val`. |
 | `--batch_size` | Batch size for inference (default: 64). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
-| `--count-pseudocount` | Override pseudocount for log_counts inversion. Auto-read from config if omitted. |
 
 ### Export Predictions (`tools/export_predictions.py`)
 Exports predicted vs observed log-counts for a set of peaks to a TSV file. This is useful for evaluating model performance on peak sets.
@@ -180,7 +179,7 @@ The `predicted_log_count` and `observed_log_count` columns are placed in the sam
 | `MSEMultinomialLoss`, `CoupledMSEMultinomialLoss` | `log(total_counts + count_pseudocount)` | `log(x + p)` (defaults to `log1p` when `count_pseudocount=1.0`) |
 | `PoissonMultinomialLoss`, `NegativeBinomialMultinomialLoss`, and their `Coupled` variants | `log(total_counts)` (via `PoissonNLLLoss(log_input=True)`) | `log` |
 
-The tool reads the instantiated loss to determine this automatically — no manual configuration is needed.
+The tool reads `uses_count_pseudocount` from the loss class via `get_log_count_params` to determine this automatically — no manual configuration is needed.
 
 The observed total is computed from raw BigWig signal (bypassing transforms) and then multiplied by `data_config["target_scale"]` before the log transform, matching what the loss was trained against.
 

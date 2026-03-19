@@ -1551,7 +1551,6 @@ The exported track contains the reconstructed linear signal (counts per bp). For
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val`. |
 | `--batch_size` | Batch size for inference (default: 64). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
-| `--count-pseudocount` | Override pseudocount for log_counts inversion. Auto-read from config if omitted. |
 
 ### Export Predictions (`tools/export_predictions.py`)
 Exports predicted vs observed log-counts for a set of peaks to a TSV file. This is useful for evaluating model performance on peak sets.
@@ -1582,7 +1581,7 @@ The `predicted_log_count` and `observed_log_count` columns are placed in the sam
 | `MSEMultinomialLoss`, `CoupledMSEMultinomialLoss` | `log(total_counts + count_pseudocount)` | `log(x + p)` (defaults to `log1p` when `count_pseudocount=1.0`) |
 | `PoissonMultinomialLoss`, `NegativeBinomialMultinomialLoss`, and their `Coupled` variants | `log(total_counts)` (via `PoissonNLLLoss(log_input=True)`) | `log` |
 
-The tool reads the instantiated loss to determine this automatically — no manual configuration is needed.
+The tool reads `uses_count_pseudocount` from the loss class via `get_log_count_params` to determine this automatically — no manual configuration is needed.
 
 The observed total is computed from raw BigWig signal (bypassing transforms) and then multiplied by `data_config["target_scale"]` before the log transform, matching what the loss was trained against.
 
@@ -2426,6 +2425,7 @@ src/cerberus/
 ├── module.py           # PyTorch Lightning Module wrapper (CerberusModule)
 ├── output.py           # Model output dataclasses (ProfileLogits, ProfileLogRates, ProfileCountOutput)
 ├── predict_bigwig.py   # Genome-wide BigWig generation
+├── predict_misc.py     # High-level inference utilities (dataset, intervals, log-count prediction)
 ├── samplers.py         # Sampling logic (IntervalSampler, SlidingWindowSampler, PeakSampler, etc.)
 ├── sequence.py         # DNA sequence extraction from FASTA files
 ├── signal.py           # Signal extraction from BigWig files
@@ -2452,9 +2452,10 @@ These are the main entry points.
 *   `module.py`: `CerberusModule` (PL wrapper), optimization configuration, and model factory logic (`instantiate`).
 *   `layers.py`: Reusable neural network blocks (PGC, ConvNeXtV2, GRN).
 
-### Prediction (`model_ensemble.py`, `predict_bigwig.py`)
+### Prediction (`model_ensemble.py`, `predict_bigwig.py`, `predict_misc.py`)
 *   `model_ensemble.py`: Manages loading models (single or multi-fold) and selecting models for intervals. Delegates aggregation to `output.py`.
 *   `predict_bigwig.py`: Streamlines genome-wide prediction generation into BigWig files.
+*   `predict_misc.py`: High-level inference utilities — `create_eval_dataset`, `load_bed_intervals`, `get_eval_intervals`, `predict_log_counts`.
 
 ### Sampling (`samplers.py`)
 Contains the logic for generating lists of `Interval` objects. This is decoupled from data reading, allowing lightweight iteration and manipulation of genomic regions before any heavy I/O occurs.
@@ -2684,6 +2685,7 @@ class DataConfig(TypedDict):
             into loss_args and metrics_args so that loss and metrics always receive the
             value in their native (scaled) units.
             A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.
+            Set to 0.0 for losses that do not use a pseudocount (e.g. Poisson/NB).
     """
 
     inputs: dict[str, Path]
@@ -3028,8 +3030,8 @@ def validate_data_config(
     if not isinstance(config["target_scale"], float) or config["target_scale"] <= 0:
         raise ValueError("target_scale must be a positive number")
 
-    if not isinstance(config["count_pseudocount"], (int, float)) or config["count_pseudocount"] <= 0:
-        raise ValueError("count_pseudocount must be a positive number")
+    if not isinstance(config["count_pseudocount"], (int, float)) or config["count_pseudocount"] < 0:
+        raise ValueError("count_pseudocount must be a non-negative number")
 
     if not isinstance(config["use_sequence"], bool):
         raise TypeError("use_sequence must be a boolean")
@@ -3381,6 +3383,39 @@ def validate_data_and_model_compatibility(
             raise ValueError(f"Data inputs {missing} are not in model input channels")
 
 
+def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
+    """Determines log-count transform parameters from the model configuration.
+
+    Losses with ``uses_count_pseudocount = True`` (MSE-family, Dalmatian) train
+    log_counts in log(count + pseudocount) space, while Poisson/NB losses use
+    log(count) directly.  This function inspects the loss class attribute and
+    returns the two parameters needed by ``compute_total_log_counts`` and
+    observed-count transforms.
+
+    The returned pseudocount is in **scaled** units (i.e. already multiplied by
+    target_scale via ``propagate_pseudocount``), matching the space that model
+    predictions operate in.
+
+    Args:
+        model_config: Model configuration dict (must contain ``loss_cls`` and
+            ``loss_args`` keys).
+
+    Returns:
+        Tuple of (log_counts_include_pseudocount, count_pseudocount):
+            - log_counts_include_pseudocount: True if the loss uses
+              log(count + pseudocount) space.
+            - count_pseudocount: The pseudocount value from loss_args
+              (scaled units), or 0.0 for losses that don't use pseudocount.
+    """
+    loss_cls = import_class(model_config["loss_cls"])
+    log_counts_include_pseudocount = loss_cls.uses_count_pseudocount
+    if log_counts_include_pseudocount:
+        count_pseudocount = model_config["loss_args"]["count_pseudocount"]
+    else:
+        count_pseudocount = 0.0
+    return log_counts_include_pseudocount, count_pseudocount
+
+
 def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) -> ModelConfig:
     """
     Propagate the scaled count_pseudocount from data_config into model_config's
@@ -3402,7 +3437,18 @@ def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) ->
     Returns:
         A new ModelConfig with count_pseudocount set in loss_args and metrics_args.
     """
-    scaled_pseudocount = data_config["count_pseudocount"] * data_config["target_scale"]
+    loss_cls = import_class(model_config["loss_cls"])
+    raw_pseudocount = data_config["count_pseudocount"]
+
+    if not loss_cls.uses_count_pseudocount and raw_pseudocount > 0:
+        logger.warning(
+            "count_pseudocount=%.4g has no effect with %s (uses log(count) directly); "
+            "consider setting count_pseudocount to 0.0",
+            raw_pseudocount,
+            loss_cls.__name__,
+        )
+
+    scaled_pseudocount = raw_pseudocount * data_config["target_scale"]
     loss_args = {**model_config["loss_args"]}
     loss_args.setdefault("count_pseudocount", scaled_pseudocount)
     metrics_args = {**model_config["metrics_args"]}
@@ -9077,6 +9123,35 @@ def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseud
             
     raise ValueError(f"Model output type {type(model_output)} not supported for total log counts extraction.")
 
+
+def compute_obs_log_counts(
+    raw_counts: torch.Tensor,
+    target_scale: float,
+    log_counts_include_pseudocount: bool,
+    pseudocount: float = 0.0,
+) -> torch.Tensor:
+    """Computes observed total log-counts from raw target counts.
+
+    Applies target_scale to raw counts (to match the training target space),
+    then applies the appropriate log transform matching the loss function.
+
+    Args:
+        raw_counts: Raw observed counts, shape (B, C, L).
+        target_scale: Multiplicative scaling factor from data_config.
+        log_counts_include_pseudocount: If True (MSE losses), uses
+            log(total + pseudocount).  If False (Poisson/NB), uses
+            log(total) with a clamp floor of 1.0 to avoid log(0).
+        pseudocount: The scaled pseudocount value (from ``get_log_count_params``).
+
+    Returns:
+        Tensor of shape (B,) with observed total log-counts.
+    """
+    obs_total = raw_counts.sum(dim=(1, 2)) * target_scale
+    if log_counts_include_pseudocount:
+        return torch.log(obs_total + pseudocount)
+    else:
+        return torch.log(obs_total.clamp_min(1.0))
+
 ## src/cerberus/loss.py
 
 from typing import Protocol
@@ -9116,6 +9191,8 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
         count_pseudocount (float): Accepted for compatibility with propagate_pseudocount.
             Not used (PoissonNLLLoss handles count loss directly).
     """
+    uses_count_pseudocount: bool = False
+
     def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
@@ -9145,13 +9222,15 @@ class MSEMultinomialLoss(nn.Module):
     """
     Multinomial NLL Profile Loss + MSE Count Loss.
     Also known as BPNet Loss.
-    
+
     Objective:
       1. Profile Loss: Multinomial NLL (using logits as unnormalized log-probs).
       2. Count Loss: MSE of log(global_count) (Sum over all channels and length).
-      
+
     Requires ProfileCountOutput (logits, log_counts).
     """
+    uses_count_pseudocount: bool = True
+
     def __init__(self, count_weight=1.0, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=False, log1p_targets=False, epsilon=1e-8, count_pseudocount=1.0):
         """
         Args:
@@ -9291,13 +9370,15 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
 class PoissonMultinomialLoss(nn.Module):
     """
     Poisson Multinomial Loss (Global Count).
-    
+
     Objective:
       1. Profile Loss: Cross Entropy (Multinomial NLL form).
       2. Count Loss: Poisson NLL on Global Count.
-      
+
     Requires ProfileCountOutput.
     """
+    uses_count_pseudocount: bool = False
+
     def __init__(self, count_weight=0.2, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=True, log1p_targets=False, epsilon=1e-8, count_pseudocount=1.0):
         """
         Args:
@@ -9506,6 +9587,7 @@ class DalmatianLoss(nn.Module):
         count_pseudocount: Forwarded into ``base_loss_args`` (via setdefault)
             so that ``propagate_pseudocount`` works transparently.
     """
+    uses_count_pseudocount: bool = True
 
     def __init__(
         self,
@@ -10957,6 +11039,7 @@ from cerberus.output import (
     ModelOutput, ProfileCountOutput, ProfileLogRates,
     unbatch_modeloutput,
 )
+from cerberus.config import get_log_count_params
 from cerberus.samplers import SlidingWindowSampler
 
 logger = logging.getLogger(__name__)
@@ -10970,7 +11053,6 @@ def predict_to_bigwig(
     use_folds: list[str] | None = None,
     batch_size: int = 64,
     regions: list[Interval] | None = None,
-    count_pseudocount: float = 0.0,
 ) -> None:
     """Generates predictions and writes to a BigWig file.
 
@@ -10981,6 +11063,9 @@ def predict_to_bigwig(
     Per-window signal is reconstructed via softmax + count scaling before spatial
     merging, so model aggregation is always "model" (per-window outputs required).
 
+    The pseudocount for inverting log_counts (MSE-trained models) is determined
+    automatically from the model configuration via ``get_log_count_params``.
+
     Args:
         output_path: Path to the output BigWig file.
         dataset: Initialized CerberusDataset (provides data configuration and extractors).
@@ -10990,13 +11075,12 @@ def predict_to_bigwig(
         batch_size: Batch size for inference.
         regions: Optional list of Intervals to restrict prediction to.
             When provided, only these regions are predicted (no blacklist filtering).
-        count_pseudocount: Pseudocount to subtract when inverting log_counts for
-            ProfileCountOutput models trained with MSE loss. Set to
-            data_config["count_pseudocount"] * data_config["target_scale"] for
-            MSE losses; leave at 0.0 for Poisson/NB losses. Default 0.0.
     """
     genome_config = dataset.genome_config
     data_config = dataset.data_config
+
+    _, count_pseudocount = get_log_count_params(model_ensemble.cerberus_config["model_config"])
+    logger.info("count_pseudocount=%.4g (from model config)", count_pseudocount)
 
     if use_folds is None:
         use_folds = ["test", "val"]

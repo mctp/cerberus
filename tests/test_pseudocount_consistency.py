@@ -797,8 +797,8 @@ class TestObsLogCountFnPseudocount:
 
     def _make_obs_fn(self, criterion):
         """Replicate the logic from export_predictions.py."""
-        if isinstance(criterion, (MSEMultinomialLoss, CoupledMSEMultinomialLoss)):
-            p = getattr(criterion, "count_pseudocount", 1.0)
+        if criterion.uses_count_pseudocount:
+            p = criterion.count_pseudocount
             return lambda x: torch.log(x + p)
         else:
             return lambda x: torch.log(x.clamp_min(1.0))
