@@ -138,9 +138,9 @@ Any typo in a keyword argument (e.g., `filtr0=256`) is silently ignored. Fixed b
 
 `preds_list` and `targets_list` grow without bound throughout an epoch. For large validation sets, memory usage scales linearly.
 
-### 31. `dataclasses.asdict` loses type information (`output.py:65,237`)
+### 31. `dataclasses.asdict` loses type information (`output.py:65,237`) (FIXED)
 
-Recursively converts nested dataclasses (including `Interval`) to plain dicts. Callers expecting `Interval` objects get dicts instead.
+Recursively converts nested dataclasses (including `Interval`) to plain dicts. Callers expecting `Interval` objects get dicts instead. Fixed by replacing `dataclasses.asdict()` with shallow field extraction via `dataclasses.fields()` in both `unbatch_modeloutput` and `aggregate_models`.
 
 ### 32. `_process_island` only processes first channel (`predict_bigwig.py:145`) (PARTIALLY FIXED)
 

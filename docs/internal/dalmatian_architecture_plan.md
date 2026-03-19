@@ -344,7 +344,7 @@ Because `DalmatianOutput` extends `ProfileCountOutput`, all existing infrastruct
 |-----------|------|-------------|
 | **Metrics** (`PomeranianMetricCollection`) | `metrics.py` | `isinstance(preds, ProfileCountOutput)` → True. Metrics see combined `logits` and `log_counts` only. |
 | **`compute_total_log_counts()`** | `output.py:265` | `isinstance(model_output, ProfileCountOutput)` → True. Uses combined `log_counts`. |
-| **`unbatch_modeloutput()`** | `output.py:54` | Uses `dataclasses.asdict()` which includes all fields (combined + decomposed). Extra tensor fields are correctly unbatched along batch dimension. |
+| **`unbatch_modeloutput()`** | `output.py:82` | Uses shallow field extraction via `dataclasses.fields()` to include all fields (combined + decomposed). Extra tensor fields are correctly unbatched along batch dimension. |
 | **`aggregate_intervals()`** | `output.py:174` | Aggregates all tensor fields. Decomposed fields are spatially merged alongside combined fields. |
 | **`aggregate_models()`** | `output.py:224` | Stacks and averages all tensor fields across ensemble members. |
 | **`_accumulate_log_counts()`** | `module.py:182` | Calls `compute_total_log_counts()` which uses combined outputs. Correct. |

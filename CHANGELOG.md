@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`tools/export_bigwig.py`**: CLI tool for exporting genome-wide model
+  predictions to BigWig format. Loads a model ensemble, slides windows across
+  all allowed chromosomes, and streams predictions to a BigWig file via
+  `pybigtools`. Skips loading target extractors (only sequence inputs are
+  needed). Supports custom stride, fold selection, batch size, and device.
+
+### Fixed
+- **`unbatch_modeloutput` preserved nested types**: Replaced `dataclasses.asdict()`
+  with shallow field extraction via `dataclasses.fields()`. Fixes a latent bug
+  where `Interval` objects were silently converted to plain dicts, and avoids
+  unnecessary deep-copying of tensors. Same fix applied to `aggregate_models`.
+- **`compute_total_log_counts` simplified**: Removed redundant single-channel vs
+  multi-channel branching for `ProfileLogRates` — both paths computed the same
+  `logsumexp` over all channels and positions.
+
 ### Changed
 - **Model loading prefers `model.pt`**: `ModelEnsemble` now loads the clean
   `model.pt` state dict when available (written by training since the

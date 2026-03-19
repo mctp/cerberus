@@ -1406,8 +1406,9 @@ class ProfileCountOutput(ProfileLogits):
 ```python
 def unbatch_modeloutput(batched_output: ModelOutput, batch_size: int) -> list[dict]
 ```
-- Converts `(B, C, L)` tensors → list of `(C, L)` tensors
-- Preserves non-tensor metadata by replication
+- Converts `(B, C, L)` tensors → list of `(C, L)` tensors via `torch.unbind`
+- Preserves non-tensor metadata (including `Interval` objects) by replication
+- Uses shallow field extraction (`dataclasses.fields`) to avoid deep-copying tensors and to preserve nested dataclass types
 - Returns plain dicts (not ModelOutput instances) for easier manipulation
 
 **Design Rationale:** Using dataclasses instead of raw dicts provides:
