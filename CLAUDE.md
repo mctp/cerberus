@@ -35,8 +35,45 @@ After completing each task, always:
 - Files in `docs/internal/` are excluded from the published site.
 - After changing docs, regenerate LLM context files: `python tools/generate_llms_txt.py`
 - Preview locally: `mkdocs serve` (live-reload at `http://127.0.0.1:8000/cerberus/`)
-- Deploy: `mkdocs gh-deploy` (pushes to `gh-pages` branch, site updates at `https://mctp.github.io/cerberus/`)
 - To add a new page: create a `.md` file in `docs/`, then add it to `nav:` in `mkdocs.yml`.
+
+### Deployment
+
+- **No CI/CD is configured.** Docs deployment is manual.
+- Deploy: `mkdocs gh-deploy --force` (builds site and pushes to `gh-pages` branch).
+- Site URL: `https://mctp.github.io/cerberus/`
+- GitHub Pages source branch must be set to `gh-pages` in repo Settings → Pages.
+- To automate, add `.github/workflows/docs.yml` with the official mkdocs-material workflow:
+
+```yaml
+name: docs
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Git Credentials
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        with:
+          key: mkdocs-material-${{ env.cache_id }}
+          path: ~/.cache
+          restore-keys: |
+            mkdocs-material-
+      - run: pip install mkdocs-material mkdocs-git-revision-date-localized-plugin
+      - run: mkdocs gh-deploy --force
+```
 
 ## DONT DO EMBARASSING THINGS
 

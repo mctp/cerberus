@@ -108,6 +108,7 @@ class DataConfig(TypedDict):
             into loss_args and metrics_args so that loss and metrics always receive the
             value in their native (scaled) units.
             A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.
+            Set to 0.0 for losses that do not use a pseudocount (e.g. Poisson/NB).
     """
 
     inputs: dict[str, Path]
@@ -452,8 +453,8 @@ def validate_data_config(
     if not isinstance(config["target_scale"], float) or config["target_scale"] <= 0:
         raise ValueError("target_scale must be a positive number")
 
-    if not isinstance(config["count_pseudocount"], (int, float)) or config["count_pseudocount"] <= 0:
-        raise ValueError("count_pseudocount must be a positive number")
+    if not isinstance(config["count_pseudocount"], (int, float)) or config["count_pseudocount"] < 0:
+        raise ValueError("count_pseudocount must be a non-negative number")
 
     if not isinstance(config["use_sequence"], bool):
         raise TypeError("use_sequence must be a boolean")
@@ -805,6 +806,43 @@ def validate_data_and_model_compatibility(
             raise ValueError(f"Data inputs {missing} are not in model input channels")
 
 
+_MSE_LOSS_NAMES = {"MSEMultinomialLoss", "CoupledMSEMultinomialLoss"}
+
+
+def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
+    """Determines log-count transform parameters from the model configuration.
+
+    MSE-family losses (MSEMultinomialLoss, CoupledMSEMultinomialLoss) train
+    log_counts in log(count + pseudocount) space, while Poisson/NB losses use
+    log(count) directly.  This function inspects the loss class and returns the
+    two parameters needed by ``compute_total_log_counts`` and observed-count
+    transforms.
+
+    The returned pseudocount is in **scaled** units (i.e. already multiplied by
+    target_scale via ``propagate_pseudocount``), matching the space that model
+    predictions operate in.
+
+    Args:
+        model_config: Model configuration dict (must contain ``loss_cls`` and
+            ``loss_args`` keys).
+
+    Returns:
+        Tuple of (log_counts_include_pseudocount, count_pseudocount):
+            - log_counts_include_pseudocount: True if the loss uses
+              log(count + pseudocount) space.
+            - count_pseudocount: The pseudocount value from the loss
+              (scaled units).  Defaults to 1.0 for MSE losses without an
+              explicit value, or 1.0 as a no-op for non-MSE losses.
+    """
+    loss_cls = import_class(model_config["loss_cls"])
+    log_counts_include_pseudocount = loss_cls.__name__ in _MSE_LOSS_NAMES
+    if log_counts_include_pseudocount:
+        count_pseudocount = model_config["loss_args"].get("count_pseudocount", 1.0)
+    else:
+        count_pseudocount = 1.0
+    return log_counts_include_pseudocount, count_pseudocount
+
+
 def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) -> ModelConfig:
     """
     Propagate the scaled count_pseudocount from data_config into model_config's
@@ -826,7 +864,18 @@ def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) ->
     Returns:
         A new ModelConfig with count_pseudocount set in loss_args and metrics_args.
     """
-    scaled_pseudocount = data_config["count_pseudocount"] * data_config["target_scale"]
+    loss_cls = import_class(model_config["loss_cls"])
+    raw_pseudocount = data_config["count_pseudocount"]
+
+    if not loss_cls.uses_count_pseudocount and raw_pseudocount > 0:
+        logger.warning(
+            "count_pseudocount=%.4g has no effect with %s (uses log(count) directly); "
+            "consider setting count_pseudocount to 0.0",
+            raw_pseudocount,
+            loss_cls.__name__,
+        )
+
+    scaled_pseudocount = raw_pseudocount * data_config["target_scale"]
     loss_args = {**model_config["loss_args"]}
     loss_args.setdefault("count_pseudocount", scaled_pseudocount)
     metrics_args = {**model_config["metrics_args"]}

@@ -1,3 +1,4 @@
+import logging
 import pytest
 import torch.nn as nn
 from pathlib import Path
@@ -286,14 +287,18 @@ def test_validate_data_config_count_pseudocount_missing():
 
 
 def test_validate_data_config_count_pseudocount_invalid():
-    """validate_data_config raises when count_pseudocount is non-positive."""
-    config = _minimal_raw_data_config(count_pseudocount=0.0)
-    with pytest.raises(ValueError, match="count_pseudocount"):
-        validate_data_config(config)  # type: ignore[arg-type]
-
+    """validate_data_config raises when count_pseudocount is negative."""
     config_neg = _minimal_raw_data_config(count_pseudocount=-5.0)
     with pytest.raises(ValueError, match="count_pseudocount"):
         validate_data_config(config_neg)  # type: ignore[arg-type]
+
+
+def test_validate_data_config_count_pseudocount_zero():
+    """validate_data_config accepts count_pseudocount=0.0 (for Poisson/NB losses)."""
+    config = _minimal_raw_data_config(count_pseudocount=0.0)
+    result = validate_data_config(config)  # type: ignore[arg-type]
+    assert result["count_pseudocount"] == 0.0
+    assert isinstance(result["count_pseudocount"], float)
 
 
 def test_validate_data_config_count_pseudocount_stored_as_float():
@@ -345,3 +350,49 @@ def test_count_pseudocount_injection_does_not_override_explicit():
     assert model_conf["loss_args"]["count_pseudocount"] == 999.0
     # metrics_args had no explicit value — injected
     assert model_conf["metrics_args"]["count_pseudocount"] == 200.0
+
+
+# --- propagate_pseudocount warning for non-MSE losses ---
+
+from cerberus.config import propagate_pseudocount
+
+
+def _model_config_with_loss(loss_cls: str, loss_args: dict | None = None):
+    """Return a minimal model config with the given loss class."""
+    return cast(ModelConfig, {
+        "name": "m",
+        "model_cls": "torch.nn.Linear",
+        "loss_cls": loss_cls,
+        "loss_args": loss_args or {},
+        "metrics_cls": "torchmetrics.MetricCollection",
+        "metrics_args": {},
+        "model_args": {},
+        "pretrained": [],
+    })
+
+
+def test_propagate_pseudocount_warns_for_poisson_with_nonzero(caplog):
+    """propagate_pseudocount warns when count_pseudocount > 0 with a Poisson loss."""
+    data_conf = cast(DataConfig, _minimal_raw_data_config(count_pseudocount=1.0))
+    model_conf = _model_config_with_loss("cerberus.loss.PoissonMultinomialLoss")
+    with caplog.at_level(logging.WARNING):
+        propagate_pseudocount(data_conf, model_conf)
+    assert "has no effect" in caplog.text
+
+
+def test_propagate_pseudocount_no_warn_for_poisson_with_zero(caplog):
+    """propagate_pseudocount does not warn when count_pseudocount=0 with a Poisson loss."""
+    data_conf = cast(DataConfig, _minimal_raw_data_config(count_pseudocount=0.0))
+    model_conf = _model_config_with_loss("cerberus.loss.PoissonMultinomialLoss")
+    with caplog.at_level(logging.WARNING):
+        propagate_pseudocount(data_conf, model_conf)
+    assert "has no effect" not in caplog.text
+
+
+def test_propagate_pseudocount_no_warn_for_mse(caplog):
+    """propagate_pseudocount does not warn for MSE losses with nonzero pseudocount."""
+    data_conf = cast(DataConfig, _minimal_raw_data_config(count_pseudocount=1.0))
+    model_conf = _model_config_with_loss("cerberus.loss.MSEMultinomialLoss")
+    with caplog.at_level(logging.WARNING):
+        propagate_pseudocount(data_conf, model_conf)
+    assert "has no effect" not in caplog.text

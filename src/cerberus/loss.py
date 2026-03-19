@@ -35,6 +35,8 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
         count_pseudocount (float): Accepted for compatibility with propagate_pseudocount.
             Not used (PoissonNLLLoss handles count loss directly).
     """
+    uses_count_pseudocount: bool = False
+
     def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
@@ -64,13 +66,15 @@ class MSEMultinomialLoss(nn.Module):
     """
     Multinomial NLL Profile Loss + MSE Count Loss.
     Also known as BPNet Loss.
-    
+
     Objective:
       1. Profile Loss: Multinomial NLL (using logits as unnormalized log-probs).
       2. Count Loss: MSE of log(global_count) (Sum over all channels and length).
-      
+
     Requires ProfileCountOutput (logits, log_counts).
     """
+    uses_count_pseudocount: bool = True
+
     def __init__(self, count_weight=1.0, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=False, log1p_targets=False, epsilon=1e-8, count_pseudocount=1.0):
         """
         Args:
@@ -210,13 +214,15 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
 class PoissonMultinomialLoss(nn.Module):
     """
     Poisson Multinomial Loss (Global Count).
-    
+
     Objective:
       1. Profile Loss: Cross Entropy (Multinomial NLL form).
       2. Count Loss: Poisson NLL on Global Count.
-      
+
     Requires ProfileCountOutput.
     """
+    uses_count_pseudocount: bool = False
+
     def __init__(self, count_weight=0.2, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=True, log1p_targets=False, epsilon=1e-8, count_pseudocount=1.0):
         """
         Args:
@@ -425,6 +431,7 @@ class DalmatianLoss(nn.Module):
         count_pseudocount: Forwarded into ``base_loss_args`` (via setdefault)
             so that ``propagate_pseudocount`` works transparently.
     """
+    uses_count_pseudocount: bool = True
 
     def __init__(
         self,
