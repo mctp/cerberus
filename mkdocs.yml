@@ -72,6 +72,7 @@ nav:
   - Getting Started:
     - Overview: overview.md
     - Quick Start: usage.md
+    - Preprocessing: preprocessing.md
     - Workflow: workflow.md
   - User Guide:
     - Configuration: configuration.md

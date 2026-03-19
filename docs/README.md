@@ -14,6 +14,7 @@ Cerberus is a PyTorch-based framework for genomic sequence-to-function (S2F) mod
 *   [**Sequence Complexity**](complexity.md): Reference for GC, DUST, and CpG complexity metrics.
 *   [**Models**](models.md): Overview of built-in model architectures.
 *   [**Usage**](usage.md): Step-by-step guide to setting up a training pipeline.
+*   [**Preprocessing**](preprocessing.md): Convert BAM/BED inputs into Cerberus-ready BigWig/BED files.
 *   [**Prediction**](prediction.md): Detailed guide to inference, tiling, and BigWig generation.
 *   [**Workflow Lifecycle**](workflow.md): High-level overview of Training, Prediction, and Model Exploration.
 *   [**Codebase Structure**](structure.md): Guide to the file organization and module responsibilities.
