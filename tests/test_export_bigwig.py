@@ -210,6 +210,7 @@ def test_predict_to_bigwig_creates_file(bigwig_setup):
         model_ensemble=ensemble,
         use_folds=["test", "val"],
         batch_size=4,
+        count_pseudocount=0.0,
     )
 
     assert output_path.exists()
@@ -271,6 +272,7 @@ def test_bpnet_bigwig_values_are_positive(bpnet_setup):
         model_ensemble=ensemble,
         use_folds=["test", "val"],
         batch_size=4,
+        count_pseudocount=0.0,
     )
 
     entries = _read_bigwig_values(output_path)
@@ -292,7 +294,7 @@ def test_bpnet_target_scale_halves_values(tmp_path):
         target_scale=1.0,
     )
     out1 = dir1 / "out.bw"
-    predict_to_bigwig(out1, ds1, ens1, use_folds=["test", "val"], batch_size=4)
+    predict_to_bigwig(out1, ds1, ens1, use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0)
 
     # Scale=2
     dir2 = tmp_path / "s2"
@@ -302,7 +304,7 @@ def test_bpnet_target_scale_halves_values(tmp_path):
         target_scale=2.0,
     )
     out2 = dir2 / "out.bw"
-    predict_to_bigwig(out2, ds2, ens2, use_folds=["test", "val"], batch_size=4)
+    predict_to_bigwig(out2, ds2, ens2, use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0)
 
     vals1 = [e[3] for e in _read_bigwig_values(out1)]
     vals2 = [e[3] for e in _read_bigwig_values(out2)]
@@ -333,6 +335,7 @@ def test_logrates_reconstruction_values(logrates_setup):
         model_ensemble=ensemble,
         use_folds=["test", "val"],
         batch_size=4,
+        count_pseudocount=0.0,
     )
 
     entries = _read_bigwig_values(output_path)
@@ -359,6 +362,7 @@ def test_logrates_with_target_scale(tmp_path):
         model_ensemble=ensemble,
         use_folds=["test", "val"],
         batch_size=4,
+        count_pseudocount=0.0,
     )
 
     entries = _read_bigwig_values(output_path)
@@ -385,8 +389,8 @@ def test_process_island_profile_count_output_types(bpnet_setup):
             dataset,
             ensemble,
             use_folds=["test", "val"],
-            aggregation="model",
             batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
@@ -407,8 +411,8 @@ def test_process_island_logrates_output_types(logrates_setup):
             dataset,
             ensemble,
             use_folds=["test", "val"],
-            aggregation="model",
             batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
@@ -434,56 +438,14 @@ def test_process_island_values_are_python_floats_not_numpy(bpnet_setup):
             dataset,
             ensemble,
             use_folds=["test", "val"],
-            aggregation="model",
             batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
     for _, _, _, val in results:
         assert type(val) is float, f"Expected exact float type, got {type(val)}"
 
-
-def test_process_island_squeeze_3d_track_data(bpnet_setup):
-    """Regression: real models can produce (1, C, L) shaped output after aggregation.
-
-    The squeeze loop in _process_island must reduce this to (C, L) before
-    taking channel 0. Without the squeeze, track_data[0] gives a 2D slice
-    and enumerate yields arrays instead of scalars.
-    """
-    dataset, ensemble, _ = bpnet_setup
-    intervals = [Interval("chr1", 500, 600)]
-
-    # Monkey-patch predict_intervals to return 3D output (simulating real behavior)
-    original_predict = ensemble.predict_intervals
-
-    def patched_predict(*args, **kwargs):
-        output = original_predict(*args, **kwargs)
-        # Add a spurious batch dimension: (C, L) -> (1, C, L)
-        logits_3d = np.asarray(output.logits)[np.newaxis, ...]
-        log_counts_3d = np.asarray(output.log_counts)[np.newaxis, ...]
-        return ProfileCountOutput(
-            logits=logits_3d,  # type: ignore[arg-type]
-            log_counts=log_counts_3d,  # type: ignore[arg-type]
-            out_interval=output.out_interval,
-        )
-
-    ensemble.predict_intervals = patched_predict  # type: ignore[method-assign]
-
-    results = list(
-        _process_island(
-            intervals,
-            dataset,
-            ensemble,
-            use_folds=["test", "val"],
-            aggregation="model",
-            batch_size=4,
-        )
-    )
-
-    assert len(results) == 50
-    for _, _, _, val in results:
-        assert type(val) is float, f"Expected float, got {type(val)}"
-        assert abs(val - 2.0) < 0.01, f"Expected ~2.0, got {val}"
 
 
 def test_bpnet_log_counts_shape_after_overlapping_windows(bpnet_setup):
@@ -515,8 +477,8 @@ def test_bpnet_log_counts_shape_after_overlapping_windows(bpnet_setup):
             dataset,
             ensemble,
             use_folds=["test", "val"],
-            aggregation="model",
             batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
@@ -551,8 +513,8 @@ def test_process_island_bpnet_correct_values(bpnet_setup):
             dataset,
             ensemble,
             use_folds=["test", "val"],
-            aggregation="model",
             batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
@@ -575,14 +537,122 @@ def test_process_island_logrates_correct_values(logrates_setup):
             dataset,
             ensemble,
             use_folds=["test", "val"],
-            aggregation="model",
             batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
     assert len(results) == 50
     for _, _, _, val in results:
         assert abs(val - 2.0) < 0.01, f"Expected ~2.0, got {val}"
+
+
+# ---------------------------------------------------------------------------
+# 4b. Pseudocount inversion regression tests
+# ---------------------------------------------------------------------------
+
+
+class MSEBPNetModel(nn.Module):
+    """BPNet-like model where log_counts = log(count + pseudocount).
+
+    Simulates MSE loss training with count_pseudocount=150.
+    With true_count=100 and pseudocount=150, log_counts = log(250).
+    output_dim bins, uniform logits → each bin = true_count / output_dim.
+    """
+    PSEUDOCOUNT = 150.0
+    TRUE_COUNT = 100.0
+
+    def __init__(self, input_len, output_len, output_bin_size, **kwargs):
+        super().__init__()
+        self.output_dim = output_len // output_bin_size
+
+    def forward(self, x):
+        B = x.shape[0]
+        logits = torch.zeros((B, 1, self.output_dim), device=x.device)
+        # MSE loss trains model to predict log(count + pseudocount)
+        log_counts = torch.full(
+            (B, 1),
+            math.log(self.TRUE_COUNT + self.PSEUDOCOUNT),
+            device=x.device,
+        )
+        return ProfileCountOutput(logits=logits, log_counts=log_counts)
+
+
+def test_pseudocount_inversion_correct_values(tmp_path):
+    """Regression: with pseudocount=150, reconstruction must subtract it.
+
+    MSEBPNetModel predicts log_counts = log(100 + 150) = log(250).
+    With count_pseudocount=150: total = exp(log(250)) - 150 = 100.
+    Per-bin with output_dim=50: 100/50 = 2.0.
+    Without pseudocount inversion: 250/50 = 5.0 (WRONG).
+    """
+    ds, ens, _ = _make_setup(
+        tmp_path, MSEBPNetModel, "tests.test_export_bigwig.MSEBPNetModel",
+    )
+    intervals = [Interval("chr1", 500, 600)]
+
+    results = list(
+        _process_island(
+            intervals, ds, ens,
+            use_folds=["test", "val"], batch_size=4, count_pseudocount=150.0,
+        )
+    )
+
+    assert len(results) == 50
+    for _, _, _, val in results:
+        assert abs(val - 2.0) < 0.01, (
+            f"Expected ~2.0 with pseudocount inversion, got {val:.4f}"
+        )
+
+
+def test_pseudocount_zero_gives_inflated_values(tmp_path):
+    """Without pseudocount inversion, MSE-trained model gives inflated values.
+
+    MSEBPNetModel: log_counts = log(250), output_dim=50.
+    With count_pseudocount=0: total = 250, per-bin = 250/50 = 5.0.
+    """
+    ds, ens, _ = _make_setup(
+        tmp_path, MSEBPNetModel, "tests.test_export_bigwig.MSEBPNetModel",
+    )
+    intervals = [Interval("chr1", 500, 600)]
+
+    results = list(
+        _process_island(
+            intervals, ds, ens,
+            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+        )
+    )
+
+    assert len(results) == 50
+    for _, _, _, val in results:
+        assert abs(val - 5.0) < 0.01, (
+            f"Expected ~5.0 without pseudocount inversion, got {val:.4f}"
+        )
+
+
+def test_pseudocount_inversion_bigwig_end_to_end(tmp_path):
+    """End-to-end: BigWig values reflect pseudocount-corrected signal."""
+    ds, ens, _ = _make_setup(
+        tmp_path, MSEBPNetModel, "tests.test_export_bigwig.MSEBPNetModel",
+    )
+    output_path = tmp_path / "pseudo.bw"
+
+    predict_to_bigwig(
+        output_path=output_path,
+        dataset=ds,
+        model_ensemble=ens,
+        use_folds=["test", "val"],
+        batch_size=4,
+        count_pseudocount=150.0,
+    )
+
+    entries = _read_bigwig_values(output_path)
+    values = [e[3] for e in entries]
+    assert len(values) > 0
+    for val in values:
+        assert abs(val - 2.0) < 0.1, (
+            f"Expected ~2.0 in BigWig with pseudocount=150, got {val:.4f}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -688,7 +758,7 @@ def test_process_island_coordinates_contiguous(bpnet_setup):
     results = list(
         _process_island(
             intervals, dataset, ensemble,
-            use_folds=["test", "val"], aggregation="model", batch_size=4,
+            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
         )
     )
 
@@ -723,7 +793,7 @@ def test_process_island_many_overlapping_windows_correct_scale(bpnet_setup):
     results = list(
         _process_island(
             intervals, dataset, ensemble,
-            use_folds=["test", "val"], aggregation="model", batch_size=4,
+            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
         )
     )
 
@@ -745,7 +815,7 @@ def test_process_island_target_scale_applied(tmp_path):
     results = list(
         _process_island(
             intervals, ds, ens,
-            use_folds=["test", "val"], aggregation="model", batch_size=4,
+            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
         )
     )
 
@@ -760,7 +830,7 @@ def test_process_island_empty_island(bpnet_setup):
     results = list(
         _process_island(
             [], dataset, ensemble,
-            use_folds=["test", "val"], aggregation="model", batch_size=4,
+            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
         )
     )
     assert results == []
@@ -806,14 +876,14 @@ def test_predict_to_bigwig_region_smaller_than_genome_wide(bpnet_setup):
     gw_path = tmp_path / "gw.bw"
     predict_to_bigwig(
         gw_path, dataset, ensemble,
-        use_folds=["test", "val"], batch_size=4,
+        use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
     )
 
     # Single small region
     region_path = tmp_path / "region.bw"
     predict_to_bigwig(
         region_path, dataset, ensemble,
-        use_folds=["test", "val"], batch_size=4,
+        use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
         regions=[Interval("chr1", 800, 900, "+")],
     )
 
@@ -860,7 +930,7 @@ def test_predict_to_bigwig_region_values_match_genome_wide(bpnet_setup):
     region_path = tmp_path / "region_vals.bw"
     predict_to_bigwig(
         region_path, dataset, ensemble,
-        use_folds=["test", "val"], batch_size=4,
+        use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
         regions=[Interval("chr1", 600, 800, "+")],
     )
 
@@ -896,7 +966,7 @@ def test_process_island_multichannel_exports_channel_zero(tmp_path):
     results = list(
         _process_island(
             intervals, ds, ens,
-            use_folds=["test", "val"], aggregation="model", batch_size=4,
+            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
         )
     )
 

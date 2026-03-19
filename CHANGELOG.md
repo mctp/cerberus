@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   needed). Supports custom stride, fold selection, batch size, and device.
 
 ### Fixed
+- **`predict_bigwig` OOM on whole chromosomes**: Replaced per-window tensor list
+  with a streaming accumulator in `_process_island`. Memory is now bounded by
+  the accumulator array size, not the number of prediction windows.
+- **`predict_bigwig` pseudocount inversion**: Added `count_pseudocount` parameter
+  to `predict_to_bigwig` and `_reconstruct_linear_signal`. MSE-trained models
+  (BPNet/Pomeranian/Dalmatian) that predict `log(count + pseudocount)` now
+  correctly subtract the pseudocount before signal reconstruction.
+  `tools/export_bigwig.py` auto-reads the value from the model config.
+- **`predict_bigwig` resource leak**: BigWig file handle now closed via
+  try/finally.
+- **`predict_bigwig` dead `aggregation` parameter**: Removed from
+  `predict_to_bigwig` and `_process_island` — per-window reconstruction
+  requires "model" aggregation, which is now hardcoded internally.
+- **`predict_bigwig` dead code**: Removed unused `while ndim > 2` squeeze loop
+  and unused `numpy` import (now used by streaming accumulator).
 - **`unbatch_modeloutput` preserved nested types**: Replaced `dataclasses.asdict()`
   with shallow field extraction via `dataclasses.fields()`. Fixes a latent bug
   where `Interval` objects were silently converted to plain dicts, and avoids

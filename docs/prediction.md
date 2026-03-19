@@ -135,9 +135,10 @@ This tool:
 1. Loads the model ensemble and automatically resolves dataset paths.
 2. Clears target extractors (no observed signal is needed — only sequence inputs are used).
 3. Slides a window across all allowed chromosomes, grouping contiguous windows into islands.
-4. Streams predictions to BigWig via `pybigtools`, so memory usage scales with island size, not genome size.
+4. Reconstructs linear signal per window (softmax × counts for BPNet, exp for log-rates) then spatially merges overlapping predictions using a streaming accumulator.
+5. Automatically reads `count_pseudocount` from the model config and subtracts it when inverting `log_counts` (MSE-trained models).
 
-The exported track contains the primary profile output (`log_rates` if available, otherwise `logits`). For multi-channel models, only channel 0 is written (BigWig is single-track).
+The exported track contains the reconstructed linear signal (counts per bp). For multi-channel models, only channel 0 is written (BigWig is single-track).
 
 #### Optional arguments
 
@@ -148,6 +149,7 @@ The exported track contains the primary profile output (`log_rates` if available
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val`. |
 | `--batch_size` | Batch size for inference (default: 64). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
+| `--count-pseudocount` | Override pseudocount for log_counts inversion. Auto-read from config if omitted. |
 
 ### Export Predictions (`tools/export_predictions.py`)
 Exports predicted vs observed log-counts for a set of peaks to a TSV file. This is useful for evaluating model performance on peak sets.
