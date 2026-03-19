@@ -192,14 +192,144 @@ def test_aggregate_tensor_track_values_scalar_broadcast():
         [val1, val2], [int1, int2], merged, output_len=10, output_bin_size=1
     )
     
-    # res shape: 0-15 = 15 bins
-    # val1 covers 0-10
-    # val2 covers 5-15
-    
-    assert res.shape == (1, 15)
-    assert np.allclose(res[0, 0:5], 5.0)
-    assert np.allclose(res[0, 5:10], 10.0) # Average
-    assert np.allclose(res[0, 10:15], 15.0)
+    # Scalar inputs are collapsed back to (C,) after overlap-weighted averaging.
+    # Bins 0-4: 5.0, bins 5-9: mean(5,15)=10.0, bins 10-14: 15.0
+    # Overall mean: (5*5 + 10*5 + 15*5) / 15 = 10.0
+    assert res.shape == (1,)
+    assert np.allclose(res[0], 10.0)
+
+def test_aggregate_tensor_track_values_scalar_no_dilution_from_gaps():
+    """Regression: scalar averaging must not be diluted by empty bins in gaps.
+
+    Bug: when intervals have gaps (e.g., blacklist regions), the merged_interval
+    spans the full range including the gap. The gap bins have accumulator=0 and
+    counts=0 (clamped to 1). A naive .mean(axis=-1) averages in these zeros,
+    diluting the scalar value proportional to the gap size.
+
+    Fix: only average over bins that actually received contributions.
+    """
+    # Two disjoint intervals with a gap in between
+    int1 = Interval("chr1", 0, 10, "+")
+    val1 = torch.tensor([10.0])  # (C,)
+
+    int2 = Interval("chr1", 90, 100, "+")
+    val2 = torch.tensor([10.0])  # (C,)
+
+    # Merged interval spans 0-100, but only 20 of 100 bins have data
+    merged = Interval("chr1", 0, 100, "+")
+
+    res = aggregate_tensor_track_values(
+        [val1, val2], [int1, int2], merged, output_len=10, output_bin_size=1
+    )
+
+    # Should be 10.0 (average of valid bins only), not 2.0 (diluted by 80 empty bins)
+    assert res.shape == (1,)
+    assert np.allclose(res[0], 10.0), (
+        f"Scalar should be 10.0 (no dilution), got {res[0]:.2f}"
+    )
+
+
+def test_aggregate_tensor_track_values_single_interval_passthrough():
+    """Single interval: profile passes through unchanged (no averaging)."""
+    interval = Interval("chr1", 10, 30, "+")
+    values = torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
+                            11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0]])
+    merged = Interval("chr1", 10, 30, "+")
+
+    res = aggregate_tensor_track_values(
+        [values], [interval], merged, output_len=20, output_bin_size=1
+    )
+
+    assert res.shape == (1, 20)
+    assert np.allclose(res, values.numpy())
+
+
+def test_aggregate_tensor_track_values_multichannel():
+    """Multi-channel profiles are aggregated independently per channel."""
+    int1 = Interval("chr1", 0, 10, "+")
+    val1 = torch.tensor([[1.0] * 10, [10.0] * 10])  # (2, 10)
+
+    int2 = Interval("chr1", 5, 15, "+")
+    val2 = torch.tensor([[3.0] * 10, [30.0] * 10])  # (2, 10)
+
+    merged = Interval("chr1", 0, 15, "+")
+
+    res = aggregate_tensor_track_values(
+        [val1, val2], [int1, int2], merged, output_len=10, output_bin_size=1
+    )
+
+    assert res.shape == (2, 15)
+    # Channel 0: overlap region [5,10) averages to 2.0
+    assert np.allclose(res[0, 0:5], 1.0)
+    assert np.allclose(res[0, 5:10], 2.0)
+    assert np.allclose(res[0, 10:15], 3.0)
+    # Channel 1: overlap region averages to 20.0
+    assert np.allclose(res[1, 0:5], 10.0)
+    assert np.allclose(res[1, 5:10], 20.0)
+    assert np.allclose(res[1, 10:15], 30.0)
+
+
+def test_aggregate_tensor_track_values_bin_size_gt1():
+    """output_bin_size > 1: intervals snap to bin grid."""
+    # bin_size=4, interval 0-8 → 2 bins, interval 4-12 → 2 bins
+    int1 = Interval("chr1", 0, 8, "+")
+    val1 = torch.tensor([[1.0, 2.0]])  # (1, 2)
+
+    int2 = Interval("chr1", 4, 12, "+")
+    val2 = torch.tensor([[3.0, 4.0]])  # (1, 2)
+
+    merged = Interval("chr1", 0, 12, "+")
+
+    res = aggregate_tensor_track_values(
+        [val1, val2], [int1, int2], merged, output_len=2, output_bin_size=4
+    )
+
+    # 3 bins: bin0=[0,4), bin1=[4,8), bin2=[8,12)
+    assert res.shape == (1, 3)
+    assert np.allclose(res[0, 0], 1.0)         # only val1
+    assert np.allclose(res[0, 1], (2.0 + 3.0) / 2)  # overlap
+    assert np.allclose(res[0, 2], 4.0)         # only val2
+
+
+def test_aggregate_tensor_track_values_scalar_all_empty():
+    """Scalar path with no valid bins returns zeros."""
+    # Merged interval has 10 bins but intervals are outside it (edge case)
+    # Use a merged interval that doesn't overlap with any interval
+    int1 = Interval("chr1", 100, 110, "+")
+    val1 = torch.tensor([5.0])  # (C,)
+
+    # But merged interval is 0-10 — interval is outside
+    merged = Interval("chr1", 0, 10, "+")
+
+    res = aggregate_tensor_track_values(
+        [val1], [int1], merged, output_len=10, output_bin_size=1
+    )
+
+    # The scalar goes into bins 100-109 relative to merged start 0,
+    # which is outside the 10-bin accumulator → no valid bins
+    assert res.shape == (1,)
+    assert np.allclose(res[0], 0.0)
+
+
+def test_aggregate_tensor_track_values_scalar_multichannel():
+    """Multi-channel scalars are averaged independently per channel."""
+    int1 = Interval("chr1", 0, 10, "+")
+    val1 = torch.tensor([5.0, 50.0])  # (2,)
+
+    int2 = Interval("chr1", 5, 15, "+")
+    val2 = torch.tensor([15.0, 150.0])  # (2,)
+
+    merged = Interval("chr1", 0, 15, "+")
+
+    res = aggregate_tensor_track_values(
+        [val1, val2], [int1, int2], merged, output_len=10, output_bin_size=1
+    )
+
+    assert res.shape == (2,)
+    # Same math as single-channel: (5*5 + 10*5 + 15*5)/15 = 10.0
+    assert np.allclose(res[0], 10.0)
+    assert np.allclose(res[1], 100.0)
+
 
 # --- Tests for _aggregate_intervals ---
 
@@ -233,14 +363,12 @@ def test_aggregate_intervals_integration():
     assert np.allclose(prof[0, 5:10], 1.5)
     assert np.allclose(prof[0, 10:15], 2.0)
     
-    # Check logits (scalar track broadcast)
-    # 0-5: 10.0
-    # 5-10: (10+20)/2 = 15.0
-    # 10-15: 20.0
+    # Check logits (scalar track — collapsed back to (C,) after overlap averaging)
+    # Window 1 covers bins 0-10 with value 10.0, window 2 covers 5-15 with 20.0.
+    # Overlap-weighted average: (10*10 + 20*10) / (10+10) = 15.0
     logs = merged.logits.numpy()
-    assert np.allclose(logs[0, 0:5], 10.0)
-    assert np.allclose(logs[0, 5:10], 15.0)
-    assert np.allclose(logs[0, 10:15], 20.0)
+    assert logs.shape == (1,), f"Scalar should collapse to (C,), got {logs.shape}"
+    assert np.allclose(logs[0], 15.0)
 
 def test_aggregate_intervals_no_cls_raises():
     int1 = Interval("chr1", 0, 10, "+")

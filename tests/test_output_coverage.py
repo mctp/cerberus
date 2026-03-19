@@ -135,6 +135,7 @@ class TestAggregateModels:
             ProfileLogits(logits=torch.randn(1, 1, 5), out_interval=None),
         ]
         result = aggregate_models(outputs, method="mean")
+        assert isinstance(result.out_interval, Interval)
         assert result.out_interval == iv
 
 
@@ -152,10 +153,35 @@ class TestUnbatchModelOutput:
         assert len(items) == 3
         for item in items:
             assert item["logits"].shape == (2, 10)
-            # out_interval is converted to a dict by dataclasses.asdict
-            assert item["out_interval"]["chrom"] == "chr1"
-            assert item["out_interval"]["start"] == 0
-            assert item["out_interval"]["end"] == 1000
+            assert isinstance(item["out_interval"], Interval)
+            assert item["out_interval"].chrom == "chr1"
+            assert item["out_interval"].start == 0
+            assert item["out_interval"].end == 1000
+
+    def test_preserves_interval_type(self):
+        """unbatch_modeloutput must return Interval objects, not dicts."""
+        iv = Interval("chr7", 500, 1500, "-")
+        batched = ProfileCountOutput(
+            logits=torch.randn(2, 1, 10),
+            log_counts=torch.randn(2, 1),
+            out_interval=iv,
+        )
+        items = unbatch_modeloutput(batched, batch_size=2)
+        for item in items:
+            out_iv = item["out_interval"]
+            assert isinstance(out_iv, Interval), (
+                f"Expected Interval, got {type(out_iv).__name__}"
+            )
+            assert out_iv.chrom == "chr7"
+            assert out_iv.strand == "-"
+
+    def test_no_tensor_deepcopy(self):
+        """unbatch_modeloutput should not deep-copy tensors (shares storage)."""
+        logits = torch.randn(2, 1, 10)
+        batched = ProfileLogits(logits=logits, out_interval=None)
+        items = unbatch_modeloutput(batched, batch_size=2)
+        # unbind creates views that share storage with the original
+        assert items[0]["logits"].storage().data_ptr() == logits.storage().data_ptr()
 
     def test_none_interval(self):
         """out_interval=None is replicated as None."""

@@ -91,9 +91,9 @@ def test_predict_large_region_with_counts():
     assert out.out_interval is not None
     assert out.logits.ndim >= 2
     
-    # Check that log_counts is now a track (because it was aggregated spatially)
-    # The output is over the union of tiles.
-    # Since we aggregated overlapping scalar counts, the result should be a spatial track
-    # representing the count density/average over the region.
-    # Its length should match logits length (which matches the union interval).
-    assert out.log_counts.shape[-1] == out.logits.shape[-1]
+    # log_counts is scalar per channel (C,) — collapsed back from the spatial
+    # grid after overlap-weighted averaging. This preserves the original per-window
+    # semantics (total count for a window, not per-bin counts).
+    assert out.log_counts.ndim == 1, (
+        f"log_counts should be (C,) after aggregation, got shape {out.log_counts.shape}"
+    )

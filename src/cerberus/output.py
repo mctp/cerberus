@@ -19,9 +19,9 @@ class ModelOutput:
 
 @dataclass
 class ProfileLogits(ModelOutput):
-    """
-    Output for models predicting a profile (shape) using unnormalized log-probabilities.
-    Interpretation: softmax(logits) = probabilities.
+    """Output for models predicting a profile shape as unnormalized log-probabilities.
+
+    softmax(logits, dim=-1) gives the per-position probability distribution.
     """
     logits: torch.Tensor # (Batch, Channels, Length)
 
@@ -30,9 +30,9 @@ class ProfileLogits(ModelOutput):
 
 @dataclass
 class ProfileLogRates(ModelOutput):
-    """
-    Output for models predicting log-rates (log-intensities).
-    Interpretation: exp(log_rates) = counts.
+    """Output for models predicting log-rates (log-intensities).
+
+    exp(log_rates) gives expected counts per bin.
     """
     log_rates: torch.Tensor # (Batch, Channels, Length)
 
@@ -41,7 +41,11 @@ class ProfileLogRates(ModelOutput):
 
 @dataclass
 class ProfileCountOutput(ProfileLogits):
-    """Output for models predicting profile (logits) and total counts."""
+    """Output for models with factored profile shape (logits) and total counts.
+
+    The profile shape and total count are predicted independently:
+    predicted_counts = softmax(logits) * exp(log_counts).
+    """
     log_counts: torch.Tensor # (Batch, Channels)
 
     def detach(self):
@@ -76,33 +80,33 @@ class FactorizedProfileCountOutput(ProfileCountOutput):
         )
 
 def unbatch_modeloutput(batched_output: ModelOutput, batch_size: int) -> list[dict[str, Any]]:
-    """
-    Splits a batched output (ModelOutput) into a list of individual interval dictionaries.
-    
+    """Splits a batched ModelOutput into per-sample dictionaries.
+
+    Tensor fields are unbound along dim=0. Non-tensor fields (e.g. out_interval)
+    are replicated to every sample.
+
     Args:
-        batched_output: The batched ModelOutput object to split.
-        batch_size: The number of items in the batch.
-        
+        batched_output: Batched ModelOutput with tensors of shape (B, ...).
+        batch_size: Number of samples in the batch.
+
     Returns:
-        list[dict[str, Any]]: A list of dictionaries, each representing an unbatched output.
+        List of dicts, one per sample, with the same keys as the dataclass fields.
     """
-    batched_output_dict = dataclasses.asdict(batched_output)
+    batched_output_dict = {f.name: getattr(batched_output, f.name) for f in dataclasses.fields(batched_output)}
 
     unbatched_components = {}
     for key, val in batched_output_dict.items():
         if isinstance(val, torch.Tensor):
             unbatched_components[key] = list(torch.unbind(val, dim=0))
         else:
-            # For metadata fields like out_interval, replicate
             unbatched_components[key] = [val] * batch_size
-    
-    # Reassemble into list of dicts
+
     result_list = []
     keys = unbatched_components.keys()
     for i in range(batch_size):
         item = {key: unbatched_components[key][i] for key in keys}
         result_list.append(item)
-        
+
     return result_list
 
 def aggregate_tensor_track_values(
@@ -112,87 +116,72 @@ def aggregate_tensor_track_values(
     output_len: int,
     output_bin_size: int,
 ) -> np.ndarray:
-    """
-    Aggregates a list of tensors into a single merged array.
-    
-    This function handles the spatial alignment of multiple (potentially overlapping)
-    prediction tracks into a single contiguous track. It computes the average value
-    for bins where multiple predictions overlap.
-    
-    Note on Alignment (Snap-to-Grid):
-    When output_bin_size > 1, the function snaps interval starts to the nearest bin
-    (flooring behavior). Sub-bin shifts (e.g. from Jitter) are effectively Aliased/Quantized
-    to the bin grid defined by merged_interval.start.
-    
+    """Spatially merges overlapping prediction tensors by averaging overlapping bins.
+
+    Each tensor is placed into a unified bin grid defined by merged_interval. Where
+    multiple predictions overlap, their values are averaged. Tensors are classified
+    as profile (spatial) or scalar based on whether their last dimension matches the
+    expected bin count for their interval.
+
+    Snap-to-grid: when output_bin_size > 1, interval starts are floored to the
+    nearest bin boundary. Sub-bin shifts (e.g. from jitter) are quantized away.
+
     Args:
-        outputs: List of tensors to aggregate.
-        intervals: List of intervals corresponding to the tensors.
-        merged_interval: The overall interval covering all inputs.
-        output_len: The expected length of profile outputs.
-        output_bin_size: The bin size of the outputs.
-        
+        outputs: Per-interval tensors, each (C, L) for profiles or (C,) for scalars.
+        intervals: Genomic interval for each tensor (same length as outputs).
+        merged_interval: Union interval covering all inputs.
+        output_len: Expected profile length in bins (currently unused, reserved).
+        output_bin_size: Bin resolution in base pairs.
+
     Returns:
-        np.ndarray: The aggregated values as a numpy array.
+        For profiles: (C, n_bins) array over the merged interval.
+        For scalars: (C,) array — overlap-weighted mean, excluding empty gaps.
     """
-    # Merged extent
     min_start = merged_interval.start
     max_end = merged_interval.end
-    
+
     span_bp = max_end - min_start
     n_bins = span_bp // output_bin_size
-    
-    # outputs[0] is (C, L) or (C,)
-    sample_out = outputs[0]
-    n_channels = sample_out.shape[0]
-    
-    # Accumulators
+
+    n_channels = outputs[0].shape[0]
+
     accumulator = np.zeros((n_channels, n_bins), dtype=np.float32)
     counts = np.zeros((1, n_bins), dtype=np.float32)
-    
+    has_scalar = False
+
     for out_tensor, interval in zip(outputs, intervals):
-        # Convert to numpy
-        val = out_tensor.cpu().numpy() # (C, L) or (C,)
-        
-        # Relative start bin
+        val = out_tensor.cpu().numpy()  # (C, L) or (C,)
+
         rel_start_bp = interval.start - min_start
         rel_start_bin = rel_start_bp // output_bin_size
+        interval_bins = (interval.end - interval.start) // output_bin_size
+        end_bin = rel_start_bin + interval_bins
 
-        # Expected bins for this interval
-        interval_len_bp = interval.end - interval.start
-        interval_bins = interval_len_bp // output_bin_size
-        
-        # Check dimensions
-        # It is a profile/track if it has spatial dimension and matches the interval length
         is_profile = (val.ndim >= 2 and val.shape[-1] == interval_bins)
-        
+
         if is_profile:
-            # val is (C, L_bins)
-            end_bin = rel_start_bin + interval_bins
-            
-            # Bounds check (simple clipping or assume fits)
-            # Since intervals are within merged_interval, it should fit unless precision issues
-            
             accumulator[:, rel_start_bin : end_bin] += val
             counts[:, rel_start_bin : end_bin] += 1.0
         else:
-            # Scalar (C,)
-            # Broadcast to interval length to create a constant track over the interval
-            # Interval length in bins
-            end_bin = rel_start_bin + interval_bins
-            
-            # val is (C,) -> (C, int_bins)
-            if val.ndim == 1:
-                val_b = np.expand_dims(val, -1)
-            else:
-                val_b = val
-
+            has_scalar = True
+            # Broadcast scalar (C,) → (C, 1) for overlap-aware spatial averaging
+            val_b = np.expand_dims(val, -1) if val.ndim == 1 else val
             accumulator[:, rel_start_bin : end_bin] += val_b
             counts[:, rel_start_bin : end_bin] += 1.0
 
-    # Average
+    raw_counts = counts.copy()
     counts = np.maximum(counts, 1.0)
     final_values = accumulator / counts
-    
+
+    if has_scalar:
+        # Collapse spatial grid back to (C,). Only average over bins that
+        # received contributions to avoid dilution from empty gaps.
+        valid_mask = raw_counts[0] > 0
+        if valid_mask.any():
+            final_values = final_values[:, valid_mask].mean(axis=-1)
+        else:
+            final_values = np.zeros(n_channels, dtype=np.float32)
+
     return final_values
 
 def aggregate_intervals(
@@ -202,42 +191,36 @@ def aggregate_intervals(
     output_bin_size: int,
     output_cls: type[ModelOutput] | None = None,
 ) -> ModelOutput:
-    """
-    Aggregates overlapping predictions into a single merged output.
-    
-    This high-level function unifies predictions from multiple genomic intervals (e.g. tiles)
-    into a single ModelOutput object covering the union of all input intervals.
-    It delegates to `aggregate_tensor_track_values` for spatial merging of profile tracks.
-    
+    """Merges predictions from multiple genomic intervals into a single ModelOutput.
+
+    Delegates per-tensor spatial merging to ``aggregate_tensor_track_values``.
+    All intervals must be on the same chromosome and strand.
+
     Args:
-        outputs: List of unbatched output dictionaries.
-        intervals: List of intervals corresponding to the outputs.
-        output_len: The length of the output profile in bins/bp (used for profile detection).
-        output_bin_size: The size of each bin in base pairs.
-        output_cls: The ModelOutput class to use for the result.
-        
+        outputs: Per-interval output dicts (from ``unbatch_modeloutput``).
+        intervals: Genomic interval for each output (same length as outputs).
+        output_len: Profile length in bins (passed through; currently unused).
+        output_bin_size: Bin resolution in base pairs.
+        output_cls: ModelOutput subclass to construct the result.
+
     Returns:
-        ModelOutput: The merged output object covering the union of intervals.
+        A single ModelOutput covering the union of all input intervals.
     """
-    # Filter for keys that are tensors (ignore metadata like out_interval)
     keys = [k for k in outputs[0].keys() if isinstance(outputs[0][k], torch.Tensor)]
 
-    # Compute merged interval, assuming all intervals are on the same chrom and strand
     chrom = intervals[0].chrom
     strand = intervals[0].strand
     min_start = min(i.start for i in intervals)
     max_end = max(i.end for i in intervals)
     merged_interval = Interval(chrom, min_start, max_end, strand)
-    
+
     aggregated_components = {}
-    
     for key in keys:
-        component_outputs = [out[key] for out in outputs] # list[Tensor]
-        agg_comp = aggregate_tensor_track_values(
+        component_outputs = [out[key] for out in outputs]
+        agg_np = aggregate_tensor_track_values(
             component_outputs, intervals, merged_interval, output_len, output_bin_size
         )
-        # Convert numpy to tensor (CPU)
-        aggregated_components[key] = torch.from_numpy(agg_comp)
+        aggregated_components[key] = torch.from_numpy(agg_np)
 
     if output_cls is None:
         raise ValueError("output_cls must be provided to aggregate_intervals")
@@ -248,65 +231,57 @@ def aggregate_intervals(
 def aggregate_models(
     outputs: Sequence[ModelOutput], method: str
 ) -> ModelOutput:
-    """
-    Aggregates a list of model outputs.
-    
+    """Ensembles outputs from multiple models by reducing each tensor field.
+
+    All outputs must be the same ModelOutput subclass with identically-shaped
+    tensors. The out_interval is taken from the first output (all models
+    predict on the same intervals).
+
     Args:
-        outputs: List of outputs to aggregate.
-        method: Aggregation method ("mean" or "median").
-        
+        outputs: One ModelOutput per model, all for the same input batch.
+        method: Reduction across models — "mean" or "median".
+
     Returns:
-        ModelOutput: The aggregated output.
+        A single ModelOutput of the same type with ensembled tensor fields.
     """
-    output_dicts = [dataclasses.asdict(out) for out in outputs]
-    # Filter tensor keys
+    output_dicts = [{f.name: getattr(out, f.name) for f in dataclasses.fields(out)} for out in outputs]
     keys = [k for k in output_dicts[0].keys() if isinstance(output_dicts[0][k], torch.Tensor)]
-    
+
     aggregated_elements = {}
-    
     for key in keys:
         stacked = torch.stack([out[key] for out in output_dicts])
-        
         if method == "mean":
-            # mean over N_Models dimension (dim 0)
             aggregated_elements[key] = torch.mean(stacked, dim=0)
         elif method == "median":
-            # median over N_Models dimension (dim 0)
             aggregated_elements[key] = torch.median(stacked, dim=0).values
         else:
             raise ValueError(f"Unknown aggregation method: {method}")
-    
-    # Reconstruct object
+
     cls = type(outputs[0])
-    # Preserve out_interval if consistent? 
-    # Usually for batched aggregation, out_interval is None or same.
-    # We take the first one.
     out_int = outputs[0].out_interval
 
     logger.debug(f"Aggregated {len(outputs)} model outputs using '{method}'")
     return cls(**aggregated_elements, out_interval=out_int)
 
 def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseudocount: bool = False, pseudocount: float = 1.0) -> torch.Tensor:
-    """
-    Extracts total log counts from the model output.
-    Supports ProfileCountOutput and ProfileLogRates.
+    """Computes total log counts across all channels, returning shape (B,).
+
+    Supports ProfileCountOutput (explicit log_counts) and ProfileLogRates
+    (total count derived by summing per-bin rates).
 
     Args:
-        model_output: The output from the model.
-        log_counts_include_pseudocount: If True, indicates that per-channel log_counts
-            are in log(count + pseudocount) space (as trained by MSEMultinomialLoss with
-            count_per_channel=True). In this case, multi-channel counts are aggregated
-            by inverting the log transform per channel, summing, then reapplying it —
-            giving the correct log(total + pseudocount) rather than the incorrect
-            log(n_channels + total) that logsumexp would produce.
-            If False (default), log_counts are treated as being in log space (Poisson/NB
-            losses), where logsumexp correctly gives log(total).
-        pseudocount: Additive offset used when log_counts_include_pseudocount=True to
-            invert and reapply the log transform. Must match the count_pseudocount used
-            during training. Default 1.0 reproduces the original log1p behaviour.
+        model_output: A ProfileCountOutput or ProfileLogRates instance.
+        log_counts_include_pseudocount: If True, per-channel log_counts are in
+            log(count + pseudocount) space (MSE losses). Aggregation inverts
+            the transform per channel, sums, then reapplies — avoiding the
+            incorrect log(n_channels * pseudocount + total) that logsumexp
+            would give. If False (default, Poisson/NB losses), logsumexp
+            correctly gives log(total).
+        pseudocount: Offset for the pseudocount inversion. Must match the
+            count_pseudocount used during training. Default 1.0.
 
     Returns:
-        A tensor of shape (batch_size,) containing the total log counts.
+        Tensor of shape (B,) with total log counts per sample.
     """
     if isinstance(model_output, ProfileCountOutput):
         log_counts = model_output.log_counts
@@ -322,9 +297,6 @@ def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseud
             
     elif isinstance(model_output, ProfileLogRates):
         log_rates = model_output.log_rates
-        if log_rates.shape[1] > 1:
-            return torch.logsumexp(log_rates.float().flatten(start_dim=1), dim=-1)
-        else:
-            return torch.logsumexp(log_rates.float(), dim=(1,2)).flatten()
+        return torch.logsumexp(log_rates.float().flatten(start_dim=1), dim=-1)
             
     raise ValueError(f"Model output type {type(model_output)} not supported for total log counts extraction.")

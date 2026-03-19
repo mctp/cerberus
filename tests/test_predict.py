@@ -552,9 +552,9 @@ def test_predict_intervals_scalar_broadcast(mock_dataset):
     arr = asdict(results)
     merged_interval = results.out_interval
     
-    # Output length 60. Scalar should be broadcast to 60.
+    # Scalar output is collapsed back to (C,) after aggregation.
     assert isinstance(arr, dict)
-    assert arr['out'].shape == (1, 60)
+    assert arr['out'].shape == (1,)
     assert np.allclose(arr['out'], 5.0)
     assert merged_interval is not None
     assert merged_interval.start == 20
@@ -598,8 +598,8 @@ def test_predict_intervals_tuple_recursive(mock_dataset):
     assert track_prof.shape == (1, 60)
     assert np.allclose(track_prof, 3.0)
     
-    # Check Scalar
-    assert track_scalar.shape == (1, 60)
+    # Scalar collapses back to (C,) after aggregation
+    assert track_scalar.shape == (1,)
     assert np.allclose(track_scalar, 7.0)
     
     assert merged_interval is not None
