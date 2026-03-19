@@ -27,7 +27,7 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
         # count_pseudocount is accepted for compatibility with propagate_pseudocount
         # but not used (PoissonNLLLoss handles count loss directly).
 
-    def forward(self, log_input, target):
+    def forward(self, log_input, target, **kwargs):
         target = target.float()
         
         if not isinstance(log_input, ProfileLogRates):
@@ -141,7 +141,7 @@ class MSEMultinomialLoss(nn.Module):
             count_loss = F.mse_loss(pred_log_counts.flatten(), target_log_global_count)
         return profile_loss, count_loss
 
-    def forward(self, outputs, targets):
+    def forward(self, outputs, targets, **kwargs):
         profile_loss, count_loss = self.loss_components(outputs, targets)
         return self.profile_weight * profile_loss + self.count_weight * count_loss
 
@@ -183,7 +183,7 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
         profile_loss = self._compute_profile_loss(logits, targets)
         return profile_loss, count_loss
 
-    def forward(self, outputs, targets):
+    def forward(self, outputs, targets, **kwargs):
         profile_loss, count_loss = self.loss_components(outputs, targets)
         return self.profile_weight * profile_loss + self.count_weight * count_loss
 
@@ -261,7 +261,7 @@ class PoissonMultinomialLoss(nn.Module):
         loss_shape = self._compute_profile_loss(logits, targets)
         return loss_shape, loss_count
 
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, **kwargs):
         profile_loss, count_loss = self.loss_components(predictions, targets)
         return self.count_weight * count_loss + self.profile_weight * profile_loss
 
@@ -300,7 +300,7 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
         loss_shape = self._compute_profile_loss(logits, targets)
         return loss_shape, loss_count
 
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, **kwargs):
         profile_loss, count_loss = self.loss_components(predictions, targets)
         return self.count_weight * count_loss + self.profile_weight * profile_loss
 
@@ -345,7 +345,7 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
         loss_shape = self._compute_profile_loss(logits, targets)
         return loss_shape, loss_count
 
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, **kwargs):
         profile_loss, count_loss = self.loss_components(predictions, targets)
         return self.count_weight * count_loss + self.profile_weight * profile_loss
 
@@ -379,7 +379,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
         loss_shape = self._compute_profile_loss(logits, targets)
         return loss_shape, loss_count
 
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, **kwargs):
         profile_loss, count_loss = self.loss_components(predictions, targets)
         return self.count_weight * count_loss + self.profile_weight * profile_loss
 
