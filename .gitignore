@@ -139,3 +139,6 @@ notebooks/plots/
 # Claude Code
 .claude/
 debug/
+
+# Additional test data
+data/

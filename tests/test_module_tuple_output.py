@@ -17,9 +17,12 @@ class MockTupleModel(nn.Module):
         return (out, out) # Returns tuple
 
 class MockTupleLoss(nn.Module):
-    def forward(self, outputs, targets):
-        # outputs is (out1, out2)
-        return nn.functional.mse_loss(outputs[0], targets)
+    def loss_components(self, outputs, targets, **kwargs):
+        return {"mse_loss": nn.functional.mse_loss(outputs[0], targets)}
+
+    def forward(self, outputs, targets, **kwargs):
+        components = self.loss_components(outputs, targets, **kwargs)
+        return components["mse_loss"]
 
 class MockTupleMetric(Metric):
     def __init__(self):

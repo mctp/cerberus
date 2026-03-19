@@ -4,10 +4,11 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from torchmetrics import MetricCollection
 import logging
-from typing import Callable, Any
+from typing import Any
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
+from cerberus.loss import CerberusLoss
 from cerberus.output import compute_total_log_counts
 from cerberus.plots import save_count_scatter
 from cerberus.config import (
@@ -41,7 +42,7 @@ class CerberusModule(pl.LightningModule):
     def __init__(
         self,
         model: nn.Module,
-        criterion: nn.Module | Callable,
+        criterion: CerberusLoss,
         metrics: MetricCollection,
         train_config: TrainConfig | None = None,
         # Optional logging configuration
@@ -138,19 +139,20 @@ class CerberusModule(pl.LightningModule):
     def _shared_step(self, batch, batch_idx, prefix):
         inputs = batch["inputs"]
         targets = batch["targets"]
-        
+
         # Forward pass
         outputs = self.model(inputs)
 
-        # Calculate loss (extra batch context passed as kwargs for losses that need it)
+        # Calculate loss and log named components
         batch_context = {k: v for k, v in batch.items() if k not in ("inputs", "targets")}
-        loss = self.criterion(outputs, targets, **batch_context)
-        
-        # Logging
         batch_size = inputs.shape[0]
-        # Sync dist for validation to avoid warning and ensure correct epoch accumulation
         sync_dist = (prefix == "val_")
+
+        loss = self.criterion(outputs, targets, **batch_context)
         self.log(f"{prefix}loss", loss, prog_bar=True, batch_size=batch_size, sync_dist=sync_dist)
+        components = self.criterion.loss_components(outputs, targets, **batch_context)
+        for name, value in components.items():
+            self.log(f"{prefix}{name}", value, batch_size=batch_size, sync_dist=sync_dist)
              
         # Metrics
         metric_collection = self.train_metrics if prefix == "train_" else self.val_metrics

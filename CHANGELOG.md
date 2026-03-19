@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`CerberusLoss` protocol**: All loss classes now implement a uniform
+  `loss_components(outputs, targets, **kwargs) -> dict[str, Tensor]` interface
+  that returns named, unweighted loss components. Enables generic per-component
+  logging in `CerberusModule._shared_step` without type-checking branches.
+- **Per-component loss logging**: `_shared_step` now logs each named component
+  (e.g. `train_profile_loss`, `val_count_loss`, `train_recon_loss`) as separate
+  Lightning metrics alongside the combined `loss`, for all loss types.
 - **`tools/export_bigwig.py`**: CLI tool for exporting genome-wide model
   predictions to BigWig format. Loads a model ensemble, slides windows across
   all allowed chromosomes, and streams predictions to a BigWig file via

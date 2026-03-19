@@ -192,12 +192,20 @@ When `transforms` are not explicitly provided to `CerberusDataset`, they are aut
 
 Cerberus provides specialized loss functions for genomic signal prediction.
 
+### CerberusLoss Protocol
+All loss classes implement the `CerberusLoss` protocol, which requires:
+*   `loss_components(outputs, targets, **kwargs) -> dict[str, Tensor]`: Returns named, unweighted loss components.
+*   `__call__(outputs, targets, **kwargs) -> Tensor`: Returns the combined weighted scalar loss.
+
+`CerberusModule._shared_step` calls both methods: `forward()` for the training loss and `loss_components()` to log each component as a separate Lightning metric (e.g., `train_profile_loss`, `val_count_loss`).
+
 ### ProfilePoissonNLLLoss
 Standard Poisson NLL loss for models predicting log-rates (log-intensities).
 
 *   **Behavior**: Computes `PoissonNLL(exp(log_rates), targets)`.
 *   **Use Case**: Models predicting unnormalized log-counts directly (e.g., `ConvNeXtDCNN`).
 *   **Inputs**: `ProfileLogRates`.
+*   **Components**: `{"poisson_nll_loss": ...}`.
 
 ### MSEMultinomialLoss (BPNetLoss)
 Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).
@@ -209,6 +217,7 @@ Standard BPNet loss combining Multinomial NLL (profile) and MSE (counts).
     *   `flatten_channels` (default: `False`): If `False`, computes Multinomial NLL independently per channel. If `True`, flattens all channels and length into a single dimension.
     *   `log1p_targets`: If targets are already log-transformed, reverses them before loss calculation.
 *   **Inputs**: `ProfileCountOutput`.
+*   **Components**: `{"profile_loss": ..., "count_loss": ...}`.
 
 ### CoupledMSEMultinomialLoss
 Coupled version of `MSEMultinomialLoss` for models predicting log-rates directly.
@@ -251,6 +260,7 @@ Peak-conditioned loss for bias-factorized models. Wraps any profile+count base l
 *   **Args**: `base_loss_cls` (dotted class path), `base_loss_args`, `bias_weight` (default: 1.0), `count_pseudocount` (default: 1.0).
 *   **Requires**: `peak_status` tensor passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context).
 *   **Inputs**: `FactorizedProfileCountOutput`.
+*   **Components**: `{"recon_loss": ..., "bias_loss": ...}`.
 
 ## Model Outputs
 
