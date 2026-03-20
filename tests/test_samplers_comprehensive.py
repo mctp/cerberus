@@ -176,6 +176,8 @@ class MockSampler(Sampler):
     def resample(self, seed=None): pass
     def split_folds(self, test_fold=None, val_fold=None):
         return self, self, self
+    def get_interval_source(self, idx):
+        return type(self).__name__
 
 # --- PeakSampler Tests ---
 

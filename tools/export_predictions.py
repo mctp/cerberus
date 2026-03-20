@@ -36,7 +36,7 @@ def main():
              "'val' (validation chromosomes), 'train' (training chromosomes), or 'all' (every chromosome). "
              "Use 'all' only for exploratory analysis — it includes training chromosomes and inflates metrics."
     )
-    parser.add_argument("--include-background", action="store_true", help="Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a 'peak' sampler. Adds a 'peak_status' column to the output (1=peak, 0=background).")
+    parser.add_argument("--include-background", action="store_true", help="Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a 'peak' sampler. Adds an 'interval_source' column to the output (sampler class name).")
     parser.add_argument("--background-ratio", type=float, default=None, help="Ratio of background intervals to peaks (default: taken from model's sampler config, typically 1.0).")
     parser.add_argument("--seed", type=int, default=1234, help="Random seed for background interval generation (only used with --include-background).")
 
@@ -174,7 +174,7 @@ def main():
             seed=args.seed,
         )
 
-        # PeakSampler is always a MultiSampler; get_peak_status() lives there.
+        # PeakSampler is always a MultiSampler; get_interval_source() lives there.
         if not isinstance(combined_sampler, MultiSampler):
             raise RuntimeError("Expected PeakSampler to be a MultiSampler instance.")
 
@@ -189,11 +189,12 @@ def main():
 
         n_combined = len(combined_sampler)
         all_intervals = [combined_sampler[i] for i in range(n_combined)]
-        all_peak_status = [combined_sampler.get_peak_status(i) for i in range(n_combined)]
+        all_interval_source = [combined_sampler.get_interval_source(i) for i in range(n_combined)]
         sampler_to_use: IntervalSampler | list = all_intervals
+        n_peaks = sum(1 for s in all_interval_source if s == "IntervalSampler")
         logger.info(
-            f"Combined sampler ({args.eval_split} split): {sum(all_peak_status)} peaks + "
-            f"{n_combined - sum(all_peak_status)} background intervals."
+            f"Combined sampler ({args.eval_split} split): {n_peaks} peaks + "
+            f"{n_combined - n_peaks} background intervals."
         )
     else:
         # Peaks only.
@@ -212,7 +213,7 @@ def main():
         else:
             all_intervals = list(peak_sampler)
 
-        all_peak_status = [1] * len(all_intervals)
+        all_interval_source = ["IntervalSampler"] * len(all_intervals)
         sampler_to_use = all_intervals
 
     if len(all_intervals) == 0:
@@ -235,7 +236,7 @@ def main():
     # 4. Predict and Collect
     logger.info("Running prediction...")
 
-    results = []  # List of tuples (chrom, start, end, strand, pred_interval, pred, obs[, peak_status])
+    results = []  # List of tuples (chrom, start, end, strand, pred_interval, pred, obs[, interval_source])
 
     # Use selected folds
     batch_gen = ensemble.predict_intervals_batched(
@@ -247,7 +248,7 @@ def main():
     )
 
     batch_count = 0
-    interval_idx = 0  # Tracks position in all_peak_status for the current batch
+    interval_idx = 0  # Tracks position in all_interval_source for the current batch
     output_len = data_config["output_len"]
 
     for batch_output, batch_intervals in batch_gen:
@@ -318,7 +319,7 @@ def main():
                 obs_batch[i],
             )
             if args.include_background:
-                row = row + (all_peak_status[interval_idx + i],)
+                row = row + (all_interval_source[interval_idx + i],)
             results.append(row)
 
         interval_idx += len(batch_intervals)
@@ -340,7 +341,7 @@ def main():
         writer = csv.writer(f, delimiter="\t")
         header = ["chrom", "start", "end", "strand", "pred_interval", "predicted_log_count", "observed_log_count"]
         if args.include_background:
-            header.append("peak_status")
+            header.append("interval_source")
         writer.writerow(header)
         writer.writerows(results)
     finally:

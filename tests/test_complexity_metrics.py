@@ -27,6 +27,9 @@ class MockSampler:
     def split_folds(self, test_fold=None, val_fold=None):
         return (self, self, self)
 
+    def get_interval_source(self, idx):
+        return type(self).__name__
+
 @pytest.fixture
 def mock_fasta(tmp_path):
     fasta_path = tmp_path / "genome.fa"

@@ -192,6 +192,10 @@ class Sampler(Protocol):
     ) -> tuple["Sampler", "Sampler", "Sampler"]:
         ...
 
+    def get_interval_source(self, idx: int) -> str:
+        """Return the class name of the sampler that produced interval ``idx``."""
+        ...
+
 
 class BaseSampler(Sampler):
     """
@@ -228,6 +232,14 @@ class BaseSampler(Sampler):
             # Advance seed using current RNG state
             self.seed = self.rng.getrandbits(32)
             self.rng = random.Random(self.seed)
+
+    def get_interval_source(self, idx: int) -> str:
+        """Return the class name of this sampler.
+
+        Subclasses like :class:`MultiSampler` override this to report which
+        sub-sampler produced the interval at ``idx``.
+        """
+        return type(self).__name__
 
     def resample(self, seed: int | None = None) -> None:
         """
@@ -370,26 +382,25 @@ class MultiSampler(BaseSampler):
         sampler_idx, interval_idx = self._indices[idx]
         return self.samplers[sampler_idx][interval_idx]
 
-    def get_peak_status(self, idx: int) -> int:
-        """
-        Return the peak label for the interval at position ``idx``.
+    def get_interval_source(self, idx: int) -> str:
+        """Return the class name of the sub-sampler that produced interval ``idx``.
 
-        By convention, intervals drawn from the first sub-sampler
-        (``samplers[0]``) are treated as positives (peaks) and labelled ``1``;
-        all others are labelled ``0`` (background).
+        For a :class:`PeakSampler`, ``samplers[0]`` is an
+        :class:`IntervalSampler` (peaks) and subsequent samplers are background
+        generators (e.g. :class:`ComplexityMatchedSampler`).  The returned
+        string identifies which sub-sampler produced the interval, enabling
+        callers to apply source-specific logic.
 
-        This matches the layout created by :class:`PeakSampler`, where
-        ``samplers[0]`` is always the :class:`IntervalSampler` of positive
-        peaks and any subsequent samplers are background samplers.  The label
-        is preserved correctly after :meth:`split_folds` because that method
-        returns new :class:`MultiSampler` instances with the same sub-sampler
-        ordering.
+        The source is preserved correctly after :meth:`split_folds` because
+        that method returns new :class:`MultiSampler` instances with the same
+        sub-sampler ordering.
 
         Returns:
-            ``1`` for a peak interval, ``0`` for a background interval.
+            Class name of the originating sub-sampler
+            (e.g. ``"IntervalSampler"``, ``"ComplexityMatchedSampler"``).
         """
         sampler_idx, _ = self._indices[idx]
-        return 1 if sampler_idx == 0 else 0
+        return type(self.samplers[sampler_idx]).__name__
 
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
@@ -1407,11 +1418,6 @@ class NegativePeakSampler(MultiSampler):
             exclude_intervals=exclude_intervals,
             seed=seed,
         )
-
-    def get_peak_status(self, idx: int) -> int:
-        """All intervals are background (non-peak). Always returns 0."""
-        return 0
-
 
 def create_sampler(
     config: dict | SamplerConfig,

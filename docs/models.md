@@ -340,7 +340,7 @@ L = L_recon(combined, target)                          # all examples
 
 - **L_recon**: Standard reconstruction loss on the combined output (all examples). Gradients flow only to SignalNet (bias outputs are detached before combining).
 - **L_bias**: Reconstruction loss using only the bias component (background/non-peak examples only). This is the sole gradient source for BiasNet, forcing it to learn Tn5 bias rather than TF footprints.
-- **`peak_status`**: A per-example binary tensor passed as batch context via `**kwargs`. The `CerberusModule._shared_step` automatically forwards all non-input/target batch fields as keyword arguments.
+- **`interval_source`**: A per-example string identifying the sub-sampler that produced each interval (e.g. `"IntervalSampler"` for peaks, `"ComplexityMatchedSampler"` for background). Passed as batch context via `**kwargs` — `CerberusModule._shared_step` automatically forwards all non-input/target batch fields as keyword arguments. `DalmatianLoss` converts this to a peak mask internally.
 
 No explicit signal suppression term is needed — gradient detach already prevents SignalNet from activating on background (verified in exp21: removing the L1 penalty had zero measurable effect).
 

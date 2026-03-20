@@ -258,7 +258,7 @@ Peak-conditioned loss for bias-factorized models. Wraps any profile+count base l
 
 *   **Terms**: `L_recon` (all examples) + `bias_weight * L_bias` (background).
 *   **Args**: `base_loss_cls` (dotted class path), `base_loss_args`, `bias_weight` (default: 1.0), `count_pseudocount` (default: 1.0).
-*   **Requires**: `peak_status` tensor passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context).
+*   **Requires**: `interval_source` (list of str) passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context). Intervals from `"IntervalSampler"` are treated as peaks; all others as background.
 *   **Inputs**: `FactorizedProfileCountOutput`.
 *   **Components**: `{"recon_loss": ..., "bias_loss": ...}`.
 

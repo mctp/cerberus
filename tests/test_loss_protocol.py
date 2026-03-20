@@ -195,9 +195,9 @@ def test_dalmatian_loss_components():
     B, C, L = 4, 2, 16
     output = _make_dalmatian_output(B, C, L)
     targets = _make_targets(B, C, L)
-    peak_status = torch.tensor([1, 0, 1, 0])
+    interval_source = ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler", "ComplexityMatchedSampler"]
 
-    components = loss_fn.loss_components(output, targets, peak_status=peak_status)
+    components = loss_fn.loss_components(output, targets, interval_source=interval_source)
     assert isinstance(components, dict)
     assert "recon_loss" in components
     assert "bias_loss" in components
@@ -216,10 +216,10 @@ def test_dalmatian_forward_uses_components():
     B, C, L = 4, 2, 16
     output = _make_dalmatian_output(B, C, L)
     targets = _make_targets(B, C, L)
-    peak_status = torch.tensor([1, 0, 1, 0])
+    interval_source = ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler", "ComplexityMatchedSampler"]
 
-    loss = loss_fn(output, targets, peak_status=peak_status)
-    components = loss_fn.loss_components(output, targets, peak_status=peak_status)
+    loss = loss_fn(output, targets, interval_source=interval_source)
+    components = loss_fn.loss_components(output, targets, interval_source=interval_source)
     expected = components["recon_loss"] + 0.5 * components["bias_loss"]
     torch.testing.assert_close(loss, expected)
 

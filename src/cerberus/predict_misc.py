@@ -78,7 +78,7 @@ def get_eval_intervals(
     """Reconstruct evaluation intervals from the training config.
 
     Rebuilds the sampler and genome folds from ``config``, splits by fold, and
-    separates peak from background intervals using ``get_peak_status``.
+    separates peak from background intervals using ``get_interval_source``.
 
     Args:
         config: Full cerberus config (must include ``sampler_config``).
@@ -133,14 +133,14 @@ def get_eval_intervals(
 
     n = len(split_sampler)
     intervals = [split_sampler[i] for i in range(n)]
-    peak_status = [split_sampler.get_peak_status(i) for i in range(n)]
+    sources = [split_sampler.get_interval_source(i) for i in range(n)]
 
-    peak_intervals = [iv for iv, ps in zip(intervals, peak_status) if ps == 1]
+    peak_intervals = [iv for iv, s in zip(intervals, sources) if s == "IntervalSampler"]
 
     if not include_background:
         return peak_intervals
 
-    bg_intervals = [iv for iv, ps in zip(intervals, peak_status) if ps == 0]
+    bg_intervals = [iv for iv, s in zip(intervals, sources) if s != "IntervalSampler"]
     return peak_intervals, bg_intervals
 
 

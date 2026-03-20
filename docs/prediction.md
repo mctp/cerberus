@@ -198,7 +198,7 @@ where `p = count_pseudocount`, rather than the naive `logsumexp`, which would gi
 | Argument | Description |
 |---|---|
 | `--eval-split` | Which chromosome split to evaluate on: `test` (default, held-out test chromosomes), `val`, `train`, or `all`. Use `all` only for exploratory analysis — it includes training chromosomes and inflates metrics. |
-| `--include-background` | Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a `peak` sampler. Adds a `peak_status` column to the output (1=peak, 0=background). |
+| `--include-background` | Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a `peak` sampler. Adds an `interval_source` column to the output (sampler class name). |
 | `--background-ratio` | Ratio of background intervals to peaks (default: taken from model's sampler config). Only used with `--include-background`. |
 | `--seed` | Random seed for background interval generation (default: 1234). Only used with `--include-background`. |
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val` for multi-fold ensembles, `all` for single-fold. |

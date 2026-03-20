@@ -266,9 +266,9 @@ def test_dalmatian_loss_forward_mixed_batch():
     )
     output = _make_factorized_output(batch_size=4)
     target = torch.rand(4, 1, 100).abs() + 0.1
-    peak_status = torch.tensor([1, 0, 1, 0])
+    interval_source = ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler", "ComplexityMatchedSampler"]
 
-    loss = loss_fn(output, target, peak_status=peak_status)
+    loss = loss_fn(output, target, interval_source=interval_source)
     assert loss.shape == ()
     assert loss.requires_grad
 
@@ -281,16 +281,16 @@ def test_dalmatian_loss_all_peaks():
     )
     output = _make_factorized_output(batch_size=4)
     target = torch.rand(4, 1, 100).abs() + 0.1
-    peak_status = torch.ones(4, dtype=torch.long)
+    interval_source = ["IntervalSampler"] * 4
 
-    loss_all_peak = loss_fn(output, target, peak_status=peak_status)
+    loss_all_peak = loss_fn(output, target, interval_source=interval_source)
 
     # Compare with just reconstruction loss
     recon_only = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
         bias_weight=0.0,
     )
-    loss_recon = recon_only(output, target, peak_status=peak_status)
+    loss_recon = recon_only(output, target, interval_source=interval_source)
     assert torch.allclose(loss_all_peak, loss_recon)
 
 
@@ -302,9 +302,9 @@ def test_dalmatian_loss_all_background():
     )
     output = _make_factorized_output(batch_size=4)
     target = torch.rand(4, 1, 100).abs() + 0.1
-    peak_status = torch.zeros(4, dtype=torch.long)
+    interval_source = ["ComplexityMatchedSampler"] * 4
 
-    loss = loss_fn(output, target, peak_status=peak_status)
+    loss = loss_fn(output, target, interval_source=interval_source)
     assert loss.shape == ()
     assert loss.requires_grad
 
@@ -317,9 +317,9 @@ def test_dalmatian_loss_backward():
     )
     output = _make_factorized_output(batch_size=4)
     target = torch.rand(4, 1, 100).abs() + 0.1
-    peak_status = torch.tensor([1, 0, 1, 0])
+    interval_source = ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler", "ComplexityMatchedSampler"]
 
-    loss = loss_fn(output, target, peak_status=peak_status)
+    loss = loss_fn(output, target, interval_source=interval_source)
     loss.backward()
 
     # Combined fields get gradients from l_recon
@@ -357,9 +357,9 @@ def test_dalmatian_loss_with_poisson_base():
     )
     output = _make_factorized_output(batch_size=4)
     target = torch.rand(4, 1, 100).abs() + 0.1
-    peak_status = torch.tensor([1, 0, 1, 0])
+    interval_source = ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler", "ComplexityMatchedSampler"]
 
-    loss = loss_fn(output, target, peak_status=peak_status)
+    loss = loss_fn(output, target, interval_source=interval_source)
     assert loss.shape == ()
     assert loss.requires_grad
 
@@ -376,7 +376,7 @@ def test_existing_losses_accept_kwargs():
         log_counts=torch.randn(2, 1),
     )
     target = torch.rand(2, 1, 100).abs() + 0.1
-    extra = {"peak_status": torch.tensor([1, 0]), "some_other_key": 42}
+    extra = {"interval_source": ["IntervalSampler", "ComplexityMatchedSampler"], "some_other_key": 42}
 
     for loss_cls in [MSEMultinomialLoss, PoissonMultinomialLoss]:
         loss_fn = loss_cls()
@@ -384,8 +384,8 @@ def test_existing_losses_accept_kwargs():
         assert loss.shape == ()
 
 
-def test_dalmatian_loss_receives_peak_status_via_kwargs():
-    """DalmatianLoss extracts peak_status from kwargs (as module.py passes it)."""
+def test_dalmatian_loss_receives_interval_source_via_kwargs():
+    """DalmatianLoss extracts interval_source from kwargs (as module.py passes it)."""
     loss_fn = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
     )
@@ -393,13 +393,13 @@ def test_dalmatian_loss_receives_peak_status_via_kwargs():
     target = torch.rand(4, 1, 100).abs() + 0.1
 
     # Simulate what _shared_step does: batch_context = {k: v for k != inputs/targets}
-    batch_context = {"peak_status": torch.tensor([1, 0, 1, 0])}
+    batch_context = {"interval_source": ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler", "ComplexityMatchedSampler"]}
     loss = loss_fn(output, target, **batch_context)
     assert loss.shape == ()
 
 
-def test_dalmatian_loss_missing_peak_status_raises():
-    """DalmatianLoss raises KeyError when peak_status is missing from kwargs."""
+def test_dalmatian_loss_missing_interval_source_raises():
+    """DalmatianLoss raises KeyError when interval_source is missing from kwargs."""
     loss_fn = DalmatianLoss(
         base_loss_cls="cerberus.loss.MSEMultinomialLoss",
     )
@@ -504,7 +504,7 @@ def test_dalmatian_cerberus_module_training_step():
             return {
                 "inputs": torch.randn(4, 2112),
                 "targets": torch.rand(1, 1024).abs() + 0.1,
-                "peak_status": torch.tensor(idx % 2),  # alternating peak/bg
+                "interval_source": "IntervalSampler" if idx % 2 == 1 else "ComplexityMatchedSampler",
             }
 
     model = Dalmatian(input_len=2112, output_len=1024)
@@ -594,9 +594,9 @@ def test_dalmatian_multi_channel_loss():
     )
     output = _make_factorized_output(batch_size=4, channels=2, length=100)
     target = torch.rand(4, 2, 100).abs() + 0.1
-    peak_status = torch.tensor([1, 0, 1, 0])
+    interval_source = ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler", "ComplexityMatchedSampler"]
 
-    loss = loss_fn(output, target, peak_status=peak_status)
+    loss = loss_fn(output, target, interval_source=interval_source)
     assert loss.shape == ()
     assert loss.requires_grad
 
@@ -644,7 +644,7 @@ def test_dalmatian_optimization_reduces_loss():
     positions = torch.arange(1024).float()
     bump = torch.exp(-0.5 * ((positions - 512) / 50) ** 2)
     targets = (bump.unsqueeze(0).unsqueeze(0).expand(8, 1, -1) + 0.1)
-    peak_status = torch.tensor([1, 0, 1, 0, 1, 0, 1, 0])
+    interval_source = ["IntervalSampler", "ComplexityMatchedSampler"] * 4
 
     # Snapshot initial parameters
     init_params = {n: p.clone() for n, p in model.named_parameters()}
@@ -655,7 +655,7 @@ def test_dalmatian_optimization_reduces_loss():
     for _ in range(n_steps):
         optimizer.zero_grad()
         output = model(inputs)
-        loss = loss_fn(output, targets, peak_status=peak_status)
+        loss = loss_fn(output, targets, interval_source=interval_source)
         loss.backward()
         optimizer.step()
         losses.append(loss.item())

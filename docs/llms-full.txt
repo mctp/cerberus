@@ -294,8 +294,7 @@ item = dataset[0]
 print(item['inputs'].shape)   # (4, 2114) -> Sequence (one-hot)
 print(item['targets'].shape)  # (1, 1000) -> Signal
 print(item['intervals'])      # "chr1:1000-3114(+)" -> genomic interval string
-print(item['peak_status'])    # 1 = peak interval, 0 = background
-                              # (always 1 for samplers that don't support labelling)
+print(item['interval_source']) # e.g. "IntervalSampler" (peak) or "ComplexityMatchedSampler" (background)
 
 # Create DataLoader
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
@@ -1025,14 +1024,14 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Seeding**: Propagates seed to the negative generation process.
 *   **Resampling**: Re-samples the negative set to match the positives (while keeping positives static).
 *   **Splitting**: Splits both the positive and negative samplers consistent with folds.
-*   **Peak labelling**: Because `PeakSampler` extends `MultiSampler`, each batch item returned by `CerberusDataset` includes a `peak_status` field: `1` for peak intervals (from `IntervalSampler`) and `0` for background intervals (from `ComplexityMatchedSampler`). This label is always consistent with `__getitem__` — both read from the same internal index table.
+*   **Interval source**: Because `PeakSampler` extends `MultiSampler`, each batch item returned by `CerberusDataset` includes an `interval_source` field containing the class name of the sub-sampler that produced the interval (e.g. `"IntervalSampler"` for peaks, `"ComplexityMatchedSampler"` for background). This label is always consistent with `__getitem__` — both read from the same internal index table.
 
 ### NegativePeakSampler
 *   **Function**: Background-only variant of `PeakSampler`. Loads peaks for exclusion and complexity reference, but only includes the complexity-matched background intervals in the training set. Peaks are never sampled.
 *   **Use case**: Training bias-only models (e.g., Tn5 sequence bias) on non-peak regions where enzymatic bias dominates, following the ChromBPNet protocol.
 *   **Config type**: `"negative_peak"` — same args as `"peak"` (`intervals_path`, `background_ratio`).
 *   **Epoch size**: Controlled by `background_ratio` (number of background intervals = num_peaks × background_ratio).
-*   **Peak labelling**: `get_peak_status()` always returns `0` (all intervals are background).
+*   **Interval source**: `get_interval_source()` returns `"ComplexityMatchedSampler"` for all intervals (background only).
 
 ## Best Practices for Users
 
@@ -1324,7 +1323,7 @@ Peak-conditioned loss for bias-factorized models. Wraps any profile+count base l
 
 *   **Terms**: `L_recon` (all examples) + `bias_weight * L_bias` (background).
 *   **Args**: `base_loss_cls` (dotted class path), `base_loss_args`, `bias_weight` (default: 1.0), `count_pseudocount` (default: 1.0).
-*   **Requires**: `peak_status` tensor passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context).
+*   **Requires**: `interval_source` (list of str) passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context). Intervals from `"IntervalSampler"` are treated as peaks; all others as background.
 *   **Inputs**: `FactorizedProfileCountOutput`.
 *   **Components**: `{"recon_loss": ..., "bias_loss": ...}`.
 
@@ -1600,7 +1599,7 @@ where `p = count_pseudocount`, rather than the naive `logsumexp`, which would gi
 | Argument | Description |
 |---|---|
 | `--eval-split` | Which chromosome split to evaluate on: `test` (default, held-out test chromosomes), `val`, `train`, or `all`. Use `all` only for exploratory analysis — it includes training chromosomes and inflates metrics. |
-| `--include-background` | Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a `peak` sampler. Adds a `peak_status` column to the output (1=peak, 0=background). |
+| `--include-background` | Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a `peak` sampler. Adds an `interval_source` column to the output (sampler class name). |
 | `--background-ratio` | Ratio of background intervals to peaks (default: taken from model's sampler config). Only used with `--include-background`. |
 | `--seed` | Random seed for background interval generation (default: 1234). Only used with `--include-background`. |
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val` for multi-fold ensembles, `all` for single-fold. |
@@ -2034,7 +2033,7 @@ L = L_recon(combined, target)                          # all examples
 
 - **L_recon**: Standard reconstruction loss on the combined output (all examples). Gradients flow only to SignalNet (bias outputs are detached before combining).
 - **L_bias**: Reconstruction loss using only the bias component (background/non-peak examples only). This is the sole gradient source for BiasNet, forcing it to learn Tn5 bias rather than TF footprints.
-- **`peak_status`**: A per-example binary tensor passed as batch context via `**kwargs`. The `CerberusModule._shared_step` automatically forwards all non-input/target batch fields as keyword arguments.
+- **`interval_source`**: A per-example string identifying the sub-sampler that produced each interval (e.g. `"IntervalSampler"` for peaks, `"ComplexityMatchedSampler"` for background). Passed as batch context via `**kwargs` — `CerberusModule._shared_step` automatically forwards all non-input/target batch fields as keyword arguments. `DalmatianLoss` converts this to a peak mask internally.
 
 No explicit signal suppression term is needed — gradient detach already prevents SignalNet from activating on background (verified in exp21: removing the L1 penalty had zero measurable effect).
 
@@ -3453,6 +3452,7 @@ def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) ->
     loss_args.setdefault("count_pseudocount", scaled_pseudocount)
     metrics_args = {**model_config["metrics_args"]}
     metrics_args.setdefault("count_pseudocount", scaled_pseudocount)
+    metrics_args.setdefault("log_counts_include_pseudocount", loss_cls.uses_count_pseudocount)
     return {**model_config, "loss_args": loss_args, "metrics_args": metrics_args}
 
 
@@ -4162,7 +4162,7 @@ class SequenceExtractor(BaseSequenceExtractor):
         self.encoding = encoding
         self.fasta = None
 
-    def __getstate__(self):
+    def __getstate__(self) -> dict[str, object]:
         """Pickle support: exclude file handles to allow safe multiprocessing."""
         state = self.__dict__.copy()
         state["fasta"] = None
@@ -4223,7 +4223,7 @@ class InMemorySequenceExtractor(BaseSequenceExtractor):
         self._cache: dict[str, torch.Tensor] = {}
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         """Loads the entire genome into memory."""
         logger.info(f"Loading genome into memory from {self.fasta_path}...")
         fasta = pyfaidx.Fasta(str(self.fasta_path))
@@ -4593,7 +4593,7 @@ class BigBedMaskExtractor(BaseMaskExtractor):
         self.channels = sorted(bigbed_paths.keys())
         self._bigbed_files = None
 
-    def _load(self):
+    def _load(self) -> None:
         """Lazy loader for BigBed handles."""
         logger.debug(f"Lazy-loading {len(self.channels)} BigBed file(s)...")
         self._bigbed_files = {}
@@ -4604,7 +4604,7 @@ class BigBedMaskExtractor(BaseMaskExtractor):
             except Exception as e:
                 raise RuntimeError(f"Failed to open BigBed file {path}: {e}")
 
-    def __getstate__(self):
+    def __getstate__(self) -> dict[str, object]:
         """Pickle support: exclude file handles."""
         state = self.__dict__.copy()
         state["_bigbed_files"] = None
@@ -5107,11 +5107,9 @@ from .complexity import compute_intervals_complexity, compute_hist, get_bin_inde
 logger = logging.getLogger(__name__)
 
 
-from typing import Any
-
 def _select_from_bins(
-    target_hist: dict[Any, int],
-    candidate_bins: dict[Any, list[int]],
+    target_hist: dict[tuple[int, ...], int],
+    candidate_bins: dict[tuple[int, ...], list[int]],
     candidate_ratio: float,
     rng: random.Random
 ) -> list[int]:
@@ -5286,6 +5284,10 @@ class Sampler(Protocol):
     ) -> tuple["Sampler", "Sampler", "Sampler"]:
         ...
 
+    def get_interval_source(self, idx: int) -> str:
+        """Return the class name of the sampler that produced interval ``idx``."""
+        ...
+
 
 class BaseSampler(Sampler):
     """
@@ -5322,6 +5324,14 @@ class BaseSampler(Sampler):
             # Advance seed using current RNG state
             self.seed = self.rng.getrandbits(32)
             self.rng = random.Random(self.seed)
+
+    def get_interval_source(self, idx: int) -> str:
+        """Return the class name of this sampler.
+
+        Subclasses like :class:`MultiSampler` override this to report which
+        sub-sampler produced the interval at ``idx``.
+        """
+        return type(self).__name__
 
     def resample(self, seed: int | None = None) -> None:
         """
@@ -5464,26 +5474,25 @@ class MultiSampler(BaseSampler):
         sampler_idx, interval_idx = self._indices[idx]
         return self.samplers[sampler_idx][interval_idx]
 
-    def get_peak_status(self, idx: int) -> int:
-        """
-        Return the peak label for the interval at position ``idx``.
+    def get_interval_source(self, idx: int) -> str:
+        """Return the class name of the sub-sampler that produced interval ``idx``.
 
-        By convention, intervals drawn from the first sub-sampler
-        (``samplers[0]``) are treated as positives (peaks) and labelled ``1``;
-        all others are labelled ``0`` (background).
+        For a :class:`PeakSampler`, ``samplers[0]`` is an
+        :class:`IntervalSampler` (peaks) and subsequent samplers are background
+        generators (e.g. :class:`ComplexityMatchedSampler`).  The returned
+        string identifies which sub-sampler produced the interval, enabling
+        callers to apply source-specific logic.
 
-        This matches the layout created by :class:`PeakSampler`, where
-        ``samplers[0]`` is always the :class:`IntervalSampler` of positive
-        peaks and any subsequent samplers are background samplers.  The label
-        is preserved correctly after :meth:`split_folds` because that method
-        returns new :class:`MultiSampler` instances with the same sub-sampler
-        ordering.
+        The source is preserved correctly after :meth:`split_folds` because
+        that method returns new :class:`MultiSampler` instances with the same
+        sub-sampler ordering.
 
         Returns:
-            ``1`` for a peak interval, ``0`` for a background interval.
+            Class name of the originating sub-sampler
+            (e.g. ``"IntervalSampler"``, ``"ComplexityMatchedSampler"``).
         """
         sampler_idx, _ = self._indices[idx]
-        return 1 if sampler_idx == 0 else 0
+        return type(self.samplers[sampler_idx]).__name__
 
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
@@ -5638,7 +5647,7 @@ class RandomSampler(BaseSampler):
             regions[chrom] = tree
         return regions
 
-    def _generate_intervals(self):
+    def _generate_intervals(self) -> None:
         regions_to_use = self.regions
         
         # If no regions specified, use full chromosomes
@@ -5784,7 +5793,7 @@ class IntervalSampler(ListSampler):
         self._load()
         self._filter_excludes()
 
-    def _load(self):
+    def _load(self) -> None:
         if not self.file_path.exists():
             raise FileNotFoundError(f"File not found: {self.file_path}")
 
@@ -5833,7 +5842,7 @@ class IntervalSampler(ListSampler):
 
         return True
 
-    def _load_bed(self):
+    def _load_bed(self) -> None:
         for parts in self._read_file():
             if len(parts) < 3:
                 raise ValueError(
@@ -5857,7 +5866,7 @@ class IntervalSampler(ListSampler):
 
             self._intervals.append(Interval(chrom, start, end, strand))
 
-    def _load_narrowPeak(self):
+    def _load_narrowPeak(self) -> None:
         for parts in self._read_file():
             if len(parts) < 10:
                 raise ValueError(
@@ -5888,7 +5897,7 @@ class IntervalSampler(ListSampler):
 
             self._intervals.append(Interval(chrom, start, end, strand))
 
-    def _filter_excludes(self):
+    def _filter_excludes(self) -> None:
         if not self.exclude_intervals or not self._intervals:
             return
 
@@ -5937,7 +5946,7 @@ class SlidingWindowSampler(ListSampler):
         self.stride = stride
         self._generate_intervals()
 
-    def _generate_intervals(self):
+    def _generate_intervals(self) -> None:
         # Sort chromosomes to ensure deterministic order
         for chrom in sorted(self.chrom_sizes.keys()):
             size = self.chrom_sizes[chrom]
@@ -6133,7 +6142,7 @@ class ComplexityMatchedSampler(ProxySampler):
 
         return np.array([self.metrics_cache[str(iv)] for iv in intervals], dtype=np.float32)
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         logger.info("ComplexityMatchedSampler: Initializing complexity matching...")
         
         # Compute target metrics
@@ -6501,11 +6510,6 @@ class NegativePeakSampler(MultiSampler):
             exclude_intervals=exclude_intervals,
             seed=seed,
         )
-
-    def get_peak_status(self, idx: int) -> int:
-        """All intervals are background (non-peak). Always returns 0."""
-        return 0
-
 
 def create_sampler(
     config: dict | SamplerConfig,
@@ -7257,8 +7261,8 @@ class CerberusDataset(Dataset):
         return len(self.sampler)
 
     def get_raw_targets(
-        self, 
-        query: Any, 
+        self,
+        query: str | tuple[str, int, int] | list[object] | Interval,
         crop_to_output_len: bool = True
     ) -> torch.Tensor:
         """
@@ -7292,7 +7296,7 @@ class CerberusDataset(Dataset):
                 
         return raw_target
 
-    def get_interval(self, query: Any) -> dict[str, Any]:
+    def get_interval(self, query: str | tuple[str, int, int] | list[object] | Interval) -> dict[str, Any]:
         """
         Retrieves inputs and targets for a specific interval, side-stepping the sampler.
         Resolves query into an Interval object first.
@@ -7375,10 +7379,11 @@ class CerberusDataset(Dataset):
                 - 'intervals': String representation of the genomic interval.
                                Note: If random transforms (like Jitter) are active, this string
                                reflects the transformed coordinates, not the original sampler coordinates.
-                - 'peak_status': int — ``1`` if the interval is a positive peak, ``0`` if background.
-                                 Requires the sampler to implement ``get_peak_status()``
-                                 (e.g. :class:`MultiSampler` / :class:`PeakSampler`); defaults to ``1``
-                                 for samplers that do not support labelling.
+                - 'interval_source': str — class name of the sub-sampler that produced this
+                                     interval (e.g. ``"IntervalSampler"``, ``"ComplexityMatchedSampler"``).
+                                     Requires the sampler to implement ``get_interval_source()``
+                                     (e.g. :class:`MultiSampler` / :class:`PeakSampler`); defaults to
+                                     ``"unknown"`` for samplers that do not support source labelling.
         
         Raises:
             TypeError: If no sampler is configured for this dataset.
@@ -7387,14 +7392,10 @@ class CerberusDataset(Dataset):
             raise TypeError("Dataset has no sampler configured. Use get_interval() for specific queries.")
         interval = self.sampler[idx]
         result = self._get_interval(interval)
-        result["peak_status"] = (
-            self.sampler.get_peak_status(idx)  # type: ignore[union-attr]
-            if hasattr(self.sampler, "get_peak_status")
-            else 1
-        )
+        result["interval_source"] = self.sampler.get_interval_source(idx)
         return result
 
-    def __getitems__(self, indices: list[int]):
+    def __getitems__(self, indices: list[int]) -> list[dict[str, object]]:
         """Batch retrieval optimization (optional)."""
         # Batch optimization if needed, for now loop
         return [self.__getitem__(idx) for idx in indices]
@@ -7463,7 +7464,7 @@ class CerberusDataset(Dataset):
             self._subset(test_sampler, is_train=False),
         )
 
-    def resample(self, seed: int | None = None):
+    def resample(self, seed: int | None = None) -> None:
         """
         Trigger resampling if the underlying sampler supports it.
         
@@ -7575,7 +7576,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self._is_initialized = False
 
     @staticmethod
-    def _worker_init_fn(worker_id):
+    def _worker_init_fn(worker_id: int) -> None:
         """
         Internal worker initialization function for DataLoader.
         
@@ -7873,7 +7874,7 @@ from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
 from cerberus.loss import CerberusLoss
-from cerberus.output import compute_total_log_counts
+from cerberus.output import compute_total_log_counts, compute_obs_log_counts
 from cerberus.plots import save_count_scatter
 from cerberus.config import (
     TrainConfig,
@@ -7889,6 +7890,7 @@ from cerberus.config import (
     validate_sampler_config,
     import_class,
     propagate_pseudocount,
+    get_log_count_params,
 )
 
 logger = logging.getLogger(__name__)
@@ -7990,7 +7992,7 @@ class CerberusModule(pl.LightningModule):
         
         return optim_conf
 
-    def lr_scheduler_step(self, scheduler, optimizer_idx, metric=None): # type: ignore[override]
+    def lr_scheduler_step(self, scheduler: Any, optimizer_idx: int, metric: float | None = None) -> None: # type: ignore[override]
         if hasattr(scheduler, "step_update"):
             scheduler.step(epoch=self.current_epoch, metric=metric)
             scheduler.step_update(num_updates=self.global_step)
@@ -8000,7 +8002,7 @@ class CerberusModule(pl.LightningModule):
             else:
                 scheduler.step(metric)
 
-    def _shared_step(self, batch, batch_idx, prefix):
+    def _shared_step(self, batch: dict[str, torch.Tensor], batch_idx: int, prefix: str) -> torch.Tensor:
         inputs = batch["inputs"]
         targets = batch["targets"]
 
@@ -8034,10 +8036,10 @@ class CerberusModule(pl.LightningModule):
 
         return loss
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, batch_idx, "train_")
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, batch_idx, "val_")
     
     def on_train_epoch_end(self):
@@ -8053,21 +8055,28 @@ class CerberusModule(pl.LightningModule):
         Silently skips output types not supported by compute_total_log_counts
         (e.g. raw-tensor or tuple outputs from non-standard models).
 
+        Uses ``get_log_count_params`` (class-attribute dispatch via
+        ``uses_count_pseudocount``) to determine whether predictions live in
+        offset-log space (MSE/Dalmatian) or pure-log space (Poisson/NB), and
+        applies the matching transform to targets.
+
         Args:
             outputs: Detached model output (ModelOutput subclass or other).
             targets: Detached target tensor, shape (B, C, L).
         """
         try:
-            pseudocount = getattr(self.criterion, "count_pseudocount", 1.0)
-            # MSE losses predict log(count + pseudocount); Poisson/NB predict log(count).
-            # Only MSE losses carry count_pseudocount; its presence signals the offset space.
-            log_counts_include_pseudocount = hasattr(self.criterion, "count_pseudocount")
+            log_counts_include_pseudocount, pseudocount = get_log_count_params(
+                self.hparams["model_config"]
+            )
             pred_lc = compute_total_log_counts(
                 outputs,
                 log_counts_include_pseudocount=log_counts_include_pseudocount,
                 pseudocount=pseudocount,
             )                                                                        # (B,)
-            target_lc = torch.log(targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount)            # (B,)
+            # Targets are already scaled (from the dataloader).  For pure-log
+            # (Poisson/NB) pseudocount is 0; clamp_min(1) avoids log(0).
+            total = targets.sum(dim=(1, 2), dtype=torch.float32)
+            target_lc = torch.log((total + pseudocount).clamp_min(1.0))              # (B,)
             self._val_log_count_preds.append(pred_lc.cpu())
             self._val_log_count_targets.append(target_lc.cpu())
         # TODO: consider restricting to ValueError only — AttributeError,
@@ -8249,7 +8258,7 @@ def instantiate(
 def instantiate_metrics_and_loss(
     model_config: ModelConfig, 
     device: torch.device | None = None
-) -> tuple[Any, Any]:
+) -> tuple[MetricCollection, CerberusLoss]:
     """
     Instantiates metrics and loss functions from model configuration.
     
@@ -8835,7 +8844,7 @@ class ModelOutput:
     """Base class for model outputs."""
     out_interval: Interval | None = None
 
-    def detach(self):
+    def detach(self) -> "ModelOutput":
         """Returns a new instance with all tensors detached from the graph."""
         raise NotImplementedError
 
@@ -8847,7 +8856,7 @@ class ProfileLogits(ModelOutput):
     """
     logits: torch.Tensor # (Batch, Channels, Length)
 
-    def detach(self):
+    def detach(self) -> "ProfileLogits":
         return ProfileLogits(logits=self.logits.detach(), out_interval=self.out_interval)
 
 @dataclass
@@ -8858,7 +8867,7 @@ class ProfileLogRates(ModelOutput):
     """
     log_rates: torch.Tensor # (Batch, Channels, Length)
 
-    def detach(self):
+    def detach(self) -> "ProfileLogRates":
         return ProfileLogRates(log_rates=self.log_rates.detach(), out_interval=self.out_interval)
 
 @dataclass
@@ -8870,9 +8879,9 @@ class ProfileCountOutput(ProfileLogits):
     """
     log_counts: torch.Tensor # (Batch, Channels)
 
-    def detach(self):
+    def detach(self) -> "ProfileCountOutput":
         return ProfileCountOutput(
-            logits=self.logits.detach(), 
+            logits=self.logits.detach(),
             log_counts=self.log_counts.detach(),
             out_interval=self.out_interval
         )
@@ -8890,7 +8899,7 @@ class FactorizedProfileCountOutput(ProfileCountOutput):
     signal_logits: torch.Tensor     # (B, C, L) -- signal model profile logits
     signal_log_counts: torch.Tensor # (B, C)   -- signal model log counts
 
-    def detach(self):
+    def detach(self) -> "FactorizedProfileCountOutput":
         return FactorizedProfileCountOutput(
             logits=self.logits.detach(),
             log_counts=self.log_counts.detach(),
@@ -9154,7 +9163,7 @@ def compute_obs_log_counts(
 
 ## src/cerberus/loss.py
 
-from typing import Protocol
+from typing import Any, Protocol
 
 import torch
 import torch.nn as nn
@@ -9193,13 +9202,13 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     """
     uses_count_pseudocount: bool = False
 
-    def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
         # count_pseudocount is accepted for compatibility with propagate_pseudocount
         # but not used (PoissonNLLLoss handles count loss directly).
 
-    def loss_components(self, outputs, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
 
@@ -9213,7 +9222,7 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
 
         return {"poisson_nll_loss": super().forward(log_input, targets)}
 
-    def forward(self, outputs, targets, **kwargs):  # type: ignore[override]
+    def forward(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:  # type: ignore[override]
         components = self.loss_components(outputs, targets, **kwargs)
         return components["poisson_nll_loss"]
 
@@ -9231,7 +9240,7 @@ class MSEMultinomialLoss(nn.Module):
     """
     uses_count_pseudocount: bool = True
 
-    def __init__(self, count_weight=1.0, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=False, log1p_targets=False, epsilon=1e-8, count_pseudocount=1.0):
+    def __init__(self, count_weight: float = 1.0, profile_weight: float = 1.0, flatten_channels: bool = False, count_per_channel: bool = False, average_channels: bool = False, log1p_targets: bool = False, epsilon: float = 1e-8, count_pseudocount: float = 1.0) -> None:
         """
         Args:
             count_weight (float): Weight for the count loss component.
@@ -9268,7 +9277,7 @@ class MSEMultinomialLoss(nn.Module):
         self.epsilon = epsilon
         self.count_pseudocount = count_pseudocount
 
-    def _compute_profile_loss(self, logits, targets):
+    def _compute_profile_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         if self.flatten_channels:
             logits_flat = logits.flatten(start_dim=1)
             targets_flat = targets.flatten(start_dim=1)
@@ -9300,7 +9309,7 @@ class MSEMultinomialLoss(nn.Module):
             else:
                 return profile_loss_per_channel.sum(dim=-1).mean()
 
-    def loss_components(self, outputs, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -9320,7 +9329,7 @@ class MSEMultinomialLoss(nn.Module):
             count_loss = F.mse_loss(pred_log_counts.flatten(), target_log_global_count)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-    def forward(self, outputs, targets, **kwargs):
+    def forward(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(outputs, targets, **kwargs)
         return self.profile_weight * components["profile_loss"] + self.count_weight * components["count_loss"]
 
@@ -9338,7 +9347,7 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
     (interpreting inputs as log-intensities) over all channels and bins.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with MSEMultinomialLoss).
     """
-    def loss_components(self, outputs, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -9362,7 +9371,7 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
         profile_loss = self._compute_profile_loss(logits, targets)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-    def forward(self, outputs, targets, **kwargs):
+    def forward(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(outputs, targets, **kwargs)
         return self.profile_weight * components["profile_loss"] + self.count_weight * components["count_loss"]
 
@@ -9379,7 +9388,7 @@ class PoissonMultinomialLoss(nn.Module):
     """
     uses_count_pseudocount: bool = False
 
-    def __init__(self, count_weight=0.2, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=True, log1p_targets=False, epsilon=1e-8, count_pseudocount=1.0):
+    def __init__(self, count_weight: float = 0.2, profile_weight: float = 1.0, flatten_channels: bool = False, count_per_channel: bool = False, average_channels: bool = True, log1p_targets: bool = False, epsilon: float = 1e-8, count_pseudocount: float = 1.0) -> None:
         """
         Args:
             count_weight (float): Weight for the count loss component.
@@ -9409,7 +9418,7 @@ class PoissonMultinomialLoss(nn.Module):
         self.epsilon = epsilon
         self.count_loss_fn = nn.PoissonNLLLoss(log_input=True, full=False)
 
-    def _compute_profile_loss(self, logits, targets):
+    def _compute_profile_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
          if self.flatten_channels:
              logits_flat = logits.flatten(start_dim=1)
              targets_flat = targets.flatten(start_dim=1)
@@ -9424,7 +9433,7 @@ class PoissonMultinomialLoss(nn.Module):
                  loss_shape = loss_shape_per_channel.sum(dim=-1).mean()
          return loss_shape
 
-    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -9442,7 +9451,7 @@ class PoissonMultinomialLoss(nn.Module):
         profile_loss = self._compute_profile_loss(logits, targets)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-    def forward(self, predictions, targets, **kwargs):
+    def forward(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(predictions, targets, **kwargs)
         return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
@@ -9459,7 +9468,7 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp of logits over all channels.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
     """
-    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -9481,7 +9490,7 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
         profile_loss = self._compute_profile_loss(logits, targets)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-    def forward(self, predictions, targets, **kwargs):
+    def forward(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(predictions, targets, **kwargs)
         return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
@@ -9500,11 +9509,11 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
                              Smaller 'total_count' implies higher dispersion (variance >> mean).
                              NB Variance = mu + mu^2 / total_count.
     """
-    def __init__(self, total_count=10.0, **kwargs):
+    def __init__(self, total_count: float = 10.0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.total_count = float(total_count)
-        
-    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+
+    def loss_components(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -9526,7 +9535,7 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
         loss_shape = self._compute_profile_loss(logits, targets)
         return {"profile_loss": loss_shape, "count_loss": loss_count}
 
-    def forward(self, predictions, targets, **kwargs):
+    def forward(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(predictions, targets, **kwargs)
         return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
@@ -9536,7 +9545,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
     Negative Binomial Multinomial Loss (Coupled).
     Mathematically equivalent to NegativeBinomialMultinomialLoss but derives counts from log_rates.
     """
-    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -9560,7 +9569,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
         loss_shape = self._compute_profile_loss(logits, targets)
         return {"profile_loss": loss_shape, "count_loss": loss_count}
 
-    def forward(self, predictions, targets, **kwargs):
+    def forward(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(predictions, targets, **kwargs)
         return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
@@ -9616,13 +9625,14 @@ class DalmatianLoss(nn.Module):
         Args:
             outputs: Model output with combined and decomposed fields.
             targets: Ground-truth target tensor (B, C, L).
-            **kwargs: Batch context. Must contain ``peak_status`` (B,) tensor
-                with 1 for peak and 0 for background examples.
+            **kwargs: Batch context. Must contain ``interval_source``
+                (list of str) with the class name of each interval's
+                originating sub-sampler.  Intervals from ``"IntervalSampler"``
+                are treated as peaks; all others as background.
         """
         if not isinstance(outputs, FactorizedProfileCountOutput):
             raise TypeError("DalmatianLoss requires FactorizedProfileCountOutput")
-        peak_status = kwargs["peak_status"]
-        assert isinstance(peak_status, torch.Tensor)
+        interval_source: list[str] = kwargs["interval_source"]  # type: ignore[assignment]
 
         # 1. Combined reconstruction loss (all examples)
         combined = ProfileCountOutput(
@@ -9631,7 +9641,11 @@ class DalmatianLoss(nn.Module):
         l_recon = self.base_loss(combined, targets)
 
         # 2. Bias-only reconstruction (non-peak examples)
-        non_peak = peak_status == 0
+        non_peak = torch.tensor(
+            [s != "IntervalSampler" for s in interval_source],
+            dtype=torch.bool,
+            device=targets.device,
+        )
         l_bias = torch.tensor(0.0, device=targets.device)
 
         if non_peak.any():
@@ -9654,8 +9668,9 @@ class DalmatianLoss(nn.Module):
         Args:
             outputs: Model output with combined and decomposed fields.
             targets: Ground-truth target tensor (B, C, L).
-            **kwargs: Batch context. Must contain ``peak_status`` (B,) tensor
-                with 1 for peak and 0 for background examples.
+            **kwargs: Batch context. Must contain ``interval_source``
+                (list of str) identifying each interval's originating
+                sub-sampler.
 
         Returns:
             Scalar loss tensor.
@@ -9667,7 +9682,7 @@ class DalmatianLoss(nn.Module):
 
 import torch
 import torch.nn.functional as F
-from typing import cast
+from typing import Any, cast
 from torchmetrics import Metric, MeanSquaredError, MetricCollection
 from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
 
@@ -9706,13 +9721,13 @@ class ProfilePearsonCorrCoef(Metric):
     sum_corr: torch.Tensor
     count: torch.Tensor
 
-    def __init__(self, log1p_targets=False, **kwargs):
+    def __init__(self, log1p_targets: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
         self.add_state("sum_corr", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("count", default=torch.tensor(0, dtype=torch.long), dist_reduce_fx="sum")
 
-    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor) -> None: # type: ignore[override]
         if isinstance(preds, ProfileLogRates):
             logits = preds.log_rates
         elif isinstance(preds, ProfileLogits):
@@ -9731,7 +9746,7 @@ class ProfilePearsonCorrCoef(Metric):
         self.sum_corr += corr_mean[valid].sum()
         self.count += valid.sum()
 
-    def compute(self):
+    def compute(self) -> torch.Tensor:
         if self.count == 0:
             return torch.tensor(float("nan"), device=self.sum_corr.device)
         return (self.sum_corr / self.count).float()
@@ -9750,14 +9765,14 @@ class CountProfilePearsonCorrCoef(Metric):
     sum_corr: torch.Tensor
     count: torch.Tensor
 
-    def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
         self.add_state("sum_corr", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("count", default=torch.tensor(0, dtype=torch.long), dist_reduce_fx="sum")
 
-    def update(self, preds: ProfileCountOutput, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None: # type: ignore[override]
         if not isinstance(preds, ProfileCountOutput):
             raise TypeError("CountProfilePearsonCorrCoef requires ProfileCountOutput")
 
@@ -9782,7 +9797,7 @@ class CountProfilePearsonCorrCoef(Metric):
         self.sum_corr += corr_mean[valid].sum()
         self.count += valid.sum()
 
-    def compute(self):
+    def compute(self) -> torch.Tensor:
         if self.count == 0:
             return torch.tensor(float("nan"), device=self.sum_corr.device)
         return (self.sum_corr / self.count).float()
@@ -9796,12 +9811,12 @@ class CountProfileMeanSquaredError(MeanSquaredError):
     computing MSE against targets.
     Preds = Softmax(logits) * (Exp(log_counts) - count_pseudocount).
     """
-    def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
 
-    def update(self, preds: ProfileCountOutput, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None: # type: ignore[override]
         if not isinstance(preds, ProfileCountOutput):
              raise TypeError("CountProfileMeanSquaredError requires ProfileCountOutput")
 
@@ -9832,11 +9847,11 @@ class ProfileMeanSquaredError(MeanSquaredError):
     1. Predicted Probabilities (Softmax of logits)
     2. Target Probabilities (Target Counts / Profile Counts)
     """
-    def __init__(self, log1p_targets=False, **kwargs):
+    def __init__(self, log1p_targets: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
 
-    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor) -> None: # type: ignore[override]
         if isinstance(preds, ProfileLogRates):
             logits = preds.log_rates
         elif isinstance(preds, ProfileLogits):
@@ -9866,26 +9881,37 @@ class LogCountsMeanSquaredError(MeanSquaredError):
     1. Predicted Log Counts (from log_counts or logsumexp of log_rates)
     2. Target Log Counts: log(sum(targets) + count_pseudocount)
     """
-    def __init__(self, count_per_channel=False, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, count_per_channel: bool = False, log1p_targets: bool = False, count_pseudocount: float = 1.0, log_counts_include_pseudocount: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.count_per_channel = count_per_channel
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
+        self.log_counts_include_pseudocount = log_counts_include_pseudocount
 
-    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
+    def _aggregate_pred_log_counts(self, preds: ProfileCountOutput | ProfileLogRates) -> torch.Tensor:
+        """Extract and aggregate predicted log-counts from model output."""
         if isinstance(preds, ProfileCountOutput):
             pred_log_counts = preds.log_counts
-            # If we want global count but have per-channel counts, aggregate them
             if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
-                pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
+                if self.log_counts_include_pseudocount:
+                    # Invert per-channel offset-log, sum, reapply to avoid
+                    # log(total + C*p) that logsumexp would give.
+                    total = (torch.exp(pred_log_counts.float()) - self.count_pseudocount).clamp_min(0.0).sum(dim=1)
+                    pred_log_counts = torch.log(total + self.count_pseudocount)
+                else:
+                    pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
+            return pred_log_counts
 
         elif isinstance(preds, ProfileLogRates):
             if self.count_per_channel:
-                pred_log_counts = torch.logsumexp(preds.log_rates.float(), dim=2)
+                return torch.logsumexp(preds.log_rates.float(), dim=2)
             else:
-                pred_log_counts = torch.logsumexp(preds.log_rates.float().flatten(start_dim=1), dim=-1)
-        else:
-             raise TypeError("LogCountsMeanSquaredError requires ProfileCountOutput or ProfileLogRates")
+                return torch.logsumexp(preds.log_rates.float().flatten(start_dim=1), dim=-1)
+
+        raise TypeError("requires ProfileCountOutput or ProfileLogRates")
+
+    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor) -> None: # type: ignore[override]
+        pred_log_counts = self._aggregate_pred_log_counts(preds)
 
         target = target.float()
         if self.log1p_targets:
@@ -9918,19 +9944,24 @@ class LogCountsPearsonCorrCoef(Metric):
     preds_list: list[torch.Tensor]
     targets_list: list[torch.Tensor]
 
-    def __init__(self, count_per_channel=False, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, count_per_channel: bool = False, log1p_targets: bool = False, count_pseudocount: float = 1.0, log_counts_include_pseudocount: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.count_per_channel = count_per_channel
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
+        self.log_counts_include_pseudocount = log_counts_include_pseudocount
         self.add_state("preds_list", default=[], dist_reduce_fx="cat")
         self.add_state("targets_list", default=[], dist_reduce_fx="cat")
 
-    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor) -> None: # type: ignore[override]
         if isinstance(preds, ProfileCountOutput):
             pred_log_counts = preds.log_counts
             if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
-                pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
+                if self.log_counts_include_pseudocount:
+                    total = (torch.exp(pred_log_counts.float()) - self.count_pseudocount).clamp_min(0.0).sum(dim=1)
+                    pred_log_counts = torch.log(total + self.count_pseudocount)
+                else:
+                    pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
         elif isinstance(preds, ProfileLogRates):
             if self.count_per_channel:
                 pred_log_counts = torch.logsumexp(preds.log_rates.float(), dim=2)
@@ -9957,7 +9988,7 @@ class LogCountsPearsonCorrCoef(Metric):
         self.preds_list.append(pred_log_counts.detach())
         self.targets_list.append(target_log_counts.detach())
 
-    def compute(self):
+    def compute(self) -> torch.Tensor:
         # After DDP reduce with dist_reduce_fx="cat", the list may already
         # be a single concatenated tensor rather than a list of tensors.
         if isinstance(self.preds_list, torch.Tensor):
@@ -9984,14 +10015,14 @@ class DefaultMetricCollection(MetricCollection):
     Default MetricCollection used for training/validation.
     Includes Pearson Correlation, Profile MSE, and Log Counts MSE.
     """
-    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, log_counts_include_pseudocount: bool = False):
         super().__init__({
             "pearson": ProfilePearsonCorrCoef(log1p_targets=log1p_targets),
             # MSE is element-wise, so Global MSE is equivalent to Mean Per-Channel MSE
             # (assuming equal number of elements per channel). Thus no custom flattening is needed.
             "mse_profile": ProfileMeanSquaredError(log1p_targets=log1p_targets),
-            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount, log_counts_include_pseudocount=log_counts_include_pseudocount),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount, log_counts_include_pseudocount=log_counts_include_pseudocount),
         })
 
 ## src/cerberus/layers.py
@@ -10009,12 +10040,12 @@ class GRN1d(nn.Module):
     
     Reference: facebookresearch/ConvNeXt-V2
     """
-    def __init__(self, dim):
+    def __init__(self, dim: int) -> None:
         super().__init__()
         self.gamma = nn.Parameter(torch.zeros(1, 1, dim))
         self.beta = nn.Parameter(torch.zeros(1, 1, dim))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         Gx = torch.norm(x, p=2, dim=(1,), keepdim=True)
         Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * Nx) + self.beta + x
@@ -10034,15 +10065,15 @@ class ConvNeXtV2Block(nn.Module):
     """
     def __init__(
         self,
-        channels_in,
-        channels_out,
-        kernel_size,
-        groups=False,
-        inv_bottleneckscale=4,
-        grn=True,
-        dilation_rate=1,
-        padding="same",
-    ):
+        channels_in: int,
+        channels_out: int,
+        kernel_size: int,
+        groups: bool = False,
+        inv_bottleneckscale: int = 4,
+        grn: bool = True,
+        dilation_rate: int = 1,
+        padding: str = "same",
+    ) -> None:
         super().__init__()
         self.res_early = channels_in == channels_out
         self.inv_bottleneckwidth = int(inv_bottleneckscale * channels_out)
@@ -10066,7 +10097,7 @@ class ConvNeXtV2Block(nn.Module):
             self.grn = nn.Identity()
         self.pwconv2 = nn.Linear(self.inv_bottleneckwidth, channels_out)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.res_early:
             x_ = x
             x = self.dwconv(x)
@@ -10174,7 +10205,7 @@ class PGCBlock(nn.Module):
             self.norm2 = nn.RMSNorm(dim)
             self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, C, L)
         residual = x
 
@@ -10313,7 +10344,7 @@ class DilatedResidualBlock(nn.Module):
         crop_r = diff - crop_l
         return x[..., crop_l:-crop_r]
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.residual_architecture == "residual_post-activation_conv":
             # x + act(conv(x))
             out = self.act(self.conv(x))
@@ -11323,7 +11354,7 @@ import pyfaidx
 
 logger = logging.getLogger(__name__)
 
-def _download_file(url: str, dest: Path):
+def _download_file(url: str, dest: Path) -> None:
     """Downloads a file from a URL to a destination path.
 
     Tries urllib first, falls back to curl if blocked (HTTP 403).
@@ -11637,7 +11668,7 @@ class _Reshape(nn.Module):
     back to a spatial representation (Batch, Bottleneck_Channels, Length) required 
     for the subsequent convolutional layers.
     """
-    def __init__(self, *shape):
+    def __init__(self, *shape: int) -> None:
         """
         Args:
             *shape: Target shape dimensions (excluding batch dimension).
@@ -11645,7 +11676,7 @@ class _Reshape(nn.Module):
         super().__init__()
         self.shape = shape
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # We assume the first dimension is batch size and preserved
         return x.view(x.shape[0], *self.shape)
 
@@ -11683,13 +11714,13 @@ class GlobalProfileCNN(nn.Module):
     """
     def __init__(
         self,
-        input_len=2048,
-        output_len=1024,
-        output_bin_size=4,
+        input_len: int = 2048,
+        output_len: int = 1024,
+        output_bin_size: int = 4,
         input_channels: list[str] | None = None,
         output_channels: list[str] | None = None,
-        bottleneck_channels=8
-    ):
+        bottleneck_channels: int = 8,
+    ) -> None:
         super().__init__()
 
         if input_channels is None:
@@ -12519,7 +12550,7 @@ class _ConvBlock(nn.Module):
     """
     Standard Conv1d block: GELU -> Conv1d -> BatchNorm.
     """
-    def __init__(self, channels_in, channels_out:int=1 , kernel_size:int=1 , dilation_rate:int=1, bn_gamma=None) -> None:
+    def __init__(self, channels_in: int, channels_out: int = 1, kernel_size: int = 1, dilation_rate: int = 1, bn_gamma: str | None = None) -> None:
         super().__init__()
         self.activation = nn.GELU()
         self.conv = nn.Conv1d(
@@ -12558,7 +12589,7 @@ class _BasenjiCoreBlock(nn.Module):
     
     Followed by a final projection and optional pooling.
     """
-    def __init__(self, nr_tracks: int, window: int, filters_in,
+    def __init__(self, nr_tracks: int, window: int, filters_in: int,
                   nr_res_blocks: int = 11, rate_mult: float = 1.5, bin_size: int = 100, filters1: int = 128,
                   filters3: int | None = None, kernel1: int = 3, kernel2: int = 1, dropout: float = 0.3,
                   final_dropout: float = 0.05):

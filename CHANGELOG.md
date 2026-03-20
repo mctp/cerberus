@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`get_peak_status()` replaced with `get_interval_source()`**: `MultiSampler.get_peak_status()`
+  (returning binary `0`/`1`) is replaced by `get_interval_source()` which returns the class name
+  of the sub-sampler that produced each interval (e.g. `"IntervalSampler"`,
+  `"ComplexityMatchedSampler"`). The batch dict key is renamed from `peak_status` (int) to
+  `interval_source` (str). `DalmatianLoss` converts `interval_source` to a peak mask internally.
+  `get_interval_source()` is now defined on `BaseSampler` (returns own class name) and overridden
+  in `MultiSampler` (returns sub-sampler class name).
 - **Strict type hints across `src/cerberus/`**: Added missing parameter and return
   type annotations to all `__init__`, `forward`, `loss_components`,
   `_compute_profile_loss`, `compute`, and `update` methods in `layers.py`,

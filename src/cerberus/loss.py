@@ -460,13 +460,14 @@ class DalmatianLoss(nn.Module):
         Args:
             outputs: Model output with combined and decomposed fields.
             targets: Ground-truth target tensor (B, C, L).
-            **kwargs: Batch context. Must contain ``peak_status`` (B,) tensor
-                with 1 for peak and 0 for background examples.
+            **kwargs: Batch context. Must contain ``interval_source``
+                (list of str) with the class name of each interval's
+                originating sub-sampler.  Intervals from ``"IntervalSampler"``
+                are treated as peaks; all others as background.
         """
         if not isinstance(outputs, FactorizedProfileCountOutput):
             raise TypeError("DalmatianLoss requires FactorizedProfileCountOutput")
-        peak_status = kwargs["peak_status"]
-        assert isinstance(peak_status, torch.Tensor)
+        interval_source: list[str] = kwargs["interval_source"]  # type: ignore[assignment]
 
         # 1. Combined reconstruction loss (all examples)
         combined = ProfileCountOutput(
@@ -475,7 +476,11 @@ class DalmatianLoss(nn.Module):
         l_recon = self.base_loss(combined, targets)
 
         # 2. Bias-only reconstruction (non-peak examples)
-        non_peak = peak_status == 0
+        non_peak = torch.tensor(
+            [s != "IntervalSampler" for s in interval_source],
+            dtype=torch.bool,
+            device=targets.device,
+        )
         l_bias = torch.tensor(0.0, device=targets.device)
 
         if non_peak.any():
@@ -498,8 +503,9 @@ class DalmatianLoss(nn.Module):
         Args:
             outputs: Model output with combined and decomposed fields.
             targets: Ground-truth target tensor (B, C, L).
-            **kwargs: Batch context. Must contain ``peak_status`` (B,) tensor
-                with 1 for peak and 0 for background examples.
+            **kwargs: Batch context. Must contain ``interval_source``
+                (list of str) identifying each interval's originating
+                sub-sampler.
 
         Returns:
             Scalar loss tensor.

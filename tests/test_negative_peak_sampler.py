@@ -67,7 +67,7 @@ def test_negative_peak_sampler_init(mock_dependencies):
     assert len(sampler.samplers) == 1
 
 
-def test_negative_peak_sampler_peak_status_always_zero(mock_dependencies):
+def test_negative_peak_sampler_interval_source_always_complexity_matched(mock_dependencies):
     chrom_sizes = {"chr1": 10000}
 
     sampler = NegativePeakSampler(
@@ -79,7 +79,7 @@ def test_negative_peak_sampler_peak_status_always_zero(mock_dependencies):
     )
 
     for i in range(len(sampler)):
-        assert sampler.get_peak_status(i) == 0
+        assert sampler.get_interval_source(i) == "ComplexityMatchedSampler"
 
 
 def test_negative_peak_sampler_no_peaks_in_training(mock_dependencies):

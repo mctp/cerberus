@@ -212,8 +212,7 @@ item = dataset[0]
 print(item['inputs'].shape)   # (4, 2114) -> Sequence (one-hot)
 print(item['targets'].shape)  # (1, 1000) -> Signal
 print(item['intervals'])      # "chr1:1000-3114(+)" -> genomic interval string
-print(item['peak_status'])    # 1 = peak interval, 0 = background
-                              # (always 1 for samplers that don't support labelling)
+print(item['interval_source']) # e.g. "IntervalSampler" (peak) or "ComplexityMatchedSampler" (background)
 
 # Create DataLoader
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
