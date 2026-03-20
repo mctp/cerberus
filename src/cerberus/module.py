@@ -127,7 +127,7 @@ class CerberusModule(pl.LightningModule):
         
         return optim_conf
 
-    def lr_scheduler_step(self, scheduler, optimizer_idx, metric=None): # type: ignore[override]
+    def lr_scheduler_step(self, scheduler: Any, optimizer_idx: int, metric: float | None = None) -> None: # type: ignore[override]
         if hasattr(scheduler, "step_update"):
             scheduler.step(epoch=self.current_epoch, metric=metric)
             scheduler.step_update(num_updates=self.global_step)
@@ -137,7 +137,7 @@ class CerberusModule(pl.LightningModule):
             else:
                 scheduler.step(metric)
 
-    def _shared_step(self, batch, batch_idx, prefix):
+    def _shared_step(self, batch: dict[str, torch.Tensor], batch_idx: int, prefix: str) -> torch.Tensor:
         inputs = batch["inputs"]
         targets = batch["targets"]
 
@@ -171,10 +171,10 @@ class CerberusModule(pl.LightningModule):
 
         return loss
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, batch_idx, "train_")
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, batch_idx, "val_")
     
     def on_train_epoch_end(self):
@@ -393,7 +393,7 @@ def instantiate(
 def instantiate_metrics_and_loss(
     model_config: ModelConfig, 
     device: torch.device | None = None
-) -> tuple[Any, Any]:
+) -> tuple[MetricCollection, CerberusLoss]:
     """
     Instantiates metrics and loss functions from model configuration.
     

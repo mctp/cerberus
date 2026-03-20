@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Any, Protocol
 
 import torch
 import torch.nn as nn
@@ -37,13 +37,13 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     """
     uses_count_pseudocount: bool = False
 
-    def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
         # count_pseudocount is accepted for compatibility with propagate_pseudocount
         # but not used (PoissonNLLLoss handles count loss directly).
 
-    def loss_components(self, outputs, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
 
@@ -57,7 +57,7 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
 
         return {"poisson_nll_loss": super().forward(log_input, targets)}
 
-    def forward(self, outputs, targets, **kwargs):  # type: ignore[override]
+    def forward(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:  # type: ignore[override]
         components = self.loss_components(outputs, targets, **kwargs)
         return components["poisson_nll_loss"]
 
@@ -75,7 +75,7 @@ class MSEMultinomialLoss(nn.Module):
     """
     uses_count_pseudocount: bool = True
 
-    def __init__(self, count_weight=1.0, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=False, log1p_targets=False, epsilon=1e-8, count_pseudocount=1.0):
+    def __init__(self, count_weight: float = 1.0, profile_weight: float = 1.0, flatten_channels: bool = False, count_per_channel: bool = False, average_channels: bool = False, log1p_targets: bool = False, epsilon: float = 1e-8, count_pseudocount: float = 1.0) -> None:
         """
         Args:
             count_weight (float): Weight for the count loss component.
@@ -112,7 +112,7 @@ class MSEMultinomialLoss(nn.Module):
         self.epsilon = epsilon
         self.count_pseudocount = count_pseudocount
 
-    def _compute_profile_loss(self, logits, targets):
+    def _compute_profile_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         if self.flatten_channels:
             logits_flat = logits.flatten(start_dim=1)
             targets_flat = targets.flatten(start_dim=1)
@@ -144,7 +144,7 @@ class MSEMultinomialLoss(nn.Module):
             else:
                 return profile_loss_per_channel.sum(dim=-1).mean()
 
-    def loss_components(self, outputs, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -164,7 +164,7 @@ class MSEMultinomialLoss(nn.Module):
             count_loss = F.mse_loss(pred_log_counts.flatten(), target_log_global_count)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-    def forward(self, outputs, targets, **kwargs):
+    def forward(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(outputs, targets, **kwargs)
         return self.profile_weight * components["profile_loss"] + self.count_weight * components["count_loss"]
 
@@ -182,7 +182,7 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
     (interpreting inputs as log-intensities) over all channels and bins.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with MSEMultinomialLoss).
     """
-    def loss_components(self, outputs, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -206,7 +206,7 @@ class CoupledMSEMultinomialLoss(MSEMultinomialLoss):
         profile_loss = self._compute_profile_loss(logits, targets)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-    def forward(self, outputs, targets, **kwargs):
+    def forward(self, outputs: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(outputs, targets, **kwargs)
         return self.profile_weight * components["profile_loss"] + self.count_weight * components["count_loss"]
 
@@ -223,7 +223,7 @@ class PoissonMultinomialLoss(nn.Module):
     """
     uses_count_pseudocount: bool = False
 
-    def __init__(self, count_weight=0.2, profile_weight=1.0, flatten_channels=False, count_per_channel=False, average_channels=True, log1p_targets=False, epsilon=1e-8, count_pseudocount=1.0):
+    def __init__(self, count_weight: float = 0.2, profile_weight: float = 1.0, flatten_channels: bool = False, count_per_channel: bool = False, average_channels: bool = True, log1p_targets: bool = False, epsilon: float = 1e-8, count_pseudocount: float = 1.0) -> None:
         """
         Args:
             count_weight (float): Weight for the count loss component.
@@ -253,7 +253,7 @@ class PoissonMultinomialLoss(nn.Module):
         self.epsilon = epsilon
         self.count_loss_fn = nn.PoissonNLLLoss(log_input=True, full=False)
 
-    def _compute_profile_loss(self, logits, targets):
+    def _compute_profile_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
          if self.flatten_channels:
              logits_flat = logits.flatten(start_dim=1)
              targets_flat = targets.flatten(start_dim=1)
@@ -268,7 +268,7 @@ class PoissonMultinomialLoss(nn.Module):
                  loss_shape = loss_shape_per_channel.sum(dim=-1).mean()
          return loss_shape
 
-    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -286,7 +286,7 @@ class PoissonMultinomialLoss(nn.Module):
         profile_loss = self._compute_profile_loss(logits, targets)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-    def forward(self, predictions, targets, **kwargs):
+    def forward(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(predictions, targets, **kwargs)
         return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
@@ -303,7 +303,7 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp of logits over all channels.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
     """
-    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -325,7 +325,7 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
         profile_loss = self._compute_profile_loss(logits, targets)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
-    def forward(self, predictions, targets, **kwargs):
+    def forward(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(predictions, targets, **kwargs)
         return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
@@ -344,11 +344,11 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
                              Smaller 'total_count' implies higher dispersion (variance >> mean).
                              NB Variance = mu + mu^2 / total_count.
     """
-    def __init__(self, total_count=10.0, **kwargs):
+    def __init__(self, total_count: float = 10.0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.total_count = float(total_count)
-        
-    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+
+    def loss_components(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -370,7 +370,7 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
         loss_shape = self._compute_profile_loss(logits, targets)
         return {"profile_loss": loss_shape, "count_loss": loss_count}
 
-    def forward(self, predictions, targets, **kwargs):
+    def forward(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(predictions, targets, **kwargs)
         return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 
@@ -380,7 +380,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
     Negative Binomial Multinomial Loss (Coupled).
     Mathematically equivalent to NegativeBinomialMultinomialLoss but derives counts from log_rates.
     """
-    def loss_components(self, predictions, targets, **kwargs) -> dict[str, torch.Tensor]:
+    def loss_components(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> dict[str, torch.Tensor]:
         """Returns named loss components."""
         targets = targets.float()
         if self.log1p_targets:
@@ -404,7 +404,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
         loss_shape = self._compute_profile_loss(logits, targets)
         return {"profile_loss": loss_shape, "count_loss": loss_count}
 
-    def forward(self, predictions, targets, **kwargs):
+    def forward(self, predictions: object, targets: torch.Tensor, **kwargs: object) -> torch.Tensor:
         components = self.loss_components(predictions, targets, **kwargs)
         return self.count_weight * components["count_loss"] + self.profile_weight * components["profile_loss"]
 

@@ -13,7 +13,7 @@ class ModelOutput:
     """Base class for model outputs."""
     out_interval: Interval | None = None
 
-    def detach(self):
+    def detach(self) -> "ModelOutput":
         """Returns a new instance with all tensors detached from the graph."""
         raise NotImplementedError
 
@@ -25,7 +25,7 @@ class ProfileLogits(ModelOutput):
     """
     logits: torch.Tensor # (Batch, Channels, Length)
 
-    def detach(self):
+    def detach(self) -> "ProfileLogits":
         return ProfileLogits(logits=self.logits.detach(), out_interval=self.out_interval)
 
 @dataclass
@@ -36,7 +36,7 @@ class ProfileLogRates(ModelOutput):
     """
     log_rates: torch.Tensor # (Batch, Channels, Length)
 
-    def detach(self):
+    def detach(self) -> "ProfileLogRates":
         return ProfileLogRates(log_rates=self.log_rates.detach(), out_interval=self.out_interval)
 
 @dataclass
@@ -48,9 +48,9 @@ class ProfileCountOutput(ProfileLogits):
     """
     log_counts: torch.Tensor # (Batch, Channels)
 
-    def detach(self):
+    def detach(self) -> "ProfileCountOutput":
         return ProfileCountOutput(
-            logits=self.logits.detach(), 
+            logits=self.logits.detach(),
             log_counts=self.log_counts.detach(),
             out_interval=self.out_interval
         )
@@ -68,7 +68,7 @@ class FactorizedProfileCountOutput(ProfileCountOutput):
     signal_logits: torch.Tensor     # (B, C, L) -- signal model profile logits
     signal_log_counts: torch.Tensor # (B, C)   -- signal model log counts
 
-    def detach(self):
+    def detach(self) -> "FactorizedProfileCountOutput":
         return FactorizedProfileCountOutput(
             logits=self.logits.detach(),
             log_counts=self.log_counts.detach(),

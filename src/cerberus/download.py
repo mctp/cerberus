@@ -10,7 +10,7 @@ import pyfaidx
 
 logger = logging.getLogger(__name__)
 
-def _download_file(url: str, dest: Path):
+def _download_file(url: str, dest: Path) -> None:
     """Downloads a file from a URL to a destination path.
 
     Tries urllib first, falls back to curl if blocked (HTTP 403).

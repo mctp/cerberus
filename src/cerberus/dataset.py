@@ -221,8 +221,8 @@ class CerberusDataset(Dataset):
         return len(self.sampler)
 
     def get_raw_targets(
-        self, 
-        query: Any, 
+        self,
+        query: str | tuple[str, int, int] | list[object] | Interval,
         crop_to_output_len: bool = True
     ) -> torch.Tensor:
         """
@@ -256,7 +256,7 @@ class CerberusDataset(Dataset):
                 
         return raw_target
 
-    def get_interval(self, query: Any) -> dict[str, Any]:
+    def get_interval(self, query: str | tuple[str, int, int] | list[object] | Interval) -> dict[str, Any]:
         """
         Retrieves inputs and targets for a specific interval, side-stepping the sampler.
         Resolves query into an Interval object first.
@@ -358,7 +358,7 @@ class CerberusDataset(Dataset):
         )
         return result
 
-    def __getitems__(self, indices: list[int]):
+    def __getitems__(self, indices: list[int]) -> list[dict[str, object]]:
         """Batch retrieval optimization (optional)."""
         # Batch optimization if needed, for now loop
         return [self.__getitem__(idx) for idx in indices]
@@ -427,7 +427,7 @@ class CerberusDataset(Dataset):
             self._subset(test_sampler, is_train=False),
         )
 
-    def resample(self, seed: int | None = None):
+    def resample(self, seed: int | None = None) -> None:
         """
         Trigger resampling if the underlying sampler supports it.
         

@@ -15,11 +15,9 @@ from .complexity import compute_intervals_complexity, compute_hist, get_bin_inde
 logger = logging.getLogger(__name__)
 
 
-from typing import Any
-
 def _select_from_bins(
-    target_hist: dict[Any, int],
-    candidate_bins: dict[Any, list[int]],
+    target_hist: dict[tuple[int, ...], int],
+    candidate_bins: dict[tuple[int, ...], list[int]],
     candidate_ratio: float,
     rng: random.Random
 ) -> list[int]:
@@ -546,7 +544,7 @@ class RandomSampler(BaseSampler):
             regions[chrom] = tree
         return regions
 
-    def _generate_intervals(self):
+    def _generate_intervals(self) -> None:
         regions_to_use = self.regions
         
         # If no regions specified, use full chromosomes
@@ -692,7 +690,7 @@ class IntervalSampler(ListSampler):
         self._load()
         self._filter_excludes()
 
-    def _load(self):
+    def _load(self) -> None:
         if not self.file_path.exists():
             raise FileNotFoundError(f"File not found: {self.file_path}")
 
@@ -741,7 +739,7 @@ class IntervalSampler(ListSampler):
 
         return True
 
-    def _load_bed(self):
+    def _load_bed(self) -> None:
         for parts in self._read_file():
             if len(parts) < 3:
                 raise ValueError(
@@ -765,7 +763,7 @@ class IntervalSampler(ListSampler):
 
             self._intervals.append(Interval(chrom, start, end, strand))
 
-    def _load_narrowPeak(self):
+    def _load_narrowPeak(self) -> None:
         for parts in self._read_file():
             if len(parts) < 10:
                 raise ValueError(
@@ -796,7 +794,7 @@ class IntervalSampler(ListSampler):
 
             self._intervals.append(Interval(chrom, start, end, strand))
 
-    def _filter_excludes(self):
+    def _filter_excludes(self) -> None:
         if not self.exclude_intervals or not self._intervals:
             return
 
@@ -845,7 +843,7 @@ class SlidingWindowSampler(ListSampler):
         self.stride = stride
         self._generate_intervals()
 
-    def _generate_intervals(self):
+    def _generate_intervals(self) -> None:
         # Sort chromosomes to ensure deterministic order
         for chrom in sorted(self.chrom_sizes.keys()):
             size = self.chrom_sizes[chrom]
@@ -1041,7 +1039,7 @@ class ComplexityMatchedSampler(ProxySampler):
 
         return np.array([self.metrics_cache[str(iv)] for iv in intervals], dtype=np.float32)
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         logger.info("ComplexityMatchedSampler: Initializing complexity matching...")
         
         # Compute target metrics

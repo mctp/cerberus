@@ -10,7 +10,7 @@ class _ConvBlock(nn.Module):
     """
     Standard Conv1d block: GELU -> Conv1d -> BatchNorm.
     """
-    def __init__(self, channels_in, channels_out:int=1 , kernel_size:int=1 , dilation_rate:int=1, bn_gamma=None) -> None:
+    def __init__(self, channels_in: int, channels_out: int = 1, kernel_size: int = 1, dilation_rate: int = 1, bn_gamma: str | None = None) -> None:
         super().__init__()
         self.activation = nn.GELU()
         self.conv = nn.Conv1d(
@@ -49,7 +49,7 @@ class _BasenjiCoreBlock(nn.Module):
     
     Followed by a final projection and optional pooling.
     """
-    def __init__(self, nr_tracks: int, window: int, filters_in,
+    def __init__(self, nr_tracks: int, window: int, filters_in: int,
                   nr_res_blocks: int = 11, rate_mult: float = 1.5, bin_size: int = 100, filters1: int = 128,
                   filters3: int | None = None, kernel1: int = 3, kernel2: int = 1, dropout: float = 0.3,
                   final_dropout: float = 0.05):

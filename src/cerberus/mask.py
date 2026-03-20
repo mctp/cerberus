@@ -41,7 +41,7 @@ class BigBedMaskExtractor(BaseMaskExtractor):
         self.channels = sorted(bigbed_paths.keys())
         self._bigbed_files = None
 
-    def _load(self):
+    def _load(self) -> None:
         """Lazy loader for BigBed handles."""
         logger.debug(f"Lazy-loading {len(self.channels)} BigBed file(s)...")
         self._bigbed_files = {}
@@ -52,7 +52,7 @@ class BigBedMaskExtractor(BaseMaskExtractor):
             except Exception as e:
                 raise RuntimeError(f"Failed to open BigBed file {path}: {e}")
 
-    def __getstate__(self):
+    def __getstate__(self) -> dict[str, object]:
         """Pickle support: exclude file handles."""
         state = self.__dict__.copy()
         state["_bigbed_files"] = None

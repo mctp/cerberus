@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from typing import cast
+from typing import Any, cast
 from torchmetrics import Metric, MeanSquaredError, MetricCollection
 from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
 
@@ -39,13 +39,13 @@ class ProfilePearsonCorrCoef(Metric):
     sum_corr: torch.Tensor
     count: torch.Tensor
 
-    def __init__(self, log1p_targets=False, **kwargs):
+    def __init__(self, log1p_targets: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
         self.add_state("sum_corr", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("count", default=torch.tensor(0, dtype=torch.long), dist_reduce_fx="sum")
 
-    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor) -> None: # type: ignore[override]
         if isinstance(preds, ProfileLogRates):
             logits = preds.log_rates
         elif isinstance(preds, ProfileLogits):
@@ -64,7 +64,7 @@ class ProfilePearsonCorrCoef(Metric):
         self.sum_corr += corr_mean[valid].sum()
         self.count += valid.sum()
 
-    def compute(self):
+    def compute(self) -> torch.Tensor:
         if self.count == 0:
             return torch.tensor(float("nan"), device=self.sum_corr.device)
         return (self.sum_corr / self.count).float()
@@ -83,14 +83,14 @@ class CountProfilePearsonCorrCoef(Metric):
     sum_corr: torch.Tensor
     count: torch.Tensor
 
-    def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
         self.add_state("sum_corr", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("count", default=torch.tensor(0, dtype=torch.long), dist_reduce_fx="sum")
 
-    def update(self, preds: ProfileCountOutput, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None: # type: ignore[override]
         if not isinstance(preds, ProfileCountOutput):
             raise TypeError("CountProfilePearsonCorrCoef requires ProfileCountOutput")
 
@@ -115,7 +115,7 @@ class CountProfilePearsonCorrCoef(Metric):
         self.sum_corr += corr_mean[valid].sum()
         self.count += valid.sum()
 
-    def compute(self):
+    def compute(self) -> torch.Tensor:
         if self.count == 0:
             return torch.tensor(float("nan"), device=self.sum_corr.device)
         return (self.sum_corr / self.count).float()
@@ -129,12 +129,12 @@ class CountProfileMeanSquaredError(MeanSquaredError):
     computing MSE against targets.
     Preds = Softmax(logits) * (Exp(log_counts) - count_pseudocount).
     """
-    def __init__(self, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
 
-    def update(self, preds: ProfileCountOutput, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None: # type: ignore[override]
         if not isinstance(preds, ProfileCountOutput):
              raise TypeError("CountProfileMeanSquaredError requires ProfileCountOutput")
 
@@ -165,11 +165,11 @@ class ProfileMeanSquaredError(MeanSquaredError):
     1. Predicted Probabilities (Softmax of logits)
     2. Target Probabilities (Target Counts / Profile Counts)
     """
-    def __init__(self, log1p_targets=False, **kwargs):
+    def __init__(self, log1p_targets: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.log1p_targets = log1p_targets
 
-    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileLogRates | ProfileLogits, target: torch.Tensor) -> None: # type: ignore[override]
         if isinstance(preds, ProfileLogRates):
             logits = preds.log_rates
         elif isinstance(preds, ProfileLogits):
@@ -199,7 +199,7 @@ class LogCountsMeanSquaredError(MeanSquaredError):
     1. Predicted Log Counts (from log_counts or logsumexp of log_rates)
     2. Target Log Counts: log(sum(targets) + count_pseudocount)
     """
-    def __init__(self, count_per_channel=False, log1p_targets=False, count_pseudocount=1.0, log_counts_include_pseudocount=False, **kwargs):
+    def __init__(self, count_per_channel: bool = False, log1p_targets: bool = False, count_pseudocount: float = 1.0, log_counts_include_pseudocount: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.count_per_channel = count_per_channel
         self.log1p_targets = log1p_targets
@@ -228,7 +228,7 @@ class LogCountsMeanSquaredError(MeanSquaredError):
 
         raise TypeError("requires ProfileCountOutput or ProfileLogRates")
 
-    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor) -> None: # type: ignore[override]
         pred_log_counts = self._aggregate_pred_log_counts(preds)
 
         target = target.float()
@@ -262,7 +262,7 @@ class LogCountsPearsonCorrCoef(Metric):
     preds_list: list[torch.Tensor]
     targets_list: list[torch.Tensor]
 
-    def __init__(self, count_per_channel=False, log1p_targets=False, count_pseudocount=1.0, log_counts_include_pseudocount=False, **kwargs):
+    def __init__(self, count_per_channel: bool = False, log1p_targets: bool = False, count_pseudocount: float = 1.0, log_counts_include_pseudocount: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.count_per_channel = count_per_channel
         self.log1p_targets = log1p_targets
@@ -271,7 +271,7 @@ class LogCountsPearsonCorrCoef(Metric):
         self.add_state("preds_list", default=[], dist_reduce_fx="cat")
         self.add_state("targets_list", default=[], dist_reduce_fx="cat")
 
-    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
+    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor) -> None: # type: ignore[override]
         if isinstance(preds, ProfileCountOutput):
             pred_log_counts = preds.log_counts
             if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
@@ -306,7 +306,7 @@ class LogCountsPearsonCorrCoef(Metric):
         self.preds_list.append(pred_log_counts.detach())
         self.targets_list.append(target_log_counts.detach())
 
-    def compute(self):
+    def compute(self) -> torch.Tensor:
         # After DDP reduce with dist_reduce_fx="cat", the list may already
         # be a single concatenated tensor rather than a list of tensors.
         if isinstance(self.preds_list, torch.Tensor):

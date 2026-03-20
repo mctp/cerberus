@@ -11,7 +11,7 @@ class _Reshape(nn.Module):
     back to a spatial representation (Batch, Bottleneck_Channels, Length) required 
     for the subsequent convolutional layers.
     """
-    def __init__(self, *shape):
+    def __init__(self, *shape: int) -> None:
         """
         Args:
             *shape: Target shape dimensions (excluding batch dimension).
@@ -19,7 +19,7 @@ class _Reshape(nn.Module):
         super().__init__()
         self.shape = shape
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # We assume the first dimension is batch size and preserved
         return x.view(x.shape[0], *self.shape)
 
@@ -57,13 +57,13 @@ class GlobalProfileCNN(nn.Module):
     """
     def __init__(
         self,
-        input_len=2048,
-        output_len=1024,
-        output_bin_size=4,
+        input_len: int = 2048,
+        output_len: int = 1024,
+        output_bin_size: int = 4,
         input_channels: list[str] | None = None,
         output_channels: list[str] | None = None,
-        bottleneck_channels=8
-    ):
+        bottleneck_channels: int = 8,
+    ) -> None:
         super().__init__()
 
         if input_channels is None:

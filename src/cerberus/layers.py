@@ -11,12 +11,12 @@ class GRN1d(nn.Module):
     
     Reference: facebookresearch/ConvNeXt-V2
     """
-    def __init__(self, dim):
+    def __init__(self, dim: int) -> None:
         super().__init__()
         self.gamma = nn.Parameter(torch.zeros(1, 1, dim))
         self.beta = nn.Parameter(torch.zeros(1, 1, dim))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         Gx = torch.norm(x, p=2, dim=(1,), keepdim=True)
         Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * Nx) + self.beta + x
@@ -36,15 +36,15 @@ class ConvNeXtV2Block(nn.Module):
     """
     def __init__(
         self,
-        channels_in,
-        channels_out,
-        kernel_size,
-        groups=False,
-        inv_bottleneckscale=4,
-        grn=True,
-        dilation_rate=1,
-        padding="same",
-    ):
+        channels_in: int,
+        channels_out: int,
+        kernel_size: int,
+        groups: bool = False,
+        inv_bottleneckscale: int = 4,
+        grn: bool = True,
+        dilation_rate: int = 1,
+        padding: str = "same",
+    ) -> None:
         super().__init__()
         self.res_early = channels_in == channels_out
         self.inv_bottleneckwidth = int(inv_bottleneckscale * channels_out)
@@ -68,7 +68,7 @@ class ConvNeXtV2Block(nn.Module):
             self.grn = nn.Identity()
         self.pwconv2 = nn.Linear(self.inv_bottleneckwidth, channels_out)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.res_early:
             x_ = x
             x = self.dwconv(x)
@@ -176,7 +176,7 @@ class PGCBlock(nn.Module):
             self.norm2 = nn.RMSNorm(dim)
             self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, C, L)
         residual = x
 
@@ -315,7 +315,7 @@ class DilatedResidualBlock(nn.Module):
         crop_r = diff - crop_l
         return x[..., crop_l:-crop_r]
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.residual_architecture == "residual_post-activation_conv":
             # x + act(conv(x))
             out = self.act(self.conv(x))

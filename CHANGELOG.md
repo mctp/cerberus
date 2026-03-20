@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Strict type hints across `src/cerberus/`**: Added missing parameter and return
+  type annotations to all `__init__`, `forward`, `loss_components`,
+  `_compute_profile_loss`, `compute`, and `update` methods in `layers.py`,
+  `loss.py`, `metrics.py`, `module.py`, `datamodule.py`, `models/gopher.py`,
+  and `models/asap.py`. Added return types to private methods in `samplers.py`,
+  `sequence.py`, `mask.py`, `dataset.py`, `output.py`, and `download.py`.
+  Narrowed `Any` to concrete union types for `query` parameters in
+  `dataset.py` and bin-index dicts in `samplers.py`. Narrowed
+  `instantiate_metrics_and_loss` return type from `tuple[Any, Any]` to
+  `tuple[MetricCollection, CerberusLoss]`.
+- Added `pyrightconfig.json` with `reportMissingParameterType` and
+  `reportMissingReturnType` as warnings to catch future regressions.
+
 ### Added
 - **`uses_count_pseudocount` class attribute** on all loss classes: declares
   whether the loss trains log_counts in `log(count + pseudocount)` space.

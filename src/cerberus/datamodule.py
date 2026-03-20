@@ -95,7 +95,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self._is_initialized = False
 
     @staticmethod
-    def _worker_init_fn(worker_id):
+    def _worker_init_fn(worker_id: int) -> None:
         """
         Internal worker initialization function for DataLoader.
         

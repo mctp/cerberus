@@ -130,7 +130,7 @@ class SequenceExtractor(BaseSequenceExtractor):
         self.encoding = encoding
         self.fasta = None
 
-    def __getstate__(self):
+    def __getstate__(self) -> dict[str, object]:
         """Pickle support: exclude file handles to allow safe multiprocessing."""
         state = self.__dict__.copy()
         state["fasta"] = None
@@ -191,7 +191,7 @@ class InMemorySequenceExtractor(BaseSequenceExtractor):
         self._cache: dict[str, torch.Tensor] = {}
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         """Loads the entire genome into memory."""
         logger.info(f"Loading genome into memory from {self.fasta_path}...")
         fasta = pyfaidx.Fasta(str(self.fasta_path))
