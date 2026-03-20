@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`PomeranianMetricCollection` and `BPNetMetricCollection` now accept `log_counts_include_pseudocount`**:
+  Both model-specific MetricCollections were missing the `log_counts_include_pseudocount` parameter,
+  causing `TypeError` when `instantiate_metrics_and_loss()` passed it from `propagate_pseudocount()`.
+  The flag is now threaded through to the inner `LogCountsMeanSquaredError` and `LogCountsPearsonCorrCoef`
+  sub-metrics, matching the existing behavior of `DefaultMetricCollection`.
+
 ### Added
 - **Interval manifests saved at training time**: After training, each fold directory
   contains `intervals_{train,val,test}.bed` files recording the exact intervals and

@@ -286,10 +286,10 @@ class PomeranianMetricCollection(MetricCollection):
     """
     MetricCollection for Pomeranian models.
     """
-    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, log_counts_include_pseudocount: bool = False):
         super().__init__({
             "pearson": CountProfilePearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
             "mse_profile": CountProfileMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
-            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount, log_counts_include_pseudocount=log_counts_include_pseudocount),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount, log_counts_include_pseudocount=log_counts_include_pseudocount),
         })

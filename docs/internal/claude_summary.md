@@ -708,14 +708,16 @@ Each model family defines its own MetricCollection matching its output type:
 
 ```python
 class BPNetMetricCollection(MetricCollection):
-    def __init__(self, **kwargs):
+    def __init__(self, log1p_targets=False, count_pseudocount=1.0, log_counts_include_pseudocount=False):
         super().__init__({
             "pearson": CountProfilePearsonCorrCoef(...),
             "mse_profile": CountProfileMeanSquaredError(...),
-            "mse_log_counts": LogCountsMeanSquaredError(...),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(...),
+            "mse_log_counts": LogCountsMeanSquaredError(..., log_counts_include_pseudocount=log_counts_include_pseudocount),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(..., log_counts_include_pseudocount=log_counts_include_pseudocount),
         })
 ```
+
+All three MetricCollections (`DefaultMetricCollection`, `BPNetMetricCollection`, `PomeranianMetricCollection`) accept the same kwargs: `log1p_targets`, `count_pseudocount`, and `log_counts_include_pseudocount`. The latter is threaded to `LogCountsMeanSquaredError` and `LogCountsPearsonCorrCoef` sub-metrics to control multi-channel log-counts aggregation (see `propagate_pseudocount()` in `config.py`).
 
 **Benefit:** Ensures each model is evaluated with metrics appropriate for its output structure (coupled vs. decoupled).
 
