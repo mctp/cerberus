@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Interval manifests saved at training time**: After training, each fold directory
+  contains `intervals_{train,val,test}.bed` files recording the exact intervals and
+  their source sampler (via `interval_source` column). This eliminates the need to
+  reconstruct the sampler pipeline for evaluation and guarantees reproducibility even
+  if sampler code changes. Saved from rank 0 only in multi-GPU training.
+- **`Interval.to_bed_row()`**: New method for BED-format serialization.
+- **`write_intervals_bed()` / `load_intervals_bed()`**: I/O utilities for interval
+  manifest files with source labels.
+- **`CerberusDataModule.save_interval_manifests()`**: Writes interval manifests for
+  all splits to a given directory.
+
 ### Changed
 - **`get_peak_status()` replaced with `get_interval_source()`**: `MultiSampler.get_peak_status()`
   (returning binary `0`/`1`) is replaced by `get_interval_source()` which returns the class name

@@ -251,6 +251,37 @@ class CerberusDataModule(pl.LightningDataModule):
         logger.info(f"DataModule setup complete. Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}, Test: {len(self.test_dataset)}")
         self._is_initialized = True
 
+    def save_interval_manifests(self, output_dir: Path) -> None:
+        """Save train/val/test interval manifests to *output_dir*.
+
+        Each split is written as a BED-like TSV with an ``interval_source``
+        column (from :meth:`~cerberus.samplers.MultiSampler.get_interval_source`).
+
+        This should only be called from rank 0 in multi-GPU training.
+
+        Args:
+            output_dir: Directory to write ``intervals_{split}.bed`` files into.
+        """
+        from .interval import write_intervals_bed
+
+        if not self._is_initialized:
+            raise RuntimeError("DataModule not setup — call setup() first")
+
+        for split_name, dataset in [
+            ("train", self.train_dataset),
+            ("val", self.val_dataset),
+            ("test", self.test_dataset),
+        ]:
+            if dataset is None or dataset.sampler is None:
+                continue
+            sampler = dataset.sampler
+            n = len(sampler)
+            intervals = [sampler[i] for i in range(n)]
+            sources = [sampler.get_interval_source(i) for i in range(n)]
+            write_intervals_bed(
+                output_dir / f"intervals_{split_name}.bed", intervals, sources
+            )
+
     def train_dataloader(self) -> DataLoader:
         """Returns the training DataLoader."""
         if not self._is_initialized:

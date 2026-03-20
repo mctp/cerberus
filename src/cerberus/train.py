@@ -346,6 +346,10 @@ def _train(
     if root_dir is not None and trainer.is_global_zero:
         _save_model_pt(trainer, root_dir)
 
+    # 8. Save interval manifests for reproducible evaluation (rank-0 only)
+    if root_dir is not None and trainer.is_global_zero:
+        datamodule.save_interval_manifests(Path(root_dir))
+
     return trainer
 
 

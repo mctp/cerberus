@@ -47,6 +47,8 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 ### `cerberus.interval`
 
 - **`class Interval`** — Represents a genomic interval.
+- **`write_intervals_bed()`** — Write intervals with source labels to a BED-like TSV file.
+- **`load_intervals_bed()`** — Load intervals and source labels from a BED-like TSV file.
 - **`resolve_interval()`** — Resolves a query into an Interval object.
 - **`parse_intervals()`** — Parses intervals from a list of strings and paths to BED files.
 - **`merge_intervals()`** — Sorts and merges overlapping or adjacent intervals.

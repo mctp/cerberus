@@ -1,4 +1,4 @@
-from .interval import Interval
+from .interval import Interval, write_intervals_bed, load_intervals_bed
 from .config import (
     GenomeConfig,
     DataConfig,

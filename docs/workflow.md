@@ -35,7 +35,7 @@ The training phase is responsible for learning the mapping from DNA sequence to 
 1.  **Data Setup**: Download/Prepare genome FASTA and signal BigWigs.
 2.  **Config Definition**: Set up the configuration dictionaries.
 3.  **Execution**: Call `train_single` or `train_multi`.
-4.  **Output**: Cerberus saves model weights to a `fold_X` subdirectory within the specified output directory. Each fold contains a clean `model.pt` state dict (preferred for inference) alongside Lightning `.ckpt` checkpoints and training logs.
+4.  **Output**: Cerberus saves model weights to a `fold_X` subdirectory within the specified output directory. Each fold contains a clean `model.pt` state dict (preferred for inference), interval manifests (`intervals_{train,val,test}.bed` with `interval_source` labels for reproducible evaluation), alongside Lightning `.ckpt` checkpoints and training logs.
 
 **Example Reference**: `examples/chip_ar_mdapca2b.py` demonstrates a full training script that supports both single-fold and multi-fold training for Baseline CNN and BPNet architectures.
 

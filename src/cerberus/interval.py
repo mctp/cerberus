@@ -33,6 +33,10 @@ class Interval:
         """Returns a string representation: 'chrom:start-end(strand)'."""
         return f"{self.chrom}:{self.start}-{self.end}({self.strand})"
 
+    def to_bed_row(self) -> str:
+        """Return a BED-format line: chrom, start, end, strand (tab-separated)."""
+        return f"{self.chrom}\t{self.start}\t{self.end}\t{self.strand}"
+
     def center(self, width: int) -> "Interval":
         """
         Returns a new interval of the specified width, centered within this interval.
@@ -48,6 +52,56 @@ class Interval:
         new_start = self.start + offset
         new_end = new_start + width
         return Interval(self.chrom, new_start, new_end, self.strand)
+
+
+def write_intervals_bed(
+    path: Path,
+    intervals: list[Interval],
+    sources: list[str],
+) -> None:
+    """Write intervals with source labels to a BED-like TSV file.
+
+    Args:
+        path: Output file path.
+        intervals: List of genomic intervals.
+        sources: List of source labels (one per interval), typically from
+            :meth:`MultiSampler.get_interval_source`.
+    """
+    if len(intervals) != len(sources):
+        raise ValueError(
+            f"intervals ({len(intervals)}) and sources ({len(sources)}) must have the same length"
+        )
+    with open(path, "w") as f:
+        f.write("chrom\tstart\tend\tstrand\tinterval_source\n")
+        for iv, src in zip(intervals, sources):
+            f.write(f"{iv.to_bed_row()}\t{src}\n")
+    logger.info("Wrote %d intervals to %s", len(intervals), path)
+
+
+def load_intervals_bed(
+    path: Path,
+) -> tuple[list[Interval], list[str]]:
+    """Load intervals and source labels from a BED-like TSV file.
+
+    Args:
+        path: Input file path (as written by :func:`write_intervals_bed`).
+
+    Returns:
+        ``(intervals, sources)`` tuple.
+    """
+    intervals: list[Interval] = []
+    sources: list[str] = []
+    with open(path) as f:
+        header = next(f)
+        if not header.startswith("chrom\t"):
+            raise ValueError(f"Unexpected header in {path}: {header!r}")
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            chrom, start, end, strand, source = parts
+            intervals.append(Interval(chrom, int(start), int(end), strand))
+            sources.append(source)
+    logger.info("Loaded %d intervals from %s", len(intervals), path)
+    return intervals, sources
 
 
 def resolve_interval(query: str | tuple | list | Interval) -> Interval:

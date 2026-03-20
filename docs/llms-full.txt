@@ -565,7 +565,7 @@ The training phase is responsible for learning the mapping from DNA sequence to 
 1.  **Data Setup**: Download/Prepare genome FASTA and signal BigWigs.
 2.  **Config Definition**: Set up the configuration dictionaries.
 3.  **Execution**: Call `train_single` or `train_multi`.
-4.  **Output**: Cerberus saves model weights to a `fold_X` subdirectory within the specified output directory. Each fold contains a clean `model.pt` state dict (preferred for inference) alongside Lightning `.ckpt` checkpoints and training logs.
+4.  **Output**: Cerberus saves model weights to a `fold_X` subdirectory within the specified output directory. Each fold contains a clean `model.pt` state dict (preferred for inference), interval manifests (`intervals_{train,val,test}.bed` with `interval_source` labels for reproducible evaluation), alongside Lightning `.ckpt` checkpoints and training logs.
 
 **Example Reference**: `examples/chip_ar_mdapca2b.py` demonstrates a full training script that supports both single-fold and multi-fold training for Baseline CNN and BPNet architectures.
 
@@ -2526,7 +2526,7 @@ We recommend setting `Pomeranian` (K9) as the default configuration for future e
 
 ## src/cerberus/__init__.py
 
-from .interval import Interval
+from .interval import Interval, write_intervals_bed, load_intervals_bed
 from .config import (
     GenomeConfig,
     DataConfig,
@@ -3587,6 +3587,10 @@ class Interval:
         """Returns a string representation: 'chrom:start-end(strand)'."""
         return f"{self.chrom}:{self.start}-{self.end}({self.strand})"
 
+    def to_bed_row(self) -> str:
+        """Return a BED-format line: chrom, start, end, strand (tab-separated)."""
+        return f"{self.chrom}\t{self.start}\t{self.end}\t{self.strand}"
+
     def center(self, width: int) -> "Interval":
         """
         Returns a new interval of the specified width, centered within this interval.
@@ -3602,6 +3606,56 @@ class Interval:
         new_start = self.start + offset
         new_end = new_start + width
         return Interval(self.chrom, new_start, new_end, self.strand)
+
+
+def write_intervals_bed(
+    path: Path,
+    intervals: list[Interval],
+    sources: list[str],
+) -> None:
+    """Write intervals with source labels to a BED-like TSV file.
+
+    Args:
+        path: Output file path.
+        intervals: List of genomic intervals.
+        sources: List of source labels (one per interval), typically from
+            :meth:`MultiSampler.get_interval_source`.
+    """
+    if len(intervals) != len(sources):
+        raise ValueError(
+            f"intervals ({len(intervals)}) and sources ({len(sources)}) must have the same length"
+        )
+    with open(path, "w") as f:
+        f.write("chrom\tstart\tend\tstrand\tinterval_source\n")
+        for iv, src in zip(intervals, sources):
+            f.write(f"{iv.to_bed_row()}\t{src}\n")
+    logger.info("Wrote %d intervals to %s", len(intervals), path)
+
+
+def load_intervals_bed(
+    path: Path,
+) -> tuple[list[Interval], list[str]]:
+    """Load intervals and source labels from a BED-like TSV file.
+
+    Args:
+        path: Input file path (as written by :func:`write_intervals_bed`).
+
+    Returns:
+        ``(intervals, sources)`` tuple.
+    """
+    intervals: list[Interval] = []
+    sources: list[str] = []
+    with open(path) as f:
+        header = next(f)
+        if not header.startswith("chrom\t"):
+            raise ValueError(f"Unexpected header in {path}: {header!r}")
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            chrom, start, end, strand, source = parts
+            intervals.append(Interval(chrom, int(start), int(end), strand))
+            sources.append(source)
+    logger.info("Loaded %d intervals from %s", len(intervals), path)
+    return intervals, sources
 
 
 def resolve_interval(query: str | tuple | list | Interval) -> Interval:
@@ -7732,6 +7786,37 @@ class CerberusDataModule(pl.LightningDataModule):
         logger.info(f"DataModule setup complete. Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}, Test: {len(self.test_dataset)}")
         self._is_initialized = True
 
+    def save_interval_manifests(self, output_dir: Path) -> None:
+        """Save train/val/test interval manifests to *output_dir*.
+
+        Each split is written as a BED-like TSV with an ``interval_source``
+        column (from :meth:`~cerberus.samplers.MultiSampler.get_interval_source`).
+
+        This should only be called from rank 0 in multi-GPU training.
+
+        Args:
+            output_dir: Directory to write ``intervals_{split}.bed`` files into.
+        """
+        from .interval import write_intervals_bed
+
+        if not self._is_initialized:
+            raise RuntimeError("DataModule not setup — call setup() first")
+
+        for split_name, dataset in [
+            ("train", self.train_dataset),
+            ("val", self.val_dataset),
+            ("test", self.test_dataset),
+        ]:
+            if dataset is None or dataset.sampler is None:
+                continue
+            sampler = dataset.sampler
+            n = len(sampler)
+            intervals = [sampler[i] for i in range(n)]
+            sources = [sampler.get_interval_source(i) for i in range(n)]
+            write_intervals_bed(
+                output_dir / f"intervals_{split_name}.bed", intervals, sources
+            )
+
     def train_dataloader(self) -> DataLoader:
         """Returns the training DataLoader."""
         if not self._is_initialized:
@@ -8632,6 +8717,10 @@ def _train(
     # 7. Save clean state dict for inference (best checkpoint, no Lightning overhead)
     if root_dir is not None and trainer.is_global_zero:
         _save_model_pt(trainer, root_dir)
+
+    # 8. Save interval manifests for reproducible evaluation (rank-0 only)
+    if root_dir is not None and trainer.is_global_zero:
+        datamodule.save_interval_manifests(Path(root_dir))
 
     return trainer
 
