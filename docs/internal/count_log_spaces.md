@@ -101,18 +101,25 @@ log(c0 + c1 + p)       # one pseudocount, not N
 For **single-channel** outputs the flag has no effect — `log_counts` is returned
 as-is.
 
-### How to detect the space (duck-typing)
+### How to detect the space
 
-Only MSE-family losses carry the `count_pseudocount` attribute.  The codebase
-uses `hasattr(criterion, "count_pseudocount")` as the signal:
+Every loss class defines a `uses_count_pseudocount` **class attribute** (True for
+MSE/Dalmatian, False for Poisson/NB).  The canonical dispatch is:
 
 ```python
-# module.py, export_predictions.py
-log_counts_include_pseudocount = hasattr(criterion, "count_pseudocount")
+# config.py — preferred entry point
+log_counts_include_pseudocount, count_pseudocount = get_log_count_params(model_config)
 ```
 
-This avoids importing loss classes and is correct because Poisson/NB losses
-never define `count_pseudocount`.
+This reads `loss_cls.uses_count_pseudocount` and pulls the scaled pseudocount from
+`loss_args`.  It works correctly for all loss families including `DalmatianLoss`
+(which forwards `count_pseudocount` to its inner base loss).
+
+> **Deprecated pattern:** Earlier code used `hasattr(criterion, "count_pseudocount")`
+> on loss *instances* as a duck-typing signal.  This is unreliable because
+> `DalmatianLoss` and Poisson/NB losses do not store `count_pseudocount` as an
+> instance attribute.  Do not use `hasattr` for this purpose — use
+> `get_log_count_params` or `loss_cls.uses_count_pseudocount` instead.
 
 ### Proposed rename
 

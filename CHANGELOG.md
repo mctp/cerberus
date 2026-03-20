@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Multi-channel log-count metric aggregation with pseudocount**: `LogCountsMeanSquaredError`
+  and `LogCountsPearsonCorrCoef` now correctly invert per-channel log-counts before summing
+  when `log_counts_include_pseudocount=True`, avoiding the `log(total + C*pseudocount)` error
+  from naive `logsumexp`. The new `log_counts_include_pseudocount` flag is propagated
+  automatically via `propagate_pseudocount`.
+- **Validation scatter plot refactored to use metric state**: Removed the separate
+  `_accumulate_log_counts` method from `CerberusModule` which duplicated log-count
+  accumulation and used the wrong dispatch mechanism (`hasattr` on instance attributes
+  instead of the canonical `uses_count_pseudocount` class attribute). The scatter plot
+  now reads directly from `LogCountsPearsonCorrCoef`'s accumulated `preds_list`/`targets_list`,
+  ensuring correct pseudocount handling for all loss families including DalmatianLoss.
 - **`PomeranianMetricCollection` and `BPNetMetricCollection` now accept `log_counts_include_pseudocount`**:
   Both model-specific MetricCollections were missing the `log_counts_include_pseudocount` parameter,
   causing `TypeError` when `instantiate_metrics_and_loss()` passed it from `propagate_pseudocount()`.

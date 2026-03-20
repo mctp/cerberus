@@ -1,3 +1,4 @@
+import tempfile
 import pytest
 import torch
 import torch.nn as nn
@@ -73,7 +74,12 @@ def test_on_validation_epoch_end(base_config):
     model = DummyModel()
     module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=base_config)
     module.log_dict = MagicMock()
-    
+    mock_trainer = MagicMock()
+    mock_trainer.is_global_zero = True
+    mock_trainer.sanity_checking = False
+    mock_trainer.current_epoch = 0
+    module._trainer = mock_trainer
+
     # Simulate some updates
     # Use larger batch and length to avoid zero variance in Pearson calculations
     # Small batch size causes instability in LogCountsPearsonCorrCoef (vector length = batch size)
@@ -81,11 +87,13 @@ def test_on_validation_epoch_end(base_config):
     targets = torch.abs(torch.randn(10, 1, 10))
     # Use ProfileLogRates as DummyModel produces them, and metrics now support them
     module.val_metrics.update(ProfileLogRates(log_rates=preds), targets)
-    
-    module.on_validation_epoch_end()
-    
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        mock_trainer.logger.log_dir = tmp_dir
+        module.on_validation_epoch_end()
+
     module.log_dict.assert_called()
-    
+
     # Check arguments
     args, kwargs = module.log_dict.call_args
     metrics_arg = args[0]

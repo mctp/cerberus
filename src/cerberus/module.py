@@ -9,7 +9,6 @@ from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
 from cerberus.loss import CerberusLoss
-from cerberus.output import compute_total_log_counts, compute_obs_log_counts
 from cerberus.plots import save_count_scatter
 from cerberus.config import (
     TrainConfig,
@@ -25,7 +24,6 @@ from cerberus.config import (
     validate_sampler_config,
     import_class,
     propagate_pseudocount,
-    get_log_count_params,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,11 +79,6 @@ class CerberusModule(pl.LightningModule):
         
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")
-
-        # Accumulators for the per-epoch validation scatter plot.
-        # Populated in _shared_step (val only, rank 0) and cleared in on_validation_epoch_end.
-        self._val_log_count_preds: list[torch.Tensor] = []
-        self._val_log_count_targets: list[torch.Tensor] = []
 
         logger.info(f"Initialized CerberusModule with model: {model.__class__.__name__}")
 
@@ -165,10 +158,6 @@ class CerberusModule(pl.LightningModule):
             
         metric_collection.update(outputs_detached, targets.detach())
 
-        # Accumulate log counts for the validation scatter plot (rank 0 only)
-        if prefix == "val_" and self.trainer.is_global_zero:
-            self._accumulate_log_counts(outputs_detached, targets.detach())
-
         return loss
 
     def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
@@ -183,63 +172,34 @@ class CerberusModule(pl.LightningModule):
         self.log_dict(metrics, sync_dist=True)
         self.train_metrics.reset()
         
-    def _accumulate_log_counts(self, outputs: Any, targets: torch.Tensor) -> None:
-        """
-        Accumulate predicted and target log counts for the epoch-end scatter plot.
+    def on_validation_epoch_end(self) -> None:
+        # Extract scatter plot data from the LogCountsPearsonCorrCoef metric
+        # *before* compute()/reset() clears the accumulated state.
+        scatter_preds = None
+        scatter_targets = None
+        if self.trainer.is_global_zero and not self.trainer.sanity_checking:
+            pearson_key = "pearson_log_counts"
+            if pearson_key in self.val_metrics:
+                pearson_metric = self.val_metrics[pearson_key]
+                preds_list = pearson_metric.preds_list  # type: ignore[union-attr]
+                targets_list = pearson_metric.targets_list  # type: ignore[union-attr]
+                if isinstance(preds_list, torch.Tensor):
+                    scatter_preds = preds_list.cpu().float().numpy()
+                    scatter_targets = targets_list.cpu().float().numpy()  # type: ignore[union-attr]
+                elif preds_list:
+                    scatter_preds = torch.cat(preds_list).cpu().float().numpy()  # type: ignore[arg-type]
+                    scatter_targets = torch.cat(targets_list).cpu().float().numpy()  # type: ignore[arg-type]
 
-        Silently skips output types not supported by compute_total_log_counts
-        (e.g. raw-tensor or tuple outputs from non-standard models).
-
-        Uses ``get_log_count_params`` (class-attribute dispatch via
-        ``uses_count_pseudocount``) to determine whether predictions live in
-        offset-log space (MSE/Dalmatian) or pure-log space (Poisson/NB), and
-        applies the matching transform to targets.
-
-        Args:
-            outputs: Detached model output (ModelOutput subclass or other).
-            targets: Detached target tensor, shape (B, C, L).
-        """
-        try:
-            log_counts_include_pseudocount, pseudocount = get_log_count_params(
-                self.hparams["model_config"]
-            )
-            pred_lc = compute_total_log_counts(
-                outputs,
-                log_counts_include_pseudocount=log_counts_include_pseudocount,
-                pseudocount=pseudocount,
-            )                                                                        # (B,)
-            # Targets are already scaled (from the dataloader).  For pure-log
-            # (Poisson/NB) pseudocount is 0; clamp_min(1) avoids log(0).
-            total = targets.sum(dim=(1, 2), dtype=torch.float32)
-            target_lc = torch.log((total + pseudocount).clamp_min(1.0))              # (B,)
-            self._val_log_count_preds.append(pred_lc.cpu())
-            self._val_log_count_targets.append(target_lc.cpu())
-        # TODO: consider restricting to ValueError only — AttributeError,
-        # TypeError, and IndexError may indicate real bugs that should surface.
-        except (ValueError, AttributeError, TypeError, IndexError) as e:
-            if not getattr(self, "_log_count_warning_emitted", False):
-                logger.debug(
-                    f"Skipping log-count accumulation: {type(e).__name__}: {e}"
-                )
-                self._log_count_warning_emitted = True
-
-    def on_validation_epoch_end(self):
-        # Log aggregated metrics
+        # Log aggregated metrics, then reset
         metrics = self.val_metrics.compute()
         self.log_dict(metrics, sync_dist=True)
         self.val_metrics.reset()
 
-        # Generate count scatter plot (rank 0 only; skip Lightning's 2-batch sanity check)
-        if (self._val_log_count_preds
-                and self.trainer.is_global_zero
-                and not self.trainer.sanity_checking):
-            all_preds = torch.cat(self._val_log_count_preds).float().numpy()
-            all_targets = torch.cat(self._val_log_count_targets).float().numpy()
+        # Write scatter plot (after metric bookkeeping)
+        if scatter_preds is not None and scatter_targets is not None:
             trainer_log_dir = getattr(self.trainer.logger, "log_dir", None)
             save_dir = trainer_log_dir or self.trainer.default_root_dir or "."
-            save_count_scatter(all_preds, all_targets, save_dir, self.current_epoch)
-        self._val_log_count_preds = []
-        self._val_log_count_targets = []
+            save_count_scatter(scatter_preds, scatter_targets, save_dir, self.current_epoch)
 
 
 def configure_callbacks(
