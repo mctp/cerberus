@@ -199,26 +199,37 @@ class LogCountsMeanSquaredError(MeanSquaredError):
     1. Predicted Log Counts (from log_counts or logsumexp of log_rates)
     2. Target Log Counts: log(sum(targets) + count_pseudocount)
     """
-    def __init__(self, count_per_channel=False, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, count_per_channel=False, log1p_targets=False, count_pseudocount=1.0, log_counts_include_pseudocount=False, **kwargs):
         super().__init__(**kwargs)
         self.count_per_channel = count_per_channel
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
+        self.log_counts_include_pseudocount = log_counts_include_pseudocount
 
-    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
+    def _aggregate_pred_log_counts(self, preds: ProfileCountOutput | ProfileLogRates) -> torch.Tensor:
+        """Extract and aggregate predicted log-counts from model output."""
         if isinstance(preds, ProfileCountOutput):
             pred_log_counts = preds.log_counts
-            # If we want global count but have per-channel counts, aggregate them
             if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
-                pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
+                if self.log_counts_include_pseudocount:
+                    # Invert per-channel offset-log, sum, reapply to avoid
+                    # log(total + C*p) that logsumexp would give.
+                    total = (torch.exp(pred_log_counts.float()) - self.count_pseudocount).clamp_min(0.0).sum(dim=1)
+                    pred_log_counts = torch.log(total + self.count_pseudocount)
+                else:
+                    pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
+            return pred_log_counts
 
         elif isinstance(preds, ProfileLogRates):
             if self.count_per_channel:
-                pred_log_counts = torch.logsumexp(preds.log_rates.float(), dim=2)
+                return torch.logsumexp(preds.log_rates.float(), dim=2)
             else:
-                pred_log_counts = torch.logsumexp(preds.log_rates.float().flatten(start_dim=1), dim=-1)
-        else:
-             raise TypeError("LogCountsMeanSquaredError requires ProfileCountOutput or ProfileLogRates")
+                return torch.logsumexp(preds.log_rates.float().flatten(start_dim=1), dim=-1)
+
+        raise TypeError("requires ProfileCountOutput or ProfileLogRates")
+
+    def update(self, preds: ProfileCountOutput | ProfileLogRates, target: torch.Tensor): # type: ignore[override]
+        pred_log_counts = self._aggregate_pred_log_counts(preds)
 
         target = target.float()
         if self.log1p_targets:
@@ -251,11 +262,12 @@ class LogCountsPearsonCorrCoef(Metric):
     preds_list: list[torch.Tensor]
     targets_list: list[torch.Tensor]
 
-    def __init__(self, count_per_channel=False, log1p_targets=False, count_pseudocount=1.0, **kwargs):
+    def __init__(self, count_per_channel=False, log1p_targets=False, count_pseudocount=1.0, log_counts_include_pseudocount=False, **kwargs):
         super().__init__(**kwargs)
         self.count_per_channel = count_per_channel
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
+        self.log_counts_include_pseudocount = log_counts_include_pseudocount
         self.add_state("preds_list", default=[], dist_reduce_fx="cat")
         self.add_state("targets_list", default=[], dist_reduce_fx="cat")
 
@@ -263,7 +275,11 @@ class LogCountsPearsonCorrCoef(Metric):
         if isinstance(preds, ProfileCountOutput):
             pred_log_counts = preds.log_counts
             if not self.count_per_channel and pred_log_counts.ndim == 2 and pred_log_counts.shape[1] > 1:
-                pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
+                if self.log_counts_include_pseudocount:
+                    total = (torch.exp(pred_log_counts.float()) - self.count_pseudocount).clamp_min(0.0).sum(dim=1)
+                    pred_log_counts = torch.log(total + self.count_pseudocount)
+                else:
+                    pred_log_counts = torch.logsumexp(pred_log_counts.float(), dim=1)
         elif isinstance(preds, ProfileLogRates):
             if self.count_per_channel:
                 pred_log_counts = torch.logsumexp(preds.log_rates.float(), dim=2)
@@ -317,12 +333,12 @@ class DefaultMetricCollection(MetricCollection):
     Default MetricCollection used for training/validation.
     Includes Pearson Correlation, Profile MSE, and Log Counts MSE.
     """
-    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0):
+    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, log_counts_include_pseudocount: bool = False):
         super().__init__({
             "pearson": ProfilePearsonCorrCoef(log1p_targets=log1p_targets),
             # MSE is element-wise, so Global MSE is equivalent to Mean Per-Channel MSE
             # (assuming equal number of elements per channel). Thus no custom flattening is needed.
             "mse_profile": ProfileMeanSquaredError(log1p_targets=log1p_targets),
-            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
+            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount, log_counts_include_pseudocount=log_counts_include_pseudocount),
+            "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount, log_counts_include_pseudocount=log_counts_include_pseudocount),
         })

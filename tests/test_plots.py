@@ -5,11 +5,21 @@ import numpy as np
 import torch
 import pytest
 
+from typing import cast
 from cerberus.plots import save_count_scatter
 from cerberus.module import CerberusModule
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.metrics import DefaultMetricCollection
 from cerberus.output import ProfileLogRates
+from cerberus.config import ModelConfig
+
+# Minimal model_config for tests that need _accumulate_log_counts dispatch.
+_POISSON_MODEL_CONFIG = cast(ModelConfig, {
+    "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
+    "loss_args": {},
+    "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
+    "metrics_args": {},
+})
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +91,7 @@ def test_validation_step_accumulates_log_counts(_base_config):
         criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
         metrics=DefaultMetricCollection(),
         train_config=_base_config,
+        model_config=_POISSON_MODEL_CONFIG,
     )
     module.log = MagicMock()
     mock_trainer = MagicMock()
@@ -106,6 +117,7 @@ def test_on_validation_epoch_end_saves_scatter(_base_config):
         criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
         metrics=DefaultMetricCollection(),
         train_config=_base_config,
+        model_config=_POISSON_MODEL_CONFIG,
     )
     module.log = MagicMock()
     module.log_dict = MagicMock()
@@ -142,6 +154,7 @@ def test_on_validation_epoch_end_skips_scatter_during_sanity_check(_base_config)
         criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
         metrics=DefaultMetricCollection(),
         train_config=_base_config,
+        model_config=_POISSON_MODEL_CONFIG,
     )
     module.log_dict = MagicMock()
 
@@ -174,6 +187,7 @@ def test_on_validation_epoch_end_handles_bfloat16(_base_config):
         criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
         metrics=DefaultMetricCollection(),
         train_config=_base_config,
+        model_config=_POISSON_MODEL_CONFIG,
     )
     module.log = MagicMock()
     module.log_dict = MagicMock()

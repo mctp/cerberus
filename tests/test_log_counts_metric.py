@@ -172,3 +172,67 @@ def test_log_counts_mse_pseudocount_stored():
     """count_pseudocount is accessible as an attribute."""
     metric = LogCountsMeanSquaredError(count_pseudocount=42.0)
     assert metric.count_pseudocount == 42.0
+
+
+def test_log_counts_mse_multichannel_offset_log():
+    """Multi-channel aggregation in offset-log space must use invert-sum-reapply.
+
+    Without log_counts_include_pseudocount=True, logsumexp gives
+    log(c0 + c1 + 2*p) instead of the correct log(c0 + c1 + p).
+    """
+    from cerberus.metrics import LogCountsPearsonCorrCoef
+
+    p = 150.0
+    c0, c1 = 1000.0, 2000.0
+    total = c0 + c1  # 3000
+
+    # Per-channel log_counts in offset-log space: log(count + p)
+    pred_log_counts = torch.log(torch.tensor([[c0 + p, c1 + p]]))  # (1, 2)
+    out = ProfileCountOutput(logits=torch.zeros(1, 2, 10), log_counts=pred_log_counts)
+
+    # Target: total = 3000, target_log = log(3000 + 150) = log(3150)
+    targets = torch.zeros(1, 2, 10)
+    targets[0, 0, 0] = c0
+    targets[0, 1, 0] = c1
+
+    # --- With the fix (log_counts_include_pseudocount=True): MSE should be 0 ---
+    metric_fixed = LogCountsMeanSquaredError(
+        count_pseudocount=p, log_counts_include_pseudocount=True,
+    )
+    metric_fixed.update(out, targets)
+    val_fixed = metric_fixed.compute()
+    assert torch.isclose(val_fixed, torch.tensor(0.0), atol=1e-5), (
+        f"Invert-sum-reapply should give zero MSE, got {val_fixed.item()}"
+    )
+
+    # --- Without the fix (log_counts_include_pseudocount=False): MSE > 0 ---
+    metric_broken = LogCountsMeanSquaredError(
+        count_pseudocount=p, log_counts_include_pseudocount=False,
+    )
+    metric_broken.update(out, targets)
+    val_broken = metric_broken.compute()
+    # logsumexp gives log(c0+p + c1+p) = log(total + 2p) = log(3300)
+    # target is log(total + p) = log(3150)
+    expected_broken = (torch.log(torch.tensor(total + 2 * p)) - torch.log(torch.tensor(total + p))) ** 2
+    assert torch.isclose(val_broken, expected_broken, atol=1e-5), (
+        f"Plain logsumexp should give non-zero MSE, got {val_broken.item()}"
+    )
+    assert val_broken > 1e-5, "Bug should be measurable"
+
+    # --- Same test for LogCountsPearsonCorrCoef: verify it doesn't crash ---
+    pearson = LogCountsPearsonCorrCoef(
+        count_pseudocount=p, log_counts_include_pseudocount=True,
+    )
+    # Need >1 example for correlation
+    targets2 = torch.zeros(2, 2, 10)
+    targets2[0, 0, 0] = c0
+    targets2[0, 1, 0] = c1
+    targets2[1, 0, 0] = 500.0
+    targets2[1, 1, 0] = 800.0
+    pred2 = torch.log(torch.tensor([[c0 + p, c1 + p], [500 + p, 800 + p]]))
+    out2 = ProfileCountOutput(logits=torch.zeros(2, 2, 10), log_counts=pred2)
+    pearson.update(out2, targets2)
+    r = pearson.compute()
+    assert torch.isclose(r, torch.tensor(1.0), atol=1e-4), (
+        f"Perfect predictions should give r≈1, got {r.item()}"
+    )

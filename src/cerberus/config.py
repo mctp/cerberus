@@ -876,6 +876,7 @@ def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) ->
     loss_args.setdefault("count_pseudocount", scaled_pseudocount)
     metrics_args = {**model_config["metrics_args"]}
     metrics_args.setdefault("count_pseudocount", scaled_pseudocount)
+    metrics_args.setdefault("log_counts_include_pseudocount", loss_cls.uses_count_pseudocount)
     return {**model_config, "loss_args": loss_args, "metrics_args": metrics_args}
 
 

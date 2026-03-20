@@ -9,7 +9,7 @@ from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
 from cerberus.loss import CerberusLoss
-from cerberus.output import compute_total_log_counts
+from cerberus.output import compute_total_log_counts, compute_obs_log_counts
 from cerberus.plots import save_count_scatter
 from cerberus.config import (
     TrainConfig,
@@ -25,6 +25,7 @@ from cerberus.config import (
     validate_sampler_config,
     import_class,
     propagate_pseudocount,
+    get_log_count_params,
 )
 
 logger = logging.getLogger(__name__)
@@ -189,21 +190,28 @@ class CerberusModule(pl.LightningModule):
         Silently skips output types not supported by compute_total_log_counts
         (e.g. raw-tensor or tuple outputs from non-standard models).
 
+        Uses ``get_log_count_params`` (class-attribute dispatch via
+        ``uses_count_pseudocount``) to determine whether predictions live in
+        offset-log space (MSE/Dalmatian) or pure-log space (Poisson/NB), and
+        applies the matching transform to targets.
+
         Args:
             outputs: Detached model output (ModelOutput subclass or other).
             targets: Detached target tensor, shape (B, C, L).
         """
         try:
-            pseudocount = getattr(self.criterion, "count_pseudocount", 1.0)
-            # MSE losses predict log(count + pseudocount); Poisson/NB predict log(count).
-            # Only MSE losses carry count_pseudocount; its presence signals the offset space.
-            log_counts_include_pseudocount = hasattr(self.criterion, "count_pseudocount")
+            log_counts_include_pseudocount, pseudocount = get_log_count_params(
+                self.hparams["model_config"]
+            )
             pred_lc = compute_total_log_counts(
                 outputs,
                 log_counts_include_pseudocount=log_counts_include_pseudocount,
                 pseudocount=pseudocount,
             )                                                                        # (B,)
-            target_lc = torch.log(targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount)            # (B,)
+            # Targets are already scaled (from the dataloader).  For pure-log
+            # (Poisson/NB) pseudocount is 0; clamp_min(1) avoids log(0).
+            total = targets.sum(dim=(1, 2), dtype=torch.float32)
+            target_lc = torch.log((total + pseudocount).clamp_min(1.0))              # (B,)
             self._val_log_count_preds.append(pred_lc.cpu())
             self._val_log_count_targets.append(target_lc.cpu())
         # TODO: consider restricting to ValueError only — AttributeError,

@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `export_predictions.py`: replaced `isinstance` + `getattr` pseudocount
   detection with `get_log_count_params`; uses `compute_obs_log_counts`.
 
+### Fixed
+- **Multi-channel log-count metric aggregation**: `LogCountsMeanSquaredError` and
+  `LogCountsPearsonCorrCoef` now correctly aggregate multi-channel
+  `ProfileCountOutput` predictions in offset-log space. Previously used plain
+  `logsumexp` which gave `log(total + C*pseudocount)` instead of the correct
+  `log(total + pseudocount)`. Added `log_counts_include_pseudocount` parameter
+  to both metrics and `DefaultMetricCollection`; `propagate_pseudocount` now
+  injects the flag automatically.
+
 ## [0.9.4] - 2026-03-19
 
 ### Added
