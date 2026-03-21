@@ -7,7 +7,7 @@ allowing users to provide any BigWig and BED file for training.
 
 Models:
 - ConvNeXtDCNN (Default): ConvNeXtV2 stem + Basenji-style dilated residual tower.
-  Input 2048bp → Output 512 bins at 4bp resolution (2048bp coverage).
+  Input 2048bp -> Output 512 bins at 4bp resolution (2048bp coverage).
 
 Usage:
     python tools/train_asap.py --bigwig path/to/signal.bw --peaks path/to/peaks.narrowPeak --output-dir models/my_model
@@ -23,7 +23,10 @@ from pprint import pformat
 # Cerberus imports
 import cerberus
 from cerberus.download import download_human_reference
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig, PretrainedConfig
+from cerberus.config import (
+    GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig,
+    PretrainedConfig, FoldArgs, PeakSamplerArgs,
+)
 from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
@@ -141,12 +144,12 @@ def main():
         exclude_intervals["gaps"] = gaps_path
 
     # Genome Config
-    genome_config: GenomeConfig = create_genome_config(
+    genome_config = create_genome_config(
         name=args.genome,
         fasta_path=fasta_path,
         species=args.species,
         fold_type="chrom_partition",
-        fold_args={"k": 5, "val_fold": args.val_fold, "test_fold": args.test_fold},
+        fold_args=FoldArgs(k=5, val_fold=args.val_fold, test_fold=args.test_fold),
         exclude_intervals=exclude_intervals
     )
 
@@ -155,72 +158,74 @@ def main():
     output_len = args.output_len
     output_bin_size = args.output_bin_size
     max_jitter = args.jitter
+    target_scale = args.target_scale
 
-    data_config: DataConfig = {
-        "inputs": {},
-        "targets": {"signal": args.bigwig},
-        "input_len": input_len,
-        "output_len": output_len,
-        "max_jitter": max_jitter,
-        "output_bin_size": output_bin_size,
-        "encoding": "ACGT",
-        "log_transform": True,  # ASAP trains on log(x+1) data
-        "reverse_complement": True,  # Augmentation
-        "use_sequence": True,
-        "target_scale": args.target_scale,
-        "count_pseudocount": args.count_pseudocount,
-    }
+    data_config = DataConfig(
+        inputs={},
+        targets={"signal": args.bigwig},
+        input_len=input_len,
+        output_len=output_len,
+        max_jitter=max_jitter,
+        output_bin_size=output_bin_size,
+        encoding="ACGT",
+        log_transform=True,  # ASAP trains on log(x+1) data
+        reverse_complement=True,  # Augmentation
+        use_sequence=True,
+        target_scale=target_scale,
+    )
 
     # Sampler Config - Peak Intervals
     padded_size = input_len + 2 * max_jitter
     logging.info(f"Using Peak Sampler (Positives + Negatives) with padded_size={padded_size}...")
 
-    sampler_config: SamplerConfig = {
-        "sampler_type": "peak",
-        "padded_size": padded_size,
-        "sampler_args": {
-            "intervals_path": args.peaks,
-            "background_ratio": args.background_ratio,
-        }
-    }
+    sampler_config = SamplerConfig(
+        sampler_type="peak",
+        padded_size=padded_size,
+        sampler_args=PeakSamplerArgs(
+            intervals_path=args.peaks,
+            background_ratio=args.background_ratio,
+        ),
+    )
 
     # Train Config
-    train_config: TrainConfig = {
-        "batch_size": args.batch_size,
-        "max_epochs": args.max_epochs,
-        "learning_rate": args.learning_rate,
-        "weight_decay": args.weight_decay,
-        "patience": args.patience,
-        "optimizer": args.optimizer,
-        "filter_bias_and_bn": True,
-        "reload_dataloaders_every_n_epochs": 0,
-        "scheduler_type": args.scheduler_type,
-        "scheduler_args": {
+    train_config = TrainConfig(
+        batch_size=args.batch_size,
+        max_epochs=args.max_epochs,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        patience=args.patience,
+        optimizer=args.optimizer,
+        filter_bias_and_bn=True,
+        reload_dataloaders_every_n_epochs=0,
+        scheduler_type=args.scheduler_type,
+        scheduler_args={
             "num_epochs": args.max_epochs,
             "warmup_epochs": args.warmup_epochs,
             "min_lr": args.min_lr,
         },
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    }
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
 
     # Model Config
     logging.info("Using ConvNeXtDCNN (ASAP) Model...")
     pretrained: list[PretrainedConfig] = []
     if args.pretrained:
-        pretrained.append({"weights_path": args.pretrained, "source": None, "target": None, "freeze": False})
+        pretrained.append(PretrainedConfig(
+            weights_path=args.pretrained, source=None, target=None, freeze=False,
+        ))
 
-    model_config: ModelConfig = {
-        "name": "ConvNeXtDCNN",
-        "model_cls": "cerberus.models.asap.ConvNeXtDCNN",
-        "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
-        "loss_args": {
+    model_config = ModelConfig(
+        name="ConvNeXtDCNN",
+        model_cls="cerberus.models.asap.ConvNeXtDCNN",
+        loss_cls="cerberus.loss.ProfilePoissonNLLLoss",
+        loss_args={
             "log_input": True,
             "log1p_targets": True,
         },
-        "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
-        "metrics_args": {},
-        "model_args": {
+        metrics_cls="cerberus.metrics.DefaultMetricCollection",
+        metrics_args={},
+        model_args={
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
             "residual_blocks": args.residual_blocks,
@@ -228,8 +233,9 @@ def main():
             "filters1": args.filters1,
             "dropout": args.dropout,
         },
-        "pretrained": pretrained,
-    }
+        pretrained=pretrained,
+        count_pseudocount=args.count_pseudocount * target_scale,
+    )
 
     # 3. Training
     # Handle devices argument

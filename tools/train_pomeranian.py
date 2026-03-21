@@ -23,7 +23,10 @@ from pprint import pformat
 # Cerberus imports
 import cerberus
 from cerberus.download import download_human_reference
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig, PretrainedConfig
+from cerberus.config import (
+    GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig,
+    PretrainedConfig, FoldArgs, PeakSamplerArgs,
+)
 from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
@@ -41,18 +44,18 @@ def _parse_alpha(value: str) -> "float | str":
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train Pomeranian models with Cerberus using any BigWig and BED file")
-    
+
     # Input files
     parser.add_argument("--bigwig", type=str, required=True, help="Path to the BigWig file (signal)")
     parser.add_argument("--peaks", type=str, required=True, help="Path to the BED/narrowPeak file (training regions)")
-    
+
     # Genome arguments
     parser.add_argument("--genome", type=str, default="hg38", help="Genome name (default: hg38)")
     parser.add_argument("--species", type=str, default="human", help="Species (default: human)")
     parser.add_argument("--fasta", type=str, help="Path to genome FASTA file (if not provided, will try to download for hg38)")
     parser.add_argument("--blacklist", type=str, help="Path to blacklist file")
     parser.add_argument("--gaps", type=str, help="Path to gaps file")
-    
+
     # Script arguments
     parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data (e.g., genome reference)")
     parser.add_argument("--output-dir", type=str, required=True, help="Root directory for logs and checkpoints")
@@ -61,12 +64,12 @@ def get_args():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for data sampling (default: 42)")
     parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
     parser.add_argument("--silent", action="store_true", help="Disable tqdm progress bar during training")
-    
+
     # Mode arguments
     parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
     parser.add_argument("--val-fold", type=int, default=1, help="Validation fold (for single-fold training)")
     parser.add_argument("--test-fold", type=int, default=0, help="Test fold")
-    
+
     # Model variants
     parser.add_argument("--k5", action="store_true", help="Use PomeranianK5 (Medium Kernel Variant)")
 
@@ -95,7 +98,7 @@ def get_args():
     parser.add_argument("--scheduler-type", type=str, default="cosine", help="Learning rate scheduler type")
     parser.add_argument("--warmup-epochs", type=int, default=10, help="Number of warmup epochs")
     parser.add_argument("--min-lr", type=float, default=5e-6, help="Minimum learning rate")
-    
+
     # Hardware arguments
     parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
     parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
@@ -103,7 +106,7 @@ def get_args():
                         help="Precision strategy: 'bf16' for NVIDIA bf16-mixed (default), "
                              "'mps' for Apple Silicon fp16-mixed, "
                              "'full' for safest float32 (32-true, matmul=highest, no compile)")
-    
+
     return parser.parse_args()
 
 def main():
@@ -112,18 +115,18 @@ def main():
     logging.info("Starting Generic Pomeranian training tool...")
 
     args = get_args()
-    
+
     # Setup directories
     data_dir = Path(args.data_dir).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
-    
+
     output_dir = Path(args.output_dir).resolve()
     if args.multi:
         output_dir = output_dir / "multi-fold"
     else:
         output_dir = output_dir / "single-fold"
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     logging.info(f"Data Directory: {data_dir}")
     logging.info(f"Output Directory: {output_dir}")
 
@@ -143,7 +146,7 @@ def main():
         gaps_path = Path(args.gaps) if args.gaps else None
 
     # 2. Configuration
-    
+
     # Build exclude_intervals dict, filtering out None values
     exclude_intervals = {}
     if blacklist_path:
@@ -152,12 +155,12 @@ def main():
         exclude_intervals["gaps"] = gaps_path
 
     # Genome Config
-    genome_config: GenomeConfig = create_genome_config(
+    genome_config = create_genome_config(
         name=args.genome,
         fasta_path=fasta_path,
         species=args.species,
         fold_type="chrom_partition",
-        fold_args={"k": 5, "val_fold": args.val_fold, "test_fold": args.test_fold},
+        fold_args=FoldArgs(k=5, val_fold=args.val_fold, test_fold=args.test_fold),
         exclude_intervals=exclude_intervals
     )
 
@@ -166,54 +169,54 @@ def main():
     output_len = args.output_len
     output_bin_size = 1
     max_jitter = args.jitter
+    target_scale = args.target_scale
 
-    data_config: DataConfig = {
-        "inputs": {}, 
-        "targets": {"signal": args.bigwig},
-        "input_len": input_len,
-        "output_len": output_len, 
-        "max_jitter": max_jitter,
-        "output_bin_size": output_bin_size,
-        "encoding": "ACGT",
-        "log_transform": False, # Uses raw counts for multinomial loss
-        "reverse_complement": True, # Augmentation
-        "use_sequence": True,
-        "target_scale": args.target_scale,
-        "count_pseudocount": args.count_pseudocount,
-    }
+    data_config = DataConfig(
+        inputs={},
+        targets={"signal": args.bigwig},
+        input_len=input_len,
+        output_len=output_len,
+        max_jitter=max_jitter,
+        output_bin_size=output_bin_size,
+        encoding="ACGT",
+        log_transform=False, # Uses raw counts for multinomial loss
+        reverse_complement=True, # Augmentation
+        use_sequence=True,
+        target_scale=target_scale,
+    )
 
     # Sampler Config - Peak Intervals
     padded_size = input_len + 2 * max_jitter
     logging.info(f"Using Peak Sampler (Positives + Negatives) with padded_size={padded_size}...")
-    
-    sampler_config: SamplerConfig = {
-        "sampler_type": "peak",
-        "padded_size": padded_size,
-        "sampler_args": {
-            "intervals_path": args.peaks,
-            "background_ratio": args.background_ratio,
-        }
-    }
+
+    sampler_config = SamplerConfig(
+        sampler_type="peak",
+        padded_size=padded_size,
+        sampler_args=PeakSamplerArgs(
+            intervals_path=args.peaks,
+            background_ratio=args.background_ratio,
+        ),
+    )
 
     # Train Config
-    train_config: TrainConfig = {
-        "batch_size": args.batch_size,
-        "max_epochs": args.max_epochs,
-        "learning_rate": args.learning_rate,
-        "weight_decay": args.weight_decay,
-        "patience": args.patience,
-        "optimizer": args.optimizer,
-        "filter_bias_and_bn": True,
-        "reload_dataloaders_every_n_epochs": 0,
-        "scheduler_type": args.scheduler_type,
-        "scheduler_args": {
+    train_config = TrainConfig(
+        batch_size=args.batch_size,
+        max_epochs=args.max_epochs,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        patience=args.patience,
+        optimizer=args.optimizer,
+        filter_bias_and_bn=True,
+        reload_dataloaders_every_n_epochs=0,
+        scheduler_type=args.scheduler_type,
+        scheduler_args={
             "num_epochs": args.max_epochs,
             "warmup_epochs": args.warmup_epochs,
-            "min_lr": args.min_lr
+            "min_lr": args.min_lr,
         },
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    }
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
 
     # Model Config
     if args.k5:
@@ -270,18 +273,21 @@ def main():
 
     pretrained: list[PretrainedConfig] = []
     if args.pretrained:
-        pretrained.append({"weights_path": args.pretrained, "source": None, "target": None, "freeze": False})
+        pretrained.append(PretrainedConfig(
+            weights_path=args.pretrained, source=None, target=None, freeze=False,
+        ))
 
-    model_config: ModelConfig = {
-        "name": model_name,
-        "model_cls": model_cls_name,
-        "loss_cls": loss_cls,
-        "loss_args": loss_args,
-        "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
-        "metrics_args": {},
-        "model_args": model_args,
-        "pretrained": pretrained,
-    }
+    model_config = ModelConfig(
+        name=model_name,
+        model_cls=model_cls_name,
+        loss_cls=loss_cls,
+        loss_args=loss_args,
+        metrics_cls="cerberus.models.pomeranian.PomeranianMetricCollection",
+        metrics_args={},
+        model_args=model_args,
+        pretrained=pretrained,
+        count_pseudocount=args.count_pseudocount * target_scale,
+    )
 
     # 3. Training
     # Handle devices argument
@@ -304,7 +310,7 @@ def main():
         logging.info("Using Apple Silicon (MPS) acceleration.")
         if num_workers > 0:
             logging.warning("num_workers=%d may cause instability on MPS. Recommend setting --num-workers 0.", num_workers)
-    
+
     # Precision settings
     if args.precision == "full":
         # Safest full float32 — no reduced precision, no compile, no cuDNN benchmark.

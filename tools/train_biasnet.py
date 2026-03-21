@@ -9,7 +9,7 @@ regions only, matching the ChromBPNet bias-model training paradigm.
 BiasNet is fully DeepLIFT/DeepSHAP compatible (Conv1d + ReLU + residual add only).
 
 Default configuration (matching exp19f):
-  - Filters: 12, Stem: [11, 11], Body: 5 × (k=9, d=1), Head: k=45 linear
+  - Filters: 12, Stem: [11, 11], Body: 5 x (k=9, d=1), Head: k=45 linear
   - RF: 105bp, ~9.3K params
   - Loss: MSEMultinomialLoss (count_weight=adaptive)
   - Sampler: negative_peak (background regions only)
@@ -39,7 +39,10 @@ from pprint import pformat
 
 import cerberus
 from cerberus.download import download_human_reference
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig, PretrainedConfig
+from cerberus.config import (
+    GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig,
+    PretrainedConfig, FoldArgs, PeakSamplerArgs, NegativePeakSamplerArgs,
+)
 from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
 
@@ -189,12 +192,12 @@ def main():
     if gaps_path:
         exclude_intervals["gaps"] = gaps_path
 
-    genome_config: GenomeConfig = create_genome_config(
+    genome_config = create_genome_config(
         name=args.genome,
         fasta_path=fasta_path,
         species=args.species,
         fold_type="chrom_partition",
-        fold_args={"k": 5, "val_fold": args.val_fold, "test_fold": args.test_fold},
+        fold_args=FoldArgs(k=5, val_fold=args.val_fold, test_fold=args.test_fold),
         exclude_intervals=exclude_intervals,
     )
 
@@ -214,49 +217,58 @@ def main():
 
     max_jitter = args.jitter
     padded_size = input_len + 2 * max_jitter
+    target_scale = args.target_scale
 
-    data_config: DataConfig = {
-        "inputs": {},
-        "targets": {"signal": args.bigwig},
-        "input_len": input_len,
-        "output_len": output_len,
-        "max_jitter": max_jitter,
-        "output_bin_size": 1,
-        "encoding": "ACGT",
-        "log_transform": False,
-        "reverse_complement": True,
-        "use_sequence": True,
-        "target_scale": args.target_scale,
-        "count_pseudocount": args.count_pseudocount,
-    }
+    data_config = DataConfig(
+        inputs={},
+        targets={"signal": args.bigwig},
+        input_len=input_len,
+        output_len=output_len,
+        max_jitter=max_jitter,
+        output_bin_size=1,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=True,
+        use_sequence=True,
+        target_scale=target_scale,
+    )
 
-    sampler_config: SamplerConfig = {
-        "sampler_type": args.sampler_type,
-        "padded_size": padded_size,
-        "sampler_args": {
-            "intervals_path": args.peaks,
-            "background_ratio": args.background_ratio,
-        },
-    }
+    # Build the appropriate sampler args based on sampler type
+    if args.sampler_type == "negative_peak":
+        sampler_args_obj = NegativePeakSamplerArgs(
+            intervals_path=args.peaks,
+            background_ratio=args.background_ratio,
+        )
+    else:
+        sampler_args_obj = PeakSamplerArgs(
+            intervals_path=args.peaks,
+            background_ratio=args.background_ratio,
+        )
 
-    train_config: TrainConfig = {
-        "batch_size": args.batch_size,
-        "max_epochs": args.max_epochs,
-        "learning_rate": args.learning_rate,
-        "weight_decay": args.weight_decay,
-        "patience": args.patience,
-        "optimizer": args.optimizer,
-        "filter_bias_and_bn": True,
-        "reload_dataloaders_every_n_epochs": 0,
-        "scheduler_type": args.scheduler_type,
-        "scheduler_args": {
+    sampler_config = SamplerConfig(
+        sampler_type=args.sampler_type,
+        padded_size=padded_size,
+        sampler_args=sampler_args_obj,
+    )
+
+    train_config = TrainConfig(
+        batch_size=args.batch_size,
+        max_epochs=args.max_epochs,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        patience=args.patience,
+        optimizer=args.optimizer,
+        filter_bias_and_bn=True,
+        reload_dataloaders_every_n_epochs=0,
+        scheduler_type=args.scheduler_type,
+        scheduler_args={
             "num_epochs": args.max_epochs,
             "warmup_epochs": args.warmup_epochs,
             "min_lr": args.min_lr,
         },
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    }
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
 
     # Model Config
     model_args = {
@@ -293,23 +305,24 @@ def main():
     # Build pretrained weight configs
     pretrained: list[PretrainedConfig] = []
     if args.pretrained:
-        pretrained.append({
-            "weights_path": args.pretrained,
-            "source": None,
-            "target": None,
-            "freeze": False,
-        })
+        pretrained.append(PretrainedConfig(
+            weights_path=args.pretrained,
+            source=None,
+            target=None,
+            freeze=False,
+        ))
 
-    model_config: ModelConfig = {
-        "name": "BiasNet",
-        "model_cls": "cerberus.models.biasnet.BiasNet",
-        "loss_cls": loss_cls,
-        "loss_args": loss_args,
-        "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
-        "metrics_args": {},
-        "model_args": model_args,
-        "pretrained": pretrained,
-    }
+    model_config = ModelConfig(
+        name="BiasNet",
+        model_cls="cerberus.models.biasnet.BiasNet",
+        loss_cls=loss_cls,
+        loss_args=loss_args,
+        metrics_cls="cerberus.models.pomeranian.PomeranianMetricCollection",
+        metrics_args={},
+        model_args=model_args,
+        pretrained=pretrained,
+        count_pseudocount=args.count_pseudocount * target_scale,
+    )
 
     # 3. Training
     devices = args.devices

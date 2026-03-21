@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **`train.py` migrated to Pydantic attribute access**: All config dict bracket
   access (`config["key"]`) replaced with Pydantic attribute access (`config.key`).
+- **All tools/ scripts migrated from dict-literal config to Pydantic model constructors**:
+  `train_bpnet.py`, `train_biasnet.py`, `train_dalmatian.py`, `train_asap.py`,
+  `train_gopher.py`, `train_pomeranian.py`, and `export_predictions.py` now use
+  `DataConfig(...)`, `SamplerConfig(...)`, `TrainConfig(...)`, `ModelConfig(...)`,
+  `PretrainedConfig(...)`, `FoldArgs(...)`, and typed sampler args
+  (`PeakSamplerArgs`, `NegativePeakSamplerArgs`) instead of plain dict literals.
+  `count_pseudocount` moved from `DataConfig` to `ModelConfig` in scaled units
+  (raw x target_scale). `export_predictions.py` converted from bracket access to
+  Pydantic dot access and uses `model_copy()` for frozen-model target overrides.
   `resolve_adaptive_loss_args` returns a new `ModelConfig` via `model_copy(update=...)`
   instead of dict spread. `_dump_config` serializes configs via `model_dump(mode="json")`
   instead of `default=str`. Genome config fold_args override in `train_single` uses

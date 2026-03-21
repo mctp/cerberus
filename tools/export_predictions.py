@@ -15,7 +15,7 @@ from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
 from cerberus.genome import create_genome_folds
 from cerberus.exclude import get_exclude_intervals
 from cerberus.output import compute_total_log_counts, compute_obs_log_counts
-from cerberus.config import get_log_count_params
+from cerberus.config import get_log_count_params, SamplerConfig, PeakSamplerArgs
 from cerberus.module import instantiate_metrics_and_loss
 
 logger = logging.getLogger(__name__)
@@ -87,20 +87,22 @@ def main():
     # 2. Configure Dataset
     logger.info("Configuring dataset...")
     cerberus_config = ensemble.cerberus_config
-    data_config = cerberus_config["data_config"]
-    genome_config = cerberus_config["genome_config"]
-    model_config = cerberus_config["model_config"]
+    data_config = cerberus_config.data_config
+    genome_config = cerberus_config.genome_config
+    model_config = cerberus_config.model_config_
 
     # Override targets with provided bigwig
-    if not data_config["targets"]:
+    if not data_config.targets:
         raise ValueError("Model configuration has no targets defined.")
 
-    if len(data_config["targets"]) > 1:
-        raise ValueError(f"Model has multiple targets ({list(data_config['targets'].keys())}), which is not supported by this script.")
+    if len(data_config.targets) > 1:
+        raise ValueError(f"Model has multiple targets ({list(data_config.targets.keys())}), which is not supported by this script.")
 
-    # Override the single target
-    key = list(data_config["targets"].keys())[0]
-    data_config["targets"][key] = Path(args.bigwig)
+    # Override the single target — data_config is frozen, so use model_copy
+    key = list(data_config.targets.keys())[0]
+    new_targets = dict(data_config.targets)
+    new_targets[key] = Path(args.bigwig)
+    data_config = data_config.model_copy(update={"targets": new_targets})
     logger.info(f"Overriding target '{key}' with {args.bigwig}")
 
     # Create Dataset
@@ -118,21 +120,20 @@ def main():
     # metrics.json reflects genuine generalisation performance.  Pass --eval-split all to
     # reproduce the old behaviour of scoring every peak regardless of fold membership.
     logger.info(f"Loading peaks from {args.peaks}...")
-    padded_size = data_config["input_len"]
+    padded_size = data_config.input_len
 
     # Build fold definitions — needed for split filtering in every code path.
     folds = create_genome_folds(
-        genome_config["chrom_sizes"],
-        genome_config["fold_type"],
-        genome_config["fold_args"],
+        genome_config.chrom_sizes,
+        genome_config.fold_type,
+        genome_config.fold_args,
     )
-    exclude_intervals = get_exclude_intervals(genome_config["exclude_intervals"])
+    exclude_intervals = get_exclude_intervals(genome_config.exclude_intervals)
 
     # Resolve test_fold / val_fold indices from the stored genome config.
-    # These keys are optional in fold_args (not all fold strategies define them).
-    fold_args = genome_config["fold_args"]
-    test_fold_idx: int | None = fold_args["test_fold"] if "test_fold" in fold_args else None
-    val_fold_idx: int | None = fold_args["val_fold"] if "val_fold" in fold_args else None
+    fold_args = genome_config.fold_args
+    test_fold_idx: int | None = fold_args.test_fold
+    val_fold_idx: int | None = fold_args.val_fold
 
     if args.eval_split != "all" and test_fold_idx is None and val_fold_idx is None:
         raise ValueError(
@@ -144,11 +145,11 @@ def main():
     if args.include_background:
         # Replicate training evaluation: peaks + complexity-matched background.
         # Requires a 'peak' sampler config stored in the model checkpoint.
-        sampler_config = cerberus_config["sampler_config"]
-        if sampler_config["sampler_type"] != "peak":
+        sampler_config = cerberus_config.sampler_config
+        if sampler_config.sampler_type != "peak":
             raise ValueError(
                 f"--include-background only supports 'peak' sampler type, "
-                f"got '{sampler_config['sampler_type']}'. "
+                f"got '{sampler_config.sampler_type}'. "
                 f"Only models trained with PeakSampler can generate complexity-matched background."
             )
 
@@ -156,21 +157,29 @@ def main():
         # Override padded_size to input_len: the stored training padded_size may differ
         # (e.g. larger window for complexity computation), but predict_intervals_batched
         # requires intervals pre-sized to input_len.
-        bg_sampler_args = {**sampler_config["sampler_args"], "intervals_path": Path(args.peaks)}
-        if args.background_ratio is not None:
-            bg_sampler_args["background_ratio"] = args.background_ratio
-        bg_sampler_config = {**sampler_config, "sampler_args": bg_sampler_args, "padded_size": padded_size}
+        orig_sampler_args = sampler_config.sampler_args
+        bg_ratio = args.background_ratio if args.background_ratio is not None else orig_sampler_args.background_ratio
+        bg_sampler_args = PeakSamplerArgs(
+            intervals_path=Path(args.peaks),
+            background_ratio=bg_ratio,
+            complexity_center_size=orig_sampler_args.complexity_center_size if hasattr(orig_sampler_args, "complexity_center_size") else None,
+        )
+        bg_sampler_config = SamplerConfig(
+            sampler_type=sampler_config.sampler_type,
+            padded_size=padded_size,
+            sampler_args=bg_sampler_args,
+        )
 
         logger.info(
-            f"Building PeakSampler with background_ratio={bg_sampler_args['background_ratio']} "
+            f"Building PeakSampler with background_ratio={bg_ratio} "
             f"(seed={args.seed})..."
         )
         combined_sampler = create_sampler(
             bg_sampler_config,
-            genome_config["chrom_sizes"],
+            genome_config.chrom_sizes,
             folds=folds,
             exclude_intervals=exclude_intervals,
-            fasta_path=genome_config["fasta_path"],
+            fasta_path=genome_config.fasta_path,
             seed=args.seed,
         )
 
@@ -200,7 +209,7 @@ def main():
         # Peaks only.
         peak_sampler = IntervalSampler(
             file_path=Path(args.peaks),
-            chrom_sizes=genome_config["chrom_sizes"],
+            chrom_sizes=genome_config.chrom_sizes,
             padded_size=padded_size,
             folds=folds,
             exclude_intervals=exclude_intervals,
@@ -249,7 +258,7 @@ def main():
 
     batch_count = 0
     interval_idx = 0  # Tracks position in all_interval_source for the current batch
-    output_len = data_config["output_len"]
+    output_len = data_config.output_len
 
     for batch_output, batch_intervals in batch_gen:
         if args.max_batches is not None and batch_count >= args.max_batches:
@@ -288,7 +297,7 @@ def main():
         raw_obs = torch.stack(raw_obs_list)
         obs_log_total = compute_obs_log_counts(
             raw_obs,
-            target_scale=data_config["target_scale"],
+            target_scale=data_config.target_scale,
             log_counts_include_pseudocount=log_counts_include_pseudocount,
             pseudocount=count_pseudocount,
         )
