@@ -5,25 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Fixed
-- **Multi-channel log-count metric aggregation with pseudocount**: `LogCountsMeanSquaredError`
-  and `LogCountsPearsonCorrCoef` now correctly invert per-channel log-counts before summing
-  when `log_counts_include_pseudocount=True`, avoiding the `log(total + C*pseudocount)` error
-  from naive `logsumexp`. The new `log_counts_include_pseudocount` flag is propagated
-  automatically via `propagate_pseudocount`.
-- **Validation scatter plot refactored to use metric state**: Removed the separate
-  `_accumulate_log_counts` method from `CerberusModule` which duplicated log-count
-  accumulation and used the wrong dispatch mechanism (`hasattr` on instance attributes
-  instead of the canonical `uses_count_pseudocount` class attribute). The scatter plot
-  now reads directly from `LogCountsPearsonCorrCoef`'s accumulated `preds_list`/`targets_list`,
-  ensuring correct pseudocount handling for all loss families including DalmatianLoss.
-- **`PomeranianMetricCollection` and `BPNetMetricCollection` now accept `log_counts_include_pseudocount`**:
-  Both model-specific MetricCollections were missing the `log_counts_include_pseudocount` parameter,
-  causing `TypeError` when `instantiate_metrics_and_loss()` passed it from `propagate_pseudocount()`.
-  The flag is now threaded through to the inner `LogCountsMeanSquaredError` and `LogCountsPearsonCorrCoef`
-  sub-metrics, matching the existing behavior of `DefaultMetricCollection`.
+## [0.9.5] - 2026-03-20
 
 ### Added
 - **Interval manifests saved at training time**: After training, each fold directory
@@ -36,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   manifest files with source labels.
 - **`CerberusDataModule.save_interval_manifests()`**: Writes interval manifests for
   all splits to a given directory.
+- **`uses_count_pseudocount` class attribute** on all loss classes: declares
+  whether the loss trains log_counts in `log(count + pseudocount)` space.
+  Eliminates `isinstance` checks against specific loss classes throughout
+  inference code.
+- **`get_log_count_params(model_config)`** in `config.py`: reads
+  `uses_count_pseudocount` from the loss class and returns
+  `(log_counts_include_pseudocount, count_pseudocount)`. Single source of
+  truth for pseudocount transform parameters at inference time.
+- **`compute_obs_log_counts`** in `output.py`: utility for computing observed
+  total log-counts from raw targets, matching the loss function's transform.
 
 ### Changed
 - **`get_peak_status()` replaced with `get_interval_source()`**: `MultiSampler.get_peak_status()`
@@ -57,24 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tuple[MetricCollection, CerberusLoss]`.
 - Added `pyrightconfig.json` with `reportMissingParameterType` and
   `reportMissingReturnType` as warnings to catch future regressions.
-
-### Added
-- **`uses_count_pseudocount` class attribute** on all loss classes: declares
-  whether the loss trains log_counts in `log(count + pseudocount)` space.
-  Eliminates `isinstance` checks against specific loss classes throughout
-  inference code.
-- **`get_log_count_params(model_config)`** in `config.py`: reads
-  `uses_count_pseudocount` from the loss class and returns
-  `(log_counts_include_pseudocount, count_pseudocount)`. Single source of
-  truth for pseudocount transform parameters at inference time.
-- **`compute_obs_log_counts`** in `output.py`: utility for computing observed
-  total log-counts from raw targets, matching the loss function's transform.
-
-### Changed
 - `count_pseudocount` validation relaxed from `> 0` to `>= 0` — allows `0.0`
   for Poisson/NB losses that do not use a pseudocount offset.
 - `propagate_pseudocount` now warns when `count_pseudocount > 0` is paired
-  with a loss that ignores it.
+  with a loss that ignores it; also injects `log_counts_include_pseudocount`
+  into `metrics_args` for correct multi-channel aggregation.
 - `predict_to_bigwig` no longer takes a `count_pseudocount` parameter —
   auto-detects from the model config via `get_log_count_params`.
 - `export_bigwig.py` CLI: removed `--count-pseudocount` argument (now automatic).
@@ -82,13 +61,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detection with `get_log_count_params`; uses `compute_obs_log_counts`.
 
 ### Fixed
-- **Multi-channel log-count metric aggregation**: `LogCountsMeanSquaredError` and
-  `LogCountsPearsonCorrCoef` now correctly aggregate multi-channel
-  `ProfileCountOutput` predictions in offset-log space. Previously used plain
-  `logsumexp` which gave `log(total + C*pseudocount)` instead of the correct
-  `log(total + pseudocount)`. Added `log_counts_include_pseudocount` parameter
-  to both metrics and `DefaultMetricCollection`; `propagate_pseudocount` now
-  injects the flag automatically.
+- **Multi-channel log-count metric aggregation with pseudocount**: `LogCountsMeanSquaredError`
+  and `LogCountsPearsonCorrCoef` now correctly invert per-channel log-counts before summing
+  when `log_counts_include_pseudocount=True`, avoiding the `log(total + C*pseudocount)` error
+  from naive `logsumexp`. The new `log_counts_include_pseudocount` flag is propagated
+  automatically via `propagate_pseudocount`.
+- **Validation scatter plot refactored to use metric state**: Removed the separate
+  `_accumulate_log_counts` method from `CerberusModule` which duplicated log-count
+  accumulation and used the wrong dispatch mechanism (`hasattr` on instance attributes
+  instead of the canonical `uses_count_pseudocount` class attribute). The scatter plot
+  now reads directly from `LogCountsPearsonCorrCoef`'s accumulated `preds_list`/`targets_list`,
+  ensuring correct pseudocount handling for all loss families including DalmatianLoss.
+- **`PomeranianMetricCollection` and `BPNetMetricCollection` now accept `log_counts_include_pseudocount`**:
+  Both model-specific MetricCollections were missing the `log_counts_include_pseudocount` parameter,
+  causing `TypeError` when `instantiate_metrics_and_loss()` passed it from `propagate_pseudocount()`.
+  The flag is now threaded through to the inner `LogCountsMeanSquaredError` and `LogCountsPearsonCorrCoef`
+  sub-metrics, matching the existing behavior of `DefaultMetricCollection`.
 
 ## [0.9.4] - 2026-03-19
 
