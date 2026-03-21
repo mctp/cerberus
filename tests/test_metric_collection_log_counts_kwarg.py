@@ -1,20 +1,9 @@
 """
 Regression tests for log_counts_include_pseudocount propagation through MetricCollections.
-
-Bug: PomeranianMetricCollection and BPNetMetricCollection did not accept
-log_counts_include_pseudocount, causing TypeError when instantiated via
-instantiate_metrics_and_loss() with MSE-style losses (which set
-uses_count_pseudocount=True in config.propagate_pseudocount).
-
-These tests ensure:
-1. All MetricCollections accept log_counts_include_pseudocount.
-2. The flag propagates to inner LogCounts* sub-metrics.
-3. instantiate_metrics_and_loss() works end-to-end with the flag.
-4. The flag actually affects metric computation for multi-channel outputs.
 """
 import pytest
 import torch
-from typing import Any, cast
+from typing import Any
 from torchmetrics import MetricCollection
 
 from cerberus.metrics import (
@@ -44,7 +33,7 @@ LOG_COUNTS_METRIC_NAMES = {"mse_log_counts", "pearson_log_counts"}
 
 def _make_model_config(**overrides: Any) -> ModelConfig:
     """Minimal model config for instantiate_metrics_and_loss tests."""
-    config: dict[str, Any] = {
+    kwargs: dict[str, Any] = {
         "name": "test_model",
         "model_cls": "torch.nn.Linear",
         "loss_cls": "torch.nn.MSELoss",
@@ -57,9 +46,10 @@ def _make_model_config(**overrides: Any) -> ModelConfig:
             "output_type": "signal",
         },
         "pretrained": [],
+        "count_pseudocount": 0.0,
     }
-    config.update(overrides)
-    return cast(ModelConfig, config)
+    kwargs.update(overrides)
+    return ModelConfig.model_construct(**kwargs)
 
 
 # ===========================================================================
@@ -120,8 +110,6 @@ class TestLogCountsIncludePseudocountPropagation:
         mc = cls(log_counts_include_pseudocount=True)
         for name, metric in mc.items():
             if name not in LOG_COUNTS_METRIC_NAMES:
-                # These metrics don't use the flag — they may or may not have the attr,
-                # but they should not be LogCounts* types.
                 assert not isinstance(metric, (LogCountsMeanSquaredError, LogCountsPearsonCorrCoef))
 
 

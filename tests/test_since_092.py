@@ -31,7 +31,11 @@ from cerberus.cache import (
     resolve_cache_dir,
     save_prepare_cache,
 )
-from cerberus.config import SamplerConfig, FoldArgs, ModelConfig, TrainConfig
+from cerberus.config import (
+    SamplerConfig, FoldArgs, ModelConfig, TrainConfig,
+    GenomeConfig, DataConfig, RandomSamplerArgs, PeakSamplerArgs,
+    ComplexityMatchedSamplerArgs,
+)
 from cerberus.interval import Interval
 from cerberus.samplers import (
     ComplexityMatchedSampler,
@@ -215,17 +219,21 @@ class TestCreateSamplerSeedPropagation:
 
     def test_complexity_matched_child_seeds_differ(self):
         """Target and candidate sub-samplers of complexity_matched get different seeds."""
-        config: SamplerConfig = cast(SamplerConfig, {
-            "sampler_type": "complexity_matched",
-            "padded_size": 100,
-            "sampler_args": {
-                "target_sampler": {"type": "random", "args": {"num_intervals": 5}},
-                "candidate_sampler": {"type": "random", "args": {"num_intervals": 10}},
-                "bins": 10,
-                "candidate_ratio": 1.0,
-                "metrics": ["gc"],
-            },
-        })
+        config = SamplerConfig.model_construct(
+            sampler_type="complexity_matched",
+            padded_size=100,
+            sampler_args=ComplexityMatchedSamplerArgs.model_construct(
+                target_sampler=SamplerConfig.model_construct(
+                    sampler_type="random", padded_size=100,
+                    sampler_args=RandomSamplerArgs.model_construct(num_intervals=5),
+                ),
+                candidate_sampler=SamplerConfig.model_construct(
+                    sampler_type="random", padded_size=100,
+                    sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+                ),
+                bins=10, candidate_ratio=1.0, metrics=["gc"],
+            ),
+        )
         chrom_sizes = {"chr1": 100_000}
 
         sampler = create_sampler(
@@ -243,11 +251,10 @@ class TestCreateSamplerSeedPropagation:
 
     def test_same_seed_reproduces_sampler(self):
         """create_sampler with same seed produces identical intervals."""
-        config: SamplerConfig = cast(SamplerConfig, {
-            "sampler_type": "random",
-            "padded_size": 100,
-            "sampler_args": {"num_intervals": 20},
-        })
+        config = SamplerConfig.model_construct(
+            sampler_type="random", padded_size=100,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=20),
+        )
 
         s1 = create_sampler(config, {"chr1": 100000}, [], {}, seed=42)
         s2 = create_sampler(config, {"chr1": 100000}, [], {}, seed=42)
@@ -255,11 +262,10 @@ class TestCreateSamplerSeedPropagation:
 
     def test_different_seed_produces_different_sampler(self):
         """create_sampler with different seed produces different intervals."""
-        config: SamplerConfig = cast(SamplerConfig, {
-            "sampler_type": "random",
-            "padded_size": 100,
-            "sampler_args": {"num_intervals": 20},
-        })
+        config = SamplerConfig.model_construct(
+            sampler_type="random", padded_size=100,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=20),
+        )
 
         s1 = create_sampler(config, {"chr1": 1_000_000}, [], {}, seed=42)
         s2 = create_sampler(config, {"chr1": 1_000_000}, [], {}, seed=99)
@@ -278,7 +284,7 @@ class TestCacheEdgeCases:
         """Different chrom_sizes produce different cache dirs."""
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
-        config = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {}, "padded_size": 100})
+        config = SamplerConfig.model_construct(sampler_type="peak", sampler_args=PeakSamplerArgs.model_construct(intervals_path="peaks.bed"), padded_size=100)
 
         dir_a = resolve_cache_dir(tmp_path, fasta, config, seed=42, chrom_sizes={"chr1": 1000})
         dir_b = resolve_cache_dir(tmp_path, fasta, config, seed=42, chrom_sizes={"chr1": 2000})
@@ -290,8 +296,8 @@ class TestCacheEdgeCases:
         fasta.write_text(">chr1\nACGT\n")
         chrom_sizes = {"chr1": 10000}
 
-        config_a = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {}, "padded_size": 100})
-        config_b = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {}, "padded_size": 200})
+        config_a = SamplerConfig.model_construct(sampler_type="peak", sampler_args=PeakSamplerArgs.model_construct(intervals_path="peaks.bed"), padded_size=100)
+        config_b = SamplerConfig.model_construct(sampler_type="peak", sampler_args=PeakSamplerArgs.model_construct(intervals_path="peaks.bed"), padded_size=200)
 
         dir_a = resolve_cache_dir(tmp_path, fasta, config_a, seed=42, chrom_sizes=chrom_sizes)
         dir_b = resolve_cache_dir(tmp_path, fasta, config_b, seed=42, chrom_sizes=chrom_sizes)
@@ -335,39 +341,53 @@ class TestCacheEdgeCases:
 # ---------------------------------------------------------------------------
 
 
+def _dm_genome_config(fasta_path="pyproject.toml"):
+    return GenomeConfig.model_construct(
+        name="test", fasta_path=fasta_path,
+        chrom_sizes={"chr1": 1000}, allowed_chroms=["chr1"],
+        exclude_intervals={}, fold_type="chrom_partition",
+        fold_args=FoldArgs.model_construct(k=2, test_fold=0, val_fold=1),
+    )
+
+def _dm_data_config():
+    return DataConfig.model_construct(
+        inputs={}, targets={}, input_len=100, output_len=100,
+        output_bin_size=1, max_jitter=0, encoding="ACGT",
+        log_transform=False, reverse_complement=False,
+        target_scale=1.0, use_sequence=True,
+    )
+
+def _dm_sampler_config(sampler_type="random"):
+    if sampler_type == "random":
+        return SamplerConfig.model_construct(
+            sampler_type="random", padded_size=100,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        )
+    else:
+        return SamplerConfig.model_construct(
+            sampler_type="peak", padded_size=100,
+            sampler_args=PeakSamplerArgs.model_construct(intervals_path="peaks.bed", background_ratio=1.0),
+        )
+
+
 class TestDataModuleSeedStorage:
     """Verify CerberusDataModule stores seed and cache_dir correctly."""
-
-    @pytest.fixture(autouse=True)
-    def _mock_validators(self):
-        config = {}
-        with patch("cerberus.datamodule.validate_genome_config", return_value={
-            "fasta_path": "pyproject.toml",
-            "chrom_sizes": {"chr1": 1000},
-            "fold_type": "chrom_partition",
-            "fold_args": {"k": 2, "test_fold": 0, "val_fold": 1},
-            "exclude_intervals": {},
-        }), \
-            patch("cerberus.datamodule.validate_data_config", return_value={}), \
-            patch("cerberus.datamodule.validate_sampler_config", return_value={
-                "sampler_type": "random",
-                "padded_size": 100,
-                "sampler_args": {"num_intervals": 10},
-            }), \
-            patch("cerberus.datamodule.validate_data_and_sampler_compatibility"):
-            yield
 
     def test_default_seed(self):
         from cerberus.datamodule import CerberusDataModule
         dm = CerberusDataModule(
-            genome_config={}, data_config={}, sampler_config={},  # type: ignore
+            genome_config=_dm_genome_config(),
+            data_config=_dm_data_config(),
+            sampler_config=_dm_sampler_config(),
         )
         assert dm.seed == 42
 
     def test_explicit_seed(self):
         from cerberus.datamodule import CerberusDataModule
         dm = CerberusDataModule(
-            genome_config={}, data_config={}, sampler_config={},  # type: ignore
+            genome_config=_dm_genome_config(),
+            data_config=_dm_data_config(),
+            sampler_config=_dm_sampler_config(),
             seed=999,
         )
         assert dm.seed == 999
@@ -375,14 +395,18 @@ class TestDataModuleSeedStorage:
     def test_default_cache_dir(self):
         from cerberus.datamodule import CerberusDataModule
         dm = CerberusDataModule(
-            genome_config={}, data_config={}, sampler_config={},  # type: ignore
+            genome_config=_dm_genome_config(),
+            data_config=_dm_data_config(),
+            sampler_config=_dm_sampler_config(),
         )
         assert dm.cache_dir == get_default_cache_dir()
 
     def test_explicit_cache_dir(self, tmp_path):
         from cerberus.datamodule import CerberusDataModule
         dm = CerberusDataModule(
-            genome_config={}, data_config={}, sampler_config={},  # type: ignore
+            genome_config=_dm_genome_config(),
+            data_config=_dm_data_config(),
+            sampler_config=_dm_sampler_config(),
             cache_dir=tmp_path / "custom",
         )
         assert dm.cache_dir == tmp_path / "custom"
@@ -391,7 +415,9 @@ class TestDataModuleSeedStorage:
         """_resolve_cache_dir returns None for random sampler."""
         from cerberus.datamodule import CerberusDataModule
         dm = CerberusDataModule(
-            genome_config={}, data_config={}, sampler_config={},  # type: ignore
+            genome_config=_dm_genome_config(),
+            data_config=_dm_data_config(),
+            sampler_config=_dm_sampler_config(),
         )
         assert dm._resolve_cache_dir() is None
 
@@ -402,28 +428,15 @@ class TestDataModuleSeedStorage:
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
 
-        with patch("cerberus.datamodule.validate_genome_config", return_value={
-            "fasta_path": str(fasta),
-            "chrom_sizes": {"chr1": 1000},
-            "fold_type": "chrom_partition",
-            "fold_args": {"k": 2, "test_fold": 0, "val_fold": 1},
-            "exclude_intervals": {},
-        }), \
-            patch("cerberus.datamodule.validate_data_config", return_value={}), \
-            patch("cerberus.datamodule.validate_sampler_config", return_value={
-                "sampler_type": "peak",
-                "padded_size": 100,
-                "sampler_args": {"intervals_path": "peaks.bed", "background_ratio": 1.0},
-            }), \
-            patch("cerberus.datamodule.validate_data_and_sampler_compatibility"):
-
-            dm = CerberusDataModule(
-                genome_config={}, data_config={}, sampler_config={},  # type: ignore
-                cache_dir=tmp_path / "cache",
-            )
-            result = dm._resolve_cache_dir()
-            assert result is not None
-            assert str(result).startswith(str(tmp_path / "cache"))
+        dm = CerberusDataModule(
+            genome_config=_dm_genome_config(fasta_path=fasta),
+            data_config=_dm_data_config(),
+            sampler_config=_dm_sampler_config(sampler_type="peak"),
+            cache_dir=tmp_path / "cache",
+        )
+        result = dm._resolve_cache_dir()
+        assert result is not None
+        assert str(result).startswith(str(tmp_path / "cache"))
 
 
 # ---------------------------------------------------------------------------
@@ -728,26 +741,9 @@ class TestPrepareDataPeakSampler:
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
 
-        genome_config = {
-            "fasta_path": str(fasta),
-            "chrom_sizes": {"chr1": 10000},
-            "fold_type": "chrom_partition",
-            "fold_args": {"k": 2, "test_fold": 0, "val_fold": 1},
-            "exclude_intervals": [],
-        }
-        data_config = {
-            "use_sequence": False,
-            "inputs": {},
-            "targets": {},
-        }
-        sampler_config = {
-            "sampler_type": "peak",
-            "padded_size": 100,
-            "sampler_args": {
-                "intervals_path": "peaks.bed",
-                "background_ratio": 1.0,
-            },
-        }
+        genome_config = _dm_genome_config(fasta_path=fasta)
+        data_config = _dm_data_config()
+        sampler_config = _dm_sampler_config(sampler_type="peak")
 
         fake_cache = {
             "chr1:0-100(+)": np.array([0.5], dtype=np.float32),
@@ -763,15 +759,8 @@ class TestPrepareDataPeakSampler:
         mock_dataset = MagicMock()
         mock_dataset.sampler = mock_sampler
 
-        patches = [
-            patch("cerberus.datamodule.validate_genome_config", return_value=genome_config),
-            patch("cerberus.datamodule.validate_data_config", return_value=data_config),
-            patch("cerberus.datamodule.validate_sampler_config", return_value=sampler_config),
-            patch("cerberus.datamodule.validate_data_and_sampler_compatibility"),
-            patch("cerberus.datamodule.CerberusDataset", return_value=mock_dataset),
-        ]
-
-        mocks = [p.start() for p in patches]
+        p = patch("cerberus.datamodule.CerberusDataset", return_value=mock_dataset)
+        mock_ds_cls = p.start()
 
         yield {
             "genome_config": genome_config,
@@ -779,11 +768,10 @@ class TestPrepareDataPeakSampler:
             "sampler_config": sampler_config,
             "tmp_path": tmp_path,
             "fake_cache": fake_cache,
-            "mock_dataset_cls": mocks[4],
+            "mock_dataset_cls": mock_ds_cls,
         }
 
-        for p in patches:
-            p.stop()
+        p.stop()
 
     def test_peak_prepare_data_creates_cache(self, _mock_peak_datamodule):
         """prepare_data() with peak sampler writes cache from negatives.metrics_cache."""
@@ -819,39 +807,26 @@ class TestDataModuleSeedFormula:
     @pytest.fixture
     def _dm_with_mock_trainer(self):
         """Create a DataModule with mocked trainer and datasets."""
-        with patch("cerberus.datamodule.validate_genome_config", return_value={
-            "fasta_path": "pyproject.toml",
-            "chrom_sizes": {"chr1": 1000},
-            "fold_type": "chrom_partition",
-            "fold_args": {"k": 2, "test_fold": 0, "val_fold": 1},
-            "exclude_intervals": {},
-        }), \
-            patch("cerberus.datamodule.validate_data_config", return_value={}), \
-            patch("cerberus.datamodule.validate_sampler_config", return_value={
-                "sampler_type": "random",
-                "padded_size": 100,
-                "sampler_args": {"num_intervals": 10},
-            }), \
-            patch("cerberus.datamodule.validate_data_and_sampler_compatibility"):
+        from cerberus.datamodule import CerberusDataModule
 
-            from cerberus.datamodule import CerberusDataModule
+        dm = CerberusDataModule(
+            genome_config=_dm_genome_config(),
+            data_config=_dm_data_config(),
+            sampler_config=_dm_sampler_config(),
+            seed=100,
+        )
 
-            dm = CerberusDataModule(
-                genome_config={}, data_config={}, sampler_config={},  # type: ignore
-                seed=100,
-            )
+        # Mock trainer
+        trainer = MagicMock()
+        dm.trainer = trainer  # type: ignore
 
-            # Mock trainer
-            trainer = MagicMock()
-            dm.trainer = trainer  # type: ignore
+        # Mock datasets
+        train_ds = MagicMock()
+        train_ds.__len__ = MagicMock(return_value=50)
+        dm.train_dataset = train_ds  # type: ignore
+        dm._is_initialized = True
 
-            # Mock datasets
-            train_ds = MagicMock()
-            train_ds.__len__ = MagicMock(return_value=50)
-            dm.train_dataset = train_ds  # type: ignore
-            dm._is_initialized = True
-
-            yield dm, trainer, train_ds
+        yield dm, trainer, train_ds
 
     def test_epoch_0_rank_0(self, _dm_with_mock_trainer):
         dm, trainer, train_ds = _dm_with_mock_trainer
@@ -908,35 +883,26 @@ class TestDatasetSamplerCacheChain:
 
     @pytest.fixture
     def _patched_dataset(self):
-        genome_config = {
-            "fasta_path": "mock.fa",
-            "chrom_sizes": {"chr1": 10000},
-            "fold_type": "chrom_partition",
-            "fold_args": {"k": 2},
-            "exclude_intervals": [],
-        }
-        data_config = {
-            "use_sequence": False,
-            "encoding": "one_hot",
-            "inputs": {"sig": "mock.bw"},
-            "targets": {},
-            "input_length": 1000,
-            "output_length": 1000,
-            "target_scale": 1.0,
-            "reverse_complement": False,
-            "random_shift": 0,
-        }
-        sampler_config = {
-            "sampler_type": "random",
-            "padded_size": 1000,
-            "sampler_args": {"num_intervals": 10},
-        }
+        genome_config = GenomeConfig.model_construct(
+            name="test", fasta_path="mock.fa",
+            chrom_sizes={"chr1": 10000}, allowed_chroms=["chr1"],
+            exclude_intervals={}, fold_type="chrom_partition",
+            fold_args=FoldArgs.model_construct(k=2, test_fold=None, val_fold=None),
+        )
+        data_config = DataConfig.model_construct(
+            inputs={"sig": "mock.bw"}, targets={},
+            input_len=1000, output_len=1000,
+            output_bin_size=1, max_jitter=0,
+            encoding="one_hot", log_transform=False,
+            reverse_complement=False, target_scale=1.0,
+            use_sequence=False,
+        )
+        sampler_config = SamplerConfig.model_construct(
+            sampler_type="random", padded_size=1000,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        )
 
         patches = [
-            patch("cerberus.dataset.validate_genome_config", return_value=genome_config),
-            patch("cerberus.dataset.validate_data_config", return_value=data_config),
-            patch("cerberus.dataset.validate_sampler_config", return_value=sampler_config),
-            patch("cerberus.dataset.validate_data_and_sampler_compatibility"),
             patch("cerberus.dataset.create_genome_folds", return_value=[]),
             patch("cerberus.dataset.get_exclude_intervals", return_value={}),
             patch("cerberus.dataset.create_sampler"),
@@ -945,7 +911,7 @@ class TestDatasetSamplerCacheChain:
         ]
 
         started = [p.start() for p in patches]
-        cs_mock_ref = started[6]
+        cs_mock_ref = started[2]
         cs_mock_ref.return_value = MagicMock()
 
         yield {
@@ -1038,37 +1004,15 @@ class TestFullSeedChain:
     """End-to-end test verifying seed flows from DataModule all the way to create_sampler."""
 
     def test_seed_reaches_create_sampler(self, tmp_path):
-        """DataModule(seed=77) → setup() → CerberusDataset(seed=77) → create_sampler(seed=77)."""
+        """DataModule(seed=77) -> setup() -> CerberusDataset(seed=77) -> create_sampler(seed=77)."""
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
 
-        genome_config = {
-            "fasta_path": str(fasta),
-            "chrom_sizes": {"chr1": 10000},
-            "fold_type": "chrom_partition",
-            "fold_args": {"k": 2, "test_fold": 0, "val_fold": 1},
-            "exclude_intervals": [],
-        }
-        data_config = {
-            "use_sequence": False,
-            "encoding": "one_hot",
-            "inputs": {},
-            "targets": {},
-            "target_scale": 1.0,
-            "reverse_complement": False,
-        }
-        sampler_config = {
-            "sampler_type": "random",
-            "padded_size": 100,
-            "sampler_args": {"num_intervals": 10},
-        }
+        genome_config = _dm_genome_config(fasta_path=fasta)
+        data_config = _dm_data_config()
+        sampler_config = _dm_sampler_config()
 
-        with patch("cerberus.datamodule.validate_genome_config", return_value=genome_config), \
-             patch("cerberus.datamodule.validate_data_config", return_value=data_config), \
-             patch("cerberus.datamodule.validate_sampler_config", return_value=sampler_config), \
-             patch("cerberus.datamodule.validate_data_and_sampler_compatibility"), \
-             patch("cerberus.datamodule.CerberusDataset") as mock_ds:
-
+        with patch("cerberus.datamodule.CerberusDataset") as mock_ds:
             mock_instance = MagicMock()
             mock_train = MagicMock()
             mock_train.__len__ = MagicMock(return_value=5)
@@ -1082,9 +1026,9 @@ class TestFullSeedChain:
             from cerberus.datamodule import CerberusDataModule
 
             dm = CerberusDataModule(
-                genome_config=genome_config,  # type: ignore
-                data_config=data_config,  # type: ignore
-                sampler_config=sampler_config,  # type: ignore
+                genome_config=genome_config,
+                data_config=data_config,
+                sampler_config=sampler_config,
                 seed=77,
             )
             dm.setup()

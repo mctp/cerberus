@@ -1,8 +1,7 @@
-"""Coverage tests for cerberus.module — untested code paths."""
+"""Coverage tests for cerberus.module -- untested code paths."""
 import pytest
 import torch
 import torch.nn as nn
-from typing import cast
 from unittest.mock import MagicMock
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 
@@ -21,20 +20,20 @@ from cerberus.module import (
 class TestConfigureCallbacks:
 
     def _train_config(self) -> TrainConfig:
-        return cast(TrainConfig, {
-            "patience": 5,
-            "batch_size": 32,
-            "max_epochs": 100,
-            "learning_rate": 1e-3,
-            "weight_decay": 0.0,
-            "optimizer": "adam",
-            "filter_bias_and_bn": True,
-            "scheduler_type": "default",
-            "scheduler_args": {},
-            "reload_dataloaders_every_n_epochs": 0,
-            "adam_eps": 1e-8,
-            "gradient_clip_val": None,
-        })
+        return TrainConfig.model_construct(
+            patience=5,
+            batch_size=32,
+            max_epochs=100,
+            learning_rate=1e-3,
+            weight_decay=0.0,
+            optimizer="adam",
+            filter_bias_and_bn=True,
+            scheduler_type="default",
+            scheduler_args={},
+            reload_dataloaders_every_n_epochs=0,
+            adam_eps=1e-8,
+            gradient_clip_val=None,
+        )
 
     def test_default_with_checkpointing_and_logger(self):
         tc = self._train_config()
@@ -85,16 +84,17 @@ class TestConfigureCallbacks:
 class TestInstantiateMetricsAndLoss:
 
     def _model_config(self) -> ModelConfig:
-        return cast(ModelConfig, {
-            "name": "test",
-            "model_cls": "cerberus.models.bpnet.BPNet",
-            "loss_cls": "cerberus.loss.MSEMultinomialLoss",
-            "loss_args": {},
-            "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
-            "metrics_args": {},
-            "model_args": {},
-            "pretrained": [],
-        })
+        return ModelConfig.model_construct(
+            name="test",
+            model_cls="cerberus.models.bpnet.BPNet",
+            loss_cls="cerberus.loss.MSEMultinomialLoss",
+            loss_args={},
+            metrics_cls="cerberus.metrics.DefaultMetricCollection",
+            metrics_args={},
+            model_args={},
+            pretrained=[],
+            count_pseudocount=0.0,
+        )
 
     def test_without_device(self):
         mc = self._model_config()
@@ -132,7 +132,6 @@ class TestLrSchedulerStep:
 
         scheduler = MagicMock()
         scheduler.step_update = MagicMock()
-        # hasattr check will work because we set step_update
         module.lr_scheduler_step(scheduler, optimizer_idx=0, metric=0.5)
         scheduler.step.assert_called_once()
         scheduler.step_update.assert_called_once()

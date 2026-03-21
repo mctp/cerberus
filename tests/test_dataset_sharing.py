@@ -1,7 +1,6 @@
 
 import pytest
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
-from typing import cast
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, FoldArgs, SlidingWindowSamplerArgs
 from cerberus.dataset import CerberusDataset
 
 @pytest.fixture
@@ -12,34 +11,33 @@ def mock_fasta(tmp_path):
     return fasta_path
 
 def test_dataset_extractor_sharing(mock_fasta):
-    genome_config = cast(GenomeConfig, {
-        "name": "mock_genome",
-        "fasta_path": str(mock_fasta),
-        "chrom_sizes": {"chr1": 1000},
-        "allowed_chroms": ["chr1"],
-        "fold_type": "chrom_partition",
-        "fold_args": {"k": 3},
-        "exclude_intervals": {}
-    })
-    data_config = cast(DataConfig, {
-        "encoding": "ACGT",
-        "inputs": {},
-        "targets": {},
-        "input_len": 10,
-        "output_len": 10,
-        "max_jitter": 0,
-        "reverse_complement": False,
-        "target_scale": 1.0,
-        "count_pseudocount": 1.0,
-        "log_transform": False,
-        "output_bin_size": 1,
-        "use_sequence": True,
-    })
-    sampler_config = cast(SamplerConfig, {
-        "sampler_type": "sliding_window",
-        "padded_size": 10,
-        "sampler_args": {"stride": 10}
-    })
+    genome_config = GenomeConfig.model_construct(
+        name="mock_genome",
+        fasta_path=mock_fasta,
+        chrom_sizes={"chr1": 1000},
+        allowed_chroms=["chr1"],
+        fold_type="chrom_partition",
+        fold_args=FoldArgs.model_construct(k=3, test_fold=None, val_fold=None),
+        exclude_intervals={},
+    )
+    data_config = DataConfig.model_construct(
+        encoding="ACGT",
+        inputs={},
+        targets={},
+        input_len=10,
+        output_len=10,
+        max_jitter=0,
+        reverse_complement=False,
+        target_scale=1.0,
+        log_transform=False,
+        output_bin_size=1,
+        use_sequence=True,
+    )
+    sampler_config = SamplerConfig.model_construct(
+        sampler_type="sliding_window",
+        padded_size=10,
+        sampler_args=SlidingWindowSamplerArgs.model_construct(stride=10),
+    )
 
     # Initialize full dataset
     full_dataset = CerberusDataset(
@@ -58,18 +56,11 @@ def test_dataset_extractor_sharing(mock_fasta):
     assert train.sequence_extractor is full_dataset.sequence_extractor
     assert val.sequence_extractor is full_dataset.sequence_extractor
     assert test.sequence_extractor is full_dataset.sequence_extractor
-    
-    # Also verify that the underlying cache is populated and shared (implicit since object is shared)
-    # Accessing one should affect the others if we were to mutate (which we shouldn't)
-    
+
     # Verify in-memory type
     from cerberus.sequence import InMemorySequenceExtractor
     assert isinstance(full_dataset.sequence_extractor, InMemorySequenceExtractor)
-    
+
     # Check that tensors are in shared memory (since we added .share_memory_())
-    # Note: On CPU, is_shared() might return False unless multiprocessing is involved or moved to shm explicitly?
-    # Actually tensor.share_memory_() moves it to shared memory.
-    # Let's check a cached tensor.
     cached_tensor = full_dataset.sequence_extractor._cache["chr1"]
-    # For CPU tensors, share_memory_() makes them shareable. is_shared() checks if it's in shared memory.
     assert cached_tensor.is_shared()

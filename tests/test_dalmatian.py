@@ -511,20 +511,20 @@ def test_dalmatian_cerberus_module_training_step():
     loss = DalmatianLoss(base_loss_cls="cerberus.loss.MSEMultinomialLoss")
     metrics = PomeranianMetricCollection()
 
-    train_config: TrainConfig = {
-        "batch_size": 2,
-        "max_epochs": 1,
-        "learning_rate": 1e-3,
-        "weight_decay": 0.0,
-        "optimizer": "adam",
-        "scheduler_type": "default",
-        "filter_bias_and_bn": False,
-        "patience": 5,
-        "scheduler_args": {},
-        "reload_dataloaders_every_n_epochs": 0,
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    }
+    train_config = TrainConfig.model_construct(
+        batch_size=2,
+        max_epochs=1,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        optimizer="adam",
+        scheduler_type="default",
+        filter_bias_and_bn=False,
+        patience=5,
+        scheduler_args={},
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
 
     module = CerberusModule(model, loss, metrics, train_config=train_config)
     dataset = DalmatianDataset(n=8)
@@ -691,6 +691,13 @@ def test_dalmatian_optimization_reduces_loss():
 
 
 from cerberus.pretrained import load_pretrained_weights
+from cerberus.config import PretrainedConfig
+
+def _pc(weights_path, source=None, target=None, freeze=False):
+    """Helper to build PretrainedConfig for tests."""
+    return PretrainedConfig.model_construct(
+        weights_path=str(weights_path), source=source, target=target, freeze=freeze,
+    )
 
 
 def test_load_pretrained_biasnet_standalone(tmp_path):
@@ -700,7 +707,7 @@ def test_load_pretrained_biasnet_standalone(tmp_path):
 
     model2 = BiasNet(input_len=1128, output_len=1024, filters=12)
     load_pretrained_weights(model2, [
-        {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": None, "freeze": False},
+        _pc(tmp_path / "biasnet.pt"),
     ])
 
     for (n1, p1), (n2, p2) in zip(model1.named_parameters(), model2.named_parameters()):
@@ -719,7 +726,7 @@ def test_load_pretrained_biasnet_into_dalmatian(tmp_path):
     signal_before = {n: p.clone() for n, p in dalmatian.signal_model.named_parameters()}
 
     load_pretrained_weights(dalmatian, [
-        {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": "bias_model", "freeze": False},
+        _pc(tmp_path / "biasnet.pt", target="bias_model"),
     ])
 
     # Bias model should match the saved weights
@@ -739,7 +746,7 @@ def test_load_dalmatian_bias_from_dalmatian_checkpoint(tmp_path):
     dalmatian2 = Dalmatian(input_len=2112, output_len=1024)
 
     load_pretrained_weights(dalmatian2, [
-        {"weights_path": str(tmp_path / "dalmatian.pt"), "source": "bias_model", "target": "bias_model", "freeze": False},
+        _pc(tmp_path / "dalmatian.pt", source="bias_model", target="bias_model"),
     ])
 
     # bias_model should match
@@ -758,7 +765,7 @@ def test_load_full_dalmatian_checkpoint(tmp_path):
     dalmatian2 = Dalmatian(input_len=2112, output_len=1024)
 
     load_pretrained_weights(dalmatian2, [
-        {"weights_path": str(tmp_path / "dalmatian.pt"), "source": None, "target": None, "freeze": False},
+        _pc(tmp_path / "dalmatian.pt"),
     ])
 
     for (n1, p1), (n2, p2) in zip(
@@ -778,8 +785,8 @@ def test_load_multiple_submodules(tmp_path):
 
     dalmatian = Dalmatian(input_len=2112, output_len=1024)
     load_pretrained_weights(dalmatian, [
-        {"weights_path": str(tmp_path / "bias.pt"), "source": None, "target": "bias_model", "freeze": True},
-        {"weights_path": str(tmp_path / "signal.pt"), "source": None, "target": "signal_model", "freeze": False},
+        _pc(tmp_path / "bias.pt", target="bias_model", freeze=True),
+        _pc(tmp_path / "signal.pt", target="signal_model"),
     ])
 
     # Bias should match and be frozen
@@ -800,7 +807,7 @@ def test_freeze_pretrained_biasnet(tmp_path):
 
     model2 = BiasNet(input_len=1128, output_len=1024, filters=12)
     load_pretrained_weights(model2, [
-        {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": None, "freeze": True},
+        _pc(tmp_path / "biasnet.pt", freeze=True),
     ])
 
     for name, p in model2.named_parameters():
@@ -814,7 +821,7 @@ def test_freeze_bias_leaves_signal_unfrozen(tmp_path):
 
     dalmatian = Dalmatian(input_len=2112, output_len=1024)
     load_pretrained_weights(dalmatian, [
-        {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": "bias_model", "freeze": True},
+        _pc(tmp_path / "biasnet.pt", target="bias_model", freeze=True),
     ])
 
     for name, p in dalmatian.bias_model.named_parameters():
@@ -832,7 +839,7 @@ def test_pretrained_architecture_mismatch_raises(tmp_path):
     model_f24 = BiasNet(input_len=1128, output_len=1024, filters=24)
     with pytest.raises(RuntimeError):
         load_pretrained_weights(model_f24, [
-            {"weights_path": str(tmp_path / "f12.pt"), "source": None, "target": None, "freeze": False},
+            _pc(tmp_path / "f12.pt"),
         ])
 
 
@@ -844,7 +851,7 @@ def test_pretrained_source_prefix_not_found_raises(tmp_path):
     dalmatian = Dalmatian(input_len=2112, output_len=1024)
     with pytest.raises(ValueError, match="No keys found"):
         load_pretrained_weights(dalmatian, [
-            {"weights_path": str(tmp_path / "biasnet.pt"), "source": "nonexistent_module", "target": "bias_model", "freeze": False},
+            _pc(tmp_path / "biasnet.pt", source="nonexistent_module", target="bias_model"),
         ])
 
 
@@ -856,7 +863,7 @@ def test_pretrained_invalid_target_raises(tmp_path):
     dalmatian = Dalmatian(input_len=2112, output_len=1024)
     with pytest.raises(AttributeError):
         load_pretrained_weights(dalmatian, [
-            {"weights_path": str(tmp_path / "biasnet.pt"), "source": None, "target": "nonexistent_model", "freeze": False},
+            _pc(tmp_path / "biasnet.pt", target="nonexistent_model"),
         ])
 
 
@@ -868,7 +875,7 @@ def test_load_real_pretrained_biasnet():
 
     model = BiasNet(input_len=1128, output_len=1024, filters=12)
     load_pretrained_weights(model, [
-        {"weights_path": pt_path, "source": None, "target": None, "freeze": False},
+        _pc(pt_path),
     ])
 
     # Verify model produces output
@@ -886,7 +893,7 @@ def test_load_real_pretrained_biasnet_into_dalmatian():
 
     dalmatian = Dalmatian(input_len=2112, output_len=1024)
     load_pretrained_weights(dalmatian, [
-        {"weights_path": pt_path, "source": None, "target": "bias_model", "freeze": True},
+        _pc(pt_path, target="bias_model", freeze=True),
     ])
 
     # Verify frozen bias model produces output in combined model

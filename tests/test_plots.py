@@ -10,6 +10,7 @@ from cerberus.module import CerberusModule
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.metrics import DefaultMetricCollection
 from cerberus.output import ProfileLogRates
+from cerberus.config import TrainConfig
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +39,7 @@ def test_save_count_scatter_skips_without_matplotlib():
             try:
                 save_count_scatter(preds, targets, tmp_dir, epoch=0)
             except ImportError:
-                pass  # acceptable if the patch propagates — no PNG should be created
+                pass  # acceptable if the patch propagates -- no PNG should be created
         assert not (Path(tmp_dir) / "plots").exists()
 
 
@@ -52,26 +53,26 @@ class _DummyModel(torch.nn.Module):
         self.layer = torch.nn.Linear(10, 8)
 
     def forward(self, x):
-        # Output shape: (B, 1, 8) — one channel, profile length 8
+        # Output shape: (B, 1, 8) -- one channel, profile length 8
         return ProfileLogRates(log_rates=self.layer(x).unsqueeze(1))
 
 
 @pytest.fixture
 def _base_config():
-    return {
-        "batch_size": 10,
-        "max_epochs": 5,
-        "learning_rate": 1e-3,
-        "weight_decay": 1e-4,
-        "patience": 2,
-        "optimizer": "adamw",
-        "scheduler_type": "default",
-        "scheduler_args": {},
-        "filter_bias_and_bn": True,
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-        "reload_dataloaders_every_n_epochs": 0,
-    }
+    return TrainConfig.model_construct(
+        batch_size=10,
+        max_epochs=5,
+        learning_rate=1e-3,
+        weight_decay=1e-4,
+        patience=2,
+        optimizer="adamw",
+        scheduler_type="default",
+        scheduler_args={},
+        filter_bias_and_bn=True,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+        reload_dataloaders_every_n_epochs=0,
+    )
 
 
 def test_validation_step_populates_metric_state(_base_config):
@@ -147,7 +148,7 @@ def test_on_validation_epoch_end_skips_scatter_during_sanity_check(_base_config)
 
     mock_trainer = MagicMock()
     mock_trainer.is_global_zero = True
-    mock_trainer.sanity_checking = True  # ← sanity check active
+    mock_trainer.sanity_checking = True  # sanity check active
     module._trainer = mock_trainer
 
     # Run a validation step to populate metrics

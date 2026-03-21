@@ -25,6 +25,9 @@ from cerberus.config import (
     ComplexityMatchedSamplerArgs,
     RandomSamplerArgs,
     PeakSamplerArgs,
+    GenomeConfig,
+    DataConfig,
+    FoldArgs,
 )
 from interlap import InterLap
 
@@ -210,35 +213,26 @@ class TestDatasetPrepareCache:
     @pytest.fixture
     def _mock_dataset_init(self):
         """Mock all heavy CerberusDataset init dependencies to isolate prepare_cache plumbing."""
-        genome_config = {
-            "fasta_path": "mock.fa",
-            "chrom_sizes": {"chr1": 10000},
-            "fold_type": "chrom_partition",
-            "fold_args": {"k": 2},
-            "exclude_intervals": [],
-        }
-        data_config = {
-            "use_sequence": False,
-            "encoding": "one_hot",
-            "inputs": {"sig": "mock.bw"},
-            "targets": {},
-            "input_length": 1000,
-            "output_length": 1000,
-            "target_scale": 1.0,
-            "reverse_complement": False,
-            "random_shift": 0,
-        }
-        sampler_config = {
-            "sampler_type": "random",
-            "padded_size": 1000,
-            "sampler_args": {"num_intervals": 10},
-        }
+        genome_config = GenomeConfig.model_construct(
+            name="test", fasta_path="mock.fa",
+            chrom_sizes={"chr1": 10000}, allowed_chroms=["chr1"],
+            exclude_intervals={}, fold_type="chrom_partition",
+            fold_args=FoldArgs.model_construct(k=2, test_fold=None, val_fold=None),
+        )
+        data_config = DataConfig.model_construct(
+            inputs={"sig": "mock.bw"}, targets={},
+            input_len=1000, output_len=1000,
+            output_bin_size=1, max_jitter=0,
+            encoding="one_hot", log_transform=False,
+            reverse_complement=False, target_scale=1.0,
+            use_sequence=False,
+        )
+        sampler_config = SamplerConfig.model_construct(
+            sampler_type="random", padded_size=1000,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        )
 
         patches = [
-            patch("cerberus.dataset.validate_genome_config", return_value=genome_config),
-            patch("cerberus.dataset.validate_data_config", return_value=data_config),
-            patch("cerberus.dataset.validate_sampler_config", return_value=sampler_config),
-            patch("cerberus.dataset.validate_data_and_sampler_compatibility"),
             patch("cerberus.dataset.create_genome_folds", return_value=[]),
             patch("cerberus.dataset.get_exclude_intervals", return_value={}),
             patch("cerberus.dataset.create_sampler"),
@@ -247,7 +241,7 @@ class TestDatasetPrepareCache:
         ]
 
         mocks = [p.start() for p in patches]
-        mock_create_ref = mocks[6]  # create_sampler mock
+        mock_create_ref = mocks[2]  # create_sampler mock
         mock_create_ref.return_value = MagicMock()
 
         yield {
@@ -494,43 +488,35 @@ class TestPrepareData:
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
 
-        genome_config = {
-            "name": "test",
-            "fasta_path": str(fasta),
-            "chrom_sizes": {"chr1": 10000},
-            "fold_type": "chrom_partition",
-            "fold_args": {"k": 2, "test_fold": 0, "val_fold": 1},
-            "exclude_intervals": [],
-            "allowed_chroms": ["chr1"],
-        }
-        data_config = {
-            "use_sequence": False,
-            "encoding": "one_hot",
-            "inputs": {"sig": "mock.bw"},
-            "targets": {},
-            "input_length": 1000,
-            "output_length": 1000,
-            "target_scale": 1.0,
-            "reverse_complement": False,
-            "random_shift": 0,
-        }
-        sampler_config = {
-            "sampler_type": "complexity_matched",
-            "padded_size": 100,
-            "sampler_args": {
-                "target_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 5},
-                },
-                "candidate_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 10},
-                },
-                "bins": 10,
-                "candidate_ratio": 1.0,
-                "metrics": ["gc"],
-            },
-        }
+        genome_config = GenomeConfig.model_construct(
+            name="test", fasta_path=fasta,
+            chrom_sizes={"chr1": 10000}, allowed_chroms=["chr1"],
+            exclude_intervals={}, fold_type="chrom_partition",
+            fold_args=FoldArgs.model_construct(k=2, test_fold=0, val_fold=1),
+        )
+        data_config = DataConfig.model_construct(
+            inputs={}, targets={},
+            input_len=1000, output_len=1000,
+            output_bin_size=1, max_jitter=0,
+            encoding="one_hot", log_transform=False,
+            reverse_complement=False, target_scale=1.0,
+            use_sequence=False,
+        )
+        sampler_config = SamplerConfig.model_construct(
+            sampler_type="complexity_matched",
+            padded_size=100,
+            sampler_args=ComplexityMatchedSamplerArgs.model_construct(
+                target_sampler=SamplerConfig.model_construct(
+                    sampler_type="random", padded_size=100,
+                    sampler_args=RandomSamplerArgs.model_construct(num_intervals=5),
+                ),
+                candidate_sampler=SamplerConfig.model_construct(
+                    sampler_type="random", padded_size=100,
+                    sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+                ),
+                bins=10, candidate_ratio=1.0, metrics=["gc"],
+            ),
+        )
 
         # Build a fake metrics_cache the mock sampler will expose
         fake_cache = {
@@ -541,21 +527,11 @@ class TestPrepareData:
         mock_sampler = MagicMock()
         mock_sampler.metrics_cache = fake_cache
 
-        patches = [
-            patch("cerberus.datamodule.validate_genome_config", return_value=genome_config),
-            patch("cerberus.datamodule.validate_data_config", return_value=data_config),
-            patch("cerberus.datamodule.validate_sampler_config", return_value=sampler_config),
-            patch("cerberus.datamodule.validate_data_and_sampler_compatibility"),
-        ]
-
-        mocks = [p.start() for p in patches]
-
         # Patch CerberusDataset at the datamodule import site
         mock_dataset = MagicMock()
         mock_dataset.sampler = mock_sampler
         dataset_patch = patch("cerberus.datamodule.CerberusDataset", return_value=mock_dataset)
         mock_dataset_cls = dataset_patch.start()
-        patches.append(dataset_patch)
 
         yield {
             "genome_config": genome_config,
@@ -567,8 +543,7 @@ class TestPrepareData:
             "mock_dataset": mock_dataset,
         }
 
-        for p in patches:
-            p.stop()
+        dataset_patch.stop()
 
     def test_prepare_data_creates_cache(self, _mock_datamodule_deps):
         """prepare_data() creates cache dir, .npz, and ready sentinel."""
@@ -618,19 +593,16 @@ class TestPrepareData:
         from cerberus.datamodule import CerberusDataModule
 
         m = _mock_datamodule_deps
-        # Override sampler_config to random type
-        random_config = cast(SamplerConfig, {
-            "sampler_type": "random",
-            "padded_size": 100,
-            "sampler_args": {"num_intervals": 10},
-        })
-        with patch("cerberus.datamodule.validate_sampler_config", return_value=random_config):
-            dm = CerberusDataModule(
-                genome_config=m["genome_config"],
-                data_config=m["data_config"],
-                sampler_config=random_config,
-                cache_dir=m["tmp_path"] / "cache",
-            )
+        random_config = SamplerConfig.model_construct(
+            sampler_type="random", padded_size=100,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        )
+        dm = CerberusDataModule(
+            genome_config=m["genome_config"],
+            data_config=m["data_config"],
+            sampler_config=random_config,
+            cache_dir=m["tmp_path"] / "cache",
+        )
 
         m["mock_dataset_cls"].reset_mock()
         dm.prepare_data()

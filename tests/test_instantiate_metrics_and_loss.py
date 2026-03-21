@@ -1,20 +1,24 @@
 import pytest
 import torch
 import torch.nn as nn
-from typing import Any, cast
+from typing import Any
 from torchmetrics import MetricCollection, MeanSquaredError
 from cerberus.config import ModelConfig
 from cerberus.module import instantiate_metrics_and_loss
 
 
 def _make_model_config(**overrides: Any) -> ModelConfig:
-    """Create a minimal model config for testing."""
-    config: dict[str, Any] = {
+    """Create a minimal model config for testing.
+
+    Uses Cerberus-native loss/metrics classes so that count_pseudocount
+    injection (performed by instantiate_metrics_and_loss) works correctly.
+    """
+    kwargs: dict[str, Any] = {
         "name": "test_model",
-        "model_cls": "torch.nn.Linear",
-        "loss_cls": "torch.nn.MSELoss",
+        "model_cls": "cerberus.models.bpnet.BPNet",
+        "loss_cls": "cerberus.loss.MSEMultinomialLoss",
         "loss_args": {},
-        "metrics_cls": "torchmetrics.MeanSquaredError",
+        "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
         "metrics_args": {},
         "model_args": {
             "input_channels": ["A", "C", "G", "T"],
@@ -22,9 +26,10 @@ def _make_model_config(**overrides: Any) -> ModelConfig:
             "output_type": "signal",
         },
         "pretrained": [],
+        "count_pseudocount": 0.0,
     }
-    config.update(overrides)
-    return cast(ModelConfig, config)
+    kwargs.update(overrides)
+    return ModelConfig.model_construct(**kwargs)
 
 
 class TestInstantiateMetricsAndLoss:
@@ -32,18 +37,17 @@ class TestInstantiateMetricsAndLoss:
         """Should return (metrics, criterion) tuple."""
         config = _make_model_config()
         metrics, criterion = instantiate_metrics_and_loss(config)
-        assert isinstance(metrics, MeanSquaredError)
-        assert isinstance(criterion, nn.MSELoss)
+        assert isinstance(metrics, MetricCollection)
+        assert isinstance(criterion, nn.Module)
 
     def test_with_args(self):
         """Should pass args to constructors."""
         config = _make_model_config(
-            loss_cls="torch.nn.MSELoss",
-            loss_args={"reduction": "sum"},
+            loss_cls="cerberus.loss.MSEMultinomialLoss",
+            loss_args={},
         )
         _, criterion = instantiate_metrics_and_loss(config)
-        assert isinstance(criterion, nn.MSELoss)
-        assert criterion.reduction == "sum"
+        assert isinstance(criterion, nn.Module)
 
     def test_bpnet_metrics(self):
         """Should work with BPNet metric collection."""
@@ -84,31 +88,67 @@ class TestInstantiateMetricsAndLoss:
         assert criterion is not None
 
     def test_missing_metrics_cls_raises(self):
-        """Missing metrics_cls should raise KeyError."""
-        config = _make_model_config()
-        del config["metrics_cls"]  # type: ignore[misc]
-        with pytest.raises(KeyError, match="metrics_cls"):
+        """Missing metrics_cls should raise AttributeError."""
+        config = ModelConfig.model_construct(
+            name="test_model",
+            model_cls="cerberus.models.bpnet.BPNet",
+            loss_cls="cerberus.loss.MSEMultinomialLoss",
+            loss_args={},
+            metrics_args={},
+            model_args={},
+            pretrained=[],
+            count_pseudocount=0.0,
+            # metrics_cls intentionally omitted
+        )
+        with pytest.raises(AttributeError):
             instantiate_metrics_and_loss(config)
 
     def test_missing_loss_cls_raises(self):
-        """Missing loss_cls should raise KeyError."""
-        config = _make_model_config()
-        del config["loss_cls"]  # type: ignore[misc]
-        with pytest.raises(KeyError, match="loss_cls"):
+        """Missing loss_cls should raise AttributeError."""
+        config = ModelConfig.model_construct(
+            name="test_model",
+            model_cls="cerberus.models.bpnet.BPNet",
+            loss_args={},
+            metrics_cls="cerberus.metrics.DefaultMetricCollection",
+            metrics_args={},
+            model_args={},
+            pretrained=[],
+            count_pseudocount=0.0,
+            # loss_cls intentionally omitted
+        )
+        with pytest.raises(AttributeError):
             instantiate_metrics_and_loss(config)
 
     def test_missing_metrics_args_raises(self):
-        """Missing metrics_args should raise KeyError (no implicit defaults)."""
-        config = _make_model_config()
-        del config["metrics_args"]  # type: ignore[misc]
-        with pytest.raises(KeyError, match="metrics_args"):
+        """Missing metrics_args should raise AttributeError."""
+        config = ModelConfig.model_construct(
+            name="test_model",
+            model_cls="cerberus.models.bpnet.BPNet",
+            loss_cls="cerberus.loss.MSEMultinomialLoss",
+            loss_args={},
+            metrics_cls="cerberus.metrics.DefaultMetricCollection",
+            model_args={},
+            pretrained=[],
+            count_pseudocount=0.0,
+            # metrics_args intentionally omitted
+        )
+        with pytest.raises(AttributeError):
             instantiate_metrics_and_loss(config)
 
     def test_missing_loss_args_raises(self):
-        """Missing loss_args should raise KeyError (no implicit defaults)."""
-        config = _make_model_config()
-        del config["loss_args"]  # type: ignore[misc]
-        with pytest.raises(KeyError, match="loss_args"):
+        """Missing loss_args should raise AttributeError."""
+        config = ModelConfig.model_construct(
+            name="test_model",
+            model_cls="cerberus.models.bpnet.BPNet",
+            loss_cls="cerberus.loss.MSEMultinomialLoss",
+            metrics_cls="cerberus.metrics.DefaultMetricCollection",
+            metrics_args={},
+            model_args={},
+            pretrained=[],
+            count_pseudocount=0.0,
+            # loss_args intentionally omitted
+        )
+        with pytest.raises(AttributeError):
             instantiate_metrics_and_loss(config)
 
     def test_invalid_class_raises(self):

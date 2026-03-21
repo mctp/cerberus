@@ -218,15 +218,16 @@ def test_negative_peak_sampler_multi_chrom(mock_dependencies):
 
 def test_create_sampler_negative_peak():
     """Verify create_sampler dispatches to NegativePeakSampler."""
-    config = {
-        "sampler_type": "negative_peak",
-        "padded_size": 50,
-        "sampler_args": {
-            "intervals_path": "peaks.bed",
-            "background_ratio": 1.0,
-            "complexity_center_size": None,
-        },
-    }
+    from cerberus.config import SamplerConfig, NegativePeakSamplerArgs
+    from pathlib import Path
+
+    config = SamplerConfig.model_construct(
+        sampler_type="negative_peak",
+        padded_size=50,
+        sampler_args=NegativePeakSamplerArgs.model_construct(
+            intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None,
+        ),
+    )
 
     with patch("cerberus.samplers.NegativePeakSampler") as MockNPS:
         create_sampler(
@@ -239,22 +240,23 @@ def test_create_sampler_negative_peak():
 
         MockNPS.assert_called_once()
         call_args = MockNPS.call_args
-        assert call_args.kwargs["intervals_path"] == "peaks.bed"
+        assert call_args.kwargs["intervals_path"] == Path("peaks.bed")
         assert call_args.kwargs["background_ratio"] == 1.0
         assert call_args.kwargs["fasta_path"] == "genome.fa"
 
 
 def test_create_sampler_negative_peak_requires_fasta():
     """Verify create_sampler raises if fasta_path is None for negative_peak."""
-    config = {
-        "sampler_type": "negative_peak",
-        "padded_size": 50,
-        "sampler_args": {
-            "intervals_path": "peaks.bed",
-            "background_ratio": 1.0,
-            "complexity_center_size": None,
-        },
-    }
+    from cerberus.config import SamplerConfig, NegativePeakSamplerArgs
+    from pathlib import Path
+
+    config = SamplerConfig.model_construct(
+        sampler_type="negative_peak",
+        padded_size=50,
+        sampler_args=NegativePeakSamplerArgs.model_construct(
+            intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None,
+        ),
+    )
 
     with pytest.raises(ValueError, match="fasta_path"):
         create_sampler(

@@ -1,69 +1,68 @@
 
 import unittest
 from unittest.mock import MagicMock
-from typing import cast
 from cerberus.datamodule import CerberusDataModule
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, FoldArgs, RandomSamplerArgs
 
 class TestDataModuleSeeding(unittest.TestCase):
     def setUp(self):
         # minimal valid configs
-        self.genome_config = {
-            "name": "hg38",
-            "fasta_path": "pyproject.toml",
-            "allowed_chroms": ["chr1"],
-            "chrom_sizes": {"chr1": 1000},
-            "exclude_intervals": {},
-            "fold_type": "chrom_partition",
-            "fold_args": {"k": 5, "test_fold": 0, "val_fold": 1}
-        } # type: ignore
-        self.data_config = {
-            "inputs": {},
-            "targets": {},
-            "input_len": 100,
-            "output_len": 100,
-            "output_bin_size": 1,
-            "encoding": "ACGT",
-            "max_jitter": 0,
-            "log_transform": False,
-            "reverse_complement": False,
-        "target_scale": 1.0,
-            "count_pseudocount": 1.0,
-            "use_sequence": True
-        } # type: ignore
-        self.sampler_config = {
-            "sampler_type": "random",
-            "padded_size": 100,
-            "sampler_args": {"num_intervals": 10}
-        } # type: ignore
-        
+        self.genome_config = GenomeConfig.model_construct(
+            name="hg38",
+            fasta_path="pyproject.toml",
+            allowed_chroms=["chr1"],
+            chrom_sizes={"chr1": 1000},
+            exclude_intervals={},
+            fold_type="chrom_partition",
+            fold_args=FoldArgs.model_construct(k=5, test_fold=0, val_fold=1),
+        )
+        self.data_config = DataConfig.model_construct(
+            inputs={},
+            targets={},
+            input_len=100,
+            output_len=100,
+            output_bin_size=1,
+            encoding="ACGT",
+            max_jitter=0,
+            log_transform=False,
+            reverse_complement=False,
+            target_scale=1.0,
+            use_sequence=True,
+        )
+        self.sampler_config = SamplerConfig.model_construct(
+            sampler_type="random",
+            padded_size=100,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        )
+
         # Create DataModule
         self.dm = CerberusDataModule(
-            genome_config=self.genome_config, # type: ignore
-            data_config=self.data_config, # type: ignore
-            sampler_config=self.sampler_config, # type: ignore
+            genome_config=self.genome_config,
+            data_config=self.data_config,
+            sampler_config=self.sampler_config,
             seed=123 # Configured seed
         )
-        
+
         # Mock trainer
         self.trainer_mock = MagicMock()
         self.trainer_mock.global_rank = 0
         self.trainer_mock.current_epoch = 0
         self.trainer_mock.world_size = 1
         self.dm.trainer = self.trainer_mock # type: ignore
-        
+
         # Mock dataset creation to avoid loading actual files
         self.train_ds_mock = MagicMock()
         self.train_ds_mock.__len__.return_value = 100
         self.dm.train_dataset = self.train_ds_mock # type: ignore
-        
+
         self.val_ds_mock = MagicMock()
         self.val_ds_mock.__len__.return_value = 100
         self.dm.val_dataset = self.val_ds_mock # type: ignore
-        
+
         self.test_ds_mock = MagicMock()
         self.test_ds_mock.__len__.return_value = 100
         self.dm.test_dataset = self.test_ds_mock # type: ignore
-        
+
         self.dm._is_initialized = True
 
     def test_train_dataloader_uses_configured_seed(self):
@@ -85,10 +84,10 @@ class TestDataModuleSeeding(unittest.TestCase):
         self.trainer_mock.current_epoch = 0
         self.trainer_mock.global_rank = 1
         self.trainer_mock.world_size = 2
-        
+
         self.dm.train_dataloader()
         self.train_ds_mock.resample.assert_called_with(seed=124)
-        
+
     def test_train_dataloader_complex_formula(self):
         """Test the full formula: base + epoch*world + rank"""
         # epoch=5, rank=3, world_size=4, seed=100
@@ -96,7 +95,7 @@ class TestDataModuleSeeding(unittest.TestCase):
         self.trainer_mock.current_epoch = 5
         self.trainer_mock.global_rank = 3
         self.trainer_mock.world_size = 4
-        
+
         self.dm.train_dataloader()
         self.train_ds_mock.resample.assert_called_with(seed=123)
 

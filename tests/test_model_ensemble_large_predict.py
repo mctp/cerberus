@@ -8,7 +8,10 @@ from typing import cast
 from pathlib import Path
 
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.config import ModelConfig, DataConfig, GenomeConfig
+from cerberus.config import (
+    ModelConfig, DataConfig, GenomeConfig, SamplerConfig, TrainConfig,
+    CerberusConfig, FoldArgs, RandomSamplerArgs,
+)
 from cerberus.output import ModelOutput
 from cerberus.interval import Interval
 
@@ -23,77 +26,84 @@ class MockModelWithCounts(nn.Module):
         super().__init__()
         self.output_len = output_len
     def forward(self, x):
-        # Return logits (B, 1, L) and log_counts (B, 1)
         batch_size = x.shape[0]
         return MockOutputWithCounts(
             logits=torch.ones(batch_size, 1, self.output_len),
             log_counts=torch.ones(batch_size, 1)
         )
 
-# Helper to create ensemble (simplified version of one in test_model_ensemble.py)
+def _make_cerberus_config(output_len=100, output_bin_size=1):
+    return CerberusConfig.model_construct(
+        data_config=DataConfig.model_construct(
+            inputs={}, targets={}, input_len=100, output_len=output_len,
+            output_bin_size=output_bin_size, max_jitter=0, encoding="ACGT",
+            log_transform=False, reverse_complement=False, target_scale=1.0, use_sequence=True,
+        ),
+        genome_config=GenomeConfig.model_construct(
+            name="mock", fasta_path="mock.fa", chrom_sizes={"chr1": 1000000},
+            allowed_chroms=["chr1"], exclude_intervals={}, fold_type="chrom_partition",
+            fold_args=FoldArgs.model_construct(k=5, test_fold=None, val_fold=None),
+        ),
+        sampler_config=SamplerConfig.model_construct(
+            sampler_type="random", padded_size=100,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        ),
+        train_config=TrainConfig.model_construct(
+            batch_size=1, max_epochs=1, learning_rate=1e-3, weight_decay=0.0,
+            patience=5, optimizer="adam", scheduler_type="default", scheduler_args={},
+            filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0, adam_eps=1e-8,
+            gradient_clip_val=None,
+        ),
+        model_config_=ModelConfig.model_construct(
+            name="mock", model_cls="torch.nn.Linear", loss_cls="torch.nn.MSELoss",
+            loss_args={}, metrics_cls="torchmetrics.MeanSquaredError", metrics_args={},
+            model_args={}, pretrained=[], count_pseudocount=0.0,
+        ),
+    )
+
 def create_ensemble(models, folds, output_len=100, output_bin_size=1):
+    cerberus_config = _make_cerberus_config(output_len=output_len, output_bin_size=output_bin_size)
     with patch("cerberus.model_ensemble._ModelManager") as mock_cls, \
          patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
-         patch("cerberus.model_ensemble.parse_hparams_config", return_value={
-             "model_config": {}, "data_config": {}, "genome_config": {}
-         }):
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value=cerberus_config):
         loader = mock_cls.return_value
         loader.load_models_and_folds.return_value = (models, folds)
-        
-        dummy_conf = {}
-        data_conf = {"output_len": output_len, "output_bin_size": output_bin_size}
-        
+
         return ModelEnsemble(
             checkpoint_path=".",
-            model_config=cast(ModelConfig, dummy_conf),
-            data_config=cast(DataConfig, data_conf),
-            genome_config=cast(GenomeConfig, dummy_conf),
             device=torch.device("cpu")
         )
 
 def test_predict_large_region_with_counts():
-    """
-    Regression test for bug where scalar outputs (log_counts) caused broadcasting errors
-    during hierarchical aggregation of partial tracks.
-    """
-    # Setup
     input_len = 100
     output_len = 20
     output_bin_size = 1
-    
+
     models = {"0": MockModelWithCounts(output_len)}
     folds = []
     ensemble = create_ensemble(models, folds, output_len=output_len, output_bin_size=output_bin_size)
-    
-    # Mock Dataset
+
     dataset = MagicMock()
-    dataset.data_config = {"input_len": input_len, "output_len": output_len, "output_bin_size": output_bin_size}
+    dataset.data_config = DataConfig.model_construct(
+        inputs={}, targets={}, input_len=input_len, output_len=output_len,
+        output_bin_size=output_bin_size, max_jitter=0, encoding="ACGT",
+        log_transform=False, reverse_complement=False, target_scale=1.0, use_sequence=True,
+    )
     dataset.get_interval.return_value = {"inputs": torch.zeros(4, input_len)}
 
-    # Target Interval: Large enough to require multiple tiles
-    # Target: 0-100.
-    # Stride: 10.
-    # Tiles will cover the region.
-    # This triggers batching and merging of overlapping predictions.
     intervals = [Interval("chr1", 0, 100)]
-    
-    # Run predict_output_intervals
-    # This should not raise ValueError
+
     outputs = ensemble.predict_output_intervals(
         intervals, dataset, stride=10, use_folds=["test"], aggregation="model", batch_size=2
     )
-    
+
     assert len(outputs) == 1
     out = outputs[0]
-    # Cast for type checker
     out = cast(MockOutputWithCounts, out)
-    
+
     assert out.out_interval is not None
     assert out.logits.ndim >= 2
-    
-    # log_counts is scalar per channel (C,) — collapsed back from the spatial
-    # grid after overlap-weighted averaging. This preserves the original per-window
-    # semantics (total count for a window, not per-bin counts).
+
     assert out.log_counts.ndim == 1, (
         f"log_counts should be (C,) after aggregation, got shape {out.log_counts.shape}"
     )

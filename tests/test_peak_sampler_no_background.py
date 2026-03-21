@@ -53,28 +53,30 @@ class TestPeakSamplerNoBackground(unittest.TestCase):
             print("Verified: PeakSampler with background_ratio=0.0 does not create background samplers.")
 
     def test_create_sampler_peak_no_background(self):
+        from cerberus.config import SamplerConfig, PeakSamplerArgs
+
         chrom_sizes = {"chr1": 10000}
         exclude_intervals = {"chr1": InterLap()}
-        
-        config = {
-            "sampler_type": "peak",
-            "padded_size": 50,
-            "sampler_args": {
-                "intervals_path": "dummy_peaks.bed",
-                "background_ratio": 0.0,  # Explicitly set to 0.0
-                "complexity_center_size": None,
-            }
-        }
-        
+
+        config = SamplerConfig.model_construct(
+            sampler_type="peak",
+            padded_size=50,
+            sampler_args=PeakSamplerArgs.model_construct(
+                intervals_path=Path("dummy_peaks.bed"),
+                background_ratio=0.0,
+                complexity_center_size=None,
+            ),
+        )
+
         with patch("cerberus.samplers.PeakSampler") as MockPeakSampler:
             create_sampler(
                 config=config,
                 chrom_sizes=chrom_sizes,
                 exclude_intervals=exclude_intervals,
                 folds=[],
-                fasta_path="dummy.fa" # Required by create_sampler
+                fasta_path="dummy.fa"
             )
-            
+
             MockPeakSampler.assert_called_once()
             call_args = MockPeakSampler.call_args
             self.assertEqual(call_args.kwargs["background_ratio"], 0.0)

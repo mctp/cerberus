@@ -11,7 +11,7 @@ class MockTupleModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.layer = nn.Linear(10, 10)
-    
+
     def forward(self, x):
         out = self.layer(x)
         return (out, out) # Returns tuple
@@ -53,43 +53,43 @@ def test_cerberus_module_tuple_output():
     model = MockTupleModel()
     loss = MockTupleLoss()
     metrics = MetricCollection({"test_metric": MockTupleMetric()})
-    
-    train_config: TrainConfig = {
-        "batch_size": 2,
-        "max_epochs": 1,
-        "learning_rate": 1e-3,
-        "weight_decay": 0.0,
-        "optimizer": "adam",
-        "scheduler_type": "default",
-        "filter_bias_and_bn": False,
-        "patience": 5,
-        "scheduler_args": {},
-        "reload_dataloaders_every_n_epochs": 0,
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    }
+
+    train_config = TrainConfig.model_construct(
+        batch_size=2,
+        max_epochs=1,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        optimizer="adam",
+        scheduler_type="default",
+        filter_bias_and_bn=False,
+        patience=5,
+        scheduler_args={},
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
 
     module = CerberusModule(model, loss, metrics, train_config=train_config)
-    
+
     # Mock data
     inputs = torch.randn(4, 10)
     targets = torch.randn(4, 10)
     dataset = DictDataset(inputs, targets)
     dataloader = DataLoader(dataset, batch_size=2, num_workers=0)
-    
+
     # Use Trainer to run fit loop, which handles logging context correctly
     trainer = pl.Trainer(
-        max_epochs=1, 
-        logger=False, 
-        enable_checkpointing=False, 
-        enable_model_summary=False, 
+        max_epochs=1,
+        logger=False,
+        enable_checkpointing=False,
+        enable_model_summary=False,
         enable_progress_bar=False,
         accelerator="auto",
         devices=1,
         limit_train_batches=1,
         limit_val_batches=1
     )
-    
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", ".*does not have many workers.*")
         trainer.fit(module, train_dataloaders=dataloader, val_dataloaders=dataloader)

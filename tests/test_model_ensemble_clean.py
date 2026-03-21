@@ -379,58 +379,71 @@ def test_aggregate_intervals_no_cls_raises():
 # --- Tests for predict_intervals and predict_output_intervals ---
 
 from unittest.mock import MagicMock, patch
+from cerberus.config import (
+    DataConfig, GenomeConfig, SamplerConfig, TrainConfig, ModelConfig,
+    CerberusConfig, FoldArgs, RandomSamplerArgs,
+)
+
+def _make_data_config(input_len=100, output_len=10, output_bin_size=1):
+    return DataConfig.model_construct(
+        inputs={}, targets={}, input_len=input_len, output_len=output_len,
+        output_bin_size=output_bin_size, max_jitter=0, encoding="onehot",
+        log_transform=False, reverse_complement=False, target_scale=1.0, use_sequence=True,
+    )
+
+def _make_cerberus_config(output_len=10, output_bin_size=1):
+    return CerberusConfig.model_construct(
+        data_config=_make_data_config(input_len=1000, output_len=output_len, output_bin_size=output_bin_size),
+        genome_config=GenomeConfig.model_construct(
+            name="mock", fasta_path="mock.fa", chrom_sizes={"chr1": 1000000},
+            allowed_chroms=["chr1"], exclude_intervals={}, fold_type="chrom_partition",
+            fold_args=FoldArgs.model_construct(k=5, test_fold=None, val_fold=None),
+        ),
+        sampler_config=SamplerConfig.model_construct(
+            sampler_type="random", padded_size=100,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        ),
+        train_config=TrainConfig.model_construct(
+            batch_size=1, max_epochs=1, learning_rate=1e-3, weight_decay=0.0,
+            patience=5, optimizer="adam", scheduler_type="default", scheduler_args={},
+            filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0, adam_eps=1e-8,
+            gradient_clip_val=None,
+        ),
+        model_config_=ModelConfig.model_construct(
+            name="mock", model_cls="torch.nn.Linear", loss_cls="torch.nn.MSELoss",
+            loss_args={}, metrics_cls="torchmetrics.MeanSquaredError", metrics_args={},
+            model_args={}, pretrained=[], count_pseudocount=0.0,
+        ),
+    )
 
 @pytest.fixture
 def mock_dataset():
     ds = MagicMock()
-    ds.data_config = {"input_len": 100, "output_len": 10}
-    # Setup get_interval to return dummy tensors
+    ds.data_config = _make_data_config(input_len=100, output_len=10)
     def get_interval_side_effect(interval):
-        # Return (Channels, Length)
-        return {"inputs": torch.zeros(4, 100)} 
+        return {"inputs": torch.zeros(4, 100)}
     ds.get_interval.side_effect = get_interval_side_effect
     return ds
 
 @pytest.fixture
 def mock_ensemble():
-    # We create an instance but patch the init to avoid loading
     with patch("cerberus.model_ensemble._ModelManager") as mock_manager:
-        # We need to set attributes manually that init would set
-        # We must initialize nn.ModuleDict properly so torch internals work
         def mock_init(self, *args, **kwargs):
             torch.nn.ModuleDict.__init__(self)
-            
+
         with patch.object(ModelEnsemble, "__init__", mock_init):
-            # Pass 5 args to match signature (checkpoint_path, model_config, data_config, genome_config, device)
-            # Types are ignored since __init__ is patched
             ens = ModelEnsemble(None, None, None, None, None) # type: ignore
             ens.device = torch.device("cpu")
-            ens.cerberus_config = { # type: ignore
-                "data_config": {
-                    "inputs": {},
-                    "targets": {},
-                    "input_len": 1000,
-                    "output_len": 10,
-                    "output_bin_size": 1,
-                    "max_jitter": 0,
-                    "encoding": "onehot",
-                    "log_transform": False,
-                    "reverse_complement": False,
-        "target_scale": 1.0,
-                    "use_sequence": True
-                }
-            }
+            ens.cerberus_config = _make_cerberus_config(output_len=10, output_bin_size=1)
             ens.folds = []
             return ens
 
 def test_predict_intervals_basic(mock_ensemble, mock_dataset, mock_intervals):
     """Test basic prediction flow with batching."""
-    
-    # Mock forward to return a batched SimpleOutput
+
     # We increase output_len to 100 to match input length so intervals are contiguous
-    mock_ensemble.cerberus_config["data_config"]["output_len"] = 100
-    # Also update dataset config so predict_intervals uses the correct length
-    mock_dataset.data_config["output_len"] = 100
+    mock_ensemble.cerberus_config = _make_cerberus_config(output_len=100, output_bin_size=1)
+    mock_dataset.data_config = _make_data_config(input_len=100, output_len=100)
     
     def forward_side_effect(x, intervals, use_folds, aggregation):
         batch_size = x.shape[0]

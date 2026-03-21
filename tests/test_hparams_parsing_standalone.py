@@ -1,18 +1,17 @@
 import pytest
 import yaml
 from pathlib import Path
-from cerberus.config import parse_hparams_config
+from cerberus.config import parse_hparams_config, CerberusConfig
 
 def test_parse_hparams_config_generated_success(tmp_path):
     # create a mock hparams.yaml content with strings instead of paths
-    # (Paths are sanitized to strings in hparams.yaml usually)
-    
+
     # Create dummy files for validation
     (tmp_path / "genome.fa").touch()
     (tmp_path / "peaks.bed").touch()
     (tmp_path / "input.bw").touch()
     (tmp_path / "target.bw").touch()
-    
+
     config = {
         "train_config": {
             "batch_size": 32,
@@ -47,8 +46,7 @@ def test_parse_hparams_config_generated_success(tmp_path):
             "encoding": "ACGT",
             "log_transform": False,
             "reverse_complement": False,
-        "target_scale": 1.0,
-            "count_pseudocount": 1.0,
+            "target_scale": 1.0,
             "use_sequence": True
         },
         "sampler_config": {
@@ -71,15 +69,16 @@ def test_parse_hparams_config_generated_success(tmp_path):
             "pretrained": [],
         }
     }
-    
+
     hparams_path = tmp_path / "hparams.yaml"
     with open(hparams_path, "w") as f:
         yaml.dump(config, f)
-        
+
     # Test parsing
     parsed = parse_hparams_config(hparams_path)
-    
-    assert parsed["train_config"]["batch_size"] == 32
+
+    assert isinstance(parsed, CerberusConfig)
+    assert parsed.train_config.batch_size == 32
     # Verify Path conversion
-    assert isinstance(parsed["genome_config"]["fasta_path"], Path)
-    assert parsed["genome_config"]["fasta_path"].name == "genome.fa"
+    assert isinstance(parsed.genome_config.fasta_path, Path)
+    assert parsed.genome_config.fasta_path.name == "genome.fa"
