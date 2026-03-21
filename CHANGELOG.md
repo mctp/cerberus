@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Sampler context-length benchmark** (`tests/benchmark/bench_sampler_context_length.py`):
+  standalone script measuring FASTA, BigWig, and combined extraction throughput
+  across 1–128 kb context lengths using real GRCh38 and MDA-PCA-2B AR ChIP-seq data.
+- **DataLoader context-length benchmark** (`tests/benchmark/bench_dataloader_context_length.py`):
+  standalone script measuring end-to-end DataLoader throughput (multi-worker extraction,
+  transforms, batch collation) across 1–128 kb context lengths via CerberusDataModule.
+  Supports `--in-memory` flag for disk vs in-memory comparison.
+- **`encode_dna` benchmark** (`tests/benchmark/bench_encode_dna.py`):
+  standalone script comparing multiple alternative implementations of one-hot DNA
+  encoding across 1–128 kb sequence lengths.
+
+### Changed
+- **`encode_dna` rewritten with broadcast comparison**: Replaced LUT-scatter
+  implementation with vectorized `(seq_bytes == encoding_bytes)` broadcast.
+  ~11x faster at 128 kb context length. Drop-in compatible; old implementation
+  preserved as gold-standard reference in `tests/test_encode_dna.py`.
+
 ## [0.9.5] - 2026-03-20
 
 ### Added

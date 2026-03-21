@@ -38,3 +38,6 @@ docs = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+norecursedirs = ["tests/benchmark"]

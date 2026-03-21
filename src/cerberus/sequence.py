@@ -11,67 +11,47 @@ from cerberus.complexity import calculate_gc_content
 logger = logging.getLogger(__name__)
 
 
-def _create_mapping(encoding: str) -> np.ndarray:
-    """Creates a lookup array for DNA encoding."""
-    mapping = np.zeros(256, dtype=np.int8) - 1  # Default -1
-    for i, base in enumerate(encoding):
-        mapping[ord(base)] = i
-    return mapping
-
-
-_ENCODING_MAPPINGS = {"ACGT": _create_mapping("ACGT"), "AGCT": _create_mapping("AGCT")}
+_ENCODING_BYTES: dict[str, np.ndarray] = {
+    "ACGT": np.array([ord(c) for c in "ACGT"], dtype=np.uint8).reshape(-1, 1),
+    "AGCT": np.array([ord(c) for c in "AGCT"], dtype=np.uint8).reshape(-1, 1),
+}
 
 
 def encode_dna(sequence: str, encoding: str = "ACGT") -> torch.Tensor:
     """
     One-hot encodes a DNA sequence string into a tensor.
 
-    This function maps characters in the input sequence to channel indices based on the specified encoding.
+    Uses vectorized broadcast comparison for high throughput. Each position is
+    compared against all bases simultaneously: ``(encoding_bytes == seq_bytes)``
+    produces a ``(len(encoding), L)`` boolean matrix which is cast to float32.
+
     Supported encodings:
     - 'ACGT': A=0, C=1, G=2, T=3
     - 'AGCT': A=0, G=1, C=2, T=3
-    
-    The resulting tensor is 1-hot encoded.
+
+    The resulting tensor is 1-hot encoded. Ambiguous or unknown bases (e.g. 'N')
+    produce all-zero columns.
 
     Args:
         sequence: Input DNA sequence (string). Case-insensitive.
         encoding: Channel order, e.g. 'ACGT' or 'AGCT'. Defaults to 'ACGT'.
 
     Returns:
-        torch.Tensor: A float32 tensor of shape (4, Length).
-                      Channels correspond to the bases in the order specified by `encoding`.
-    
+        torch.Tensor: A float32 tensor of shape (len(encoding), Length).
+                      Channels correspond to the bases in the order specified by ``encoding``.
+
     Raises:
         ValueError: If the encoding is not supported.
     """
-    sequence = sequence.upper()
     encoding = encoding.upper()
 
-    if encoding not in _ENCODING_MAPPINGS:
+    if encoding not in _ENCODING_BYTES:
         raise ValueError(
-            f"Unsupported encoding '{encoding}'. Supported: {list(_ENCODING_MAPPINGS.keys())}"
+            f"Unsupported encoding '{encoding}'. Supported: {list(_ENCODING_BYTES.keys())}"
         )
 
-    mapping = _ENCODING_MAPPINGS[encoding]
-
-    # Convert string to ascii bytes
-    # Note: this assumes ASCII compatible encoding
-    seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
-
-    # Map to indices
-    indices = mapping[seq_bytes]
-
-    # Create one hot (4, L) directly for contiguous memory
-    one_hot = np.zeros((4, len(sequence)), dtype=np.float32)
-
-    # Valid indices (>= 0)
-    valid_mask = indices >= 0
-
-    # Fill using advanced indexing
-    # indices[valid_mask] gives row indices (channels)
-    # np.where(valid_mask)[0] gives column indices (positions)
-    one_hot[indices[valid_mask], np.where(valid_mask)[0]] = 1.0
-
+    seq_bytes = np.frombuffer(sequence.upper().encode("ascii"), dtype=np.uint8)
+    one_hot = (seq_bytes == _ENCODING_BYTES[encoding]).astype(np.float32)
     return torch.from_numpy(one_hot)
 
 
