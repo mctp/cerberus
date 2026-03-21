@@ -23,6 +23,7 @@ dependencies = [
   "interlap",
   "pytorch-lightning",
   "timm",
+  "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]
