@@ -2,8 +2,7 @@
 import os
 import pytest
 import torch
-from typing import cast
-from cerberus.config import DataConfig, SamplerConfig
+from cerberus.config import DataConfig, SamplerConfig, SlidingWindowSamplerArgs
 from cerberus.signal import SignalExtractor
 from cerberus.sequence import SequenceExtractor
 from cerberus.interval import Interval
@@ -44,29 +43,26 @@ def test_sequence_and_signal_extraction(human_genome, mappability_file, fasta_fi
     genome_dir = fasta_file.parent
     genome_config = create_human_genome_config(genome_dir)
     
-    # dummy configs to pass validation
-    data_config = cast(DataConfig, {
-        "inputs": {"mappability": mappability_file},
-        "targets": {}, # No targets for this test
-        "input_len": 1000,
-        "output_len": 1000,
-        "bin_size": 1,
-        "output_bin_size": 1,
-        "max_jitter": 0,
-        "encoding": "ACGT",
-        "log_transform": False,
-        "reverse_complement": False,
-        "target_scale": 1.0,
-        "count_pseudocount": 1.0,
-        "use_sequence": True,
-        "in_memory": False
-    })
-    
-    sampler_config = cast(SamplerConfig, {
-        "sampler_type": "sliding_window", # Dummy
-        "padded_size": 1000,
-        "sampler_args": {"stride": 100}
-    })
+    # configs for dataset
+    data_config = DataConfig(
+        inputs={"mappability": mappability_file},
+        targets={},
+        input_len=1000,
+        output_len=1000,
+        output_bin_size=1,
+        max_jitter=0,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
+    )
+
+    sampler_config = SamplerConfig(
+        sampler_type="sliding_window",
+        padded_size=1000,
+        sampler_args=SlidingWindowSamplerArgs(stride=100),
+    )
     
     # Create ListSampler with our interval
     sampler = ListSampler(
