@@ -1,18 +1,14 @@
 """
-Tests for propagate_pseudocount and its integration into the training path.
+Tests for count_pseudocount as a first-class field on ModelConfig and its
+injection into loss/metrics via instantiate_metrics_and_loss().
 
-The count_pseudocount parameter is specified once in data_config (in raw coverage
-units) and must be propagated — scaled by target_scale — into loss_args and
-metrics_args before the criterion and metrics are instantiated.  Previously this
-propagation only happened in parse_hparams_config (prediction time); these tests
-verify it now also happens during training via propagate_pseudocount called from
-_train().
+Previously count_pseudocount lived on DataConfig and was propagated by a
+standalone propagate_pseudocount() function.  Now it is a direct field on
+ModelConfig and is injected at construction time by
+instantiate_metrics_and_loss().
 """
 
 import math
-import tempfile
-from pathlib import Path
-from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,9 +21,9 @@ from cerberus.config import (
     TrainConfig,
     GenomeConfig,
     SamplerConfig,
-    propagate_pseudocount,
+    get_log_count_params,
 )
-from cerberus.train import _train as train
+from cerberus.module import instantiate_metrics_and_loss
 from cerberus.loss import MSEMultinomialLoss
 from cerberus.models.bpnet import BPNetLoss
 from cerberus.output import ProfileCountOutput
@@ -37,23 +33,8 @@ from cerberus.output import ProfileCountOutput
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _data_config(**overrides) -> DataConfig:
-    cfg: dict = {
-        "input_len": 2114,
-        "output_len": 1000,
-        "output_bin_size": 1,
-        "targets": [],
-        "inputs": [],
-        "use_sequence": True,
-        "target_scale": 1.0,
-        "count_pseudocount": 1.0,
-    }
-    cfg.update(overrides)
-    return cast(DataConfig, cfg)
-
-
 def _model_config(**overrides) -> ModelConfig:
-    cfg: dict = {
+    kw: dict = {
         "name": "TestModel",
         "model_cls": "cerberus.models.bpnet.BPNet",
         "loss_cls": "cerberus.models.bpnet.BPNetLoss",
@@ -65,180 +46,87 @@ def _model_config(**overrides) -> ModelConfig:
             "output_channels": ["signal"],
         },
         "pretrained": [],
+        "count_pseudocount": 0.0,
     }
-    cfg.update(overrides)
-    return cast(ModelConfig, cfg)
-
-
-def _train_config() -> TrainConfig:
-    return cast(TrainConfig, {
-        "batch_size": 32,
-        "max_epochs": 10,
-        "learning_rate": 1e-3,
-        "weight_decay": 0.01,
-        "patience": 5,
-        "optimizer": "adamw",
-        "scheduler_type": "default",
-        "scheduler_args": {},
-        "filter_bias_and_bn": True,
-        "reload_dataloaders_every_n_epochs": 0,
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    })
+    kw.update(overrides)
+    return ModelConfig(**kw)
 
 
 # ===========================================================================
-# 1. propagate_pseudocount unit tests
+# 1. ModelConfig.count_pseudocount field tests
 # ===========================================================================
 
-class TestPropagatePseudocount:
-    """Unit tests for the propagate_pseudocount function."""
+class TestModelConfigCountPseudocount:
+    """Unit tests for count_pseudocount as a first-class field on ModelConfig."""
 
-    def test_basic_propagation(self):
-        """Pseudocount is injected into loss_args and metrics_args."""
-        data_cfg = _data_config(count_pseudocount=150.0)
-        model_cfg = _model_config()
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["loss_args"]["count_pseudocount"] == 150.0
-        assert result["metrics_args"]["count_pseudocount"] == 150.0
+    def test_default_value(self):
+        """count_pseudocount defaults to 0.0."""
+        cfg = _model_config()
+        assert cfg.count_pseudocount == 0.0
 
-    def test_scaled_by_target_scale(self):
-        """Pseudocount is multiplied by target_scale before injection."""
-        data_cfg = _data_config(count_pseudocount=100.0, target_scale=2.0)
-        model_cfg = _model_config()
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["loss_args"]["count_pseudocount"] == pytest.approx(200.0)
-        assert result["metrics_args"]["count_pseudocount"] == pytest.approx(200.0)
+    def test_explicit_value(self):
+        """count_pseudocount can be set explicitly."""
+        cfg = _model_config(count_pseudocount=150.0)
+        assert cfg.count_pseudocount == 150.0
 
-    def test_fractional_target_scale(self):
-        """Fractional target_scale (e.g. 0.001) scales pseudocount down."""
-        data_cfg = _data_config(count_pseudocount=100.0, target_scale=0.001)
-        model_cfg = _model_config()
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["loss_args"]["count_pseudocount"] == pytest.approx(0.1)
+    def test_zero_valid(self):
+        """count_pseudocount=0.0 is valid (for Poisson/NB losses)."""
+        cfg = _model_config(count_pseudocount=0.0)
+        assert cfg.count_pseudocount == 0.0
 
-    def test_default_pseudocount_1(self):
-        """Default pseudocount=1 with target_scale=1 injects 1.0."""
-        data_cfg = _data_config(count_pseudocount=1.0, target_scale=1.0)
-        model_cfg = _model_config()
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["loss_args"]["count_pseudocount"] == 1.0
+    def test_fractional(self):
+        """Fractional count_pseudocount (e.g. 0.1) is valid."""
+        cfg = _model_config(count_pseudocount=0.1)
+        assert cfg.count_pseudocount == pytest.approx(0.1)
 
-    def test_does_not_overwrite_explicit_loss_arg(self):
-        """An explicit count_pseudocount in loss_args is not overwritten."""
-        data_cfg = _data_config(count_pseudocount=150.0)
-        model_cfg = _model_config(loss_args={"alpha": 1.0, "count_pseudocount": 999.0})
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["loss_args"]["count_pseudocount"] == 999.0
+    def test_negative_rejected(self):
+        """Negative count_pseudocount should be rejected."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="count_pseudocount"):
+            _model_config(count_pseudocount=-5.0)
 
-    def test_does_not_overwrite_explicit_metrics_arg(self):
-        """An explicit count_pseudocount in metrics_args is not overwritten."""
-        data_cfg = _data_config(count_pseudocount=150.0)
-        model_cfg = _model_config(metrics_args={"count_pseudocount": 42.0})
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["metrics_args"]["count_pseudocount"] == 42.0
-
-    def test_independent_loss_and_metrics_override(self):
-        """Only loss_args with explicit value is preserved; metrics gets injected."""
-        data_cfg = _data_config(count_pseudocount=150.0)
-        model_cfg = _model_config(
-            loss_args={"alpha": 1.0, "count_pseudocount": 77.0},
-            metrics_args={},
-        )
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["loss_args"]["count_pseudocount"] == 77.0
-        assert result["metrics_args"]["count_pseudocount"] == 150.0
-
-    def test_does_not_mutate_input(self):
-        """propagate_pseudocount returns a new ModelConfig; input is not modified."""
-        data_cfg = _data_config(count_pseudocount=50.0)
-        model_cfg = _model_config()
-        original_loss_args = model_cfg["loss_args"].copy()
-        original_metrics_args = model_cfg["metrics_args"].copy()
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        # Original must be unchanged
-        assert model_cfg["loss_args"] == original_loss_args
-        assert model_cfg["metrics_args"] == original_metrics_args
-        # Result must have pseudocount
-        assert "count_pseudocount" in result["loss_args"]
-        assert result is not model_cfg
-
-    def test_idempotent(self):
-        """Calling propagate_pseudocount twice doesn't change the result."""
-        data_cfg = _data_config(count_pseudocount=150.0)
-        model_cfg = _model_config()
-        result1 = propagate_pseudocount(data_cfg, model_cfg)
-        result2 = propagate_pseudocount(data_cfg, result1)
-        assert result2["loss_args"]["count_pseudocount"] == result1["loss_args"]["count_pseudocount"]
-        assert result2["metrics_args"]["count_pseudocount"] == result1["metrics_args"]["count_pseudocount"]
-
-    def test_does_not_mutate_shared_nested_dicts(self):
-        """Mutation must not leak to the original model_config's nested dicts across folds."""
-        data_cfg = _data_config(count_pseudocount=150.0, target_scale=2.0)
-        model_cfg = _model_config()
-        original_loss_args_id = id(model_cfg["loss_args"])
-        original_metrics_args_id = id(model_cfg["metrics_args"])
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        # Returned nested dicts must be different objects
-        assert id(result["loss_args"]) != original_loss_args_id
-        assert id(result["metrics_args"]) != original_metrics_args_id
-        # Original must not contain the injected key
-        assert "count_pseudocount" not in model_cfg["loss_args"]
-        assert "count_pseudocount" not in model_cfg["metrics_args"]
+    def test_frozen_immutable(self):
+        """count_pseudocount cannot be mutated on a frozen model."""
+        from pydantic import ValidationError
+        cfg = _model_config(count_pseudocount=150.0)
+        with pytest.raises(ValidationError):
+            cfg.count_pseudocount = 999.0  # type: ignore[misc]
 
 
 # ===========================================================================
-# 2. Integration: propagate_pseudocount called from _train
+# 2. instantiate_metrics_and_loss injection tests
 # ===========================================================================
 
-class TestTrainPropagation:
-    """Verify that _train passes data_config to instantiate, which handles propagation."""
+class TestInstantiateMetricsAndLoss:
+    """Verify instantiate_metrics_and_loss injects count_pseudocount."""
 
-    def test_train_passes_data_config_to_instantiate(self):
-        """_train must pass data_config (with count_pseudocount) to instantiate."""
-        mock_module = MagicMock(spec=pl.LightningModule)
-        datamodule = MagicMock()
+    def test_injects_pseudocount_into_loss(self):
+        """Loss receives count_pseudocount from ModelConfig."""
+        cfg = _model_config(count_pseudocount=150.0)
+        metrics, criterion = instantiate_metrics_and_loss(cfg)
+        assert criterion.count_pseudocount == 150.0
 
-        data_cfg = _data_config(count_pseudocount=150.0, target_scale=1.0)
-        model_cfg = _model_config()
-        train_cfg = _train_config()
+    def test_injects_pseudocount_into_metrics(self):
+        """Metrics sub-metrics receive count_pseudocount from ModelConfig."""
+        cfg = _model_config(count_pseudocount=150.0)
+        metrics, criterion = instantiate_metrics_and_loss(cfg)
+        # BPNetMetricCollection passes count_pseudocount to each sub-metric
+        for name, metric in metrics.items():
+            assert metric.count_pseudocount == 150.0, f"Sub-metric '{name}' has wrong pseudocount"
 
-        with patch("pytorch_lightning.Trainer"), \
-             patch("cerberus.train.instantiate", return_value=mock_module) as mock_inst, \
-             patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc):
+    def test_zero_pseudocount_injected(self):
+        """count_pseudocount=0 is still injected."""
+        cfg = _model_config(count_pseudocount=0.0)
+        metrics, criterion = instantiate_metrics_and_loss(cfg)
+        assert criterion.count_pseudocount == 0.0
 
-            train(
-                model_config=model_cfg,
-                data_config=data_cfg,
-                datamodule=datamodule,
-                train_config=train_cfg,
-                num_workers=0,
-                in_memory=False,
-                accelerator="cpu",
-            )
-
-            # Verify data_config is passed through so instantiate() can propagate
-            call_kwargs = mock_inst.call_args[1]
-            assert call_kwargs["data_config"]["count_pseudocount"] == 150.0
-            assert call_kwargs["data_config"]["target_scale"] == 1.0
-
-    def test_instantiate_propagates_pseudocount(self):
-        """instantiate() must inject scaled count_pseudocount into loss_args/metrics_args."""
-        data_cfg = _data_config(count_pseudocount=100.0, target_scale=0.5)
-        model_cfg = _model_config()
-
-        # propagate_pseudocount is called inside instantiate; verify via direct call
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["loss_args"]["count_pseudocount"] == pytest.approx(50.0)
-        assert result["metrics_args"]["count_pseudocount"] == pytest.approx(50.0)
-
-    def test_instantiate_does_not_overwrite_explicit_loss_arg(self):
-        """Explicit count_pseudocount in loss_args is preserved by propagate_pseudocount."""
-        data_cfg = _data_config(count_pseudocount=150.0)
-        model_cfg = _model_config(loss_args={"alpha": 1.0, "count_pseudocount": 999.0})
-
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["loss_args"]["count_pseudocount"] == 999.0
+    def test_model_config_loss_args_not_mutated(self):
+        """The original model_config.loss_args dict should not be mutated."""
+        cfg = _model_config(count_pseudocount=150.0)
+        original_loss_args = dict(cfg.loss_args)
+        instantiate_metrics_and_loss(cfg)
+        # Frozen Pydantic model's loss_args shouldn't change
+        assert cfg.loss_args == original_loss_args
 
 
 # ===========================================================================
@@ -249,13 +137,11 @@ class TestBPNetLossReceivesPseudocount:
     """Verify BPNetLoss constructed with injected pseudocount uses it correctly."""
 
     def test_bpnet_loss_uses_injected_pseudocount(self):
-        """After propagation, BPNetLoss(count_pseudocount=150) computes the right target."""
-        data_cfg = _data_config(count_pseudocount=150.0, target_scale=1.0)
-        model_cfg = _model_config()
-        result = propagate_pseudocount(data_cfg, model_cfg)
+        """After injection, BPNetLoss(count_pseudocount=150) computes the right target."""
+        cfg = _model_config(count_pseudocount=150.0)
+        _metrics, criterion = instantiate_metrics_and_loss(cfg)
 
-        loss_fn = BPNetLoss(**result["loss_args"])
-        assert loss_fn.count_pseudocount == 150.0
+        assert criterion.count_pseudocount == 150.0
 
         # Verify forward: count target should be log(total + 150)
         total = 500.0
@@ -266,13 +152,13 @@ class TestBPNetLossReceivesPseudocount:
 
         # With beta=0 (no profile loss), count loss should be 0 for perfect pred
         loss_fn_isolated = BPNetLoss(
-            beta=0.0, count_pseudocount=result["loss_args"]["count_pseudocount"]
+            beta=0.0, count_pseudocount=150.0,
         )
         loss_val = loss_fn_isolated(out, targets)
         assert loss_val.item() == pytest.approx(0.0, abs=1e-4)
 
     def test_wrong_pseudocount_gives_nonzero_loss(self):
-        """If pseudocount is not propagated (stays at 1), loss will be non-zero."""
+        """If pseudocount is wrong (stays at 1), loss will be non-zero."""
         total = 500.0
         targets = torch.zeros(1, 1, 10)
         targets[0, 0, 0] = total
@@ -285,7 +171,7 @@ class TestBPNetLossReceivesPseudocount:
         loss_fn = BPNetLoss(beta=0.0)  # count_pseudocount defaults to 1.0
         loss_val = loss_fn(out, targets)
 
-        # target = log(500 + 1) = log(501), pred = log(650) → non-zero MSE
+        # target = log(500 + 1) = log(501), pred = log(650) -> non-zero MSE
         expected = (math.log(650.0) - math.log(501.0)) ** 2
         assert loss_val.item() == pytest.approx(expected, rel=1e-3)
         assert loss_val.item() > 0.01
@@ -296,8 +182,7 @@ class TestBPNetLossReceivesPseudocount:
 # ===========================================================================
 
 class TestScatterPlotPseudocount:
-    """Verify that _accumulate_log_counts uses the propagated pseudocount
-    and produces targets consistent with the loss."""
+    """Verify that log-count targets with pseudocount are consistent with the loss."""
 
     def test_scatter_target_matches_loss_target(self):
         """The scatter plot X-axis (target log count) must match the loss target."""
@@ -306,19 +191,13 @@ class TestScatterPlotPseudocount:
         targets = torch.zeros(1, 1, 10)
         targets[0, 0, 0] = total
 
-        # What the loss computes as the count target
         loss_target = torch.log(torch.tensor(total) + pseudocount)
-
-        # What _accumulate_log_counts computes as target_lc
-        # (reproducing the logic from module.py)
         accum_target = torch.log(targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount)
-
         assert accum_target.item() == pytest.approx(loss_target.item(), abs=1e-6)
 
     def test_scatter_target_min_with_pseudocount_150(self):
-        """With pseudocount=150, the minimum X value is log(150) ≈ 5.01, not 0."""
+        """With pseudocount=150, the minimum X value is log(150), not 0."""
         pseudocount = 150.0
-        # All-zero targets (silent region)
         targets = torch.zeros(1, 1, 10)
         target_lc = torch.log(targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount)
         assert target_lc.item() == pytest.approx(math.log(150.0), abs=1e-6)
@@ -332,17 +211,28 @@ class TestScatterPlotPseudocount:
 
 
 # ===========================================================================
-# 5. parse_hparams_config still works (regression)
+# 5. get_log_count_params reads from ModelConfig
 # ===========================================================================
 
-class TestParseHparamsRegression:
-    """Verify parse_hparams_config still propagates pseudocount via propagate_pseudocount."""
+class TestGetLogCountParams:
+    """Verify get_log_count_params reads count_pseudocount from ModelConfig."""
 
-    def test_inject_simulated(self):
-        """Simulate the logic from parse_hparams_config to confirm it uses propagate_pseudocount."""
-        # This mirrors what parse_hparams_config does after validation
-        data_cfg = _data_config(count_pseudocount=100.0, target_scale=2.0)
-        model_cfg = _model_config()
-        result = propagate_pseudocount(data_cfg, model_cfg)
-        assert result["loss_args"]["count_pseudocount"] == pytest.approx(200.0)
-        assert result["metrics_args"]["count_pseudocount"] == pytest.approx(200.0)
+    def test_mse_uses_pseudocount(self):
+        cfg = _model_config(
+            loss_cls="cerberus.loss.MSEMultinomialLoss",
+            loss_args={},
+            count_pseudocount=50.0,
+        )
+        includes, pseudocount = get_log_count_params(cfg)
+        assert includes is True
+        assert pseudocount == 50.0
+
+    def test_poisson_ignores_pseudocount(self):
+        cfg = _model_config(
+            loss_cls="cerberus.loss.PoissonMultinomialLoss",
+            loss_args={},
+            count_pseudocount=99.0,
+        )
+        includes, pseudocount = get_log_count_params(cfg)
+        assert includes is False
+        assert pseudocount == 0.0
