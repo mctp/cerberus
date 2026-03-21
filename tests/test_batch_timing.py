@@ -1,8 +1,7 @@
 import time
-from typing import cast
 from cerberus.genome import create_genome_config
 from cerberus import CerberusDataModule
-from cerberus.config import DataConfig, SamplerConfig
+from cerberus.config import DataConfig, SamplerConfig, FoldArgs, IntervalSamplerArgs
 
 def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
     """
@@ -26,17 +25,15 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
         species="human",
         exclude_intervals={"blacklist": blacklist_path},
         fold_type="chrom_partition",
-        fold_args={"k": 5, "test_fold": 0, "val_fold": 1}
+        fold_args=FoldArgs(k=5, test_fold=0, val_fold=1),
     )
 
     # 4. Sampler Configuration
-    sampler_config = cast(SamplerConfig, {
-        "sampler_type": "interval",
-        "padded_size": 2304,
-        "sampler_args": {
-            "intervals_path": peaks_path
-        }
-    })
+    sampler_config = SamplerConfig(
+        sampler_type="interval",
+        padded_size=2304,
+        sampler_args=IntervalSamplerArgs(intervals_path=peaks_path),
+    )
 
     batch_sizes = [8, 16, 32, 64, 128]
     num_batches_to_measure = 10 
@@ -55,20 +52,19 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
         print("-" * 100)
 
         # 3. Data Configuration
-        data_config = cast(DataConfig, {
-            "inputs": {"mappability": mappability_path},
-            "targets": {"AR": signal_path},
-            "input_len": 2048,
-            "output_len": 1024,
-            "output_bin_size": 4,
-            "encoding": "ACGT",
-            "max_jitter": 128,
-            "log_transform": True,
-            "reverse_complement": True,
-        "target_scale": 1.0,
-            "count_pseudocount": 1.0,
-            "use_sequence": True,
-        })
+        data_config = DataConfig(
+            inputs={"mappability": mappability_path},
+            targets={"AR": signal_path},
+            input_len=2048,
+            output_len=1024,
+            output_bin_size=4,
+            encoding="ACGT",
+            max_jitter=128,
+            log_transform=True,
+            reverse_complement=True,
+            target_scale=1.0,
+            use_sequence=True,
+        )
 
         # 5. Instantiate DataModule ONCE per mode
         data_module = CerberusDataModule(
