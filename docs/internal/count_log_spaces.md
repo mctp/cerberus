@@ -143,8 +143,8 @@ compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=p
 When renaming, update:
 - `output.compute_total_log_counts` parameter
 - `tools/export_predictions.py` local variable
-- `module.py._accumulate_log_counts` local variable
-- All test files referencing `log_counts_include_pseudocount` in `compute_total_log_counts` calls
+- `metrics.py` `LogCountsMeanSquaredError` / `LogCountsPearsonCorrCoef` parameter
+- All test files referencing `log_counts_include_pseudocount`
 
 ---
 
@@ -205,7 +205,7 @@ log(2.0)` — a very different value that would dominate small counts.
 | `LogCountsPearsonCorrCoef` target | `metrics.py` | Same |
 | `compute_total_log_counts` (log_counts_include_pseudocount=True) | `output.py` | Inverts per-channel, sums, reapplies |
 | `CountProfile*` metrics (reconstruction) | `metrics.py` | `exp(log_counts) - count_pseudocount` |
-| `module._accumulate_log_counts` target | `module.py` | `log(sum + pseudocount)` |
+| `module.on_validation_epoch_end` scatter plot | `module.py` | Reads from `LogCountsPearsonCorrCoef` state |
 | `export_predictions` observed counts | `export_predictions.py` | `log(obs + pseudocount)` |
 
 ### Pure-log space (`log(count)`)
@@ -251,5 +251,8 @@ dataset-level transform).  All loss/metric classes that support it invert via
 
 ---
 
-**Date:** February 28, 2026
-**Related:** `docs/internal/logsumexp_analysis.md` (predecessor, partially outdated)
+**Date:** February 28, 2026 (updated March 20, 2026)
+**Related:**
+- `docs/internal/pseudocount_audit_v095.md` — comprehensive audit and fix record for v0.9.5
+- `docs/internal/asap_pseudocount_considerations.md` — Poisson metric mismatch analysis
+- `docs/internal/logsumexp_analysis.md` (predecessor, partially outdated)
