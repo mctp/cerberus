@@ -28,16 +28,16 @@ def test_create_mouse_genome_config(tmp_path):
 
     config = create_mouse_genome_config(genome_dir)
     
-    assert config["name"] == "mm10"
-    assert config["fasta_path"] == fasta_path
-    assert "blacklist" in config["exclude_intervals"]
-    assert "unmappable" in config["exclude_intervals"]
+    assert config.name == "mm10"
+    assert config.fasta_path == fasta_path
+    assert "blacklist" in config.exclude_intervals
+    assert "unmappable" in config.exclude_intervals
     
     # Check allowed chroms
-    assert "chr1" in config["allowed_chroms"]
-    assert "chr19" in config["allowed_chroms"]
-    assert "chrX" in config["allowed_chroms"]
-    assert "chrM" not in config["allowed_chroms"] # default excluded
+    assert "chr1" in config.allowed_chroms
+    assert "chr19" in config.allowed_chroms
+    assert "chrX" in config.allowed_chroms
+    assert "chrM" not in config.allowed_chroms # default excluded
 
 def test_create_human_genome_config(tmp_path):
     """Test that create_human_genome_config creates a valid config."""
@@ -63,13 +63,13 @@ def test_create_human_genome_config(tmp_path):
 
     config = create_human_genome_config(genome_dir)
     
-    assert config["name"] == "hg38"
-    assert config["fasta_path"] == fasta_path
-    assert "blacklist" in config["exclude_intervals"]
-    assert "unmappable" in config["exclude_intervals"]
+    assert config.name == "hg38"
+    assert config.fasta_path == fasta_path
+    assert "blacklist" in config.exclude_intervals
+    assert "unmappable" in config.exclude_intervals
     
     # Check allowed chroms
-    assert "chr1" in config["allowed_chroms"]
-    assert "chr22" in config["allowed_chroms"]
-    assert "chrX" in config["allowed_chroms"]
-    assert "chrM" not in config["allowed_chroms"] # default excluded
+    assert "chr1" in config.allowed_chroms
+    assert "chr22" in config.allowed_chroms
+    assert "chrX" in config.allowed_chroms
+    assert "chrM" not in config.allowed_chroms # default excluded

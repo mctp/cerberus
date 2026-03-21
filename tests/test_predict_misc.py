@@ -5,10 +5,12 @@ import torch
 import torch.nn as nn
 import yaml
 from pathlib import Path
-from typing import cast
 from unittest.mock import patch
 
-from cerberus.config import CerberusConfig, GenomeConfig, DataConfig, ModelConfig
+from cerberus.config import (
+    CerberusConfig, GenomeConfig, DataConfig, ModelConfig, TrainConfig,
+    SamplerConfig,
+)
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
 from cerberus.interval import Interval
@@ -61,39 +63,52 @@ def _make_config_and_ensemble(tmp_path, loss_cls, loss_args):
         exclude_intervals={},
     )
 
-    data_config = cast(DataConfig, {
-        "inputs": {},
-        "targets": {},
-        "input_len": 100,
-        "output_len": 50,
-        "output_bin_size": 1,
-        "encoding": "ACGT",
-        "max_jitter": 0,
-        "log_transform": False,
-        "reverse_complement": False,
-        "target_scale": 1.0,
-        "count_pseudocount": 0.0,
-        "use_sequence": True,
-    })
+    data_config = DataConfig.model_construct(
+        inputs={},
+        targets={},
+        input_len=100,
+        output_len=50,
+        output_bin_size=1,
+        encoding="ACGT",
+        max_jitter=0,
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
+    )
 
-    model_config = cast(ModelConfig, {
-        "name": "dummy",
-        "model_cls": "tests.test_predict_misc.DummyBPNetModel",
-        "loss_cls": loss_cls,
-        "loss_args": loss_args,
-        "metrics_cls": "torchmetrics.MetricCollection",
-        "metrics_args": {"metrics": {}},
-        "model_args": {},
-        "pretrained": [],
-    })
+    model_config = ModelConfig.model_construct(
+        name="dummy",
+        model_cls="tests.test_predict_misc.DummyBPNetModel",
+        loss_cls=loss_cls,
+        loss_args=loss_args,
+        metrics_cls="torchmetrics.MetricCollection",
+        metrics_args={"metrics": {}},
+        model_args={},
+        pretrained=[],
+        count_pseudocount=loss_args.get("count_pseudocount", 0.0),
+    )
 
-    config = cast(CerberusConfig, {
-        "genome_config": genome_config,
-        "data_config": data_config,
-        "model_config": model_config,
-        "sampler_config": None,
-        "train_config": None,
-    })
+    # Minimal train/sampler configs for CerberusConfig construction
+    train_config = TrainConfig.model_construct(
+        batch_size=1, max_epochs=1, learning_rate=1e-3,
+        weight_decay=0.0, patience=1, optimizer="adam",
+        scheduler_type="constant", scheduler_args={},
+        filter_bias_and_bn=False,
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8, gradient_clip_val=None,
+    )
+    sampler_config = SamplerConfig.model_construct(
+        sampler_type="interval", padded_size=100, sampler_args={},
+    )
+
+    config = CerberusConfig.model_construct(
+        genome_config=genome_config,
+        data_config=data_config,
+        model_config_=model_config,
+        sampler_config=sampler_config,
+        train_config=train_config,
+    )
 
     model = DummyBPNetModel(input_len=100, output_len=50, output_bin_size=1)
     fold_dir = tmp_path / "fold_0"
@@ -103,10 +118,19 @@ def _make_config_and_ensemble(tmp_path, loss_cls, loss_args):
     with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
         yaml.dump({"folds": [0]}, f)
 
+    # Provide a minimal CerberusConfig as the mock return value
+    mock_config = CerberusConfig.model_construct(
+        genome_config=genome_config,
+        data_config=data_config,
+        model_config_=model_config,
+        sampler_config=sampler_config,
+        train_config=train_config,
+    )
+
     with patch(
         "cerberus.model_ensemble.ModelEnsemble._find_hparams",
         return_value=Path("hparams.yaml"),
-    ), patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
+    ), patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config):
         ensemble = ModelEnsemble(
             tmp_path, model_config, data_config, genome_config, torch.device("cpu"),
         )
@@ -173,7 +197,7 @@ class TestLoadBedIntervals:
         assert len(intervals) == 2
         for iv in intervals:
             assert isinstance(iv, Interval)
-            assert len(iv) == config["data_config"]["input_len"]
+            assert len(iv) == config.data_config.input_len
 
     def test_str_path(self, mse_setup, tmp_path):
         """Accepts string paths, not just Path objects."""

@@ -42,9 +42,9 @@ def test_download_human_reference():
 
     # Test config creation
     genome_config = create_human_genome_config(genome_dir)
-    assert genome_config["name"] == "hg38"
-    assert genome_config["fasta_path"] == results["fasta"]
-    assert "blacklist" in genome_config["exclude_intervals"]
-    assert "unmappable" in genome_config["exclude_intervals"]
-    assert genome_config["exclude_intervals"]["blacklist"] == results["blacklist"]
-    assert genome_config["exclude_intervals"]["unmappable"] == results["gaps"]
+    assert genome_config.name == "hg38"
+    assert genome_config.fasta_path == results["fasta"]
+    assert "blacklist" in genome_config.exclude_intervals
+    assert "unmappable" in genome_config.exclude_intervals
+    assert genome_config.exclude_intervals["blacklist"] == results["blacklist"]
+    assert genome_config.exclude_intervals["unmappable"] == results["gaps"]

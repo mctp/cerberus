@@ -10,58 +10,59 @@ from cerberus.config import (
     DataConfig,
     TrainConfig,
     GenomeConfig,
+    FoldArgs,
 )
 
 # Dummy Configs
 @pytest.fixture
 def mock_configs():
-    model_config: ModelConfig = {
-        "name": "dummy",
-        "model_cls": MagicMock(),
-        "loss_cls": MagicMock(),
-        "loss_args": {},
-        "metrics_cls": MagicMock(),
-        "metrics_args": {},
-        "model_args": {},
-        "pretrained": [],
-    } # type: ignore
-    data_config: DataConfig = {
-        "inputs": {},
-        "targets": {},
-        "input_len": 100,
-        "output_len": 100,
-        "max_jitter": 0,
-        "output_bin_size": 1,
-        "encoding": "ACGT",
-        "log_transform": False,
-        "reverse_complement": False,
-        "target_scale": 1.0,
-        "use_sequence": True,
-        "count_pseudocount": 1.0,
-    }
-    train_config: TrainConfig = {
-        "batch_size": 1,
-        "max_epochs": 1,
-        "learning_rate": 0.01,
-        "weight_decay": 0.0,
-        "patience": 1,
-        "optimizer": "adam",
-        "filter_bias_and_bn": False,
-        "scheduler_type": "default",
-        "scheduler_args": {},
-        "reload_dataloaders_every_n_epochs": 0,
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    }
-    genome_config: GenomeConfig = {
-        "name": "test",
-        "fasta_path": Path("test.fa"),
-        "exclude_intervals": {},
-        "allowed_chroms": ["chr1"],
-        "chrom_sizes": {"chr1": 1000},
-        "fold_type": "chrom_partition",
-        "fold_args": {"k": 2}
-    }
+    model_config = ModelConfig.model_construct(
+        name="dummy",
+        model_cls=MagicMock(),
+        loss_cls=MagicMock(),
+        loss_args={},
+        metrics_cls=MagicMock(),
+        metrics_args={},
+        model_args={},
+        pretrained=[],
+        count_pseudocount=0.0,
+    )
+    data_config = DataConfig.model_construct(
+        inputs={},
+        targets={},
+        input_len=100,
+        output_len=100,
+        max_jitter=0,
+        output_bin_size=1,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
+    )
+    train_config = TrainConfig.model_construct(
+        batch_size=1,
+        max_epochs=1,
+        learning_rate=0.01,
+        weight_decay=0.0,
+        patience=1,
+        optimizer="adam",
+        filter_bias_and_bn=False,
+        scheduler_type="default",
+        scheduler_args={},
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
+    genome_config = GenomeConfig.model_construct(
+        name="test",
+        fasta_path=Path("test.fa"),
+        exclude_intervals={},
+        allowed_chroms=["chr1"],
+        chrom_sizes={"chr1": 1000},
+        fold_type="chrom_partition",
+        fold_args=FoldArgs.model_construct(k=2),
+    )
     return model_config, data_config, train_config, genome_config
 
 @pytest.fixture

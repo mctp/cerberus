@@ -9,7 +9,6 @@ This test file grows incrementally across commits:
 
 import numpy as np
 import pytest
-from typing import cast
 from unittest.mock import MagicMock, patch
 
 from cerberus.interval import Interval
@@ -21,8 +20,36 @@ from cerberus.samplers import (
     RandomSampler,
     create_sampler,
 )
-from cerberus.config import SamplerConfig
+from cerberus.config import (
+    SamplerConfig,
+    ComplexityMatchedSamplerArgs,
+    RandomSamplerArgs,
+    PeakSamplerArgs,
+)
 from interlap import InterLap
+
+
+def _cm_config(target_n: int = 5, candidate_n: int = 10) -> SamplerConfig:
+    """Helper: build a complexity_matched SamplerConfig for tests."""
+    return SamplerConfig.model_construct(
+        sampler_type="complexity_matched",
+        padded_size=100,
+        sampler_args=ComplexityMatchedSamplerArgs.model_construct(
+            target_sampler=SamplerConfig.model_construct(
+                sampler_type="random",
+                padded_size=100,
+                sampler_args=RandomSamplerArgs.model_construct(num_intervals=target_n),
+            ),
+            candidate_sampler=SamplerConfig.model_construct(
+                sampler_type="random",
+                padded_size=100,
+                sampler_args=RandomSamplerArgs.model_construct(num_intervals=candidate_n),
+            ),
+            bins=10,
+            candidate_ratio=1.0,
+            metrics=["gc"],
+        ),
+    )
 
 
 # --- Commit 1: Sampler + dataset plumbing tests ---
@@ -47,23 +74,7 @@ class TestCreateSamplerPrepareCache:
             "chr1:0-100(+)": np.array([0.5], dtype=np.float32),
         }
 
-        config: SamplerConfig = cast(SamplerConfig, {
-            "sampler_type": "complexity_matched",
-            "padded_size": 100,
-            "sampler_args": {
-                "target_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 5},
-                },
-                "candidate_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 10},
-                },
-                "bins": 10,
-                "candidate_ratio": 1.0,
-                "metrics": ["gc"],
-            },
-        })
+        config = _cm_config()
         chrom_sizes = {"chr1": 10000}
 
         sampler = create_sampler(
@@ -81,23 +92,7 @@ class TestCreateSamplerPrepareCache:
 
     def test_complexity_matched_without_cache(self, mock_compute):
         """create_sampler() without prepare_cache lets sampler create its own internal dict."""
-        config: SamplerConfig = cast(SamplerConfig, {
-            "sampler_type": "complexity_matched",
-            "padded_size": 100,
-            "sampler_args": {
-                "target_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 5},
-                },
-                "candidate_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 10},
-                },
-                "bins": 10,
-                "candidate_ratio": 1.0,
-                "metrics": ["gc"],
-            },
-        })
+        config = _cm_config()
         chrom_sizes = {"chr1": 10000}
 
         sampler = create_sampler(
@@ -192,11 +187,11 @@ class TestCreateSamplerCacheIgnoredForSimpleSamplers:
         """create_sampler() with random type ignores prepare_cache."""
         cache: dict[str, np.ndarray] = {"chr1:0-100(+)": np.array([0.5], dtype=np.float32)}
 
-        config: SamplerConfig = cast(SamplerConfig, {
-            "sampler_type": "random",
-            "padded_size": 100,
-            "sampler_args": {"num_intervals": 10},
-        })
+        config = SamplerConfig.model_construct(
+            sampler_type="random",
+            padded_size=100,
+            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        )
 
         sampler = create_sampler(
             config,
@@ -308,23 +303,7 @@ class TestSeedDeterminism:
 
     def test_different_seeds_produce_different_candidates(self, mock_compute):
         """Two create_sampler() calls with different seeds produce different candidate intervals."""
-        config: SamplerConfig = cast(SamplerConfig, {
-            "sampler_type": "complexity_matched",
-            "padded_size": 100,
-            "sampler_args": {
-                "target_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 5},
-                },
-                "candidate_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 50},
-                },
-                "bins": 10,
-                "candidate_ratio": 1.0,
-                "metrics": ["gc"],
-            },
-        })
+        config = _cm_config(target_n=5, candidate_n=50)
         chrom_sizes = {"chr1": 1_000_000}
 
         sampler1 = create_sampler(
@@ -350,23 +329,7 @@ class TestSeedDeterminism:
 
     def test_explicit_seed_produces_identical_candidates(self, mock_compute):
         """Two create_sampler() calls with seed=42 produce identical candidate intervals."""
-        config: SamplerConfig = cast(SamplerConfig, {
-            "sampler_type": "complexity_matched",
-            "padded_size": 100,
-            "sampler_args": {
-                "target_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 5},
-                },
-                "candidate_sampler": {
-                    "type": "random",
-                    "args": {"num_intervals": 50},
-                },
-                "bins": 10,
-                "candidate_ratio": 1.0,
-                "metrics": ["gc"],
-            },
-        })
+        config = _cm_config(target_n=5, candidate_n=50)
         chrom_sizes = {"chr1": 1_000_000}
 
         sampler1 = create_sampler(
@@ -396,9 +359,6 @@ from cerberus.cache import (
     save_prepare_cache,
     load_prepare_cache,
 )
-from cerberus.config import SamplerConfig
-
-
 class TestGetDefaultCacheDir:
     """Tests for default cache directory resolution."""
 
@@ -420,7 +380,13 @@ class TestResolveCacheDir:
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
 
-        config = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {}, "padded_size": 100})
+        config = SamplerConfig.model_construct(
+            sampler_type="peak",
+            padded_size=100,
+            sampler_args=PeakSamplerArgs.model_construct(
+                intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None
+            ),
+        )
         chrom_sizes = {"chr1": 10000}
 
         dir1 = resolve_cache_dir(tmp_path, fasta, config, seed=42, chrom_sizes=chrom_sizes)
@@ -431,7 +397,13 @@ class TestResolveCacheDir:
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
 
-        config = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {}, "padded_size": 100})
+        config = SamplerConfig.model_construct(
+            sampler_type="peak",
+            padded_size=100,
+            sampler_args=PeakSamplerArgs.model_construct(
+                intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None
+            ),
+        )
         chrom_sizes = {"chr1": 10000}
 
         dir1 = resolve_cache_dir(tmp_path, fasta, config, seed=42, chrom_sizes=chrom_sizes)
@@ -442,8 +414,20 @@ class TestResolveCacheDir:
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
 
-        config_a = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {"bg": 1.0}, "padded_size": 100})
-        config_b = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {"bg": 2.0}, "padded_size": 100})
+        config_a = SamplerConfig.model_construct(
+            sampler_type="peak",
+            padded_size=100,
+            sampler_args=PeakSamplerArgs.model_construct(
+                intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None
+            ),
+        )
+        config_b = SamplerConfig.model_construct(
+            sampler_type="peak",
+            padded_size=100,
+            sampler_args=PeakSamplerArgs.model_construct(
+                intervals_path=Path("peaks.bed"), background_ratio=2.0, complexity_center_size=None
+            ),
+        )
         chrom_sizes = {"chr1": 10000}
 
         dir1 = resolve_cache_dir(tmp_path, fasta, config_a, seed=42, chrom_sizes=chrom_sizes)
@@ -454,7 +438,13 @@ class TestResolveCacheDir:
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
 
-        config = cast(SamplerConfig, {"sampler_type": "peak", "sampler_args": {}, "padded_size": 100})
+        config = SamplerConfig.model_construct(
+            sampler_type="peak",
+            padded_size=100,
+            sampler_args=PeakSamplerArgs.model_construct(
+                intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None
+            ),
+        )
         result = resolve_cache_dir(tmp_path / "my_cache", fasta, config, seed=0, chrom_sizes={})
         assert result.parent == tmp_path / "my_cache"
 

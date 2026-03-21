@@ -9,11 +9,11 @@ Covers:
 
 import pytest
 import torch
-from typing import cast
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from cerberus.train import compute_counts_loss_weight, resolve_adaptive_loss_args
-from cerberus.config import ModelConfig
+from cerberus.config import ModelConfig, DataConfig
 
 
 # ---------------------------------------------------------------------------
@@ -50,16 +50,16 @@ def test_compute_counts_loss_weight_negative_raises():
 # ---------------------------------------------------------------------------
 
 def _model_config(loss_args: dict) -> ModelConfig:
-    return cast(ModelConfig, {
-        "name": "Test",
-        "model_cls": "cerberus.models.bpnet.BPNet",
-        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-        "loss_args": loss_args,
-        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-        "metrics_args": {},
-        "model_args": {},
-        "pretrained": [],
-    })
+    return ModelConfig(
+        name="Test",
+        model_cls="cerberus.models.bpnet.BPNet",
+        loss_cls="cerberus.models.bpnet.BPNetLoss",
+        loss_args=loss_args,
+        metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+        metrics_args={},
+        model_args={},
+        pretrained=[],
+    )
 
 
 def _mock_datamodule(median_counts: float) -> MagicMock:
@@ -81,22 +81,22 @@ def test_resolve_adaptive_alpha_key():
     config = _model_config({"alpha": "adaptive"})
     dm = _mock_datamodule(500.0)
     result = resolve_adaptive_loss_args(config, dm)
-    assert result["loss_args"]["alpha"] == pytest.approx(50.0)
+    assert result.loss_args["alpha"] == pytest.approx(50.0)
 
 
 def test_resolve_adaptive_count_weight_key():
     config = _model_config({"count_weight": "adaptive"})
     dm = _mock_datamodule(300.0)
     result = resolve_adaptive_loss_args(config, dm)
-    assert result["loss_args"]["count_weight"] == pytest.approx(30.0)
+    assert result.loss_args["count_weight"] == pytest.approx(30.0)
 
 
 def test_resolve_adaptive_preserves_other_keys():
     config = _model_config({"alpha": "adaptive", "beta": 1.0})
     dm = _mock_datamodule(200.0)
     result = resolve_adaptive_loss_args(config, dm)
-    assert result["loss_args"]["alpha"] == pytest.approx(20.0)
-    assert result["loss_args"]["beta"] == pytest.approx(1.0)
+    assert result.loss_args["alpha"] == pytest.approx(20.0)
+    assert result.loss_args["beta"] == pytest.approx(1.0)
 
 
 def test_resolve_adaptive_does_not_mutate_input():
@@ -104,7 +104,7 @@ def test_resolve_adaptive_does_not_mutate_input():
     dm = _mock_datamodule(400.0)
     resolve_adaptive_loss_args(config, dm)
     # Original config must be unchanged so train_multi can reuse it across folds
-    assert config["loss_args"]["alpha"] == "adaptive"
+    assert config.loss_args["alpha"] == "adaptive"
 
 
 def test_resolve_adaptive_calls_compute_once():
@@ -121,7 +121,7 @@ def test_resolve_adaptive_multiple_keys_same_weight():
     config = _model_config({"alpha": "adaptive", "count_weight": "adaptive"})
     dm = _mock_datamodule(500.0)
     result = resolve_adaptive_loss_args(config, dm)
-    assert result["loss_args"]["alpha"] == result["loss_args"]["count_weight"]
+    assert result.loss_args["alpha"] == result.loss_args["count_weight"]
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ def test_compute_median_counts_requires_setup():
         CerberusDataModule.compute_median_counts(dm)
 
 
-def _make_mock_dataset(data_config: dict, n: int = 5):
+def _make_mock_dataset(data_config: SimpleNamespace, n: int = 5):
     """Helper: mock CerberusDataset for compute_median_counts tests."""
     mock_dataset = MagicMock()
     mock_dataset.__len__ = MagicMock(return_value=n)
@@ -156,13 +156,13 @@ def test_compute_median_counts_applies_target_scale():
 
     dm = MagicMock(spec=CerberusDataModule)
     dm._is_initialized = True
-    dm.data_config = {"target_scale": 2.0}
+    dm.data_config = DataConfig.model_construct(target_scale=2.0)
 
-    data_config = {
-        "targets": {"sig": "sig.bw"},
-        "input_len": 100,
-        "output_len": 100,
-    }
+    data_config = SimpleNamespace(
+        targets={"sig": "sig.bw"},
+        input_len=100,
+        output_len=100,
+    )
     mock_dataset = _make_mock_dataset(data_config, n=5)
     dm.train_dataset = mock_dataset
 
@@ -184,15 +184,15 @@ def test_compute_median_counts_uses_median_not_mean():
 
     dm = MagicMock(spec=CerberusDataModule)
     dm._is_initialized = True
-    dm.data_config = {"target_scale": 1.0}
+    dm.data_config = DataConfig.model_construct(target_scale=1.0)
 
     raw_counts = [10.0, 20.0, 1000.0]  # mean=343, median=20
 
-    data_config = {
-        "targets": {"sig": "sig.bw"},
-        "input_len": 100,
-        "output_len": 100,
-    }
+    data_config = SimpleNamespace(
+        targets={"sig": "sig.bw"},
+        input_len=100,
+        output_len=100,
+    )
     mock_dataset = _make_mock_dataset(data_config, n=3)
     dm.train_dataset = mock_dataset
 
@@ -217,13 +217,13 @@ def test_compute_median_counts_does_not_open_dataset_extractor():
 
     dm = MagicMock(spec=CerberusDataModule)
     dm._is_initialized = True
-    dm.data_config = {"target_scale": 1.0}
+    dm.data_config = DataConfig.model_construct(target_scale=1.0)
 
-    data_config = {
-        "targets": {"sig": "sig.bw"},
-        "input_len": 100,
-        "output_len": 100,
-    }
+    data_config = SimpleNamespace(
+        targets={"sig": "sig.bw"},
+        input_len=100,
+        output_len=100,
+    )
     mock_dataset = _make_mock_dataset(data_config, n=3)
     # Give the dataset a real SignalExtractor with no handles open
     real_extractor = SignalExtractor({"sig": Path("sig.bw")})

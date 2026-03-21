@@ -26,6 +26,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   encoding across 1–128 kb sequence lengths.
 
 ### Changed
+- **`train.py` migrated to Pydantic attribute access**: All config dict bracket
+  access (`config["key"]`) replaced with Pydantic attribute access (`config.key`).
+  `resolve_adaptive_loss_args` returns a new `ModelConfig` via `model_copy(update=...)`
+  instead of dict spread. `_dump_config` serializes configs via `model_dump(mode="json")`
+  instead of `default=str`. Genome config fold_args override in `train_single` uses
+  `model_copy` on both `FoldArgs` and `GenomeConfig`. Updated all train-related tests
+  to construct real Pydantic models or attribute-access mocks instead of `cast(Type, dict)`.
+- **`predict_misc.py`, `predict_bigwig.py`, `model_ensemble.py` migrated to Pydantic
+  attribute access**: All config dict bracket access replaced with Pydantic attribute
+  access. `ModelEnsemble.__init__` uses `model_copy(update=...)` for config overrides
+  instead of mutating dicts. `get_eval_intervals` uses `sampler_config.model_copy()`
+  instead of dict spread. Updated all related tests (`test_predict_misc.py`,
+  `test_export_bigwig.py`, `test_predict.py`, `test_model_ensemble_loader.py`) to
+  construct Pydantic models via `model_construct()` instead of `cast(Type, dict)`.
+- **`transform.py`, `samplers.py`, `pretrained.py`, `cache.py`, `genome.py`,
+  `interval.py` migrated to Pydantic attribute access**: All config dict bracket
+  access (`config["key"]`) replaced with Pydantic attribute access (`config.key`).
+  `create_sampler()` now accepts only `SamplerConfig` (not dicts) and uses
+  `assert isinstance()` to narrow `sampler_args` to the correct typed sub-model
+  in each branch, satisfying pyright. `create_genome_config()` returns a
+  `GenomeConfig(...)` constructor call instead of a dict literal. `create_genome_folds()`
+  accepts `FoldArgs | dict` for backward compatibility and coerces dicts internally.
+  `resolve_cache_dir()` uses `sampler_config.model_dump(mode="json")` instead of
+  passing the raw config to JSON serialization. Updated tests for transform,
+  sampler, genome, interval, cache, and pretrained modules to construct Pydantic
+  models via `model_construct()` instead of `cast(Type, dict)`.
 - **`encode_dna` rewritten with broadcast comparison**: Replaced LUT-scatter
   implementation with vectorized `(seq_bytes == encoding_bytes)` broadcast.
   ~11x faster at 128 kb context length. Drop-in compatible; old implementation

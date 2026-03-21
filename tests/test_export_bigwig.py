@@ -14,7 +14,6 @@ import numpy as np
 import yaml
 import pybigtools
 from pathlib import Path
-from typing import cast
 from dataclasses import dataclass
 from unittest.mock import patch
 
@@ -22,7 +21,10 @@ from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
-from cerberus.config import GenomeConfig, DataConfig, ModelConfig
+from cerberus.config import (
+    CerberusConfig, GenomeConfig, DataConfig, ModelConfig,
+    TrainConfig, SamplerConfig,
+)
 from cerberus.output import ModelOutput, ProfileCountOutput, ProfileLogRates
 from cerberus.predict_bigwig import predict_to_bigwig, _process_island
 
@@ -112,22 +114,21 @@ def _make_setup(
         exclude_intervals={},
     )
 
-    data_config = cast(
-        DataConfig,
-        {
-            "inputs": {},
-            "targets": {},
-            "input_len": 100,
-            "output_len": 50,
-            "output_bin_size": output_bin_size,
-            "encoding": "ACGT",
-            "max_jitter": 0,
-            "log_transform": False,
-            "reverse_complement": False,
-            "target_scale": target_scale,
-            "count_pseudocount": 0.0,
-            "use_sequence": True,
-        },
+    if loss_args is None:
+        loss_args = {"count_pseudocount": 0.0}
+
+    data_config = DataConfig.model_construct(
+        inputs={},
+        targets={},
+        input_len=100,
+        output_len=50,
+        output_bin_size=output_bin_size,
+        encoding="ACGT",
+        max_jitter=0,
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=target_scale,
+        use_sequence=True,
     )
 
     dataset = CerberusDataset(genome_config, data_config, sampler_config=None)
@@ -141,24 +142,43 @@ def _make_setup(
     with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
         yaml.dump({"folds": [0]}, f)
 
-    model_config = cast(
-        ModelConfig,
-        {
-            "name": "dummy",
-            "model_cls": model_cls_path,
-            "loss_cls": loss_cls,
-            "loss_args": loss_args or {"count_pseudocount": 0.0},
-            "metrics_cls": "torchmetrics.MetricCollection",
-            "metrics_args": {"metrics": {}},
-            "model_args": {},
-            "pretrained": [],
-        },
+    model_config = ModelConfig.model_construct(
+        name="dummy",
+        model_cls=model_cls_path,
+        loss_cls=loss_cls,
+        loss_args=loss_args,
+        metrics_cls="torchmetrics.MetricCollection",
+        metrics_args={"metrics": {}},
+        model_args={},
+        pretrained=[],
+        count_pseudocount=loss_args.get("count_pseudocount", 0.0),
+    )
+
+    # Minimal train/sampler configs for CerberusConfig construction
+    train_config = TrainConfig.model_construct(
+        batch_size=1, max_epochs=1, learning_rate=1e-3,
+        weight_decay=0.0, patience=1, optimizer="adam",
+        scheduler_type="constant", scheduler_args={},
+        filter_bias_and_bn=False,
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8, gradient_clip_val=None,
+    )
+    sampler_config = SamplerConfig.model_construct(
+        sampler_type="interval", padded_size=100, sampler_args={},
+    )
+
+    mock_config = CerberusConfig.model_construct(
+        genome_config=genome_config,
+        data_config=data_config,
+        model_config_=model_config,
+        sampler_config=sampler_config,
+        train_config=train_config,
     )
 
     with patch(
         "cerberus.model_ensemble.ModelEnsemble._find_hparams",
         return_value=Path("hparams.yaml"),
-    ), patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
+    ), patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config):
         ensemble = ModelEnsemble(
             tmp_path, model_config, data_config, genome_config, torch.device("cpu")
         )

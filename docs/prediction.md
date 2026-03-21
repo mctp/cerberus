@@ -35,8 +35,8 @@ ensemble = ModelEnsemble(
 )
 
 # Access the configs used during training
-genome_config = ensemble.cerberus_config["genome_config"]
-data_config = ensemble.cerberus_config["data_config"]
+genome_config = ensemble.cerberus_config.genome_config
+data_config = ensemble.cerberus_config.data_config
 ```
 
 ### Path Resolution
@@ -181,7 +181,7 @@ The `predicted_log_count` and `observed_log_count` columns are placed in the sam
 
 The tool reads `uses_count_pseudocount` from the loss class via `get_log_count_params` to determine this automatically — no manual configuration is needed.
 
-The observed total is computed from raw BigWig signal (bypassing transforms) and then multiplied by `data_config["target_scale"]` before the log transform, matching what the loss was trained against.
+The observed total is computed from raw BigWig signal (bypassing transforms) and then multiplied by `data_config.target_scale` before the log transform, matching what the loss was trained against.
 
 #### Multi-channel models (`count_per_channel=True`)
 

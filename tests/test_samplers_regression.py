@@ -10,6 +10,7 @@ from cerberus.samplers import (
     RandomSampler,
     ScaledSampler,
 )
+from cerberus.config import SamplerConfig
 from cerberus.genome import create_genome_folds
 
 @pytest.fixture
@@ -197,26 +198,45 @@ def test_create_sampler_errors(chrom_sizes, folds):
     Test error messages.
     """
     # Missing fasta for complexity_matched
-    config = {
-        "sampler_type": "complexity_matched",
-        "padded_size": 100,
-        "sampler_args": {
-            "target_sampler": {"type": "random", "args": {"num_intervals": 10}},
-            "candidate_sampler": {"type": "random", "args": {"num_intervals": 10}},
-            "metrics": ["gc"]
-        }
-    }
+    config = SamplerConfig.model_construct(
+        sampler_type="complexity_matched",
+        padded_size=100,
+        sampler_args=SamplerConfig.model_construct(
+            sampler_type="random",
+            padded_size=100,
+            sampler_args=None,
+        ),
+    )
+    # Use a simpler approach: test with a properly formed config
+    from cerberus.config import ComplexityMatchedSamplerArgs, RandomSamplerArgs
+    config = SamplerConfig.model_construct(
+        sampler_type="complexity_matched",
+        padded_size=100,
+        sampler_args=ComplexityMatchedSamplerArgs.model_construct(
+            target_sampler=SamplerConfig.model_construct(
+                sampler_type="random",
+                padded_size=100,
+                sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            ),
+            candidate_sampler=SamplerConfig.model_construct(
+                sampler_type="random",
+                padded_size=100,
+                sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            ),
+            bins=20,
+            candidate_ratio=1.0,
+            metrics=["gc"],
+        ),
+    )
     with pytest.raises(ValueError, match="ComplexityMatchedSampler requires 'fasta_path'"):
         create_sampler(config, chrom_sizes, folds, {}, fasta_path=None)
-        
+
     # MultiSampler unsupported
-    config_multi = {
-        "sampler_type": "multi",
-        "padded_size": 100,
-        "sampler_args": {
-            "samplers": []
-        }
-    }
+    config_multi = SamplerConfig.model_construct(
+        sampler_type="multi",
+        padded_size=100,
+        sampler_args=None,
+    )
     with pytest.raises(ValueError, match="Unsupported sampler type: multi"):
         create_sampler(config_multi, chrom_sizes, folds, {})
 

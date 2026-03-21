@@ -2,7 +2,6 @@ import pytest
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import cast
 from unittest.mock import MagicMock, patch
 from dataclasses import dataclass, asdict
 from torchmetrics import MetricCollection
@@ -13,11 +12,13 @@ from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
 from cerberus.config import (
+    CerberusConfig,
     GenomeConfig,
     DataConfig,
     TrainConfig,
     ModelConfig,
     SamplerConfig,
+    FoldArgs,
 )
 from cerberus.output import ModelOutput
 
@@ -47,29 +48,28 @@ def integration_setup(tmp_path):
         f.write(">chr1\n" + "A" * 2000 + "\n")
     with open(tmp_path / "genome.fa.fai", "w") as f:
         f.write(f"chr1\t2000\t6\t2000\t2001\n")
-    
+
     genome_config = create_genome_config(
         name="test", fasta_path=genome, species="human", allowed_chroms=["chr1"], exclude_intervals={}
     )
-    
-    data_config = cast(DataConfig, {
-        "inputs": {},
-        "targets": {},
-        "input_len": 100,
-        "output_len": 50,
-        "output_bin_size": 1,
-        "encoding": "ACGT",
-        "max_jitter": 0,
-        "log_transform": False,
-        "reverse_complement": False,
-        "target_scale": 1.0,
-        "count_pseudocount": 1.0,
-        "use_sequence": True,
-    })
+
+    data_config = DataConfig.model_construct(
+        inputs={},
+        targets={},
+        input_len=100,
+        output_len=50,
+        output_bin_size=1,
+        encoding="ACGT",
+        max_jitter=0,
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
+    )
 
     # No sampler needed for prediction integration test
     dataset = CerberusDataset(genome_config, data_config, sampler_config=None)
-    
+
     # Model
     model = DummyModel(input_len=100, output_len=50, output_bin_size=1)
     # Create fold_0 and save model there
@@ -77,44 +77,58 @@ def integration_setup(tmp_path):
     fold_dir.mkdir()
     ckpt_path = fold_dir / "model.ckpt"
     torch.save({"state_dict": model.state_dict()}, ckpt_path)
-    
-    model_config = cast(ModelConfig, {
-        "name": "dummy",
-        "model_cls": "tests.test_predict.DummyModel",
-        "loss_cls": "torch.nn.MSELoss",
-        "loss_args": {},
-        "metrics_cls": "torchmetrics.MetricCollection",
-        "metrics_args": {"metrics": {}},
-        "model_args": {},
-        "pretrained": [],
-    })
 
-    train_config = cast(TrainConfig, {
-        "batch_size": 2,
-        "max_epochs": 1,
-        "learning_rate": 0.01,
-        "weight_decay": 0.0,
-        "patience": 1,
-        "optimizer": "adam",
-        "filter_bias_and_bn": False,
-        "scheduler_type": "default",
-        "scheduler_args": {},
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    })
-    
+    model_config = ModelConfig.model_construct(
+        name="dummy",
+        model_cls="tests.test_predict.DummyModel",
+        loss_cls="torch.nn.MSELoss",
+        loss_args={},
+        metrics_cls="torchmetrics.MetricCollection",
+        metrics_args={"metrics": {}},
+        model_args={},
+        pretrained=[],
+        count_pseudocount=0.0,
+    )
+
+    train_config = TrainConfig.model_construct(
+        batch_size=2,
+        max_epochs=1,
+        learning_rate=0.01,
+        weight_decay=0.0,
+        patience=1,
+        optimizer="adam",
+        filter_bias_and_bn=False,
+        scheduler_type="default",
+        scheduler_args={},
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
+
+    sampler_config = SamplerConfig.model_construct(
+        sampler_type="interval", padded_size=100, sampler_args={},
+    )
+
+    mock_config = CerberusConfig.model_construct(
+        genome_config=genome_config,
+        data_config=data_config,
+        model_config_=model_config,
+        sampler_config=sampler_config,
+        train_config=train_config,
+    )
+
     # Use ModelEnsemble directly
     # ModelEnsemble expects a directory
     import yaml
     with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
         yaml.dump({"folds": [0]}, f)
-        
+
     with patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
-         patch("cerberus.model_ensemble.parse_hparams_config", return_value={}):
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config):
         ensemble = ModelEnsemble(
             tmp_path, model_config, data_config, genome_config, torch.device("cpu")
         )
-    
+
     return dataset, ensemble
 
 # --- Fixtures and Helpers for Unit Tests (Mocking) ---
@@ -181,29 +195,64 @@ class MockScalarModel(nn.Module):
 def mock_dataset():
     dataset = MagicMock()
     # input_len=100, output_len=60 => offset=20
-    dataset.data_config = {"input_len": 100, "output_len": 60, "output_bin_size": 1}
+    dataset.data_config = DataConfig.model_construct(
+        inputs={}, targets={}, input_len=100, output_len=60, output_bin_size=1,
+        encoding="ACGT", max_jitter=0, log_transform=False,
+        reverse_complement=False, target_scale=1.0, use_sequence=True,
+    )
     # dataset.get_interval returns dict with "inputs"
     dataset.get_interval.return_value = {"inputs": torch.ones(4, 100)}
     return dataset
 
 def create_mock_ensemble(models, output_len=60, output_bin_size=1):
+    dummy_model_config = ModelConfig.model_construct(
+        name="dummy", model_cls="mock", loss_cls="mock", loss_args={},
+        metrics_cls="mock", metrics_args={}, model_args={},
+        pretrained=[], count_pseudocount=0.0,
+    )
+    dummy_data_config = DataConfig.model_construct(
+        inputs={}, targets={}, input_len=100,
+        output_len=output_len, output_bin_size=output_bin_size,
+        encoding="ACGT", max_jitter=0, log_transform=False,
+        reverse_complement=False, target_scale=1.0, use_sequence=True,
+    )
+    dummy_genome_config = GenomeConfig.model_construct(
+        name="test", fasta_path=Path("test.fa"), exclude_intervals={},
+        allowed_chroms=["chr1"], chrom_sizes={"chr1": 1000},
+        fold_type="chrom_partition",
+        fold_args=FoldArgs.model_construct(k=2),
+    )
+    dummy_train_config = TrainConfig.model_construct(
+        batch_size=1, max_epochs=1, learning_rate=1e-3,
+        weight_decay=0.0, patience=1, optimizer="adam",
+        scheduler_type="constant", scheduler_args={},
+        filter_bias_and_bn=False,
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8, gradient_clip_val=None,
+    )
+    dummy_sampler_config = SamplerConfig.model_construct(
+        sampler_type="interval", padded_size=100, sampler_args={},
+    )
+    mock_config = CerberusConfig.model_construct(
+        genome_config=dummy_genome_config,
+        data_config=dummy_data_config,
+        model_config_=dummy_model_config,
+        sampler_config=dummy_sampler_config,
+        train_config=dummy_train_config,
+    )
+
     with patch("cerberus.model_ensemble._ModelManager") as mock_loader_cls, \
          patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
-         patch("cerberus.model_ensemble.parse_hparams_config", return_value={
-             "model_config": {}, "data_config": {}, "genome_config": {}
-         }):
+         patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config):
         loader_instance = mock_loader_cls.return_value
         # folds is []
         loader_instance.load_models_and_folds.return_value = (models, [])
-        
-        # We need to pass dummy configs
-        dummy_config = {}
-        
+
         ensemble = ModelEnsemble(
             checkpoint_path=".",
-            model_config=cast(ModelConfig, dummy_config),
-            data_config=cast(DataConfig, {"output_len": output_len, "output_bin_size": output_bin_size}),
-            genome_config=cast(GenomeConfig, dummy_config),
+            model_config=dummy_model_config,
+            data_config=dummy_data_config,
+            genome_config=dummy_genome_config,
             device=torch.device("cpu")
         )
         return ensemble
@@ -216,18 +265,18 @@ def genome_setup_basic(tmp_path):
     with open(fasta_path, "w") as f:
         f.write(">chr1\n" + "A" * 1000 + "\n")
         f.write(">chr2\n" + "G" * 1000 + "\n")
-        
+
     chrom_sizes = {"chr1": 1000, "chr2": 1000}
-    
-    genome_config: GenomeConfig = {
-        "name": "test_genome",
-        "fasta_path": fasta_path,
-        "exclude_intervals": {},
-        "allowed_chroms": ["chr1", "chr2"],
-        "chrom_sizes": chrom_sizes,
-        "fold_type": "chrom_partition",
-        "fold_args": {"k": 2}
-    }
+
+    genome_config = GenomeConfig.model_construct(
+        name="test_genome",
+        fasta_path=fasta_path,
+        exclude_intervals={},
+        allowed_chroms=["chr1", "chr2"],
+        chrom_sizes=chrom_sizes,
+        fold_type="chrom_partition",
+        fold_args=FoldArgs.model_construct(k=2),
+    )
     return genome_config
 
 def test_parse_intervals(genome_setup_basic, tmp_path):
@@ -563,7 +612,7 @@ def test_predict_intervals_scalar_broadcast(mock_dataset):
 def test_predict_intervals_tuple_recursive(mock_dataset):
     # Tuple output (Profile, Scalar)
     # Output length 60 (for profile). Scalar broadcast.
-    mock_dataset.data_config["output_bin_size"] = 1
+    mock_dataset.data_config = mock_dataset.data_config.model_copy(update={"output_bin_size": 1})
     
     interval_1 = Interval("chr1", 0, 100)
     
@@ -615,8 +664,9 @@ def test_predict_intervals_empty_input(mock_dataset):
 
 def test_merged_interval_is_multiple_of_bin_size(mock_dataset):
     # Setup intervals such that merged interval should be multiple of bin_size=10
-    mock_dataset.data_config["output_bin_size"] = 10
-    mock_dataset.data_config["output_len"] = 100
+    mock_dataset.data_config = mock_dataset.data_config.model_copy(
+        update={"output_bin_size": 10, "output_len": 100}
+    )
     
     # Input len 100. Output len 100.
     # Interval 1: 0-100. Output 0-100.

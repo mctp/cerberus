@@ -1,6 +1,5 @@
 import pytest
 import torch
-from typing import cast
 from cerberus.transform import Scale, Compose, create_default_transforms
 from cerberus.config import DataConfig
 from cerberus.interval import Interval
@@ -61,7 +60,7 @@ class TestScale:
 # ---------------------------------------------------------------------------
 
 def _make_data_config(**overrides) -> DataConfig:
-    config = {
+    base = {
         "inputs": {},
         "targets": {},
         "input_len": 100,
@@ -74,8 +73,8 @@ def _make_data_config(**overrides) -> DataConfig:
         "target_scale": 1.0,
         "use_sequence": True,
     }
-    config.update(overrides)
-    return cast(DataConfig, config)
+    base.update(overrides)
+    return DataConfig.model_construct(**base)
 
 
 class TestCreateDefaultTransformsTargetScale:
@@ -95,10 +94,11 @@ class TestCreateDefaultTransformsTargetScale:
         assert scale_transforms[0].factor == 1000.0
 
     def test_missing_target_scale_raises(self):
-        """Accessing missing target_scale should raise KeyError, not silently default."""
+        """Accessing missing target_scale should raise AttributeError, not silently default."""
         config = _make_data_config()
-        del config["target_scale"]  # type: ignore
-        with pytest.raises(KeyError, match="target_scale"):
+        # Remove target_scale from the model_construct'd object
+        object.__delattr__(config, "target_scale")
+        with pytest.raises(AttributeError):
             create_default_transforms(config)
 
     def test_scale_applied_to_targets(self, dummy_interval):

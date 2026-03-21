@@ -134,10 +134,10 @@ class TestMergeIntervals:
 class TestParseIntervals:
 
     def _make_genome_config(self) -> GenomeConfig:
-        return cast(GenomeConfig, {
-            "chrom_sizes": {"chr1": 1000000, "chr2": 500000},
-            "allowed_chroms": ["chr1", "chr2"],
-        })
+        return GenomeConfig.model_construct(
+            chrom_sizes={"chr1": 1000000, "chr2": 500000},
+            allowed_chroms=["chr1", "chr2"],
+        )
 
     def test_bed_file_parsing(self, tmp_path):
         bed = tmp_path / "test.bed"

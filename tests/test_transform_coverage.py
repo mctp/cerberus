@@ -1,7 +1,6 @@
 """Coverage tests for cerberus.transform — untested code paths."""
 import pytest
 import torch
-from typing import cast
 from cerberus.config import DataConfig
 from cerberus.transform import (
     Log1p,
@@ -38,16 +37,20 @@ class TestCreateDefaultTransforms:
 
     def _make_data_config(self, **overrides) -> DataConfig:
         base: dict = {
+            "inputs": {},
+            "targets": {},
             "input_len": 100,
             "output_len": 100,
             "max_jitter": 0,
             "output_bin_size": 1,
+            "encoding": "ACGT",
             "log_transform": False,
             "reverse_complement": False,
+            "use_sequence": True,
             "target_scale": 1.0,
         }
         base.update(overrides)
-        return cast(DataConfig, base)
+        return DataConfig.model_construct(**base)
 
     def test_with_target_scale(self):
         dc = self._make_data_config(target_scale=2.5)

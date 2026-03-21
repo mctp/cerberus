@@ -27,13 +27,13 @@ def test_peak_sampler_real_data(human_genome, mdapca2b_ar_dataset, tmp_path):
 
     # Generate config to get chrom_sizes and fold setup
     config = create_human_genome_config(genome_dir)
-    chrom_sizes = config["chrom_sizes"]
-    
+    chrom_sizes = config.chrom_sizes
+
     # Create folds (PeakSampler needs these for splitting)
-    folds = create_genome_folds(chrom_sizes, config["fold_type"], config["fold_args"])
-    
+    folds = create_genome_folds(chrom_sizes, config.fold_type, config.fold_args)
+
     # Create exclude intervals
-    exclude_intervals = get_exclude_intervals(config["exclude_intervals"])
+    exclude_intervals = get_exclude_intervals(config.exclude_intervals)
 
     # 2. Initialize PeakSampler
     sampler = PeakSampler(

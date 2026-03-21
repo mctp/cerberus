@@ -2,50 +2,62 @@
 import logging
 import pytest
 from pathlib import Path
-import yaml
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+import yaml
 from cerberus.train import train_single, update_ensemble_metadata
 from cerberus.model_ensemble import update_ensemble_metadata as update_ensemble_metadata_direct
+from cerberus.config import GenomeConfig, FoldArgs
+
+
+def _make_genome_config(k: int = 5) -> MagicMock:
+    """Create a MagicMock GenomeConfig with fold_args attribute access."""
+    gc = MagicMock(spec=GenomeConfig)
+    gc.fold_args = FoldArgs(k=k, test_fold=None, val_fold=None)
+    gc.model_copy.return_value = gc
+    return gc
+
 
 def test_train_single_updates_metadata(tmp_path):
     """Test that train_single updates ensemble_metadata.yaml correctly."""
-    
+
     # Mock dependencies to avoid actual training
     with patch("cerberus.train.CerberusDataModule"), \
          patch("cerberus.train.instantiate"), \
          patch("cerberus.train._train") as mock_train:
-             
+
         root_dir = tmp_path / "exp"
-        
+        gc = _make_genome_config(k=5)
+
         # Call train_single for fold 0
         train_single(
-            genome_config={"fold_args": {"k": 5}}, # type: ignore
-            data_config={}, # type: ignore
-            sampler_config={}, # type: ignore
-            model_config={}, # type: ignore
-            train_config={}, # type: ignore
+            genome_config=gc,
+            data_config=MagicMock(),
+            sampler_config=MagicMock(),
+            model_config=MagicMock(),
+            train_config=MagicMock(),
             test_fold=0,
             root_dir=root_dir
         )
-        
+
         # Check metadata
         meta_path = root_dir / "ensemble_metadata.yaml"
         assert meta_path.exists()
         with open(meta_path) as f:
             meta = yaml.safe_load(f)
         assert meta["folds"] == [0]
-        
+
         # Call train_single for fold 1
         train_single(
-            genome_config={"fold_args": {"k": 5}}, # type: ignore
-            data_config={}, # type: ignore
-            sampler_config={}, # type: ignore
-            model_config={}, # type: ignore
-            train_config={}, # type: ignore
+            genome_config=gc,
+            data_config=MagicMock(),
+            sampler_config=MagicMock(),
+            model_config=MagicMock(),
+            train_config=MagicMock(),
             test_fold=1,
             root_dir=root_dir
         )
-        
+
         with open(meta_path) as f:
             meta = yaml.safe_load(f)
         assert meta["folds"] == [0, 1]

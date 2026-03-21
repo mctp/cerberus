@@ -1,40 +1,44 @@
 from unittest.mock import MagicMock, patch
-from typing import cast
 from cerberus.train import _train as train
 from cerberus.config import TrainConfig, ModelConfig, DataConfig
 import pytorch_lightning as pl
 
 
 def _make_configs():
-    train_config = cast(TrainConfig, {
-        "batch_size": 32,
-        "max_epochs": 1,
-        "learning_rate": 1e-3,
-        "weight_decay": 0.01,
-        "patience": 1,
-        "optimizer": "adamw",
-        "scheduler_type": "default",
-        "scheduler_args": {},
-        "filter_bias_and_bn": True,
-        "reload_dataloaders_every_n_epochs": 0,
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    })
-    model_config = cast(ModelConfig, {
-        "name": "Test",
-        "model_cls": "cerberus.models.bpnet.BPNet",
-        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-        "loss_args": {"alpha": 1.0},
-        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-        "metrics_args": {},
-        "model_args": {},
-        "pretrained": [],
-    })
-    data_config = cast(DataConfig, {
-        "input_len": 2114, "output_len": 1000, "output_bin_size": 1,
-        "targets": [], "inputs": [], "use_sequence": True,
-        "target_scale": 1.0, "count_pseudocount": 1.0, "max_jitter": 0,
-    })
+    train_config = TrainConfig(
+        batch_size=32,
+        max_epochs=1,
+        learning_rate=1e-3,
+        weight_decay=0.01,
+        patience=1,
+        optimizer="adamw",
+        scheduler_type="default",
+        scheduler_args={},
+        filter_bias_and_bn=True,
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
+    model_config = ModelConfig(
+        name="Test",
+        model_cls="cerberus.models.bpnet.BPNet",
+        loss_cls="cerberus.models.bpnet.BPNetLoss",
+        loss_args={"alpha": 1.0},
+        metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+        metrics_args={},
+        model_args={},
+        pretrained=[],
+    )
+    data_config = MagicMock(spec=DataConfig)
+    data_config.input_len = 2114
+    data_config.output_len = 1000
+    data_config.output_bin_size = 1
+    data_config.targets = {}
+    data_config.inputs = {}
+    data_config.use_sequence = True
+    data_config.target_scale = 1.0
+    data_config.max_jitter = 0
+    data_config.model_dump.return_value = {}
     return train_config, model_config, data_config
 
 

@@ -15,10 +15,10 @@ def test_genome_from_fasta_human_supported(tmp_path):
     # Human should work
     genome = create_genome_config(name="test_genome", fasta_path=fasta_path, species="human")
     
-    assert genome['name'] == "test_genome"
-    assert genome['chrom_sizes'] is not None
-    assert "chr1" in genome['chrom_sizes']
-    assert "chr2" in genome['chrom_sizes']
+    assert genome.name == "test_genome"
+    assert genome.chrom_sizes is not None
+    assert "chr1" in genome.chrom_sizes
+    assert "chr2" in genome.chrom_sizes
 
 def test_genome_from_fasta_unsupported_species(tmp_path):
     fasta_path = tmp_path / "test.fa"
@@ -40,11 +40,11 @@ def test_genome_from_fasta_allowed_chroms(tmp_path):
     allowed = ["chr1", "chr3"]
     genome = create_genome_config("test", fasta_path, species="human", allowed_chroms=allowed)
     
-    assert genome['chrom_sizes'] is not None
-    assert len(genome['chrom_sizes']) == 2
-    assert "chr1" in genome['chrom_sizes']
-    assert "chr3" in genome['chrom_sizes']
-    assert "chr2" not in genome['chrom_sizes']
+    assert genome.chrom_sizes is not None
+    assert len(genome.chrom_sizes) == 2
+    assert "chr1" in genome.chrom_sizes
+    assert "chr3" in genome.chrom_sizes
+    assert "chr2" not in genome.chrom_sizes
 
 def test_genome_human_defaults(tmp_path):
     # Verify that species="human" automatically applies standard chromosomes
@@ -58,12 +58,12 @@ def test_genome_human_defaults(tmp_path):
     
     genome = create_genome_config("test", fasta_path, species="human")
     
-    assert genome['chrom_sizes'] is not None
-    assert len(genome['chrom_sizes']) == 24 
-    assert "chrM" not in genome['chrom_sizes']
-    assert "chrUn" not in genome['chrom_sizes']
-    assert "chr1" in genome['chrom_sizes']
-    assert "chrX" in genome['chrom_sizes']
+    assert genome.chrom_sizes is not None
+    assert len(genome.chrom_sizes) == 24 
+    assert "chrM" not in genome.chrom_sizes
+    assert "chrUn" not in genome.chrom_sizes
+    assert "chr1" in genome.chrom_sizes
+    assert "chrX" in genome.chrom_sizes
 
 def test_genome_sorting_human(tmp_path):
     fasta_path = tmp_path / "test.fa"
@@ -85,8 +85,8 @@ def test_genome_sorting_human(tmp_path):
     
     genome = create_genome_config("test", fasta_path, species="human", allowed_chroms=allowed)
     
-    assert genome['chrom_sizes'] is not None
-    keys = list(genome['chrom_sizes'].keys())
+    assert genome.chrom_sizes is not None
+    keys = list(genome.chrom_sizes.keys())
     
     # Expected human sort order
     expected = ["chr1", "chr2", "chr10", "chrX", "chrY", "chrM", "chrUn"]
@@ -105,15 +105,15 @@ def test_genome_mouse_defaults(tmp_path):
     
     genome = create_genome_config("test", fasta_path, species="mouse")
     
-    assert genome['chrom_sizes'] is not None
+    assert genome.chrom_sizes is not None
     # 1-19 + X + Y = 21 chromosomes
-    assert len(genome['chrom_sizes']) == 21
-    assert "chr1" in genome['chrom_sizes']
-    assert "chr19" in genome['chrom_sizes']
-    assert "chrX" in genome['chrom_sizes']
-    assert "chrY" in genome['chrom_sizes']
-    assert "chrM" not in genome['chrom_sizes']
-    assert "chr20" not in genome['chrom_sizes']
+    assert len(genome.chrom_sizes) == 21
+    assert "chr1" in genome.chrom_sizes
+    assert "chr19" in genome.chrom_sizes
+    assert "chrX" in genome.chrom_sizes
+    assert "chrY" in genome.chrom_sizes
+    assert "chrM" not in genome.chrom_sizes
+    assert "chr20" not in genome.chrom_sizes
 
 def test_genome_sorting_mouse(tmp_path):
     fasta_path = tmp_path / "test.fa"
@@ -134,8 +134,8 @@ def test_genome_sorting_mouse(tmp_path):
     
     genome = create_genome_config("test", fasta_path, species="mouse", allowed_chroms=allowed)
     
-    assert genome['chrom_sizes'] is not None
-    keys = list(genome['chrom_sizes'].keys())
+    assert genome.chrom_sizes is not None
+    keys = list(genome.chrom_sizes.keys())
     
     # Expected mouse sort order: 1, 19, X, Y, M, 20 (other)
     expected = ["chr1", "chr19", "chrX", "chrY", "chrM", "chr20"]

@@ -4,6 +4,7 @@ import torch
 from cerberus.interval import Interval
 from cerberus.mask import BedMaskExtractor
 from cerberus.dataset import CerberusDataset
+from cerberus.config import GenomeConfig, DataConfig, FoldArgs
 import pybigtools
 
 @pytest.fixture
@@ -58,40 +59,41 @@ def test_bed_mask_extractor(dummy_bed):
 def test_dataset_bed_support(dummy_bed, tmp_path):
     # Test that CerberusDataset can load BED files via config
     # This requires the dataset to automatically choose BedMaskExtractor
-    
-    genome_config = {
-        "name": "hg38",
-        "fasta_path": tmp_path / "hg38.fa", # Dummy
-        "exclude_intervals": {},
-        "allowed_chroms": ["chr1"],
-        "chrom_sizes": {"chr1": 1000},
-        "fold_type": "chrom_partition",
-        "fold_args": {"k": 2}
-    }
-    
+
+    fasta_path = tmp_path / "hg38.fa"
+
     # Create dummy fasta
-    with open(genome_config["fasta_path"], "w") as f:
+    with open(fasta_path, "w") as f:
         f.write(">chr1\n" + "N"*1000)
 
-    data_config = {
-        "inputs": {"my_bed": dummy_bed},
-        "targets": {},
-        "input_len": 100,
-        "output_len": 100,
-        "max_jitter": 0,
-        "output_bin_size": 1,
-        "encoding": "onehot",
-        "log_transform": False,
-        "reverse_complement": False,
-        "target_scale": 1.0,
-        "count_pseudocount": 1.0,
-        "use_sequence": False
-    }
-    
+    genome_config = GenomeConfig.model_construct(
+        name="hg38",
+        fasta_path=fasta_path,
+        exclude_intervals={},
+        allowed_chroms=["chr1"],
+        chrom_sizes={"chr1": 1000},
+        fold_type="chrom_partition",
+        fold_args=FoldArgs(k=2),
+    )
+
+    data_config = DataConfig.model_construct(
+        inputs={"my_bed": dummy_bed},
+        targets={},
+        input_len=100,
+        output_len=100,
+        max_jitter=0,
+        output_bin_size=1,
+        encoding="onehot",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=False,
+    )
+
     # This should succeed and use BedMaskExtractor internally
     ds = CerberusDataset(
-        genome_config=genome_config, # type: ignore
-        data_config=data_config, # type: ignore
+        genome_config=genome_config,
+        data_config=data_config,
         is_train=True
     )
     
@@ -109,38 +111,40 @@ def test_dataset_bed_support(dummy_bed, tmp_path):
 
 def test_dataset_bigbed_support(dummy_bigbed, tmp_path):
     # Test that CerberusDataset can load BigBed files via config
-    
-    genome_config = {
-        "name": "hg38",
-        "fasta_path": tmp_path / "hg38.fa",
-        "exclude_intervals": {},
-        "allowed_chroms": ["chr1"],
-        "chrom_sizes": {"chr1": 1000},
-        "fold_type": "chrom_partition",
-        "fold_args": {"k": 2}
-    }
+
+    fasta_path = tmp_path / "hg38.fa"
+
     # Create dummy fasta
-    with open(genome_config["fasta_path"], "w") as f:
+    with open(fasta_path, "w") as f:
         f.write(">chr1\n" + "N"*1000)
 
-    data_config = {
-        "inputs": {"my_bb": dummy_bigbed},
-        "targets": {},
-        "input_len": 100,
-        "output_len": 100,
-        "max_jitter": 0,
-        "output_bin_size": 1,
-        "encoding": "onehot",
-        "log_transform": False,
-        "reverse_complement": False,
-        "target_scale": 1.0,
-        "count_pseudocount": 1.0,
-        "use_sequence": False
-    }
-    
+    genome_config = GenomeConfig.model_construct(
+        name="hg38",
+        fasta_path=fasta_path,
+        exclude_intervals={},
+        allowed_chroms=["chr1"],
+        chrom_sizes={"chr1": 1000},
+        fold_type="chrom_partition",
+        fold_args=FoldArgs(k=2),
+    )
+
+    data_config = DataConfig.model_construct(
+        inputs={"my_bb": dummy_bigbed},
+        targets={},
+        input_len=100,
+        output_len=100,
+        max_jitter=0,
+        output_bin_size=1,
+        encoding="onehot",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=False,
+    )
+
     ds = CerberusDataset(
-        genome_config=genome_config, # type: ignore
-        data_config=data_config, # type: ignore
+        genome_config=genome_config,
+        data_config=data_config,
         is_train=True
     )
     

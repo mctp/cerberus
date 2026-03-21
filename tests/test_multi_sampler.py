@@ -51,13 +51,12 @@ def test_scaled_sampler(peaks_bed, chrom_sizes):
     
 def test_create_sampler_scaling_unsupported(peaks_bed, negatives_bed, chrom_sizes):
     # MultiSampler is no longer supported in create_sampler
-    config = {
-        "sampler_type": "multi",
-        "padded_size": 100,
-        "sampler_args": {
-            "samplers": []
-        }
-    }
+    from cerberus.config import SamplerConfig
+    config = SamplerConfig.model_construct(
+        sampler_type="multi",
+        padded_size=100,
+        sampler_args=None,
+    )
     folds = create_genome_folds(chrom_sizes, fold_type="chrom_partition", fold_args={"k": 5})
     with pytest.raises(ValueError, match="Unsupported sampler type: multi"):
         create_sampler(config, chrom_sizes, exclude_intervals={}, folds=folds)

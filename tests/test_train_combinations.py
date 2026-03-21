@@ -1,8 +1,7 @@
 
 import pytest
 import torch
-from typing import cast
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint
 from cerberus.train import _train as train
@@ -11,10 +10,10 @@ from cerberus.config import TrainConfig, ModelConfig, DataConfig
 class MockDataModule(LightningDataModule):
     def __init__(self):
         super().__init__()
-        
+
     def setup(self, stage=None, **kwargs):
         pass
-    
+
     def train_dataloader(self):
         dataset = torch.utils.data.TensorDataset(torch.randn(10, 1))
         return torch.utils.data.DataLoader(dataset, batch_size=2)
@@ -34,7 +33,7 @@ class MockModule(LightningModule):
 
     def training_step(self, batch, batch_idx):
         return torch.tensor(0.0, requires_grad=True)
-    
+
     def validation_step(self, batch, batch_idx):
         self.log("val_loss", 0.1)
         return torch.tensor(0.1)
@@ -54,20 +53,20 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
     """
     Test train() with combinations of enable_checkpointing and logger.
     """
-    train_config: TrainConfig = {
-        "max_epochs": 1,
-        "patience": 1,
-        "batch_size": 2,
-        "learning_rate": 1e-3,
-        "weight_decay": 0.0,
-        "optimizer": "adamw",
-        "scheduler_type": "none",
-        "scheduler_args": {},
-        "filter_bias_and_bn": False,
-        "reload_dataloaders_every_n_epochs": 0,
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    }
+    train_config = TrainConfig(
+        max_epochs=1,
+        patience=1,
+        batch_size=2,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        optimizer="adamw",
+        scheduler_type="none",
+        scheduler_args={},
+        filter_bias_and_bn=False,
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
 
     # Prepare trainer_kwargs
     trainer_kwargs = {
@@ -81,21 +80,30 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
         "log_every_n_steps": 1,
     }
 
-    model_config = cast(ModelConfig, {
-        "name": "Test",
-        "model_cls": "cerberus.models.bpnet.BPNet",
-        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-        "loss_args": {"alpha": 1.0},
-        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-        "metrics_args": {},
-        "model_args": {},
-        "pretrained": [],
-    })
-    data_config = cast(DataConfig, {
+    model_config = ModelConfig(
+        name="Test",
+        model_cls="cerberus.models.bpnet.BPNet",
+        loss_cls="cerberus.models.bpnet.BPNetLoss",
+        loss_args={"alpha": 1.0},
+        metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+        metrics_args={},
+        model_args={},
+        pretrained=[],
+    )
+    data_config = MagicMock(spec=DataConfig)
+    data_config.input_len = 2114
+    data_config.output_len = 1000
+    data_config.output_bin_size = 1
+    data_config.targets = {}
+    data_config.inputs = {}
+    data_config.use_sequence = True
+    data_config.target_scale = 1.0
+    data_config.max_jitter = 0
+    data_config.model_dump.return_value = {
         "input_len": 2114, "output_len": 1000, "output_bin_size": 1,
-        "targets": [], "inputs": [], "use_sequence": True,
-        "target_scale": 1.0, "count_pseudocount": 1.0, "max_jitter": 0,
-    })
+        "targets": {}, "inputs": {}, "use_sequence": True,
+        "target_scale": 1.0, "max_jitter": 0,
+    }
 
     # Call train — mock instantiate so the generic MockModule is used directly
     try:
@@ -125,7 +133,7 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
     # Check checkpointing
     # trainer.checkpoint_callback (deprecated?) -> trainer.checkpoint_callbacks (list) or check callbacks list
     checkpoint_callbacks = [c for c in trainer.callbacks if isinstance(c, ModelCheckpoint)] # type: ignore
-    
+
     if enable_checkpointing:
         assert len(checkpoint_callbacks) > 0, "ModelCheckpoint should be present when enable_checkpointing=True"
     else:

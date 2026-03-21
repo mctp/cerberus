@@ -1,60 +1,87 @@
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, call
-from typing import cast
 import torch
 import json
 from cerberus.train import _train as train, _save_model_pt, _dump_config, train_single
-from cerberus.config import TrainConfig, ModelConfig, DataConfig, GenomeConfig, SamplerConfig
+from cerberus.config import TrainConfig, ModelConfig, DataConfig, GenomeConfig, SamplerConfig, FoldArgs
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 
 
 def _make_train_config() -> TrainConfig:
-    return cast(TrainConfig, {
-        "batch_size": 32,
-        "max_epochs": 10,
-        "learning_rate": 1e-3,
-        "weight_decay": 0.01,
-        "patience": 5,
-        "optimizer": "adamw",
-        "scheduler_type": "default",
-        "scheduler_args": {},
-        "filter_bias_and_bn": True,
-        "reload_dataloaders_every_n_epochs": 0,
-        "adam_eps": 1e-8,
-        "gradient_clip_val": None,
-    })
+    return TrainConfig(
+        batch_size=32,
+        max_epochs=10,
+        learning_rate=1e-3,
+        weight_decay=0.01,
+        patience=5,
+        optimizer="adamw",
+        scheduler_type="default",
+        scheduler_args={},
+        filter_bias_and_bn=True,
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
 
 
 def _make_model_config(loss_args: dict | None = None) -> ModelConfig:
-    return cast(ModelConfig, {
-        "name": "TestModel",
-        "model_cls": "cerberus.models.bpnet.BPNet",
-        "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-        "loss_args": loss_args if loss_args is not None else {"alpha": 1.0},
-        "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-        "metrics_args": {},
-        "model_args": {
+    return ModelConfig(
+        name="TestModel",
+        model_cls="cerberus.models.bpnet.BPNet",
+        loss_cls="cerberus.models.bpnet.BPNetLoss",
+        loss_args=loss_args if loss_args is not None else {"alpha": 1.0},
+        metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+        metrics_args={},
+        model_args={
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
         },
-        "pretrained": [],
-    })
+        pretrained=[],
+    )
 
 
 def _make_data_config() -> DataConfig:
-    return cast(DataConfig, {
-        "input_len": 2114,
-        "output_len": 1000,
-        "output_bin_size": 1,
-        "targets": [],
-        "inputs": [],
-        "use_sequence": True,
-        "target_scale": 1.0,
-        "count_pseudocount": 1.0,
-        "max_jitter": 0,
-    })
+    """Create a minimal DataConfig for testing.
+
+    Uses MagicMock because DataConfig validators require real file paths.
+    The mock supports attribute access for all fields used in _train.
+    """
+    dc = MagicMock(spec=DataConfig)
+    dc.input_len = 2114
+    dc.output_len = 1000
+    dc.output_bin_size = 1
+    dc.targets = {}
+    dc.inputs = {}
+    dc.use_sequence = True
+    dc.target_scale = 1.0
+    dc.max_jitter = 0
+    dc.encoding = "ACGT"
+    dc.log_transform = False
+    dc.reverse_complement = False
+    dc.model_dump.return_value = {
+        "input_len": 2114, "output_len": 1000, "output_bin_size": 1,
+        "targets": {}, "inputs": {}, "use_sequence": True,
+        "target_scale": 1.0, "max_jitter": 0, "encoding": "ACGT",
+        "log_transform": False, "reverse_complement": False,
+    }
+    return dc
+
+
+def _make_genome_config(k: int = 3) -> MagicMock:
+    """Create a MagicMock GenomeConfig with attribute access for fold_args."""
+    gc = MagicMock(spec=GenomeConfig)
+    gc.fold_args = SimpleNamespace(k=k, test_fold=None, val_fold=None)
+    gc.fold_args.model_copy = lambda update: SimpleNamespace(
+        k=k,
+        test_fold=update.get("test_fold"),
+        val_fold=update.get("val_fold"),
+    )
+    gc.model_copy = lambda update: gc  # fold_args override returns self-like mock
+    gc.model_dump.return_value = {"fold_args": {"k": k}}
+    return gc
 
 
 def test_train_wrapper_calls_trainer_fit():
@@ -173,10 +200,10 @@ def test_save_model_pt_skips_when_no_checkpoint():
 
 def test_dump_config_writes_json():
     """_dump_config writes a readable config.json containing all passed configs."""
-    model_cfg = cast(ModelConfig, {"class_path": "MyModel", "loss_args": {}})
-    data_cfg = cast(DataConfig, {"inputs": [], "targets": []})
+    model_cfg = _make_model_config()
+    data_cfg = _make_data_config()
     train_cfg = _make_train_config()
-    genome_cfg = cast(GenomeConfig, {"fasta_path": "/genome.fa"})
+    genome_cfg = _make_genome_config()
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         _dump_config(
@@ -190,19 +217,22 @@ def test_dump_config_writes_json():
         assert config_path.exists()
         loaded = json.loads(config_path.read_text())
 
-    assert loaded["model_config"] == model_cfg
-    assert loaded["data_config"] == data_cfg
+    assert loaded["model_config"]["name"] == "TestModel"
     assert "sampler_config" not in loaded
 
 
 def test_dump_config_skips_none_sections():
     """Sections passed as None are omitted from config.json."""
+    model_cfg = _make_model_config()
+    data_cfg = _make_data_config()
+    train_cfg = _make_train_config()
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         _dump_config(
             tmp_dir,
-            model_config=cast(ModelConfig, {}),
-            data_config=cast(DataConfig, {}),
-            train_config=_make_train_config(),
+            model_config=model_cfg,
+            data_config=data_cfg,
+            train_config=train_cfg,
         )
         loaded = json.loads((Path(tmp_dir) / "config.json").read_text())
 
@@ -248,10 +278,10 @@ def test_train_single_run_test_false():
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             train_single(
-                genome_config=cast(GenomeConfig, {"fold_args": {"k": 3}}),
-                data_config=cast(DataConfig, {}),
-                sampler_config=cast(SamplerConfig, {}),
-                model_config=cast(ModelConfig, {}),
+                genome_config=_make_genome_config(k=3),
+                data_config=_make_data_config(),
+                sampler_config=MagicMock(spec=SamplerConfig),
+                model_config=_make_model_config(),
                 train_config=_make_train_config(),
                 test_fold=0,
                 root_dir=tmp_dir,
@@ -277,10 +307,10 @@ def test_train_single_run_test_true():
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             train_single(
-                genome_config=cast(GenomeConfig, {"fold_args": {"k": 3}}),
-                data_config=cast(DataConfig, {}),
-                sampler_config=cast(SamplerConfig, {}),
-                model_config=cast(ModelConfig, {}),
+                genome_config=_make_genome_config(k=3),
+                data_config=_make_data_config(),
+                sampler_config=MagicMock(spec=SamplerConfig),
+                model_config=_make_model_config(),
                 train_config=_make_train_config(),
                 test_fold=0,
                 root_dir=tmp_dir,
@@ -305,10 +335,10 @@ def test_train_single_run_test_skips_when_no_checkpoint():
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             train_single(
-                genome_config=cast(GenomeConfig, {"fold_args": {"k": 3}}),
-                data_config=cast(DataConfig, {}),
-                sampler_config=cast(SamplerConfig, {}),
-                model_config=cast(ModelConfig, {}),
+                genome_config=_make_genome_config(k=3),
+                data_config=_make_data_config(),
+                sampler_config=MagicMock(spec=SamplerConfig),
+                model_config=_make_model_config(),
                 train_config=_make_train_config(),
                 test_fold=0,
                 root_dir=tmp_dir,

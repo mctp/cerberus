@@ -31,7 +31,7 @@ from cerberus.cache import (
     resolve_cache_dir,
     save_prepare_cache,
 )
-from cerberus.config import SamplerConfig
+from cerberus.config import SamplerConfig, FoldArgs, ModelConfig, TrainConfig
 from cerberus.interval import Interval
 from cerberus.samplers import (
     ComplexityMatchedSampler,
@@ -431,6 +431,46 @@ class TestDataModuleSeedStorage:
 # ---------------------------------------------------------------------------
 
 
+def _mock_genome_config(k: int) -> MagicMock:
+    """Create a MagicMock GenomeConfig with fold_args attribute access."""
+    gc = MagicMock()
+    gc.fold_args = FoldArgs(k=k, test_fold=None, val_fold=None)
+    gc.model_copy.return_value = gc
+    return gc
+
+
+def _mock_model_config() -> ModelConfig:
+    """Create a minimal ModelConfig for tests calling _train."""
+    return ModelConfig(
+        name="Test",
+        model_cls="cerberus.models.bpnet.BPNet",
+        loss_cls="cerberus.models.bpnet.BPNetLoss",
+        loss_args={},
+        metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+        metrics_args={},
+        model_args={},
+        pretrained=[],
+    )
+
+
+def _mock_train_config() -> TrainConfig:
+    """Create a minimal TrainConfig for tests calling _train."""
+    return TrainConfig(
+        batch_size=32,
+        max_epochs=1,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        patience=1,
+        optimizer="adamw",
+        scheduler_type="default",
+        scheduler_args={},
+        filter_bias_and_bn=False,
+        reload_dataloaders_every_n_epochs=0,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
+    )
+
+
 class TestTrainSeedPropagation:
     """Verify train_single and train_multi pass seed to CerberusDataModule."""
 
@@ -443,7 +483,7 @@ class TestTrainSeedPropagation:
             from cerberus.train import train_single
 
             train_single(
-                genome_config={"fold_args": {"k": 3}},  # type: ignore
+                genome_config=_mock_genome_config(k=3),
                 data_config={},  # type: ignore
                 sampler_config={},  # type: ignore
                 model_config={},  # type: ignore
@@ -465,7 +505,7 @@ class TestTrainSeedPropagation:
             from cerberus.train import train_single
 
             train_single(
-                genome_config={"fold_args": {"k": 3}},  # type: ignore
+                genome_config=_mock_genome_config(k=3),
                 data_config={},  # type: ignore
                 sampler_config={},  # type: ignore
                 model_config={},  # type: ignore
@@ -483,7 +523,7 @@ class TestTrainSeedPropagation:
             from cerberus.train import train_multi
 
             train_multi(
-                genome_config={"fold_args": {"k": 3}},  # type: ignore
+                genome_config=_mock_genome_config(k=3),
                 data_config={},  # type: ignore
                 sampler_config={},  # type: ignore
                 model_config={},  # type: ignore
@@ -504,7 +544,7 @@ class TestTrainSeedPropagation:
             from cerberus.train import train_multi
 
             train_multi(
-                genome_config={"fold_args": {"k": 4}},  # type: ignore
+                genome_config=_mock_genome_config(k=4),
                 data_config={},  # type: ignore
                 sampler_config={},  # type: ignore
                 model_config={},  # type: ignore
@@ -526,7 +566,7 @@ class TestTrainSeedPropagation:
             from cerberus.train import train_multi
 
             train_multi(
-                genome_config={"fold_args": {"k": 3}},  # type: ignore
+                genome_config=_mock_genome_config(k=3),
                 data_config={},  # type: ignore
                 sampler_config={},  # type: ignore
                 model_config={},  # type: ignore
@@ -556,7 +596,7 @@ class TestTrainSingleFoldStructure:
 
             root = tmp_path / "exp"
             train_single(
-                genome_config={"fold_args": {"k": 5}},  # type: ignore
+                genome_config=_mock_genome_config(k=5),
                 data_config={},  # type: ignore
                 sampler_config={},  # type: ignore
                 model_config={},  # type: ignore
@@ -579,7 +619,7 @@ class TestTrainSingleFoldStructure:
 
             root = tmp_path / "exp_meta"
             train_single(
-                genome_config={"fold_args": {"k": 5}},  # type: ignore
+                genome_config=_mock_genome_config(k=5),
                 data_config={},  # type: ignore
                 sampler_config={},  # type: ignore
                 model_config={},  # type: ignore
@@ -605,7 +645,7 @@ class TestTrainSingleFoldStructure:
             root = tmp_path / "exp_accum"
             for fold in [0, 2, 1]:
                 train_single(
-                    genome_config={"fold_args": {"k": 5}},  # type: ignore
+                    genome_config=_mock_genome_config(k=5),
                     data_config={},  # type: ignore
                     sampler_config={},  # type: ignore
                     model_config={},  # type: ignore
@@ -1081,15 +1121,10 @@ class TestTrainCallsPrepareThenSetup:
             mock_trainer_cls.return_value = mock_trainer
 
             _train(
-                model_config={"loss_args": {}, "model_args": {}, "pretrained": []},  # type: ignore
-                data_config={},  # type: ignore
+                model_config=_mock_model_config(),
+                data_config=MagicMock(),
                 datamodule=mock_dm,
-                train_config={
-                    "batch_size": 32,
-                    "max_epochs": 1,
-                    "reload_dataloaders_every_n_epochs": 0,
-                    "gradient_clip_val": None,
-                },  # type: ignore
+                train_config=_mock_train_config(),
             )
 
         assert call_order == ["prepare_data", "setup"]
