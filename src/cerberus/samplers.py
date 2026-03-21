@@ -986,6 +986,7 @@ class ComplexityMatchedSampler(ProxySampler):
         seed: int = 42,
         generate_on_init: bool = True,
         metrics_cache: dict[str, np.ndarray] | None = None,
+        center_size: int | None = None,
     ):
         """
         Args:
@@ -1001,6 +1002,9 @@ class ComplexityMatchedSampler(ProxySampler):
             seed: Random seed.
             generate_on_init: Whether to generate samples immediately.
             metrics_cache: Shared cache for interval metrics.
+            center_size: If set, crop intervals to center N bp before computing
+                         complexity metrics. Decouples model input size from
+                         complexity matching scale.
         """
         super().__init__(
             chrom_sizes=chrom_sizes,
@@ -1018,6 +1022,7 @@ class ComplexityMatchedSampler(ProxySampler):
         if metrics is None:
             metrics = ["gc", "dust", "cpg"]
         self.metrics = metrics
+        self.center_size = center_size
         self.metrics_cache = metrics_cache if metrics_cache is not None else {}
 
         # Lazy initialization
@@ -1030,25 +1035,33 @@ class ComplexityMatchedSampler(ProxySampler):
         if generate_on_init:
             self.resample()
 
+    def _cache_key(self, iv: Interval) -> str:
+        """Build a cache key that includes center_size when set."""
+        if self.center_size is not None:
+            return f"{iv}:cs={self.center_size}"
+        return str(iv)
+
     def _get_metrics(self, sampler: Sampler, name: str) -> np.ndarray:
         intervals = list(sampler)
         missing = []
-        
+
         for iv in intervals:
-            key = str(iv)
+            key = self._cache_key(iv)
             if key not in self.metrics_cache:
                 missing.append(iv)
-        
+
         if missing:
             logger.info(f"ComplexityMatchedSampler: Computing {len(missing)} missing metrics for {name} intervals...")
-            new_metrics = compute_intervals_complexity(missing, self.fasta_path, self.metrics)
+            new_metrics = compute_intervals_complexity(
+                missing, self.fasta_path, self.metrics, center_size=self.center_size
+            )
             for iv, row in zip(missing, new_metrics):
-                self.metrics_cache[str(iv)] = row
-        
+                self.metrics_cache[self._cache_key(iv)] = row
+
         if not intervals:
             return np.empty((0, len(self.metrics)), dtype=np.float32)
 
-        return np.array([self.metrics_cache[str(iv)] for iv in intervals], dtype=np.float32)
+        return np.array([self.metrics_cache[self._cache_key(iv)] for iv in intervals], dtype=np.float32)
 
     def _initialize(self) -> None:
         logger.info("ComplexityMatchedSampler: Initializing complexity matching...")
@@ -1222,6 +1235,7 @@ class PeakSampler(MultiSampler):
         candidate_oversample_factor: float = 5.0,
         seed: int = 42,
         prepare_cache: dict[str, np.ndarray] | None = None,
+        complexity_center_size: int | None = None,
     ):
         """
         Args:
@@ -1237,6 +1251,8 @@ class PeakSampler(MultiSampler):
             candidate_oversample_factor: Factor to oversample candidates relative to peaks.
             seed: Random seed.
             prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
+            complexity_center_size: If set, crop intervals to center N bp before
+                                   computing complexity metrics for matching.
         """
         self.intervals_path = Path(intervals_path)
         self.background_ratio = background_ratio
@@ -1301,6 +1317,7 @@ class PeakSampler(MultiSampler):
                 generate_on_init=False,
                 metrics=["gc", "dust", "cpg"],
                 metrics_cache=prepare_cache,
+                center_size=complexity_center_size,
             )
             samplers.append(self.negatives)
         else:
@@ -1355,6 +1372,7 @@ class NegativePeakSampler(MultiSampler):
         candidate_oversample_factor: float = 5.0,
         seed: int = 42,
         prepare_cache: dict[str, np.ndarray] | None = None,
+        complexity_center_size: int | None = None,
     ):
         self.intervals_path = Path(intervals_path)
         self.background_ratio = background_ratio
@@ -1409,6 +1427,7 @@ class NegativePeakSampler(MultiSampler):
             generate_on_init=False,
             metrics=["gc", "dust", "cpg"],
             metrics_cache=prepare_cache,
+            center_size=complexity_center_size,
         )
 
         # 5. Initialize MultiSampler with only negatives
@@ -1540,6 +1559,7 @@ def create_sampler(
             background_ratio=background_ratio,
             seed=seed,
             prepare_cache=prepare_cache,
+            complexity_center_size=sampler_args["complexity_center_size"],
         )
 
     elif sampler_type == "negative_peak":
@@ -1558,6 +1578,7 @@ def create_sampler(
             background_ratio=background_ratio,
             seed=seed,
             prepare_cache=prepare_cache,
+            complexity_center_size=sampler_args["complexity_center_size"],
         )
 
     else:

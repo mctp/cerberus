@@ -87,11 +87,12 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Resampling**: Re-samples the negative set to match the positives (while keeping positives static).
 *   **Splitting**: Splits both the positive and negative samplers consistent with folds.
 *   **Interval source**: Because `PeakSampler` extends `MultiSampler`, each batch item returned by `CerberusDataset` includes an `interval_source` field containing the class name of the sub-sampler that produced the interval (e.g. `"IntervalSampler"` for peaks, `"ComplexityMatchedSampler"` for background). This label is always consistent with `__getitem__` — both read from the same internal index table.
+*   **`complexity_center_size`** (optional `int | None`, default `None`): Crop intervals to their center N bp before computing complexity metrics for matching. When `padded_size` is large (e.g. 32kb+ for multi-scale models), full-interval GC content regresses toward the genome mean (~0.41), making complexity matching ineffective. Setting `complexity_center_size` (e.g. `2624`) decouples the model's input window size from the complexity matching scale. Passed through to the underlying `ComplexityMatchedSampler`. Configurable via `sampler_args["complexity_center_size"]` in the sampler config dict.
 
 ### NegativePeakSampler
 *   **Function**: Background-only variant of `PeakSampler`. Loads peaks for exclusion and complexity reference, but only includes the complexity-matched background intervals in the training set. Peaks are never sampled.
 *   **Use case**: Training bias-only models (e.g., Tn5 sequence bias) on non-peak regions where enzymatic bias dominates, following the ChromBPNet protocol.
-*   **Config type**: `"negative_peak"` — same args as `"peak"` (`intervals_path`, `background_ratio`).
+*   **Config type**: `"negative_peak"` — same args as `"peak"` (`intervals_path`, `background_ratio`, `complexity_center_size`).
 *   **Epoch size**: Controlled by `background_ratio` (number of background intervals = num_peaks × background_ratio).
 *   **Interval source**: `get_interval_source()` returns `"ComplexityMatchedSampler"` for all intervals (background only).
 

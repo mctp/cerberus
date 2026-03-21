@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`complexity_center_size` parameter** for `PeakSampler`, `NegativePeakSampler`,
+  and `ComplexityMatchedSampler`: crops intervals to their center N bp before
+  computing complexity metrics. Decouples the model's input window size from the
+  complexity matching scale, preventing large-context intervals (32kb+) from
+  regressing toward the genome mean GC content. Default `None` preserves existing
+  behavior.
 - **Sampler context-length benchmark** (`tests/benchmark/bench_sampler_context_length.py`):
   standalone script measuring FASTA, BigWig, and combined extraction throughput
   across 1–128 kb context lengths using real GRCh38 and MDA-PCA-2B AR ChIP-seq data.

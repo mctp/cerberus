@@ -61,7 +61,8 @@ class TestPeakSamplerNoBackground(unittest.TestCase):
             "padded_size": 50,
             "sampler_args": {
                 "intervals_path": "dummy_peaks.bed",
-                "background_ratio": 0.0 # Explicitly set to 0.0
+                "background_ratio": 0.0,  # Explicitly set to 0.0
+                "complexity_center_size": None,
             }
         }
         

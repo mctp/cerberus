@@ -32,7 +32,7 @@ from interlap import InterLap
 def mock_compute():
     """Mock compute_intervals_complexity to avoid real FASTA reads."""
     with patch("cerberus.samplers.compute_intervals_complexity") as m:
-        def side_effect(intervals, fasta, metrics):
+        def side_effect(intervals, fasta, metrics, center_size=None):
             return np.random.rand(len(intervals), len(metrics)).astype(np.float32)
         m.side_effect = side_effect
         yield m

@@ -74,7 +74,7 @@ def test_complexity_matched_fallback(mock_fasta):
     candidate_sampler = ListSampler(intervals=candidate_intervals, chrom_sizes=chrom_sizes)
     
     with patch("cerberus.samplers.compute_intervals_complexity") as mock_compute:
-        def side_effect(sampler, fasta, metrics):
+        def side_effect(sampler, fasta, metrics, center_size=None):
             if sampler is target_sampler:
                 return np.array([[0.9]]) # High
             else:

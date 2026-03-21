@@ -122,7 +122,7 @@ class TestRandomnessConsistency(unittest.TestCase):
         import numpy as np
         original_compute = cerberus.samplers.compute_intervals_complexity
         try:
-            cerberus.samplers.compute_intervals_complexity = lambda sampler, fasta, metrics: np.full((len(sampler), len(metrics)), 0.5)
+            cerberus.samplers.compute_intervals_complexity = lambda sampler, fasta, metrics, center_size=None: np.full((len(sampler), len(metrics)), 0.5)
             
             gc = ComplexityMatchedSampler(target, candidate, "dummy.fa", chrom_sizes, folds, {}, seed=99, metrics=["gc"])
             

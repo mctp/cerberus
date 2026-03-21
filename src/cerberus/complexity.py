@@ -160,7 +160,8 @@ def calculate_log_cpg_ratio(
 def compute_intervals_complexity(
     intervals: Iterable[Interval],
     fasta_path: Path | str,
-    metrics: list[str] | None = None
+    metrics: list[str] | None = None,
+    center_size: int | None = None,
 ) -> np.ndarray:
     """
     Computes selected complexity metrics for a collection of intervals.
@@ -170,6 +171,10 @@ def compute_intervals_complexity(
         fasta_path: Path to the genome FASTA file.
         metrics: List of metrics to compute. Options: 'gc', 'dust', 'cpg'.
                  If None, computes all.
+        center_size: If set, crop each interval to its center N bp before
+                     computing metrics. Intervals smaller than center_size
+                     are left unchanged. Useful for large-context models
+                     where full-interval metrics regress toward genome mean.
 
     Returns:
         np.ndarray: A (N, M) array where columns correspond to the requested metrics in order.
@@ -188,8 +193,16 @@ def compute_intervals_complexity(
     for interval in intervals:
         try:
             if interval.chrom in fasta:
+                # Center-crop if requested and interval is larger than center_size
+                start = interval.start
+                end = interval.end
+                if center_size is not None and (end - start) > center_size:
+                    mid = (start + end) // 2
+                    start = mid - center_size // 2
+                    end = start + center_size
+
                 # pyfaidx expects 0-based [start:end]
-                seq_obj = fasta[interval.chrom][interval.start : interval.end]
+                seq_obj = fasta[interval.chrom][start:end]
                 seq = str(seq_obj)
                 
                 row = []

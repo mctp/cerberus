@@ -547,12 +547,19 @@ def validate_sampler_config(
         if not all(k in config["sampler_args"] for k in required_args):
             missing = required_args - config["sampler_args"].keys()
             raise ValueError(f"PeakSampler args missing required keys: {missing}")
+        # TODO: setdefault in a validate_ function is wrong — validators should
+        # not mutate config. Defaults belong in a dedicated normalize/parse step
+        # or at the call site. Keeping this temporarily so create_sampler can use
+        # bracket access. Remove once a proper config normalization layer exists.
+        config["sampler_args"].setdefault("complexity_center_size", None)
 
     elif config["sampler_type"] == "negative_peak":
         required_args = {"intervals_path"}
         if not all(k in config["sampler_args"] for k in required_args):
             missing = required_args - config["sampler_args"].keys()
             raise ValueError(f"NegativePeakSampler args missing required keys: {missing}")
+        # TODO: same as above — setdefault does not belong in a validator.
+        config["sampler_args"].setdefault("complexity_center_size", None)
 
     return {
         "sampler_type": config["sampler_type"],

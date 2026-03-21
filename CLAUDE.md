@@ -11,7 +11,7 @@ After completing each task, always:
 
 ## Config Conventions
 
-- **No implicit defaults when reading config dicts.** Always use `config["key"]` (bracket access), never `config.get("key", default)`. This applies everywhere — validators, transforms, dataset, module, etc. All config fields must be explicitly present in the config dict. Defaults should be set at the call site (e.g., in `parse_hparams_config` or training scripts), never where the config is consumed.
+- **No implicit defaults when reading config dicts.** Always use `config["key"]` (bracket access), never `config.get("key", default)`. This applies everywhere — validators, transforms, dataset, module, factory functions like `create_sampler`, etc. All config fields must be explicitly present in the config dict by the time they are consumed. When adding a new optional field with a default value, inject the default via `setdefault` in `validate_sampler_config` / `validate_data_config` (the normalization boundary), so that downstream consumers can always use bracket access. Never use `.get()` to silently fill in a default at the point of consumption.
 
 ## Logging Conventions
 

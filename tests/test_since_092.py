@@ -208,7 +208,7 @@ class TestCreateSamplerSeedPropagation:
     @pytest.fixture(autouse=True)
     def _mock_complexity(self):
         with patch("cerberus.samplers.compute_intervals_complexity") as m:
-            m.side_effect = lambda intervals, fasta, metrics: np.random.rand(
+            m.side_effect = lambda intervals, fasta, metrics, center_size=None: np.random.rand(
                 len(intervals), len(metrics)
             ).astype(np.float32)
             yield m

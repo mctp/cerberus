@@ -9,7 +9,7 @@ from interlap import InterLap
 @pytest.fixture
 def mock_compute():
     with patch("cerberus.samplers.compute_intervals_complexity") as m:
-        def side_effect(intervals, fasta, metrics):
+        def side_effect(intervals, fasta, metrics, center_size=None):
             # Return random metrics
             return np.random.rand(len(intervals), len(metrics))
         m.side_effect = side_effect

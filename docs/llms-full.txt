@@ -1025,11 +1025,12 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Resampling**: Re-samples the negative set to match the positives (while keeping positives static).
 *   **Splitting**: Splits both the positive and negative samplers consistent with folds.
 *   **Interval source**: Because `PeakSampler` extends `MultiSampler`, each batch item returned by `CerberusDataset` includes an `interval_source` field containing the class name of the sub-sampler that produced the interval (e.g. `"IntervalSampler"` for peaks, `"ComplexityMatchedSampler"` for background). This label is always consistent with `__getitem__` — both read from the same internal index table.
+*   **`complexity_center_size`** (optional `int | None`, default `None`): Crop intervals to their center N bp before computing complexity metrics for matching. When `padded_size` is large (e.g. 32kb+ for multi-scale models), full-interval GC content regresses toward the genome mean (~0.41), making complexity matching ineffective. Setting `complexity_center_size` (e.g. `2624`) decouples the model's input window size from the complexity matching scale. Passed through to the underlying `ComplexityMatchedSampler`. Configurable via `sampler_args["complexity_center_size"]` in the sampler config dict.
 
 ### NegativePeakSampler
 *   **Function**: Background-only variant of `PeakSampler`. Loads peaks for exclusion and complexity reference, but only includes the complexity-matched background intervals in the training set. Peaks are never sampled.
 *   **Use case**: Training bias-only models (e.g., Tn5 sequence bias) on non-peak regions where enzymatic bias dominates, following the ChromBPNet protocol.
-*   **Config type**: `"negative_peak"` — same args as `"peak"` (`intervals_path`, `background_ratio`).
+*   **Config type**: `"negative_peak"` — same args as `"peak"` (`intervals_path`, `background_ratio`, `complexity_center_size`).
 *   **Epoch size**: Controlled by `background_ratio` (number of background intervals = num_peaks × background_ratio).
 *   **Interval source**: `get_interval_source()` returns `"ComplexityMatchedSampler"` for all intervals (background only).
 
@@ -2348,7 +2349,8 @@ Computes selected complexity metrics for a collection of intervals.
 def compute_intervals_complexity(
     intervals: Iterable[Interval],
     fasta_path: Path | str,
-    metrics: list[str] | None = None
+    metrics: list[str] | None = None,
+    center_size: int | None = None,
 ) -> np.ndarray
 ```
 
@@ -2356,6 +2358,10 @@ def compute_intervals_complexity(
 *   `intervals`: Iterable of Interval objects.
 *   `fasta_path`: Path to the genome FASTA file.
 *   `metrics`: List of metrics to compute. Options: 'gc', 'dust', 'cpg'. If None, computes all.
+*   `center_size`: If set, crop each interval to its center N bp before computing
+    metrics. Intervals smaller than `center_size` are left unchanged. This is useful
+    for large-context models (32kb+) where full-interval metrics regress toward the
+    genome mean, making complexity matching ineffective.
 
 **Returns:**
 *   `np.ndarray`: A (N, M) array where columns correspond to the requested metrics in order.
@@ -3123,12 +3129,19 @@ def validate_sampler_config(
         if not all(k in config["sampler_args"] for k in required_args):
             missing = required_args - config["sampler_args"].keys()
             raise ValueError(f"PeakSampler args missing required keys: {missing}")
+        # TODO: setdefault in a validate_ function is wrong — validators should
+        # not mutate config. Defaults belong in a dedicated normalize/parse step
+        # or at the call site. Keeping this temporarily so create_sampler can use
+        # bracket access. Remove once a proper config normalization layer exists.
+        config["sampler_args"].setdefault("complexity_center_size", None)
 
     elif config["sampler_type"] == "negative_peak":
         required_args = {"intervals_path"}
         if not all(k in config["sampler_args"] for k in required_args):
             missing = required_args - config["sampler_args"].keys()
             raise ValueError(f"NegativePeakSampler args missing required keys: {missing}")
+        # TODO: same as above — setdefault does not belong in a validator.
+        config["sampler_args"].setdefault("complexity_center_size", None)
 
     return {
         "sampler_type": config["sampler_type"],
@@ -4097,67 +4110,47 @@ from cerberus.complexity import calculate_gc_content
 logger = logging.getLogger(__name__)
 
 
-def _create_mapping(encoding: str) -> np.ndarray:
-    """Creates a lookup array for DNA encoding."""
-    mapping = np.zeros(256, dtype=np.int8) - 1  # Default -1
-    for i, base in enumerate(encoding):
-        mapping[ord(base)] = i
-    return mapping
-
-
-_ENCODING_MAPPINGS = {"ACGT": _create_mapping("ACGT"), "AGCT": _create_mapping("AGCT")}
+_ENCODING_BYTES: dict[str, np.ndarray] = {
+    "ACGT": np.array([ord(c) for c in "ACGT"], dtype=np.uint8).reshape(-1, 1),
+    "AGCT": np.array([ord(c) for c in "AGCT"], dtype=np.uint8).reshape(-1, 1),
+}
 
 
 def encode_dna(sequence: str, encoding: str = "ACGT") -> torch.Tensor:
     """
     One-hot encodes a DNA sequence string into a tensor.
 
-    This function maps characters in the input sequence to channel indices based on the specified encoding.
+    Uses vectorized broadcast comparison for high throughput. Each position is
+    compared against all bases simultaneously: ``(encoding_bytes == seq_bytes)``
+    produces a ``(len(encoding), L)`` boolean matrix which is cast to float32.
+
     Supported encodings:
     - 'ACGT': A=0, C=1, G=2, T=3
     - 'AGCT': A=0, G=1, C=2, T=3
-    
-    The resulting tensor is 1-hot encoded.
+
+    The resulting tensor is 1-hot encoded. Ambiguous or unknown bases (e.g. 'N')
+    produce all-zero columns.
 
     Args:
         sequence: Input DNA sequence (string). Case-insensitive.
         encoding: Channel order, e.g. 'ACGT' or 'AGCT'. Defaults to 'ACGT'.
 
     Returns:
-        torch.Tensor: A float32 tensor of shape (4, Length).
-                      Channels correspond to the bases in the order specified by `encoding`.
-    
+        torch.Tensor: A float32 tensor of shape (len(encoding), Length).
+                      Channels correspond to the bases in the order specified by ``encoding``.
+
     Raises:
         ValueError: If the encoding is not supported.
     """
-    sequence = sequence.upper()
     encoding = encoding.upper()
 
-    if encoding not in _ENCODING_MAPPINGS:
+    if encoding not in _ENCODING_BYTES:
         raise ValueError(
-            f"Unsupported encoding '{encoding}'. Supported: {list(_ENCODING_MAPPINGS.keys())}"
+            f"Unsupported encoding '{encoding}'. Supported: {list(_ENCODING_BYTES.keys())}"
         )
 
-    mapping = _ENCODING_MAPPINGS[encoding]
-
-    # Convert string to ascii bytes
-    # Note: this assumes ASCII compatible encoding
-    seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
-
-    # Map to indices
-    indices = mapping[seq_bytes]
-
-    # Create one hot (4, L) directly for contiguous memory
-    one_hot = np.zeros((4, len(sequence)), dtype=np.float32)
-
-    # Valid indices (>= 0)
-    valid_mask = indices >= 0
-
-    # Fill using advanced indexing
-    # indices[valid_mask] gives row indices (channels)
-    # np.where(valid_mask)[0] gives column indices (positions)
-    one_hot[indices[valid_mask], np.where(valid_mask)[0]] = 1.0
-
+    seq_bytes = np.frombuffer(sequence.upper().encode("ascii"), dtype=np.uint8)
+    one_hot = (seq_bytes == _ENCODING_BYTES[encoding]).astype(np.float32)
     return torch.from_numpy(one_hot)
 
 
@@ -5049,7 +5042,8 @@ def calculate_log_cpg_ratio(
 def compute_intervals_complexity(
     intervals: Iterable[Interval],
     fasta_path: Path | str,
-    metrics: list[str] | None = None
+    metrics: list[str] | None = None,
+    center_size: int | None = None,
 ) -> np.ndarray:
     """
     Computes selected complexity metrics for a collection of intervals.
@@ -5059,6 +5053,10 @@ def compute_intervals_complexity(
         fasta_path: Path to the genome FASTA file.
         metrics: List of metrics to compute. Options: 'gc', 'dust', 'cpg'.
                  If None, computes all.
+        center_size: If set, crop each interval to its center N bp before
+                     computing metrics. Intervals smaller than center_size
+                     are left unchanged. Useful for large-context models
+                     where full-interval metrics regress toward genome mean.
 
     Returns:
         np.ndarray: A (N, M) array where columns correspond to the requested metrics in order.
@@ -5077,8 +5075,16 @@ def compute_intervals_complexity(
     for interval in intervals:
         try:
             if interval.chrom in fasta:
+                # Center-crop if requested and interval is larger than center_size
+                start = interval.start
+                end = interval.end
+                if center_size is not None and (end - start) > center_size:
+                    mid = (start + end) // 2
+                    start = mid - center_size // 2
+                    end = start + center_size
+
                 # pyfaidx expects 0-based [start:end]
-                seq_obj = fasta[interval.chrom][interval.start : interval.end]
+                seq_obj = fasta[interval.chrom][start:end]
                 seq = str(seq_obj)
                 
                 row = []
@@ -6132,6 +6138,7 @@ class ComplexityMatchedSampler(ProxySampler):
         seed: int = 42,
         generate_on_init: bool = True,
         metrics_cache: dict[str, np.ndarray] | None = None,
+        center_size: int | None = None,
     ):
         """
         Args:
@@ -6147,6 +6154,9 @@ class ComplexityMatchedSampler(ProxySampler):
             seed: Random seed.
             generate_on_init: Whether to generate samples immediately.
             metrics_cache: Shared cache for interval metrics.
+            center_size: If set, crop intervals to center N bp before computing
+                         complexity metrics. Decouples model input size from
+                         complexity matching scale.
         """
         super().__init__(
             chrom_sizes=chrom_sizes,
@@ -6164,6 +6174,7 @@ class ComplexityMatchedSampler(ProxySampler):
         if metrics is None:
             metrics = ["gc", "dust", "cpg"]
         self.metrics = metrics
+        self.center_size = center_size
         self.metrics_cache = metrics_cache if metrics_cache is not None else {}
 
         # Lazy initialization
@@ -6176,25 +6187,33 @@ class ComplexityMatchedSampler(ProxySampler):
         if generate_on_init:
             self.resample()
 
+    def _cache_key(self, iv: Interval) -> str:
+        """Build a cache key that includes center_size when set."""
+        if self.center_size is not None:
+            return f"{iv}:cs={self.center_size}"
+        return str(iv)
+
     def _get_metrics(self, sampler: Sampler, name: str) -> np.ndarray:
         intervals = list(sampler)
         missing = []
-        
+
         for iv in intervals:
-            key = str(iv)
+            key = self._cache_key(iv)
             if key not in self.metrics_cache:
                 missing.append(iv)
-        
+
         if missing:
             logger.info(f"ComplexityMatchedSampler: Computing {len(missing)} missing metrics for {name} intervals...")
-            new_metrics = compute_intervals_complexity(missing, self.fasta_path, self.metrics)
+            new_metrics = compute_intervals_complexity(
+                missing, self.fasta_path, self.metrics, center_size=self.center_size
+            )
             for iv, row in zip(missing, new_metrics):
-                self.metrics_cache[str(iv)] = row
-        
+                self.metrics_cache[self._cache_key(iv)] = row
+
         if not intervals:
             return np.empty((0, len(self.metrics)), dtype=np.float32)
 
-        return np.array([self.metrics_cache[str(iv)] for iv in intervals], dtype=np.float32)
+        return np.array([self.metrics_cache[self._cache_key(iv)] for iv in intervals], dtype=np.float32)
 
     def _initialize(self) -> None:
         logger.info("ComplexityMatchedSampler: Initializing complexity matching...")
@@ -6368,6 +6387,7 @@ class PeakSampler(MultiSampler):
         candidate_oversample_factor: float = 5.0,
         seed: int = 42,
         prepare_cache: dict[str, np.ndarray] | None = None,
+        complexity_center_size: int | None = None,
     ):
         """
         Args:
@@ -6383,6 +6403,8 @@ class PeakSampler(MultiSampler):
             candidate_oversample_factor: Factor to oversample candidates relative to peaks.
             seed: Random seed.
             prepare_cache: Pre-computed data from prepare_data() (e.g. complexity metrics cache).
+            complexity_center_size: If set, crop intervals to center N bp before
+                                   computing complexity metrics for matching.
         """
         self.intervals_path = Path(intervals_path)
         self.background_ratio = background_ratio
@@ -6447,6 +6469,7 @@ class PeakSampler(MultiSampler):
                 generate_on_init=False,
                 metrics=["gc", "dust", "cpg"],
                 metrics_cache=prepare_cache,
+                center_size=complexity_center_size,
             )
             samplers.append(self.negatives)
         else:
@@ -6501,6 +6524,7 @@ class NegativePeakSampler(MultiSampler):
         candidate_oversample_factor: float = 5.0,
         seed: int = 42,
         prepare_cache: dict[str, np.ndarray] | None = None,
+        complexity_center_size: int | None = None,
     ):
         self.intervals_path = Path(intervals_path)
         self.background_ratio = background_ratio
@@ -6555,6 +6579,7 @@ class NegativePeakSampler(MultiSampler):
             generate_on_init=False,
             metrics=["gc", "dust", "cpg"],
             metrics_cache=prepare_cache,
+            center_size=complexity_center_size,
         )
 
         # 5. Initialize MultiSampler with only negatives
@@ -6686,6 +6711,7 @@ def create_sampler(
             background_ratio=background_ratio,
             seed=seed,
             prepare_cache=prepare_cache,
+            complexity_center_size=sampler_args["complexity_center_size"],
         )
 
     elif sampler_type == "negative_peak":
@@ -6704,6 +6730,7 @@ def create_sampler(
             background_ratio=background_ratio,
             seed=seed,
             prepare_cache=prepare_cache,
+            complexity_center_size=sampler_args["complexity_center_size"],
         )
 
     else:
@@ -7959,7 +7986,6 @@ from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
 
 from cerberus.loss import CerberusLoss
-from cerberus.output import compute_total_log_counts, compute_obs_log_counts
 from cerberus.plots import save_count_scatter
 from cerberus.config import (
     TrainConfig,
@@ -7975,7 +8001,6 @@ from cerberus.config import (
     validate_sampler_config,
     import_class,
     propagate_pseudocount,
-    get_log_count_params,
 )
 
 logger = logging.getLogger(__name__)
@@ -8031,11 +8056,6 @@ class CerberusModule(pl.LightningModule):
         
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")
-
-        # Accumulators for the per-epoch validation scatter plot.
-        # Populated in _shared_step (val only, rank 0) and cleared in on_validation_epoch_end.
-        self._val_log_count_preds: list[torch.Tensor] = []
-        self._val_log_count_targets: list[torch.Tensor] = []
 
         logger.info(f"Initialized CerberusModule with model: {model.__class__.__name__}")
 
@@ -8115,10 +8135,6 @@ class CerberusModule(pl.LightningModule):
             
         metric_collection.update(outputs_detached, targets.detach())
 
-        # Accumulate log counts for the validation scatter plot (rank 0 only)
-        if prefix == "val_" and self.trainer.is_global_zero:
-            self._accumulate_log_counts(outputs_detached, targets.detach())
-
         return loss
 
     def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
@@ -8133,63 +8149,34 @@ class CerberusModule(pl.LightningModule):
         self.log_dict(metrics, sync_dist=True)
         self.train_metrics.reset()
         
-    def _accumulate_log_counts(self, outputs: Any, targets: torch.Tensor) -> None:
-        """
-        Accumulate predicted and target log counts for the epoch-end scatter plot.
+    def on_validation_epoch_end(self) -> None:
+        # Extract scatter plot data from the LogCountsPearsonCorrCoef metric
+        # *before* compute()/reset() clears the accumulated state.
+        scatter_preds = None
+        scatter_targets = None
+        if self.trainer.is_global_zero and not self.trainer.sanity_checking:
+            pearson_key = "pearson_log_counts"
+            if pearson_key in self.val_metrics:
+                pearson_metric = self.val_metrics[pearson_key]
+                preds_list = pearson_metric.preds_list  # type: ignore[union-attr]
+                targets_list = pearson_metric.targets_list  # type: ignore[union-attr]
+                if isinstance(preds_list, torch.Tensor):
+                    scatter_preds = preds_list.cpu().float().numpy()
+                    scatter_targets = targets_list.cpu().float().numpy()  # type: ignore[union-attr]
+                elif preds_list:
+                    scatter_preds = torch.cat(preds_list).cpu().float().numpy()  # type: ignore[arg-type]
+                    scatter_targets = torch.cat(targets_list).cpu().float().numpy()  # type: ignore[arg-type]
 
-        Silently skips output types not supported by compute_total_log_counts
-        (e.g. raw-tensor or tuple outputs from non-standard models).
-
-        Uses ``get_log_count_params`` (class-attribute dispatch via
-        ``uses_count_pseudocount``) to determine whether predictions live in
-        offset-log space (MSE/Dalmatian) or pure-log space (Poisson/NB), and
-        applies the matching transform to targets.
-
-        Args:
-            outputs: Detached model output (ModelOutput subclass or other).
-            targets: Detached target tensor, shape (B, C, L).
-        """
-        try:
-            log_counts_include_pseudocount, pseudocount = get_log_count_params(
-                self.hparams["model_config"]
-            )
-            pred_lc = compute_total_log_counts(
-                outputs,
-                log_counts_include_pseudocount=log_counts_include_pseudocount,
-                pseudocount=pseudocount,
-            )                                                                        # (B,)
-            # Targets are already scaled (from the dataloader).  For pure-log
-            # (Poisson/NB) pseudocount is 0; clamp_min(1) avoids log(0).
-            total = targets.sum(dim=(1, 2), dtype=torch.float32)
-            target_lc = torch.log((total + pseudocount).clamp_min(1.0))              # (B,)
-            self._val_log_count_preds.append(pred_lc.cpu())
-            self._val_log_count_targets.append(target_lc.cpu())
-        # TODO: consider restricting to ValueError only — AttributeError,
-        # TypeError, and IndexError may indicate real bugs that should surface.
-        except (ValueError, AttributeError, TypeError, IndexError) as e:
-            if not getattr(self, "_log_count_warning_emitted", False):
-                logger.debug(
-                    f"Skipping log-count accumulation: {type(e).__name__}: {e}"
-                )
-                self._log_count_warning_emitted = True
-
-    def on_validation_epoch_end(self):
-        # Log aggregated metrics
+        # Log aggregated metrics, then reset
         metrics = self.val_metrics.compute()
         self.log_dict(metrics, sync_dist=True)
         self.val_metrics.reset()
 
-        # Generate count scatter plot (rank 0 only; skip Lightning's 2-batch sanity check)
-        if (self._val_log_count_preds
-                and self.trainer.is_global_zero
-                and not self.trainer.sanity_checking):
-            all_preds = torch.cat(self._val_log_count_preds).float().numpy()
-            all_targets = torch.cat(self._val_log_count_targets).float().numpy()
+        # Write scatter plot (after metric bookkeeping)
+        if scatter_preds is not None and scatter_targets is not None:
             trainer_log_dir = getattr(self.trainer.logger, "log_dir", None)
             save_dir = trainer_log_dir or self.trainer.default_root_dir or "."
-            save_count_scatter(all_preds, all_targets, save_dir, self.current_epoch)
-        self._val_log_count_preds = []
-        self._val_log_count_targets = []
+            save_count_scatter(scatter_preds, scatter_targets, save_dir, self.current_epoch)
 
 
 def configure_callbacks(

@@ -1,6 +1,8 @@
 import pytest
 import numpy as np
-from cerberus.complexity import calculate_gc_content, calculate_dust_score, calculate_log_cpg_ratio
+import pyfaidx
+from cerberus.complexity import calculate_gc_content, calculate_dust_score, calculate_log_cpg_ratio, compute_intervals_complexity
+from cerberus.interval import Interval
 
 # --- Test Data ---
 SEQ_A = "AAAAAAAA"  # GC=0.0, DUST high
@@ -189,4 +191,54 @@ def test_cpg_ratio_type_error():
 def test_gc_content_all_N():
     """Verify GC content returns 0.0 for sequences with no valid bases."""
     assert calculate_gc_content("NNNN") == 0.0
+
+
+# --- center_size Tests ---
+
+@pytest.fixture
+def center_size_fasta(tmp_path):
+    """FASTA with a long chr1 that has distinct GC in center vs flanks."""
+    fasta_path = tmp_path / "genome.fa"
+    rng = np.random.default_rng(42)
+
+    # Build a 40kb sequence: AT-rich flanks, GC-rich center
+    flank_len = 15000
+    center_len = 10000
+    flank = "".join(rng.choice(["A", "T"], size=flank_len))
+    center = "".join(rng.choice(["G", "C"], size=center_len))
+    seq = flank + center + flank
+
+    with open(fasta_path, "w") as f:
+        f.write(">chr1\n")
+        for i in range(0, len(seq), 80):
+            f.write(seq[i : i + 80] + "\n")
+
+    pyfaidx.Faidx(str(fasta_path))
+    return fasta_path
+
+
+def test_compute_intervals_complexity_center_size(center_size_fasta):
+    """center_size crops intervals before computing metrics."""
+    interval = Interval("chr1", 0, 40000, "+")
+
+    full = compute_intervals_complexity([interval], center_size_fasta)
+    center = compute_intervals_complexity(
+        [interval], center_size_fasta, center_size=2000
+    )
+
+    assert full.shape == center.shape == (1, 3)
+    # The center 2kb is GC-rich, the full 40kb is mixed — GC metric should differ
+    assert not np.allclose(full, center)
+
+
+def test_compute_intervals_complexity_center_size_noop_when_smaller(center_size_fasta):
+    """center_size larger than interval is a no-op."""
+    interval = Interval("chr1", 0, 2000, "+")
+
+    full = compute_intervals_complexity([interval], center_size_fasta)
+    center = compute_intervals_complexity(
+        [interval], center_size_fasta, center_size=50000
+    )
+
+    np.testing.assert_array_equal(full, center)
 

@@ -78,3 +78,25 @@ def test_complexity_matched_sampler_metrics(mock_fasta):
         ComplexityMatchedSampler(
             target, candidate, mock_fasta, chrom_sizes, metrics=["invalid"]
         )
+
+
+def test_complexity_matched_sampler_center_size(mock_fasta):
+    """center_size is stored and changes the cache key."""
+    target = MockSampler([Interval("chr1", 0, 100, "+")])
+    candidate = MockSampler([Interval("chr1", 100, 200, "+")])
+    chrom_sizes = {"chr1": 1000}
+
+    s_none = ComplexityMatchedSampler(
+        target, candidate, mock_fasta, chrom_sizes
+    )
+    s_center = ComplexityMatchedSampler(
+        target, candidate, mock_fasta, chrom_sizes, center_size=50
+    )
+
+    assert s_none.center_size is None
+    assert s_center.center_size == 50
+
+    # Cache keys should differ for the same interval
+    iv = Interval("chr1", 0, 100, "+")
+    assert s_none._cache_key(iv) == str(iv)
+    assert s_center._cache_key(iv) == f"{iv}:cs=50"

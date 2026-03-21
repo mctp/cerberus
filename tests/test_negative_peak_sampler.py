@@ -224,6 +224,7 @@ def test_create_sampler_negative_peak():
         "sampler_args": {
             "intervals_path": "peaks.bed",
             "background_ratio": 1.0,
+            "complexity_center_size": None,
         },
     }
 
@@ -251,6 +252,7 @@ def test_create_sampler_negative_peak_requires_fasta():
         "sampler_args": {
             "intervals_path": "peaks.bed",
             "background_ratio": 1.0,
+            "complexity_center_size": None,
         },
     }
 

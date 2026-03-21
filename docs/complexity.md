@@ -110,7 +110,8 @@ Computes selected complexity metrics for a collection of intervals.
 def compute_intervals_complexity(
     intervals: Iterable[Interval],
     fasta_path: Path | str,
-    metrics: list[str] | None = None
+    metrics: list[str] | None = None,
+    center_size: int | None = None,
 ) -> np.ndarray
 ```
 
@@ -118,6 +119,10 @@ def compute_intervals_complexity(
 *   `intervals`: Iterable of Interval objects.
 *   `fasta_path`: Path to the genome FASTA file.
 *   `metrics`: List of metrics to compute. Options: 'gc', 'dust', 'cpg'. If None, computes all.
+*   `center_size`: If set, crop each interval to its center N bp before computing
+    metrics. Intervals smaller than `center_size` are left unchanged. This is useful
+    for large-context models (32kb+) where full-interval metrics regress toward the
+    genome mean, making complexity matching ineffective.
 
 **Returns:**
 *   `np.ndarray`: A (N, M) array where columns correspond to the requested metrics in order.
