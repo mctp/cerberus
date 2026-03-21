@@ -58,16 +58,19 @@ class ModelEnsemble(nn.ModuleDict):
             hparams_path, search_paths=search_paths
         )
 
+        overrides = {}
         if model_config is not None:
-            self.cerberus_config["model_config"] = model_config
+            overrides["model_config_"] = model_config
         if data_config is not None:
-            self.cerberus_config["data_config"] = data_config
+            overrides["data_config"] = data_config
         if genome_config is not None:
-            self.cerberus_config["genome_config"] = genome_config
+            overrides["genome_config"] = genome_config
+        if overrides:
+            self.cerberus_config = self.cerberus_config.model_copy(update=overrides)
 
-        model_config = self.cerberus_config["model_config"]
-        data_config = self.cerberus_config["data_config"]
-        genome_config = self.cerberus_config["genome_config"]
+        model_config = self.cerberus_config.model_config_
+        data_config = self.cerberus_config.data_config
+        genome_config = self.cerberus_config.genome_config
 
         loader = _ModelManager(
             path, model_config, data_config, genome_config, device
@@ -159,7 +162,7 @@ class ModelEnsemble(nn.ModuleDict):
 
             # Center intervals to output length
             centered_intervals = [
-                i.center(self.cerberus_config["data_config"]["output_len"])
+                i.center(self.cerberus_config.data_config.output_len)
                 for i in intervals
             ]
 
@@ -174,8 +177,8 @@ class ModelEnsemble(nn.ModuleDict):
             merged = aggregate_intervals(
                 unbatched,
                 centered_intervals,
-                output_len=self.cerberus_config["data_config"]["output_len"],
-                output_bin_size=self.cerberus_config["data_config"]["output_bin_size"],
+                output_len=self.cerberus_config.data_config.output_len,
+                output_bin_size=self.cerberus_config.data_config.output_bin_size,
                 output_cls=output_cls,
             )
             return merged
@@ -291,7 +294,7 @@ class ModelEnsemble(nn.ModuleDict):
             If aggregation="interval+model", ModelOutput is merged/unbatched for that batch's spatial extent.
         """
         use_folds = self._resolve_use_folds(use_folds)
-        input_len = dataset.data_config["input_len"]
+        input_len = dataset.data_config.input_len
         
         if aggregation not in ["model", "interval+model"]:
             raise ValueError(
@@ -343,7 +346,7 @@ class ModelEnsemble(nn.ModuleDict):
         runs the model ensemble, and aggregates the results into a single unified output.
 
         Input Constraints:
-        - All intervals must have a length exactly equal to `dataset.data_config["input_len"]`.
+        - All intervals must have a length exactly equal to ``dataset.data_config.input_len``.
         - The `dataset` must be configured to provide "inputs".
 
         Args:
@@ -363,7 +366,7 @@ class ModelEnsemble(nn.ModuleDict):
             RuntimeError: If no results are generated (e.g., input `intervals` was empty).
         """
         use_folds = self._resolve_use_folds(use_folds)
-        output_len = dataset.data_config["output_len"]
+        output_len = dataset.data_config.output_len
 
         results = []
         output_cls = None
@@ -396,7 +399,7 @@ class ModelEnsemble(nn.ModuleDict):
             outputs_list,
             intervals_list,
             output_len=output_len,
-            output_bin_size=self.cerberus_config["data_config"]["output_bin_size"],
+            output_bin_size=self.cerberus_config.data_config.output_bin_size,
             output_cls=output_cls,
         )
         return merged
@@ -432,8 +435,8 @@ class ModelEnsemble(nn.ModuleDict):
             list[ModelOutput]: A list of ModelOutput objects, one for each interval in `intervals`.
         """
         use_folds = self._resolve_use_folds(use_folds)
-        input_len = dataset.data_config["input_len"]
-        output_len = dataset.data_config["output_len"]
+        input_len = dataset.data_config.input_len
+        output_len = dataset.data_config.output_len
 
         if stride is None:
             stride = output_len // 2
@@ -503,9 +506,9 @@ class _ModelManager:
 
         # Create fold mappings for routing
         self.folds = create_genome_folds(
-            genome_config["chrom_sizes"],
-            genome_config["fold_type"],
-            genome_config["fold_args"],
+            genome_config.chrom_sizes,
+            genome_config.fold_type,
+            genome_config.fold_args,
         )
 
     def _select_best_checkpoint(self, checkpoints: list[Path]) -> Path:

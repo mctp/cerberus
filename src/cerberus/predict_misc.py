@@ -1,7 +1,7 @@
 """High-level inference utilities that compose ModelEnsemble, CerberusDataset,
 and output transforms into common prediction workflows.
 
-Functions here are *free functions* — they take a config dict or an ensemble as
+Functions here are *free functions* — they take a config or an ensemble as
 an argument rather than living as methods on ``ModelEnsemble``.  This keeps
 ``ModelEnsemble`` focused on fold-routing and batched inference while providing
 convenient entry points for scripts and notebooks.
@@ -35,8 +35,8 @@ def create_eval_dataset(config: CerberusConfig, in_memory: bool = False) -> Cerb
         A ready-to-use CerberusDataset for inference.
     """
     return CerberusDataset(
-        genome_config=config["genome_config"],
-        data_config=config["data_config"],
+        genome_config=config.genome_config,
+        data_config=config.data_config,
         sampler_config=None,
         in_memory=in_memory,
         is_train=False,
@@ -57,14 +57,14 @@ def load_bed_intervals(config: CerberusConfig, bed_path: str | Path) -> list[Int
     Returns:
         List of :class:`Interval` objects.
     """
-    genome_config = config["genome_config"]
-    data_config = config["data_config"]
+    genome_config = config.genome_config
+    data_config = config.data_config
     sampler = IntervalSampler(
         file_path=Path(bed_path),
-        chrom_sizes=genome_config["chrom_sizes"],
-        padded_size=data_config["input_len"],
+        chrom_sizes=genome_config.chrom_sizes,
+        padded_size=data_config.input_len,
         folds=None,
-        exclude_intervals=get_exclude_intervals(genome_config["exclude_intervals"]),
+        exclude_intervals=get_exclude_intervals(genome_config.exclude_intervals),
     )
     return list(sampler)
 
@@ -91,34 +91,31 @@ def get_eval_intervals(
         ``(peak_intervals, bg_intervals)`` when *include_background* is True,
         otherwise a flat list of peak intervals.
     """
-    genome_config = config["genome_config"]
-    sampler_config = config["sampler_config"]
-    data_config = config["data_config"]
+    genome_config = config.genome_config
+    sampler_config = config.sampler_config
+    data_config = config.data_config
 
     folds = create_genome_folds(
-        genome_config["chrom_sizes"],
-        genome_config["fold_type"],
-        genome_config["fold_args"],
+        genome_config.chrom_sizes,
+        genome_config.fold_type,
+        genome_config.fold_args,
     )
-    exclude_intervals = get_exclude_intervals(genome_config["exclude_intervals"])
+    exclude_intervals = get_exclude_intervals(genome_config.exclude_intervals)
 
-    fold_args = genome_config["fold_args"]
-    test_fold_idx = fold_args["test_fold"]
-    val_fold_idx = fold_args["val_fold"]
+    fold_args = genome_config.fold_args
+    test_fold_idx = fold_args.test_fold
+    val_fold_idx = fold_args.val_fold
 
-    sampler_args = {**sampler_config["sampler_args"]}
-    full_sampler_config = {
-        **sampler_config,
-        "sampler_args": sampler_args,
-        "padded_size": data_config["input_len"],
-    }
+    full_sampler_config = sampler_config.model_copy(
+        update={"padded_size": data_config.input_len},
+    )
 
     combined_sampler = create_sampler(
         full_sampler_config,
-        genome_config["chrom_sizes"],
+        genome_config.chrom_sizes,
         folds=folds,
         exclude_intervals=exclude_intervals,
-        fasta_path=genome_config["fasta_path"],
+        fasta_path=genome_config.fasta_path,
         seed=seed,
     )
 
@@ -164,7 +161,7 @@ def predict_log_counts(
     Returns:
         List of predicted total log-count values (one per interval).
     """
-    model_config = ensemble.cerberus_config["model_config"]
+    model_config = ensemble.cerberus_config.model_config_
     log_counts_include_pseudocount, count_pseudocount = get_log_count_params(model_config)
 
     results: list[float] = []

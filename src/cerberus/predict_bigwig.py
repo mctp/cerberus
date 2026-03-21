@@ -52,20 +52,20 @@ def predict_to_bigwig(
     genome_config = dataset.genome_config
     data_config = dataset.data_config
 
-    _, count_pseudocount = get_log_count_params(model_ensemble.cerberus_config["model_config"])
+    _, count_pseudocount = get_log_count_params(model_ensemble.cerberus_config.model_config_)
     logger.info("count_pseudocount=%.4g (from model config)", count_pseudocount)
 
     if use_folds is None:
         use_folds = ["test", "val"]
 
     if stride is None:
-        stride = data_config["output_len"] // 2
+        stride = data_config.output_len // 2
 
     # Prepare generator for pybigtools
     def stream_generator() -> Iterable[tuple[str, int, int, float]]:
-        chrom_sizes = genome_config["chrom_sizes"]
-        input_len = data_config["input_len"]
-        output_len = data_config["output_len"]
+        chrom_sizes = genome_config.chrom_sizes
+        input_len = data_config.input_len
+        output_len = data_config.output_len
         offset = (input_len - output_len) // 2
 
         if regions is not None:
@@ -95,7 +95,7 @@ def predict_to_bigwig(
                     )
         else:
             # Genome-wide prediction
-            allowed_chroms = genome_config["allowed_chroms"]
+            allowed_chroms = genome_config.allowed_chroms
             exclude_intervals = dataset.exclude_intervals
 
             for chrom in allowed_chroms:
@@ -141,7 +141,7 @@ def predict_to_bigwig(
     logger.info(f"Writing BigWig to {output_path}...")
     bw = pybigtools.open(str(output_path), "w")  # type: ignore
     try:
-        bw.write(genome_config["chrom_sizes"], stream_generator())
+        bw.write(genome_config.chrom_sizes, stream_generator())
     finally:
         bw.close()
 
@@ -208,10 +208,10 @@ def _process_island(
     if not island_intervals:
         return
 
-    target_scale = dataset.data_config["target_scale"]
-    output_bin_size = dataset.data_config["output_bin_size"]
-    output_len = dataset.data_config["output_len"]
-    input_len = dataset.data_config["input_len"]
+    target_scale = dataset.data_config.target_scale
+    output_bin_size = dataset.data_config.output_bin_size
+    output_len = dataset.data_config.output_len
+    input_len = dataset.data_config.input_len
     offset = (input_len - output_len) // 2
 
     # Compute merged output interval upfront from input intervals

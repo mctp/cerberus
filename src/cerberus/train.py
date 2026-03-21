@@ -39,7 +39,7 @@ def compute_counts_loss_weight(median_counts: float, scale: float = 10.0) -> flo
 
     Args:
         median_counts: Median total signal counts per peak from the training fold,
-            already scaled by data_config["target_scale"]. Obtain from
+            already scaled by data_config.target_scale. Obtain from
             CerberusDataModule.compute_median_counts().
         scale: Divisor. Default 10 matches chrombpnet-pytorch. Use a smaller value
             for stronger count supervision, larger for stronger profile supervision.
@@ -56,10 +56,10 @@ def compute_counts_loss_weight(median_counts: float, scale: float = 10.0) -> flo
 
 
 def resolve_adaptive_loss_args(
-    model_config: "ModelConfig",
-    datamodule: "CerberusDataModule",
+    model_config: ModelConfig,
+    datamodule: CerberusDataModule,
     n_samples: int = 2000,
-) -> "ModelConfig":
+) -> ModelConfig:
     """
     Resolve "adaptive" sentinel values in loss_args to data-derived floats.
 
@@ -73,17 +73,17 @@ def resolve_adaptive_loss_args(
     and have the weight computed from the actual training data rather than a
     hard-coded constant. The datamodule must already be setup (setup() called).
 
-    The returned ModelConfig is a new dict; the input is not modified.
+    The returned ModelConfig is a new Pydantic model; the input is not modified.
 
     Args:
-        model_config: ModelConfig dict, possibly containing "adaptive" in loss_args.
+        model_config: ModelConfig, possibly containing "adaptive" in loss_args.
         datamodule: A setup CerberusDataModule for the current fold.
         n_samples: Number of training intervals to sample when computing the median.
 
     Returns:
         A new ModelConfig with all "adaptive" values in loss_args replaced by floats.
     """
-    loss_args = model_config["loss_args"]
+    loss_args = model_config.loss_args
     adaptive_keys = [k for k, v in loss_args.items() if v == "adaptive"]
     if not adaptive_keys:
         return model_config
@@ -98,23 +98,26 @@ def resolve_adaptive_loss_args(
         k: (weight if v == "adaptive" else v)
         for k, v in loss_args.items()
     }
-    return {**model_config, "loss_args": resolved_loss_args}
+    return model_config.model_copy(update={"loss_args": resolved_loss_args})
 
 
 def _dump_config(
     root_dir: str | Path,
-    model_config: "ModelConfig",
-    data_config: "DataConfig",
-    train_config: "TrainConfig",
-    genome_config: "GenomeConfig | None" = None,
-    sampler_config: "SamplerConfig | None" = None,
+    model_config: ModelConfig,
+    data_config: DataConfig,
+    train_config: TrainConfig,
+    genome_config: GenomeConfig | None = None,
+    sampler_config: SamplerConfig | None = None,
 ) -> None:
     """
-    Write all configuration dicts to ``<root_dir>/config.json``.
+    Write all configuration models to ``<root_dir>/config.json``.
 
     Records the exact configs used for a training run so they can be inspected
     without loading a checkpoint. Called once at training start, before
     ``trainer.fit()``.
+
+    Each Pydantic config is serialized via ``model_dump(mode="json")`` to
+    produce a JSON-safe dict (Path objects become strings, etc.).
 
     Args:
         root_dir: Directory in which to write ``config.json``.
@@ -126,18 +129,18 @@ def _dump_config(
     """
     config_path = Path(root_dir) / "config.json"
     payload: dict = {
-        "model_config": model_config,
-        "data_config": data_config,
-        "train_config": train_config,
+        "model_config": model_config.model_dump(mode="json"),
+        "data_config": data_config.model_dump(mode="json"),
+        "train_config": train_config.model_dump(mode="json"),
     }
     if genome_config is not None:
-        payload["genome_config"] = genome_config
+        payload["genome_config"] = genome_config.model_dump(mode="json")
     if sampler_config is not None:
-        payload["sampler_config"] = sampler_config
+        payload["sampler_config"] = sampler_config.model_dump(mode="json")
     try:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(config_path, "w") as f:
-            json.dump(payload, f, indent=2, default=str)
+            json.dump(payload, f, indent=2)
         logger.info(f"Saved training config to {config_path}")
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Could not write config.json: {exc}")
@@ -212,8 +215,8 @@ def _train(
          is replaced with compute_counts_loss_weight(datamodule.compute_median_counts())
          before the module is instantiated.
       3. Module instantiation with the resolved model_config (which internally
-         calls propagate_pseudocount to inject scaled count_pseudocount into
-         loss_args and metrics_args).
+         calls instantiate_metrics_and_loss to inject scaled count_pseudocount
+         into loss_args and metrics_args).
       4. trainer.fit().
 
     Keeping setup before instantiation ensures that loss weights derived from
@@ -287,11 +290,11 @@ def _train(
 
     # Initialize Trainer
     trainer = pl.Trainer(
-        max_epochs=train_config["max_epochs"],
+        max_epochs=train_config.max_epochs,
         callbacks=current_callbacks,
         precision=precision,
-        reload_dataloaders_every_n_epochs=train_config["reload_dataloaders_every_n_epochs"],
-        gradient_clip_val=train_config["gradient_clip_val"],
+        reload_dataloaders_every_n_epochs=train_config.reload_dataloaders_every_n_epochs,
+        gradient_clip_val=train_config.gradient_clip_val,
         **trainer_kwargs,
     )
 
@@ -311,7 +314,7 @@ def _train(
 
     # 2. Setup DataModule — must happen before adaptive resolution and instantiation.
     datamodule.setup(
-        batch_size=train_config["batch_size"],
+        batch_size=train_config.batch_size,
         val_batch_size=val_batch_size,
         num_workers=num_workers,
         in_memory=in_memory,
@@ -319,12 +322,12 @@ def _train(
 
     # 3. Resolve any "adaptive" sentinels in loss_args to data-derived floats.
     # Returns a new ModelConfig; the input is not modified so train_multi can
-    # safely reuse the same model_config dict across folds.
+    # safely reuse the same model_config across folds.
     model_config = resolve_adaptive_loss_args(model_config, datamodule)
 
     # 4. Instantiate module with the resolved model_config.
-    # Note: propagate_pseudocount is called inside instantiate(), which is the
-    # single owner of pseudocount propagation into loss_args/metrics_args.
+    # Note: instantiate_metrics_and_loss is called inside instantiate(), which
+    # is the single owner of pseudocount injection into loss_args/metrics_args.
     module = instantiate(
         model_config=model_config,
         data_config=data_config,
@@ -335,7 +338,7 @@ def _train(
     )
 
     # 5. Load pretrained weights if specified in model_config
-    pretrained = model_config["pretrained"]
+    pretrained = model_config.pretrained
     if pretrained:
         load_pretrained_weights(module.model, pretrained)
 
@@ -423,11 +426,12 @@ def train_single(
 
     # Update genome_config to reflect the actual folds used
     # This ensures hparams.yaml logged by Lightning matches the directory structure
-    if "fold_args" in genome_config:
-        genome_config = genome_config.copy()
-        genome_config["fold_args"] = genome_config["fold_args"].copy()
-        genome_config["fold_args"]["test_fold"] = test_fold
-        genome_config["fold_args"]["val_fold"] = val_fold
+    fold_args = genome_config.fold_args
+    if fold_args is not None:
+        updated_fold_args = fold_args.model_copy(
+            update={"test_fold": test_fold, "val_fold": val_fold}
+        )
+        genome_config = genome_config.model_copy(update={"fold_args": updated_fold_args})
 
     # 2. Train (setup → adaptive resolution → instantiate → fit happen inside _train)
     trainer = _train(
@@ -511,7 +515,7 @@ def train_multi(
     Returns:
         List of fitted PyTorch Lightning Trainer objects (one per fold).
     """
-    k = genome_config["fold_args"]["k"]
+    k = genome_config.fold_args.k
     trainers = []
 
     for i in range(k):

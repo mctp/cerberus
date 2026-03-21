@@ -8,7 +8,15 @@ import copy
 from collections import defaultdict
 from interlap import InterLap
 from .interval import Interval
-from .config import SamplerConfig
+from .config import (
+    SamplerConfig,
+    IntervalSamplerArgs,
+    SlidingWindowSamplerArgs,
+    RandomSamplerArgs,
+    PeakSamplerArgs,
+    NegativePeakSamplerArgs,
+    ComplexityMatchedSamplerArgs,
+)
 from .exclude import is_excluded
 from .complexity import compute_intervals_complexity, compute_hist, get_bin_index
 
@@ -1439,7 +1447,7 @@ class NegativePeakSampler(MultiSampler):
         )
 
 def create_sampler(
-    config: dict | SamplerConfig,
+    config: SamplerConfig,
     chrom_sizes: dict[str, int],
     folds: list[dict[str, InterLap]],
     exclude_intervals: dict[str, InterLap],
@@ -1465,15 +1473,14 @@ def create_sampler(
     Raises:
         ValueError: If sampler_type is unsupported.
     """
-    sampler_type = config["sampler_type"]
-    sampler_args = config["sampler_args"]
-    padded_size = config["padded_size"]
+    sampler_type = config.sampler_type
+    sampler_args = config.sampler_args
+    padded_size = config.padded_size
 
     if sampler_type == "interval":
-        file_path = sampler_args["intervals_path"]
-
+        assert isinstance(sampler_args, IntervalSamplerArgs)
         return IntervalSampler(
-            file_path=file_path,
+            file_path=sampler_args.intervals_path,
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
             folds=folds,
@@ -1481,52 +1488,40 @@ def create_sampler(
         )
 
     elif sampler_type == "sliding_window":
+        assert isinstance(sampler_args, SlidingWindowSamplerArgs)
         return SlidingWindowSampler(
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
-            stride=sampler_args["stride"],
+            stride=sampler_args.stride,
             folds=folds,
             exclude_intervals=exclude_intervals,
         )
 
     elif sampler_type == "random":
-        num_intervals = sampler_args["num_intervals"]
+        assert isinstance(sampler_args, RandomSamplerArgs)
         return RandomSampler(
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
-            num_intervals=num_intervals,
+            num_intervals=sampler_args.num_intervals,
             folds=folds,
             exclude_intervals=exclude_intervals,
             seed=seed,
         )
 
     elif sampler_type == "complexity_matched":
+        assert isinstance(sampler_args, ComplexityMatchedSamplerArgs)
         if fasta_path is None:
             raise ValueError("ComplexityMatchedSampler requires 'fasta_path' to be provided.")
 
-        target_conf = sampler_args["target_sampler"]
-        candidate_conf = sampler_args["candidate_sampler"]
+        target_conf = sampler_args.target_sampler
+        candidate_conf = sampler_args.candidate_sampler
 
-        # Recursive creation
-        target_full_conf = {
-            "sampler_type": target_conf["type"],
-            "sampler_args": target_conf["args"],
-            "padded_size": padded_size,
-        }
-        candidate_full_conf = {
-            "sampler_type": candidate_conf["type"],
-            "sampler_args": candidate_conf["args"],
-            "padded_size": padded_size,
-        }
-
-        # Propagate seed to children
-        target_seed, candidate_seed = generate_sub_seeds(seed, 2)
-
+        # Recursive creation: sub-samplers are SamplerConfig models
         target_sampler = create_sampler(
-            target_full_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=target_seed
+            target_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=generate_sub_seeds(seed, 2)[0]
         )
         candidate_sampler = create_sampler(
-            candidate_full_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=candidate_seed
+            candidate_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=generate_sub_seeds(seed, 2)[1]
         )
 
         return ComplexityMatchedSampler(
@@ -1536,49 +1531,47 @@ def create_sampler(
             chrom_sizes=chrom_sizes,
             folds=folds,
             exclude_intervals=exclude_intervals,
-            bins=sampler_args["bins"],
-            candidate_ratio=sampler_args["candidate_ratio"],
+            bins=sampler_args.bins,
+            candidate_ratio=sampler_args.candidate_ratio,
             seed=seed,
-            metrics=sampler_args["metrics"],
+            metrics=sampler_args.metrics,
             metrics_cache=prepare_cache,
         )
 
     elif sampler_type == "peak":
-        background_ratio = sampler_args["background_ratio"]
-
+        assert isinstance(sampler_args, PeakSamplerArgs)
         if fasta_path is None:
             raise ValueError("PeakSampler requires 'fasta_path' to be provided.")
 
         return PeakSampler(
-            intervals_path=sampler_args["intervals_path"],
+            intervals_path=sampler_args.intervals_path,
             fasta_path=fasta_path,
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
             folds=folds,
             exclude_intervals=exclude_intervals,
-            background_ratio=background_ratio,
+            background_ratio=sampler_args.background_ratio,
             seed=seed,
             prepare_cache=prepare_cache,
-            complexity_center_size=sampler_args["complexity_center_size"],
+            complexity_center_size=sampler_args.complexity_center_size,
         )
 
     elif sampler_type == "negative_peak":
-        background_ratio = sampler_args["background_ratio"]
-
+        assert isinstance(sampler_args, NegativePeakSamplerArgs)
         if fasta_path is None:
             raise ValueError("NegativePeakSampler requires 'fasta_path' to be provided.")
 
         return NegativePeakSampler(
-            intervals_path=sampler_args["intervals_path"],
+            intervals_path=sampler_args.intervals_path,
             fasta_path=fasta_path,
             chrom_sizes=chrom_sizes,
             padded_size=padded_size,
             folds=folds,
             exclude_intervals=exclude_intervals,
-            background_ratio=background_ratio,
+            background_ratio=sampler_args.background_ratio,
             seed=seed,
             prepare_cache=prepare_cache,
-            complexity_center_size=sampler_args["complexity_center_size"],
+            complexity_center_size=sampler_args.complexity_center_size,
         )
 
     else:

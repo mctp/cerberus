@@ -350,29 +350,29 @@ def create_default_transforms(
 
     # 1. Jitter (random)
     # If deterministic, force max_jitter=0 (center crop)
-    max_jitter = 0 if deterministic else data_config["max_jitter"]
-    transforms.append(Jitter(input_len=data_config["input_len"], max_jitter=max_jitter))
+    max_jitter = 0 if deterministic else data_config.max_jitter
+    transforms.append(Jitter(input_len=data_config.input_len, max_jitter=max_jitter))
 
     # 2. Reverse Complement (random)
     # If deterministic, skip RC
-    if data_config["reverse_complement"] and not deterministic:
+    if data_config.reverse_complement and not deterministic:
         transforms.append(ReverseComplement(dna_channels=slice(0, 4)))
 
     # 3. Target Cropping (deterministic)
-    if data_config["output_len"] < data_config["input_len"]:
-        transforms.append(TargetCrop(output_len=data_config["output_len"]))
+    if data_config.output_len < data_config.input_len:
+        transforms.append(TargetCrop(output_len=data_config.output_len))
 
     # 4. Target Scaling (deterministic)
-    target_scale = data_config["target_scale"]
+    target_scale = data_config.target_scale
     if target_scale != 1.0:
         transforms.append(Scale(factor=target_scale, apply_to="targets"))
 
     # 5. Binning (deterministic)
-    if data_config["output_bin_size"] > 1:
-        transforms.append(Bin(bin_size=data_config["output_bin_size"], apply_to="targets"))
+    if data_config.output_bin_size > 1:
+        transforms.append(Bin(bin_size=data_config.output_bin_size, apply_to="targets"))
 
     # 6. Log Transform (deterministic)
-    if data_config["log_transform"]:
+    if data_config.log_transform:
         transforms.append(Log1p(apply_to="targets"))
 
     return transforms

@@ -7,7 +7,7 @@ from interlap import InterLap
 
 logger = logging.getLogger(__name__)
 
-from cerberus.config import GenomeConfig
+from cerberus.config import GenomeConfig, FoldArgs
 
 _HUMAN_CHROMS = [str(i) for i in range(1, 23)] + ["X", "Y"]
 _MOUSE_CHROMS = [str(i) for i in range(1, 20)] + ["X", "Y"]
@@ -41,7 +41,7 @@ def create_genome_config(
     fasta_path: Path,
     species: str,
     fold_type: str = "chrom_partition",
-    fold_args: dict[str, Any] | None = None,
+    fold_args: FoldArgs | dict[str, Any] | None = None,
     allowed_chroms: list[str] | None = None,
     exclude_intervals: dict[str, Path] | None = None,
 ) -> GenomeConfig:
@@ -115,33 +115,37 @@ def create_genome_config(
     sorted_chroms = dict(sorted(chrom_sizes.items(), key=lambda x: sort_key(x[0])))
 
     if fold_args is None:
-        fold_args = {"k": 5}
-    
+        fold_args_resolved = FoldArgs(k=5)
+    elif isinstance(fold_args, dict):
+        fold_args_resolved = FoldArgs(**fold_args)
+    else:
+        fold_args_resolved = fold_args
+
     logger.debug(f"Created genome config for {name} ({species}) with {len(sorted_chroms)} chromosomes.")
 
-    return {
-        "name": name,
-        "fasta_path": fasta_path,
-        "exclude_intervals": exclude_intervals or {},
-        "allowed_chroms": list(sorted_chroms.keys()),
-        "chrom_sizes": sorted_chroms,
-        "fold_type": fold_type,
-        "fold_args": fold_args,
-    }
+    return GenomeConfig(
+        name=name,
+        fasta_path=fasta_path,
+        exclude_intervals=exclude_intervals or {},
+        allowed_chroms=list(sorted_chroms.keys()),
+        chrom_sizes=sorted_chroms,
+        fold_type=fold_type,
+        fold_args=fold_args_resolved,
+    )
 
 
 def create_genome_folds(
-    chrom_sizes: dict[str, int], fold_type: str, fold_args: dict[str, Any]
+    chrom_sizes: dict[str, int], fold_type: str, fold_args: FoldArgs | dict[str, Any]
 ) -> list[dict[str, InterLap]]:
     """
     Creates genome folds based on the specified strategy.
 
     Folds are mutually exclusive sets of genomic intervals used for cross-validation.
-    
+
     Args:
         chrom_sizes: Dictionary mapping chromosome names to their lengths.
         fold_type: Strategy for creating folds. Currently supported: 'chrom_partition'.
-        fold_args: Arguments for the folding strategy (e.g., {'k': 5}).
+        fold_args: Arguments for the folding strategy (FoldArgs model or dict).
 
     Returns:
         list[dict[str, InterLap]]: A list of k dictionaries. Each dictionary maps chromosome names
@@ -150,8 +154,10 @@ def create_genome_folds(
     Raises:
         ValueError: If `fold_type` is unknown.
     """
+    if isinstance(fold_args, dict):
+        fold_args = FoldArgs(**fold_args)
     if fold_type == "chrom_partition":
-        k = fold_args["k"]
+        k = fold_args.k
         return _create_folds_chrom_partition(chrom_sizes, k)
     else:
         raise ValueError(f"Unknown fold_type: {fold_type}")

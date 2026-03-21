@@ -147,11 +147,11 @@ def parse_intervals(
         List of Interval objects.
     """
     parsed = []
-    chrom_sizes = genome_config["chrom_sizes"]
+    chrom_sizes = genome_config.chrom_sizes
 
     # If both lists are empty, default to whole genome
     if not intervals and not interval_paths:
-        for chrom in genome_config["allowed_chroms"]:
+        for chrom in genome_config.allowed_chroms:
             if chrom in chrom_sizes:
                 parsed.append(Interval(chrom, 0, chrom_sizes[chrom]))
         logger.debug(f"No intervals specified, defaulting to whole genome ({len(parsed)} chromosomes)")

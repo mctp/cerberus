@@ -88,10 +88,10 @@ def load_pretrained_weights(
     target_root = _unwrap_compiled(model)
 
     for cfg in pretrained:
-        weights_path = cfg["weights_path"]
-        source = cfg["source"]
-        target_name = cfg["target"]
-        freeze = cfg["freeze"]
+        weights_path = cfg.weights_path
+        source = cfg.source
+        target_name = cfg.target
+        freeze = cfg.freeze
 
         state_dict = torch.load(weights_path, map_location="cpu", weights_only=True)
 

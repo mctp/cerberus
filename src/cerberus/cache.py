@@ -57,7 +57,7 @@ def resolve_cache_dir(
     key_data = json.dumps({
         "fasta_path": fasta_path,
         "fasta_mtime": os.path.getmtime(fasta_path),
-        "sampler_config": sampler_config,
+        "sampler_config": sampler_config.model_dump(mode="json"),
         "seed": seed,
         "chrom_sizes": chrom_sizes,
     }, sort_keys=True)
