@@ -40,9 +40,9 @@ class CerberusDataModule(pl.LightningDataModule):
     ):
         """
         Args:
-            genome_config: Genome configuration dictionary.
-            data_config: Data configuration dictionary.
-            sampler_config: Sampler configuration dictionary.
+            genome_config: Genome configuration (Pydantic model).
+            data_config: Data configuration (Pydantic model).
+            sampler_config: Sampler configuration (Pydantic model).
             test_fold: Fold index to use for testing.
             val_fold: Fold index to use for validation.
             pin_memory: Whether to pin memory in DataLoaders (recommended for GPU training).
@@ -55,10 +55,9 @@ class CerberusDataModule(pl.LightningDataModule):
                 $XDG_CACHE_HOME/cerberus or ~/.cache/cerberus.
         """
         super().__init__()
-        self.genome_config = validate_genome_config(genome_config)
-        self.data_config = validate_data_config(data_config)
-        self.sampler_config = validate_sampler_config(sampler_config)
-        validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
+        self.genome_config = genome_config
+        self.data_config = data_config
+        self.sampler_config = sampler_config
         
         # Runtime settings (configured via setup)
         self.batch_size = 1
@@ -68,9 +67,9 @@ class CerberusDataModule(pl.LightningDataModule):
 
         # Resolve fold indices: argument > config
         if test_fold is None:
-            test_fold = self.genome_config["fold_args"]["test_fold"]
+            test_fold = self.genome_config.fold_args.test_fold
         if val_fold is None:
-            val_fold = self.genome_config["fold_args"]["val_fold"]
+            val_fold = self.genome_config.fold_args.val_fold
         
         self.test_fold = test_fold
         self.val_fold = val_fold
@@ -112,7 +111,7 @@ class CerberusDataModule(pl.LightningDataModule):
 
         Returns None if the sampler type does not benefit from caching.
         """
-        sampler_type = self.sampler_config["sampler_type"]
+        sampler_type = self.sampler_config.sampler_type
         # NOTE: Every sampler type that uses ComplexityMatchedSampler must be
         # listed here, otherwise its metrics won't be cached to disk and will
         # be recomputed from scratch on every run.
@@ -120,10 +119,10 @@ class CerberusDataModule(pl.LightningDataModule):
             return None
         return resolve_cache_dir(
             self.cache_dir,
-            fasta_path=self.genome_config["fasta_path"],
+            fasta_path=self.genome_config.fasta_path,
             sampler_config=self.sampler_config,
             seed=self.seed,
-            chrom_sizes=self.genome_config["chrom_sizes"],
+            chrom_sizes=self.genome_config.chrom_sizes,
         )
 
     def prepare_data(self) -> None:
@@ -158,7 +157,7 @@ class CerberusDataModule(pl.LightningDataModule):
 
         # Extract metrics_cache from the sampler
         sampler = tmp_dataset.sampler
-        sampler_type = self.sampler_config["sampler_type"]
+        sampler_type = self.sampler_config.sampler_type
         # NOTE: Keep in sync with _resolve_cache_dir — every sampler type
         # listed there must have a branch here to extract its metrics_cache.
         if sampler_type == "complexity_matched":
@@ -358,7 +357,7 @@ class CerberusDataModule(pl.LightningDataModule):
                 fewer intervals, all are used.
 
         Returns:
-            Median total raw counts per peak scaled by data_config["target_scale"].
+            Median total raw counts per peak scaled by data_config.target_scale.
 
         Raises:
             RuntimeError: If setup() has not been called yet.
@@ -382,11 +381,11 @@ class CerberusDataModule(pl.LightningDataModule):
         # is garbage-collected when this method returns, leaving the dataset
         # extractor at _bigwig_files=None so each worker opens its own fd.
         tmp_extractor = UniversalExtractor(
-            paths=dataset.data_config["targets"],
+            paths=dataset.data_config.targets,
             in_memory=False,
         )
-        output_len = dataset.data_config["output_len"]
-        input_len = dataset.data_config["input_len"]
+        output_len = dataset.data_config.output_len
+        input_len = dataset.data_config.input_len
         crop_start = (input_len - output_len) // 2
         crop_end = crop_start + output_len
 
@@ -398,7 +397,7 @@ class CerberusDataModule(pl.LightningDataModule):
                 raw = raw[..., crop_start:crop_end]
             counts.append(float(raw.sum()))
         raw_median = float(np.median(counts))
-        target_scale = self.data_config["target_scale"]
+        target_scale = self.data_config.target_scale
         scaled_median = raw_median * target_scale
         logger.info(
             f"Computed median_counts={scaled_median:.1f} "

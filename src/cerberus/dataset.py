@@ -68,9 +68,9 @@ class CerberusDataset(Dataset):
         Initializes the CerberusDataset.
 
         Args:
-            genome_config: Genome configuration dictionary or object.
-            data_config: Data configuration dictionary or object.
-            sampler_config: Sampler configuration dictionary or object.
+            genome_config: Genome configuration (frozen Pydantic model).
+            data_config: Data configuration (frozen Pydantic model).
+            sampler_config: Sampler configuration (frozen Pydantic model).
             sequence_extractor: Optional custom sequence extractor. If None, created based on config.
             input_signal_extractor: Optional custom input signal extractor. If None, created based on config.
             target_signal_extractor: Optional custom target signal extractor. If None, created based on config.
@@ -88,24 +88,23 @@ class CerberusDataset(Dataset):
             ValueError: If configurations are invalid.
         """
 
-        self.genome_config = validate_genome_config(genome_config)
-        self.data_config = validate_data_config(data_config)
+        self.genome_config = genome_config
+        self.data_config = data_config
         self.in_memory = in_memory
         self.is_train = is_train
         self.seed = seed
         self.prepare_cache = prepare_cache
 
         if sampler_config is not None:
-            self.sampler_config = validate_sampler_config(sampler_config)
-            validate_data_and_sampler_compatibility(self.data_config, self.sampler_config)
+            self.sampler_config = sampler_config
         else:
             self.sampler_config = None
 
         # Initialize Folds
         self.folds = create_genome_folds(
-            self.genome_config["chrom_sizes"],
-            fold_type=self.genome_config["fold_type"],
-            fold_args=self.genome_config["fold_args"],
+            self.genome_config.chrom_sizes,
+            fold_type=self.genome_config.fold_type,
+            fold_args=self.genome_config.fold_args,
         )
 
         # Get exclude intervals
@@ -118,7 +117,7 @@ class CerberusDataset(Dataset):
         if sampler is not None:
             self.sampler = sampler
         elif self.sampler_config is not None:
-            logger.debug(f"Initializing sampler of type {self.sampler_config['sampler_type']}...")
+            logger.debug(f"Initializing sampler of type {self.sampler_config.sampler_type}...")
             self.sampler = self._initialize_sampler()
         else:
             self.sampler = None
@@ -127,16 +126,16 @@ class CerberusDataset(Dataset):
         if sequence_extractor is not None:
             self.sequence_extractor = sequence_extractor
         else:
-            if self.data_config["use_sequence"]:
+            if self.data_config.use_sequence:
                 if self.in_memory:
                     self.sequence_extractor = InMemorySequenceExtractor(
-                        fasta_path=self.genome_config["fasta_path"],
-                        encoding=self.data_config["encoding"],
+                        fasta_path=self.genome_config.fasta_path,
+                        encoding=self.data_config.encoding,
                     )
                 else:
                     self.sequence_extractor = SequenceExtractor(
-                        fasta_path=self.genome_config["fasta_path"],
-                        encoding=self.data_config["encoding"],
+                        fasta_path=self.genome_config.fasta_path,
+                        encoding=self.data_config.encoding,
                     )
             else:
                 self.sequence_extractor = None
@@ -144,9 +143,9 @@ class CerberusDataset(Dataset):
         # Initialize Input Signal Extractor
         if input_signal_extractor is not None:
             self.input_signal_extractor = input_signal_extractor
-        elif self.data_config["inputs"]:
+        elif self.data_config.inputs:
             self.input_signal_extractor = UniversalExtractor(
-                paths=self.data_config["inputs"],
+                paths=self.data_config.inputs,
                 in_memory=self.in_memory
             )
         else:
@@ -155,9 +154,9 @@ class CerberusDataset(Dataset):
         # Initialize Target Signal Extractor
         if target_signal_extractor is not None:
             self.target_signal_extractor = target_signal_extractor
-        elif self.data_config["targets"]:
+        elif self.data_config.targets:
             self.target_signal_extractor = UniversalExtractor(
-                paths=self.data_config["targets"],
+                paths=self.data_config.targets,
                 in_memory=self.in_memory
             )
         else:
@@ -192,7 +191,7 @@ class CerberusDataset(Dataset):
     def _get_exclude_intervals(self) -> dict[str, InterLap]:
         """Loads excluded intervals from files specified in config."""
         return get_exclude_intervals(
-            self.genome_config["exclude_intervals"],
+            self.genome_config.exclude_intervals,
         )
 
     def _initialize_sampler(self) -> Sampler:
@@ -202,10 +201,10 @@ class CerberusDataset(Dataset):
 
         return create_sampler(
             self.sampler_config,
-            self.genome_config["chrom_sizes"],
+            self.genome_config.chrom_sizes,
             folds=self.folds,
             exclude_intervals=self.exclude_intervals,
-            fasta_path=self.genome_config["fasta_path"],
+            fasta_path=self.genome_config.fasta_path,
             seed=self.seed,
             prepare_cache=self.prepare_cache,
         )
@@ -243,11 +242,11 @@ class CerberusDataset(Dataset):
         raw_target = self.target_signal_extractor.extract(interval) 
         
         if crop_to_output_len:
-            crop_start = (self.data_config["input_len"] - self.data_config["output_len"]) // 2
-            crop_end = crop_start + self.data_config["output_len"]
-            
+            crop_start = (self.data_config.input_len - self.data_config.output_len) // 2
+            crop_end = crop_start + self.data_config.output_len
+
             # Check if we need to crop
-            if raw_target.shape[-1] > self.data_config["output_len"]:
+            if raw_target.shape[-1] > self.data_config.output_len:
                 raw_target = raw_target[..., crop_start:crop_end]
                 
         return raw_target
