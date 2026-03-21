@@ -1,0 +1,36 @@
+Verifying correctness...
+  All implementations match baseline.
+
+--- Median time per call (ms), 200 iterations ---
+    length      baseline    np_scatter np_lut_gather     np_lut_u8  np_broadcasttorch_broadcast torch_scatter     torch_lutnp_broadcast_loop  np_put_along
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+       1kb         0.019         0.018         0.019         0.025         0.005         0.013         0.026        10.336         0.022         0.018
+       2kb         0.030         0.028         0.034         0.042         0.006         0.020         0.036        10.339         0.024         0.028
+       4kb         0.050         0.049         0.063         0.075         0.007         0.033        10.341         0.070         0.027         0.046
+       8kb         0.091         0.085         0.119         0.145         0.010         0.059        10.330         5.894         0.032         0.084
+      16kb         0.173         0.160         0.231        10.326         0.017        20.634        19.022        10.338         0.041         0.156
+      32kb         0.347         0.312         0.456        10.335         0.029        20.644        20.676        10.339         0.061         0.307
+      64kb         0.678         0.628         0.910        10.333         0.055        20.640        20.683        10.366         0.100         0.630
+     128kb         1.414         1.312         3.120        10.346         0.129        20.709        20.718        10.397         0.187         1.260
+
+--- Speedup vs baseline ---
+    length      baseline    np_scatter np_lut_gather     np_lut_u8  np_broadcasttorch_broadcast torch_scatter     torch_lutnp_broadcast_loop  np_put_along
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+       1kb          1.00          1.07          1.00          0.78          3.78          1.44          0.74          0.00          0.86          1.08
+       2kb          1.00          1.07          0.87          0.71          5.11          1.49          0.82          0.00          1.21          1.08
+       4kb          1.00          1.03          0.80          0.67          6.86          1.54          0.00          0.73          1.89          1.10
+       8kb          1.00          1.07          0.77          0.63          8.81          1.56          0.01          0.02          2.88          1.08
+      16kb          1.00          1.08          0.75          0.02         10.40          0.01          0.01          0.02          4.21          1.11
+      32kb          1.00          1.11          0.76          0.03         12.18          0.02          0.02          0.03          5.74          1.13
+      64kb          1.00          1.08          0.74          0.07         12.33          0.03          0.03          0.07          6.78          1.08
+     128kb          1.00          1.08          0.45          0.14         10.98          0.07          0.07          0.14          7.55          1.12
+
+--- Best implementation per length ---
+     1kb: np_broadcast (0.005 ms, 3.78x vs baseline)
+     2kb: np_broadcast (0.006 ms, 5.11x vs baseline)
+     4kb: np_broadcast (0.007 ms, 6.86x vs baseline)
+     8kb: np_broadcast (0.010 ms, 8.81x vs baseline)
+    16kb: np_broadcast (0.017 ms, 10.40x vs baseline)
+    32kb: np_broadcast (0.029 ms, 12.18x vs baseline)
+    64kb: np_broadcast (0.055 ms, 12.33x vs baseline)
+   128kb: np_broadcast (0.129 ms, 10.98x vs baseline)
