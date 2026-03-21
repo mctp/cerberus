@@ -64,8 +64,8 @@ def test_data_config_valid(tmp_path):
     counts.touch()
 
     config = DataConfig(
-        inputs={"cons": str(cons)},
-        targets={"counts": str(counts)},
+        inputs={"cons": cons},
+        targets={"counts": counts},
         input_len=2048,
         output_len=1024,
         output_bin_size=1,
@@ -146,7 +146,7 @@ def test_data_config_missing_file(tmp_path):
     """DataConfig raises FileNotFoundError for missing input files."""
     with pytest.raises(FileNotFoundError, match="inputs file 'cons' not found"):
         DataConfig(
-            inputs={"cons": str(tmp_path / "missing.bw")},
+            inputs={"cons": tmp_path / "missing.bw"},
             targets={},
             input_len=2048,
             output_len=1024,

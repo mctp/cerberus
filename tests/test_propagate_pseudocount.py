@@ -104,7 +104,7 @@ class TestInstantiateMetricsAndLoss:
         """Loss receives count_pseudocount from ModelConfig."""
         cfg = _model_config(count_pseudocount=150.0)
         metrics, criterion = instantiate_metrics_and_loss(cfg)
-        assert criterion.count_pseudocount == 150.0
+        assert getattr(criterion, "count_pseudocount") == 150.0
 
     def test_injects_pseudocount_into_metrics(self):
         """Metrics sub-metrics receive count_pseudocount from ModelConfig."""
@@ -118,7 +118,7 @@ class TestInstantiateMetricsAndLoss:
         """count_pseudocount=0 is still injected."""
         cfg = _model_config(count_pseudocount=0.0)
         metrics, criterion = instantiate_metrics_and_loss(cfg)
-        assert criterion.count_pseudocount == 0.0
+        assert getattr(criterion, "count_pseudocount") == 0.0
 
     def test_model_config_loss_args_not_mutated(self):
         """The original model_config.loss_args dict should not be mutated."""
@@ -141,7 +141,7 @@ class TestBPNetLossReceivesPseudocount:
         cfg = _model_config(count_pseudocount=150.0)
         _metrics, criterion = instantiate_metrics_and_loss(cfg)
 
-        assert criterion.count_pseudocount == 150.0
+        assert getattr(criterion, "count_pseudocount") == 150.0
 
         # Verify forward: count target should be log(total + 150)
         total = 500.0

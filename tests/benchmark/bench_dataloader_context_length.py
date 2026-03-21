@@ -32,7 +32,7 @@ sys.path.insert(0, str(project_root / "src"))
 
 from torch.utils.data import DataLoader
 
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, RandomSamplerArgs
 from cerberus.datamodule import CerberusDataModule
 from cerberus.dataset import CerberusDataset
 from cerberus.download import download_dataset, download_reference_genome
@@ -86,30 +86,29 @@ def make_data_config(
     else:
         raise ValueError(f"Unknown scenario: {scenario}")
 
-    return {
-        "inputs": inputs,
-        "targets": targets,
-        "input_len": input_len,
-        "output_len": input_len,
-        "max_jitter": max_jitter,
-        "output_bin_size": 1,
-        "encoding": "ACGT",
-        "log_transform": False,
-        "reverse_complement": False,
-        "use_sequence": use_sequence,
-        "target_scale": 1.0,
-        "count_pseudocount": 0.0,
-    }
+    return DataConfig(
+        inputs=inputs,
+        targets=targets,
+        input_len=input_len,
+        output_len=input_len,
+        max_jitter=max_jitter,
+        output_bin_size=1,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=False,
+        use_sequence=use_sequence,
+        target_scale=1.0,
+    )
 
 
 def make_sampler_config(input_len: int, max_jitter: int, num_intervals: int) -> SamplerConfig:
     """Build a SamplerConfig dict."""
     padded_size = input_len + 2 * max_jitter
-    return {
-        "sampler_type": "random",
-        "padded_size": padded_size,
-        "sampler_args": {"num_intervals": num_intervals},
-    }
+    return SamplerConfig(
+        sampler_type="random",
+        padded_size=padded_size,
+        sampler_args=RandomSamplerArgs(num_intervals=num_intervals),
+    )
 
 
 def bench_dataloader(
@@ -189,8 +188,8 @@ def bench_dataloader_inmemory(
     Build a CerberusDataset with pre-loaded in-memory extractors, wrap in a
     DataLoader, and time iteration.
     """
-    use_sequence = data_config["use_sequence"]
-    has_inputs = bool(data_config["inputs"])
+    use_sequence = data_config.use_sequence
+    has_inputs = bool(data_config.inputs)
 
     dataset = CerberusDataset(
         genome_config=genome_config,

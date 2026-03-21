@@ -74,7 +74,7 @@ def generate_random_intervals(
     )
     # Use only autosomes for consistent benchmarking
     chrom_sizes = {
-        c: s for c, s in genome_config["chrom_sizes"].items()
+        c: s for c, s in genome_config.chrom_sizes.items()
         if c.replace("chr", "").isdigit()
     }
 

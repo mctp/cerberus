@@ -11,7 +11,15 @@ After completing each task, always:
 
 ## Config Conventions
 
-- **No implicit defaults when reading config dicts.** Always use `config["key"]` (bracket access), never `config.get("key", default)`. This applies everywhere — validators, transforms, dataset, module, factory functions like `create_sampler`, etc. All config fields must be explicitly present in the config dict by the time they are consumed. When adding a new optional field with a default value, inject the default via `setdefault` in `validate_sampler_config` / `validate_data_config` (the normalization boundary), so that downstream consumers can always use bracket access. Never use `.get()` to silently fill in a default at the point of consumption.
+- **Config types are Pydantic V2 `BaseModel` classes** with `frozen=True` and `extra="forbid"`.
+- Always use **attribute access**: `config.key` (not `config["key"]`).
+- Defaults are declared in the model field definition: `Field(default=...)` or `Field(default_factory=...)`.
+- Mutations use `config.model_copy(update={...})` — never assign to attributes.
+- `CerberusConfig.model_config_` is used to access `ModelConfig` (Pydantic reserves `model_config` for its own `ConfigDict`).
+- Validation happens at model construction time — no separate `validate_*` calls.
+- Serialization: `config.model_dump(mode="json")` replaces `_sanitize_config()`.
+- `count_pseudocount` lives on `ModelConfig` in scaled units (not `DataConfig`).
+- Use `model_construct()` in tests to skip validation when paths don't exist.
 
 ## Logging Conventions
 
