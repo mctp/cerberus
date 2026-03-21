@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Pydantic config regression test suite** (`tests/test_pydantic_config.py`):
+  76 tests covering model construction, frozen immutability, field validation
+  (missing/invalid/negative/extra), typed sampler args discriminated union routing,
+  FoldArgs defaults and constraints, ModelConfig pseudocount, serialization
+  round-trips (model_dump/model_validate/YAML), CerberusConfig cross-validation
+  (padded_size, channel mismatch), model_copy immutable updates, backward
+  compatibility (parse_hparams_config legacy migration), and the model_config_
+  alias on CerberusConfig.
 - **`complexity_center_size` parameter** for `PeakSampler`, `NegativePeakSampler`,
   and `ComplexityMatchedSampler`: crops intervals to their center N bp before
   computing complexity metrics. Decouples the model's input window size from the
