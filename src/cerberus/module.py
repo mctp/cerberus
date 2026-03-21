@@ -12,18 +12,11 @@ from cerberus.loss import CerberusLoss
 from cerberus.plots import save_count_scatter
 from cerberus.config import (
     TrainConfig,
-    validate_train_config,
     GenomeConfig,
     DataConfig,
     SamplerConfig,
     ModelConfig,
-    _sanitize_config,
-    validate_model_config,
-    validate_data_config,
-    validate_genome_config,
-    validate_sampler_config,
     import_class,
-    propagate_pseudocount,
 )
 
 logger = logging.getLogger(__name__)

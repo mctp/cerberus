@@ -1,10 +1,15 @@
-from typing import TypedDict, Any
+from __future__ import annotations
+
+from typing import Any, Union, Annotated, Literal
 from pathlib import Path
 import yaml
 import logging
 import importlib
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, ValidationInfo
+
 logger = logging.getLogger(__name__)
+
 
 def import_class(name: str) -> Any:
     """
@@ -12,7 +17,7 @@ def import_class(name: str) -> Any:
     """
     if not isinstance(name, str):
         raise TypeError(f"Class name must be a string, got {type(name)}")
-        
+
     try:
         module_name, class_name = name.rsplit(".", 1)
         module = importlib.import_module(module_name)
@@ -20,10 +25,193 @@ def import_class(name: str) -> Any:
     except (ValueError, ImportError, AttributeError) as e:
         raise ImportError(f"Could not import class '{name}': {e}")
 
+
+# --- Path Resolution Utilities ---
+
+
+def _resolve_path(path: Path, search_paths: list[Path] | None = None) -> Path:
+    """
+    Attempts to resolve a path that might be relative to a different root.
+
+    If the path exists, it is returned as is.
+    If not, and search_paths are provided, it checks if the path (or its suffixes)
+    exist relative to any of the search paths.
+    """
+    if path.exists():
+        return path
+
+    if search_paths:
+        for base in search_paths:
+            # 1. Check if path is relative to base
+            candidate = base / path
+            if candidate.exists():
+                return candidate.resolve()
+
+            # 2. If path is absolute, try to match suffixes
+            if path.is_absolute():
+                parts = path.parts
+                # Try progressively shorter suffixes of the original path
+                # e.g. /a/b/c/d/file.txt -> d/file.txt, c/d/file.txt, etc.
+                for i in range(len(parts) - 1, 0, -1):
+                    suffix = Path(*parts[i:])
+                    candidate = base / suffix
+                    if candidate.exists():
+                        return candidate.resolve()
+    return path
+
+
+def _validate_path(
+    path: str | Path,
+    description: str,
+    check_exists: bool = True,
+    search_paths: list[Path] | None = None,
+) -> Path:
+    """Validates that a path exists (optional) and returns it as a Path object."""
+    p = Path(path)
+
+    if check_exists:
+        if not p.exists():
+            # Attempt resolution
+            resolved = _resolve_path(p, search_paths)
+            if resolved.exists():
+                return resolved
+            # If still not found
+            raise FileNotFoundError(
+                f"{description} not found at: {p} (and could not be resolved in search paths)"
+            )
+
+    return p
+
+
+def _validate_file_dict(
+    data: dict[str, Any],
+    description: str,
+    search_paths: list[Path] | None = None,
+) -> dict[str, Path]:
+    """Validates a dictionary of name -> filepath mappings."""
+    if not isinstance(data, dict):
+        raise TypeError(f"{description} must be a dictionary")
+
+    validated = {}
+    for k, v in data.items():
+        if not isinstance(k, str):
+            raise TypeError(f"{description} keys must be strings")
+        validated[k] = _validate_path(v, f"{description} file '{k}'", search_paths=search_paths)
+    return validated
+
+
 # --- Configuration Schemas ---
 
 
-class GenomeConfig(TypedDict):
+class FoldArgs(BaseModel):
+    """Arguments for the chromosome-partition fold strategy."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    k: int = Field(ge=0)
+    test_fold: int | None = Field(default=None, ge=0)
+    val_fold: int | None = Field(default=None, ge=0)
+
+
+# --- Sampler Args Sub-Models ---
+
+
+class IntervalSamplerArgs(BaseModel):
+    """Arguments for the interval sampler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    intervals_path: Path
+
+    @field_validator("intervals_path", mode="before")
+    @classmethod
+    def resolve_intervals_path(cls, v: Any, info: ValidationInfo) -> Path:
+        search_paths = info.context.get("search_paths") if info.context else None
+        return _validate_path(v, "intervals file", search_paths=search_paths)
+
+
+class SlidingWindowSamplerArgs(BaseModel):
+    """Arguments for the sliding window sampler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    stride: int = Field(gt=0)
+
+
+class RandomSamplerArgs(BaseModel):
+    """Arguments for the random sampler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    num_intervals: int = Field(gt=0)
+
+
+class PeakSamplerArgs(BaseModel):
+    """Arguments for the peak sampler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    intervals_path: Path
+    background_ratio: float = Field(default=1.0, gt=0)
+    complexity_center_size: int | None = None
+
+    @field_validator("intervals_path", mode="before")
+    @classmethod
+    def resolve_intervals_path(cls, v: Any, info: ValidationInfo) -> Path:
+        search_paths = info.context.get("search_paths") if info.context else None
+        return _validate_path(v, "intervals file", search_paths=search_paths)
+
+
+class NegativePeakSamplerArgs(BaseModel):
+    """Arguments for the negative peak sampler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    intervals_path: Path
+    background_ratio: float = Field(default=1.0, gt=0)
+    complexity_center_size: int | None = None
+
+    @field_validator("intervals_path", mode="before")
+    @classmethod
+    def resolve_intervals_path(cls, v: Any, info: ValidationInfo) -> Path:
+        search_paths = info.context.get("search_paths") if info.context else None
+        return _validate_path(v, "intervals file", search_paths=search_paths)
+
+
+class ComplexityMatchedSamplerArgs(BaseModel):
+    """Arguments for the complexity-matched sampler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    target_sampler: "SamplerConfig"
+    candidate_sampler: "SamplerConfig"
+    bins: int = Field(gt=0)
+    candidate_ratio: float = Field(gt=0)
+    metrics: list[str]
+
+
+SamplerArgsUnion = Union[
+    IntervalSamplerArgs,
+    SlidingWindowSamplerArgs,
+    RandomSamplerArgs,
+    PeakSamplerArgs,
+    NegativePeakSamplerArgs,
+    ComplexityMatchedSamplerArgs,
+]
+
+_SAMPLER_ARGS_TYPE_MAP: dict[str, type[BaseModel]] = {
+    "interval": IntervalSamplerArgs,
+    "sliding_window": SlidingWindowSamplerArgs,
+    "random": RandomSamplerArgs,
+    "peak": PeakSamplerArgs,
+    "negative_peak": NegativePeakSamplerArgs,
+    "complexity_matched": ComplexityMatchedSamplerArgs,
+}
+
+# --- Main Config Models ---
+
+
+class GenomeConfig(BaseModel):
     """
     Configuration for the genome assembly.
 
@@ -35,11 +223,9 @@ class GenomeConfig(TypedDict):
         chrom_sizes: Dictionary mapping chromosome names to their lengths.
         fold_type: Strategy for creating folds. Currently only 'chrom_partition' is supported.
         fold_args: Arguments for the folding strategy.
-                   For 'chrom_partition', required keys: 'k' (int),
-                   'test_fold' (int), 'val_fold' (int).
-                   test_fold and val_fold can be omitted if passed directly
-                   to CerberusDataModule or train_single.
     """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     fasta_path: Path
@@ -47,10 +233,35 @@ class GenomeConfig(TypedDict):
     allowed_chroms: list[str]
     chrom_sizes: dict[str, int]
     fold_type: str
-    fold_args: dict[str, Any]
+    fold_args: FoldArgs
+
+    @field_validator("fasta_path", mode="before")
+    @classmethod
+    def resolve_fasta_path(cls, v: Any, info: ValidationInfo) -> Path:
+        search_paths = info.context.get("search_paths") if info.context else None
+        return _validate_path(v, "Genome file", search_paths=search_paths)
+
+    @field_validator("exclude_intervals", mode="before")
+    @classmethod
+    def resolve_exclude_intervals(cls, v: Any, info: ValidationInfo) -> dict[str, Path]:
+        search_paths = info.context.get("search_paths") if info.context else None
+        return _validate_file_dict(v, "exclude_intervals", search_paths=search_paths)
+
+    @model_validator(mode="after")
+    def filter_chrom_sizes(self) -> "GenomeConfig":
+        """Ensure chrom_sizes only contains allowed_chroms and all are present."""
+        allowed_set = set(self.allowed_chroms)
+        filtered = {k: v for k, v in self.chrom_sizes.items() if k in allowed_set}
+        if len(filtered) != len(allowed_set):
+            missing = allowed_set - set(filtered.keys())
+            raise ValueError(f"chrom_sizes missing entries for allowed_chroms: {missing}")
+        if filtered != self.chrom_sizes:
+            # Reconstruct with filtered chrom_sizes (bypass frozen via model_construct)
+            return self.model_copy(update={"chrom_sizes": filtered})
+        return self
 
 
-class SamplerConfig(TypedDict):
+class SamplerConfig(BaseModel):
     """
     Configuration for data samplers.
 
@@ -58,35 +269,29 @@ class SamplerConfig(TypedDict):
         sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random',
             'complexity_matched', 'peak', 'negative_peak').
         padded_size: Length of the intervals yielded by the sampler (after padding/centering).
-        sampler_args: Dictionary of arguments specific to the sampler type.
-
-    Sampler Args Requirements by Type:
-    - 'interval':
-        - intervals_path: Path to BED/narrowPeak file containing regions of interest.
-    - 'sliding_window':
-        - stride: Step size for generating sliding windows across the genome.
-    - 'random':
-        - num_intervals: Number of random intervals to generate.
-    - 'complexity_matched':
-        - target_sampler: Configuration for the target sampler.
-        - candidate_sampler: Configuration for the candidate sampler.
-        - bins: Number of bins.
-        - candidate_ratio: Ratio of candidates to targets.
-        - metrics: List of metrics (e.g. ['gc']).
-    - 'peak':
-        - intervals_path: Path to peaks file.
-        - background_ratio: Ratio of background intervals to peaks (default: 1.0).
-    - 'negative_peak':
-        - intervals_path: Path to peaks file (used for exclusion and complexity reference).
-        - background_ratio: Number of background intervals per peak (controls epoch size).
+        sampler_args: Typed arguments specific to the sampler type.
     """
 
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     sampler_type: str
-    padded_size: int
-    sampler_args: dict[str, Any]
+    padded_size: int = Field(gt=0)
+    sampler_args: SamplerArgsUnion
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_sampler_args(cls, data: Any) -> Any:
+        """Route sampler_args to the correct typed model based on sampler_type."""
+        if isinstance(data, dict):
+            sampler_type = data.get("sampler_type")
+            args = data.get("sampler_args", {})
+            if sampler_type in _SAMPLER_ARGS_TYPE_MAP and isinstance(args, dict):
+                data = dict(data)  # don't mutate the original
+                data["sampler_args"] = _SAMPLER_ARGS_TYPE_MAP[sampler_type](**args)
+        return data
 
 
-class DataConfig(TypedDict):
+class DataConfig(BaseModel):
     """
     Configuration for input/output data handling.
 
@@ -102,30 +307,45 @@ class DataConfig(TypedDict):
         reverse_complement: Whether to apply reverse complement augmentation.
         target_scale: Multiplicative scaling factor for targets.
         use_sequence: Whether to use sequence input (default: True).
-        count_pseudocount: Additive offset before log-transforming count targets, specified
-            in raw coverage units (i.e. approximately read_length). propagate_pseudocount
-            (called from instantiate()) multiplies this by target_scale before injecting
-            into loss_args and metrics_args so that loss and metrics always receive the
-            value in their native (scaled) units.
-            A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.
-            Set to 0.0 for losses that do not use a pseudocount (e.g. Poisson/NB).
     """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     inputs: dict[str, Path]
     targets: dict[str, Path]
-    input_len: int
-    output_len: int
-    max_jitter: int
-    output_bin_size: int
+    input_len: int = Field(gt=0)
+    output_len: int = Field(gt=0)
+    max_jitter: int = Field(ge=0)
+    output_bin_size: int = Field(gt=0)
     encoding: str
     log_transform: bool
     reverse_complement: bool
     use_sequence: bool
-    target_scale: float
-    count_pseudocount: float
+    target_scale: float = Field(gt=0)
+
+    @field_validator("inputs", mode="before")
+    @classmethod
+    def resolve_inputs(cls, v: Any, info: ValidationInfo) -> dict[str, Path]:
+        search_paths = info.context.get("search_paths") if info.context else None
+        return _validate_file_dict(v, "inputs", search_paths=search_paths)
+
+    @field_validator("targets", mode="before")
+    @classmethod
+    def resolve_targets(cls, v: Any, info: ValidationInfo) -> dict[str, Path]:
+        search_paths = info.context.get("search_paths") if info.context else None
+        return _validate_file_dict(v, "targets", search_paths=search_paths)
+
+    @model_validator(mode="after")
+    def check_rc_requires_sequence(self) -> "DataConfig":
+        if self.reverse_complement and not self.use_sequence:
+            raise ValueError(
+                "reverse_complement=True requires use_sequence=True. "
+                "Reverse complement operates on DNA sequence channels."
+            )
+        return self
 
 
-class TrainConfig(TypedDict):
+class TrainConfig(BaseModel):
     """
     Configuration for training hyperparameters.
 
@@ -138,40 +358,37 @@ class TrainConfig(TypedDict):
         optimizer: Optimizer name (e.g., 'adam', 'adamw', 'sgd').
         filter_bias_and_bn: Whether to exclude bias and batch norm parameters from weight decay.
         adam_eps: Epsilon for Adam/AdamW optimizer numerical stability (default: 1e-8).
-            chrombpnet-pytorch uses 1e-7 for BPNet-style models.
         gradient_clip_val: Maximum gradient norm for gradient clipping (default: None = disabled).
-            Passed to pl.Trainer as gradient_clip_val. A value of 1.0 is a reasonable
-            safeguard for unnormalized networks like BPNet.
     """
 
-    batch_size: int
-    max_epochs: int
-    learning_rate: float
-    weight_decay: float
-    patience: int
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    batch_size: int = Field(gt=0)
+    max_epochs: int = Field(gt=0)
+    learning_rate: float = Field(gt=0)
+    weight_decay: float = Field(ge=0)
+    patience: int = Field(ge=0)
     optimizer: str
     scheduler_type: str
     scheduler_args: dict[str, Any]
     filter_bias_and_bn: bool
-    reload_dataloaders_every_n_epochs: int
-    adam_eps: float
-    gradient_clip_val: float | None
+    reload_dataloaders_every_n_epochs: int = Field(ge=0)
+    adam_eps: float = Field(gt=0)
+    gradient_clip_val: float | None = Field(default=None, gt=0)
 
 
-class PretrainedConfig(TypedDict):
+class PretrainedConfig(BaseModel):
     """Configuration for loading pretrained weights into a model or sub-module.
 
     Attributes:
         weights_path: Path to a .pt state dict file (clean, no "model." prefix).
         source: Sub-module prefix to extract from the source state dict.
-            None uses all keys. E.g. ``"bias_model"`` extracts and strips keys
-            starting with ``"bias_model."``, enabling loading a sub-module
-            from a full-model checkpoint.
+            None uses all keys.
         target: Named sub-module to load into. None loads into the whole model.
-            E.g. ``"bias_model"`` loads into ``model.bias_model``.
-        freeze: If True, freeze all parameters in the loaded (sub)module
-            by setting requires_grad=False.
+        freeze: If True, freeze all parameters in the loaded (sub)module.
     """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     weights_path: str
     source: str | None
@@ -179,7 +396,7 @@ class PretrainedConfig(TypedDict):
     freeze: bool
 
 
-class ModelConfig(TypedDict):
+class ModelConfig(BaseModel):
     """
     Configuration for the model architecture.
 
@@ -187,11 +404,18 @@ class ModelConfig(TypedDict):
         name: Name of the model.
         model_cls: Fully qualified class name string of the model.
         loss_cls: Fully qualified class name string of the loss.
+        loss_args: Loss-specific keyword arguments.
         metrics_cls: Fully qualified class name string of the metric collection.
+        metrics_args: Metrics-specific keyword arguments.
         model_args: Model-specific keyword arguments.
         pretrained: List of pretrained weight configs to load after
             model instantiation. Empty list means no pretrained weights.
+        count_pseudocount: Additive offset before log-transforming count targets,
+            specified in scaled units (i.e. raw coverage × target_scale).
+            A value of 0.0 means no pseudocount (for Poisson/NB losses).
     """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     model_cls: str
@@ -200,617 +424,91 @@ class ModelConfig(TypedDict):
     metrics_cls: str
     metrics_args: dict[str, Any]
     model_args: dict[str, Any]
-    pretrained: list[PretrainedConfig]
+    pretrained: list[PretrainedConfig] = Field(default_factory=list)
+    count_pseudocount: float = Field(default=0.0, ge=0)
+
+    @field_validator("model_args", mode="after")
+    @classmethod
+    def validate_model_args(cls, v: dict[str, Any]) -> dict[str, Any]:
+        if "input_channels" in v:
+            ic = v["input_channels"]
+            if not isinstance(ic, (list, tuple)) or not all(isinstance(c, str) for c in ic):
+                raise TypeError("model_args['input_channels'] must be a list of strings")
+            if len(ic) == 0:
+                raise ValueError("model_args['input_channels'] must not be empty")
+        if "output_channels" in v:
+            oc = v["output_channels"]
+            if not isinstance(oc, (list, tuple)) or not all(isinstance(c, str) for c in oc):
+                raise TypeError("model_args['output_channels'] must be a list of strings")
+            if len(oc) == 0:
+                raise ValueError("model_args['output_channels'] must not be empty")
+        if "output_type" in v:
+            ot = v["output_type"]
+            valid_types = {"signal", "decoupled"}
+            if ot not in valid_types:
+                raise ValueError(f"model_args['output_type'] must be one of {valid_types}")
+        return v
 
 
-class CerberusConfig(TypedDict):
+class CerberusConfig(BaseModel):
     """
     Combined configuration for Cerberus.
+
+    Note: The ``model_config_`` field uses an alias ``"model_config"`` because
+    Pydantic V2 reserves the ``model_config`` name for its own ConfigDict.
+    In YAML/dict serialization the key is ``"model_config"``, but in Python
+    code the attribute is ``model_config_``.
     """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
     train_config: TrainConfig
     genome_config: GenomeConfig
     data_config: DataConfig
     sampler_config: SamplerConfig
-    model_config: ModelConfig
+    model_config_: ModelConfig = Field(alias="model_config")
 
-
-# --- Validation Logic ---
-
-
-def _resolve_path(path: Path, search_paths: list[Path] | None = None) -> Path:
-    """
-    Attempts to resolve a path that might be relative to a different root.
-    
-    If the path exists, it is returned as is.
-    If not, and search_paths are provided, it checks if the path (or its suffixes)
-    exist relative to any of the search paths.
-    """
-    if path.exists():
-        return path
-        
-    if search_paths:
-        for base in search_paths:
-            # 1. Check if path is relative to base
-            candidate = base / path
-            if candidate.exists():
-                return candidate.resolve()
-            
-            # 2. If path is absolute, try to match suffixes
-            if path.is_absolute():
-                parts = path.parts
-                # Try progressively shorter suffixes of the original path
-                # e.g. /a/b/c/d/file.txt -> d/file.txt, c/d/file.txt, etc.
-                for i in range(len(parts)-1, 0, -1):
-                    suffix = Path(*parts[i:])
-                    candidate = base / suffix
-                    if candidate.exists():
-                        return candidate.resolve()
-    return path
-
-def _validate_path(
-    path: str | Path, 
-    description: str, 
-    check_exists: bool = True,
-    search_paths: list[Path] | None = None,
-) -> Path:
-    """Validates that a path exists (optional) and returns it as a Path object."""
-    p = Path(path)
-    
-    if check_exists:
-        if not p.exists():
-            # Attempt resolution
-            resolved = _resolve_path(p, search_paths)
-            if resolved.exists():
-                return resolved
-            # If still not found
-            raise FileNotFoundError(f"{description} not found at: {p} (and could not be resolved in search paths)")
-    
-    return p
-
-
-def _validate_file_dict(
-    data: dict, 
-    description: str,
-    search_paths: list[Path] | None = None
-) -> dict[str, Path]:
-    """Validates a dictionary of name -> filepath mappings."""
-    if not isinstance(data, dict):
-        raise TypeError(f"{description} must be a dictionary")
-
-    validated = {}
-    for k, v in data.items():
-        if not isinstance(k, str):
-            raise TypeError(f"{description} keys must be strings")
-        validated[k] = _validate_path(v, f"{description} file '{k}'", search_paths=search_paths)
-    return validated
-
-
-def validate_genome_config(
-    config: GenomeConfig,
-    search_paths: list[Path] | None = None
-) -> GenomeConfig:
-    """
-    Validates the genome configuration and returns a GenomeConfig object.
-    
-    Checks for required keys, correct types, and consistency between allowed_chroms and chrom_sizes.
-    
-    Args:
-        config: Dictionary containing genome configuration.
-        
-    Returns:
-        GenomeConfig: Validated and typed configuration object.
-        
-    Raises:
-        TypeError: If input is not a dictionary or contains invalid types.
-        ValueError: If required keys are missing or values are inconsistent.
-        FileNotFoundError: If specified files do not exist.
-    """
-    if not isinstance(config, dict):
-        raise TypeError("Genome config must be a dictionary")
-
-    # Check for required fields
-    required_keys = {
-        "name",
-        "fasta_path",
-        "allowed_chroms",
-        "chrom_sizes",
-        "exclude_intervals",
-        "fold_type",
-        "fold_args",
-    }
-    if not all(key in config for key in required_keys):
-        missing = required_keys - config.keys()
-        raise ValueError(f"Genome config missing required keys: {missing}")
-    
-    if not isinstance(config["fold_type"], str):
-        raise TypeError("fold_type must be a string")
-    
-    if not isinstance(config["fold_args"], dict):
-        raise TypeError("fold_args must be a dictionary")
-
-    # Validate common fold_args keys if present
-    for key in ["k", "val_fold", "test_fold"]:
-        if key in config["fold_args"]:
-            if not isinstance(config["fold_args"][key], int):
-                raise TypeError(f"fold_args['{key}'] must be an integer")
-            if config["fold_args"][key] < 0:
-                raise ValueError(f"fold_args['{key}'] must be non-negative")
-
-    path_val = config["fasta_path"]
-    if not isinstance(path_val, (str, Path)):
-        raise TypeError("fasta_path must be a string or Path")
-
-    p = _validate_path(path_val, "Genome file", search_paths=search_paths)
-
-    exclude_intervals = _validate_file_dict(
-        config["exclude_intervals"], "exclude_intervals", search_paths=search_paths
-    )
-
-    if not isinstance(config["allowed_chroms"], list):
-        raise TypeError("allowed_chroms must be a list of strings")
-    if not all(isinstance(c, str) for c in config["allowed_chroms"]):
-        raise TypeError("allowed_chroms must contain only strings")
-
-    if not isinstance(config["chrom_sizes"], dict):
-        raise TypeError("chrom_sizes must be a dictionary")
-    # Validate chrom_sizes contents
-    for k, v in config["chrom_sizes"].items():
-        if not isinstance(k, str):
-            raise TypeError(f"chrom_sizes keys must be strings, got {type(k)}")
-        if not isinstance(v, int):
-            raise TypeError(f"chrom_sizes values must be integers, got {type(v)}")
-
-    # Ensure chrom_sizes only contains allowed_chroms
-    allowed_set = set(config["allowed_chroms"])
-    filtered_sizes = {
-        k: v for k, v in config["chrom_sizes"].items() if k in allowed_set
-    }
-
-    # Check if all allowed chroms have sizes
-    if len(filtered_sizes) != len(allowed_set):
-        missing = allowed_set - set(filtered_sizes.keys())
-        raise ValueError(f"chrom_sizes missing entries for allowed_chroms: {missing}")
-
-    # Return valid config (cast/ensure types)
-    return {
-        "name": str(config["name"]),
-        "fasta_path": p,
-        "exclude_intervals": exclude_intervals,
-        "allowed_chroms": config["allowed_chroms"],
-        "chrom_sizes": filtered_sizes,
-        "fold_type": config["fold_type"],
-        "fold_args": config["fold_args"],
-    }
-
-
-def validate_data_config(
-    config: DataConfig,
-    search_paths: list[Path] | None = None
-) -> DataConfig:
-    """
-    Validates the data configuration dictionary.
-    
-    Checks for required keys and correct types for data parameters.
-    
-    Args:
-        config: Dictionary containing data configuration.
-        
-    Returns:
-        DataConfig: Validated and typed configuration object.
-        
-    Raises:
-        TypeError: If input is not a dictionary or contains invalid types.
-        ValueError: If required keys are missing or values are invalid (e.g., negative lengths).
-        FileNotFoundError: If specified files do not exist.
-    """
-    if not isinstance(config, dict):
-        raise TypeError("Data config must be a dictionary")
-
-    required_keys = {
-        "inputs",
-        "targets",
-        "input_len",
-        "output_len",
-        "output_bin_size",
-        "encoding",
-        "max_jitter",
-        "log_transform",
-        "reverse_complement",
-        "target_scale",
-        "count_pseudocount",
-        "use_sequence",
-    }
-
-    if not all(key in config for key in required_keys):
-        missing = required_keys - config.keys()
-        raise ValueError(f"Data config missing required keys: {missing}")
-
-    inputs = _validate_file_dict(config["inputs"], "inputs", search_paths=search_paths)
-    targets = _validate_file_dict(config["targets"], "targets", search_paths=search_paths)
-
-    # Type and Value checks
-    if not isinstance(config["input_len"], int) or config["input_len"] <= 0:
-        raise ValueError("input_len must be a positive integer")
-
-    if not isinstance(config["output_len"], int) or config["output_len"] <= 0:
-        raise ValueError("output_len must be a positive integer")
-
-    if not isinstance(config["max_jitter"], int) or config["max_jitter"] < 0:
-        raise ValueError("max_jitter must be a non-negative integer")
-
-    if not isinstance(config["output_bin_size"], int) or config["output_bin_size"] <= 0:
-        raise ValueError("output_bin_size must be a positive integer")
-
-    if not isinstance(config["encoding"], str):
-        raise TypeError("encoding must be a string")
-
-    if not isinstance(config["log_transform"], bool):
-        raise TypeError("log_transform must be a boolean")
-
-    if not isinstance(config["reverse_complement"], bool):
-        raise TypeError("reverse_complement must be a boolean")
-
-    if not isinstance(config["target_scale"], float) or config["target_scale"] <= 0:
-        raise ValueError("target_scale must be a positive number")
-
-    if not isinstance(config["count_pseudocount"], (int, float)) or config["count_pseudocount"] < 0:
-        raise ValueError("count_pseudocount must be a non-negative number")
-
-    if not isinstance(config["use_sequence"], bool):
-        raise TypeError("use_sequence must be a boolean")
-
-    if config["reverse_complement"] and not config["use_sequence"]:
-        raise ValueError(
-            "reverse_complement=True requires use_sequence=True. "
-            "Reverse complement operates on DNA sequence channels."
-        )
-
-    return {
-        "inputs": inputs,
-        "targets": targets,
-        "input_len": config["input_len"],
-        "output_len": config["output_len"],
-        "max_jitter": config["max_jitter"],
-        "output_bin_size": config["output_bin_size"],
-        "encoding": config["encoding"],
-        "log_transform": config["log_transform"],
-        "reverse_complement": config["reverse_complement"],
-        "target_scale": config["target_scale"],
-        "count_pseudocount": float(config["count_pseudocount"]),
-        "use_sequence": config["use_sequence"],
-    }
-
-
-def validate_sampler_config(
-    config: SamplerConfig,
-    search_paths: list[Path] | None = None
-) -> SamplerConfig:
-    """
-    Validates the sampler configuration dictionary.
-    
-    Checks for required keys and correct types. Performs specific validation based on `sampler_type`.
-    
-    Args:
-        config: Dictionary containing sampler configuration.
-        
-    Returns:
-        SamplerConfig: Validated and typed configuration object.
-        
-    Raises:
-        TypeError: If input is not a dictionary or contains invalid types.
-        ValueError: If required keys are missing or values are invalid.
-    """
-    if not isinstance(config, dict):
-        raise TypeError("Sampler config must be a dictionary")
-
-    required_keys = {
-        "sampler_type",
-        "padded_size",
-        "sampler_args",
-    }
-    if not all(key in config for key in required_keys):
-        missing = required_keys - config.keys()
-        raise ValueError(f"Sampler config missing required keys: {missing}")
-
-    if not isinstance(config["sampler_type"], str):
-        raise TypeError("sampler_type must be a string")
-
-    if not isinstance(config["padded_size"], int) or config["padded_size"] <= 0:
-        raise ValueError("padded_size must be a positive integer")
-
-    if not isinstance(config["sampler_args"], dict):
-        raise TypeError("sampler_args must be a dictionary")
-
-    # Specialized validation based on sampler_type
-    if config["sampler_type"] == "interval":
-        required_args = {"intervals_path"}
-        if not all(k in config["sampler_args"] for k in required_args):
-            missing = required_args - config["sampler_args"].keys()
-            raise ValueError(f"IntervalSampler args missing required keys: {missing}")
-
-    elif config["sampler_type"] == "sliding_window":
-        required_args = {"stride"}
-        if not all(k in config["sampler_args"] for k in required_args):
-            missing = required_args - config["sampler_args"].keys()
+    @model_validator(mode="after")
+    def cross_validate(self) -> "CerberusConfig":
+        """Cross-validate data/sampler and data/model compatibility."""
+        # Data-sampler compatibility
+        input_len = self.data_config.input_len
+        max_jitter = self.data_config.max_jitter
+        padded_size = self.sampler_config.padded_size
+        required_size = input_len + 2 * max_jitter
+        if padded_size < required_size:
             raise ValueError(
-                f"SlidingWindowSampler args missing required keys: {missing}"
+                f"Sampler padded_size ({padded_size}) is smaller than required size "
+                f"({required_size} = input_len {input_len} + 2 * max_jitter {max_jitter}). "
+                "Please increase padded_size or decrease input_len/max_jitter."
             )
 
-    elif config["sampler_type"] == "random":
-        required_args = {"num_intervals"}
-        if not all(k in config["sampler_args"] for k in required_args):
-            missing = required_args - config["sampler_args"].keys()
-            raise ValueError(f"RandomSampler args missing required keys: {missing}")
+        # Data-model compatibility
+        model_args = self.model_config_.model_args
+        if "output_channels" in model_args:
+            target_channels = set(self.data_config.targets.keys())
+            model_outputs = set(model_args["output_channels"])
+            if target_channels != model_outputs:
+                raise ValueError(
+                    f"Model output channels {model_outputs} do not match data targets {target_channels}"
+                )
+        if "input_channels" in model_args:
+            input_tracks = set(self.data_config.inputs.keys())
+            model_inputs = set(model_args["input_channels"])
+            if not input_tracks.issubset(model_inputs):
+                missing = input_tracks - model_inputs
+                raise ValueError(f"Data inputs {missing} are not in model input channels")
 
-    elif config["sampler_type"] == "peak":
-        required_args = {"intervals_path"}
-        if not all(k in config["sampler_args"] for k in required_args):
-            missing = required_args - config["sampler_args"].keys()
-            raise ValueError(f"PeakSampler args missing required keys: {missing}")
-        # TODO: setdefault in a validate_ function is wrong — validators should
-        # not mutate config. Defaults belong in a dedicated normalize/parse step
-        # or at the call site. Keeping this temporarily so create_sampler can use
-        # bracket access. Remove once a proper config normalization layer exists.
-        config["sampler_args"].setdefault("complexity_center_size", None)
-
-    elif config["sampler_type"] == "negative_peak":
-        required_args = {"intervals_path"}
-        if not all(k in config["sampler_args"] for k in required_args):
-            missing = required_args - config["sampler_args"].keys()
-            raise ValueError(f"NegativePeakSampler args missing required keys: {missing}")
-        # TODO: same as above — setdefault does not belong in a validator.
-        config["sampler_args"].setdefault("complexity_center_size", None)
-
-    return {
-        "sampler_type": config["sampler_type"],
-        "padded_size": config["padded_size"],
-        "sampler_args": config["sampler_args"],
-    }
+        return self
 
 
-def validate_data_and_sampler_compatibility(
-    data_config: DataConfig, sampler_config: SamplerConfig
-) -> None:
-    """
-    Validates compatibility between data and sampler configurations.
-
-    Checks if the sampler's padded_size is sufficient to cover the input window
-    plus the maximum jitter range.
-
-    Args:
-        data_config: Validated DataConfig.
-        sampler_config: Validated SamplerConfig.
-
-    Raises:
-        ValueError: If padded_size is too small for the requested input_len and max_jitter.
-    """
-    input_len = data_config["input_len"]
-    max_jitter = data_config["max_jitter"]
-    padded_size = sampler_config["padded_size"]
-    
-    required_size = input_len + 2 * max_jitter
-    
-    if padded_size < required_size:
-        raise ValueError(
-            f"Sampler padded_size ({padded_size}) is smaller than required size "
-            f"({required_size} = input_len {input_len} + 2 * max_jitter {max_jitter}). "
-            "Please increase padded_size or decrease input_len/max_jitter."
-        )
+# Resolve forward references for recursive SamplerConfig
+ComplexityMatchedSamplerArgs.model_rebuild()
+SamplerConfig.model_rebuild()
+CerberusConfig.model_rebuild()
 
 
-def validate_train_config(config: TrainConfig) -> TrainConfig:
-    """
-    Validates the training configuration dictionary.
-
-    Args:
-        config: Dictionary containing training configuration.
-
-    Returns:
-        TrainConfig: Validated and typed configuration object.
-
-    Raises:
-        TypeError: If input is not a dictionary or contains invalid types.
-        ValueError: If required keys are missing or values are invalid.
-    """
-    if not isinstance(config, dict):
-        raise TypeError("Train config must be a dictionary")
-
-    required_keys = {
-        "batch_size",
-        "max_epochs",
-        "learning_rate",
-        "weight_decay",
-        "patience",
-        "optimizer",
-        "filter_bias_and_bn",
-        "adam_eps",
-        "gradient_clip_val",
-        "scheduler_type",
-        "scheduler_args",
-        "reload_dataloaders_every_n_epochs",
-    }
-    if not all(key in config for key in required_keys):
-        missing = required_keys - config.keys()
-        raise ValueError(f"Train config missing required keys: {missing}")
-
-    if not isinstance(config["batch_size"], int) or config["batch_size"] <= 0:
-        raise ValueError("batch_size must be a positive integer")
-
-    if not isinstance(config["max_epochs"], int) or config["max_epochs"] <= 0:
-        raise ValueError("max_epochs must be a positive integer")
-
-    if not isinstance(config["learning_rate"], float) or config["learning_rate"] <= 0:
-        raise ValueError("learning_rate must be a positive float")
-        
-    if not isinstance(config["weight_decay"], float) or config["weight_decay"] < 0:
-        raise ValueError("weight_decay must be a non-negative float")
-
-    if not isinstance(config["patience"], int) or config["patience"] < 0:
-        raise ValueError("patience must be a non-negative integer")
-
-    if not isinstance(config["optimizer"], str):
-        raise TypeError("optimizer must be a string")
-
-    if not isinstance(config["filter_bias_and_bn"], bool):
-        raise TypeError("filter_bias_and_bn must be a boolean")
-
-    if not isinstance(config["scheduler_type"], str):
-        raise TypeError("scheduler_type must be a string")
-
-    if not isinstance(config["scheduler_args"], dict):
-        raise TypeError("scheduler_args must be a dictionary")
-
-    if not isinstance(config["reload_dataloaders_every_n_epochs"], int) or config["reload_dataloaders_every_n_epochs"] < 0:
-        raise ValueError("reload_dataloaders_every_n_epochs must be a non-negative integer")
-
-    if not isinstance(config["adam_eps"], float) or config["adam_eps"] <= 0:
-        raise ValueError("adam_eps must be a positive float")
-
-    gradient_clip_val = config["gradient_clip_val"]
-    if gradient_clip_val is not None and (not isinstance(gradient_clip_val, float) or gradient_clip_val <= 0):
-        raise ValueError("gradient_clip_val must be a positive float or None")
-
-    return {
-        "batch_size": config["batch_size"],
-        "max_epochs": config["max_epochs"],
-        "learning_rate": config["learning_rate"],
-        "weight_decay": config["weight_decay"],
-        "patience": config["patience"],
-        "optimizer": config["optimizer"],
-        "scheduler_type": config["scheduler_type"],
-        "scheduler_args": config["scheduler_args"],
-        "filter_bias_and_bn": config["filter_bias_and_bn"],
-        "reload_dataloaders_every_n_epochs": config["reload_dataloaders_every_n_epochs"],
-        "adam_eps": config["adam_eps"],
-        "gradient_clip_val": config["gradient_clip_val"],
-    }
-
-
-def validate_model_config(config: ModelConfig) -> ModelConfig:
-    """
-    Validates the model configuration dictionary.
-
-    Args:
-        config: Dictionary containing model configuration.
-
-    Returns:
-        ModelConfig: Validated and typed configuration object.
-
-    Raises:
-        TypeError: If input is not a dictionary or contains invalid types.
-        ValueError: If required keys are missing or values are invalid.
-    """
-    if not isinstance(config, dict):
-        raise TypeError("Model config must be a dictionary")
-
-    required_keys = {
-        "name",
-        "model_cls",
-        "loss_cls",
-        "loss_args",
-        "metrics_cls",
-        "metrics_args",
-        "model_args",
-    }
-    if not all(key in config for key in required_keys):
-        missing = required_keys - config.keys()
-        raise ValueError(f"Model config missing required keys: {missing}")
-
-    if not isinstance(config["name"], str):
-        raise TypeError("name must be a string")
-
-    # Strict validation for class strings
-    if not isinstance(config["model_cls"], str):
-        raise TypeError("model_cls must be a string (fully qualified class name)")
-    
-    if not isinstance(config["loss_cls"], str):
-        raise TypeError("loss_cls must be a string (fully qualified class name)")
-        
-    if not isinstance(config["metrics_cls"], str):
-        raise TypeError("metrics_cls must be a string (fully qualified class name)")
-
-    # Validate optional arguments in model_args if present
-    model_args = config["model_args"]
-    if not isinstance(model_args, dict):
-        raise TypeError("model_args must be a dictionary")
-
-    # Validate input_channels if present
-    if "input_channels" in model_args:
-        if not isinstance(model_args["input_channels"], (list, tuple)):
-            raise TypeError("model_args['input_channels'] must be a list or tuple of strings")
-        if not all(isinstance(c, str) for c in model_args["input_channels"]):
-            raise TypeError("model_args['input_channels'] must contain only strings")
-        if len(model_args["input_channels"]) == 0:
-            raise ValueError("model_args['input_channels'] must not be empty")
-
-    # Validate output_channels if present
-    if "output_channels" in model_args:
-        if not isinstance(model_args["output_channels"], (list, tuple)):
-            raise TypeError("model_args['output_channels'] must be a list or tuple of strings")
-        if not all(isinstance(c, str) for c in model_args["output_channels"]):
-            raise TypeError("model_args['output_channels'] must contain only strings")
-        if len(model_args["output_channels"]) == 0:
-            raise ValueError("model_args['output_channels'] must not be empty")
-
-    # Validate output_type if present
-    if "output_type" in model_args:
-        if not isinstance(model_args["output_type"], str):
-            raise TypeError("model_args['output_type'] must be a string")
-        valid_types = {"signal", "decoupled"}
-        if model_args["output_type"] not in valid_types:
-            raise ValueError(f"model_args['output_type'] must be one of {valid_types}")
-
-    return {
-        "name": config["name"],
-        "model_cls": config["model_cls"],
-        "loss_cls": config["loss_cls"],
-        "loss_args": config["loss_args"],
-        "metrics_cls": config["metrics_cls"],
-        "metrics_args": config["metrics_args"],
-        "model_args": config["model_args"],
-        "pretrained": config["pretrained"],
-    }
-
-
-def validate_data_and_model_compatibility(
-    data_config: DataConfig, model_config: ModelConfig
-) -> None:
-    """
-    Validates compatibility between data and model configurations.
-
-    Checks if the model's input/output channels match the data configuration.
-
-    Args:
-        data_config: Validated DataConfig.
-        model_config: Validated ModelConfig.
-
-    Raises:
-        ValueError: If channel names do not match between model and data.
-    """
-    # Check output channels vs targets
-    target_channels = set(data_config["targets"].keys())
-    
-    # Look in model_args for channels
-    model_args = model_config["model_args"]
-    
-    if "output_channels" in model_args:
-        model_outputs = set(model_args["output_channels"])
-        if target_channels != model_outputs:
-            raise ValueError(
-                f"Model output channels {model_outputs} do not match data targets {target_channels}"
-            )
-
-    # Ensure all data input tracks are present in model input channels
-    if "input_channels" in model_args:
-        input_tracks = set(data_config["inputs"].keys())
-        # Assuming model_config inputs includes both sequence and tracks?
-        # Or just tracks? User said "('A','C','G,'T',"name of signal trak")". So it includes sequence.
-        
-        # So model inputs should be superset of data inputs keys?
-        model_inputs = set(model_args["input_channels"])
-        if not input_tracks.issubset(model_inputs):
-            missing = input_tracks - model_inputs
-            raise ValueError(f"Data inputs {missing} are not in model input channels")
+# --- Utility Functions ---
 
 
 def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
@@ -818,133 +516,80 @@ def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
 
     Losses with ``uses_count_pseudocount = True`` (MSE-family, Dalmatian) train
     log_counts in log(count + pseudocount) space, while Poisson/NB losses use
-    log(count) directly.  This function inspects the loss class attribute and
-    returns the two parameters needed by ``compute_total_log_counts`` and
-    observed-count transforms.
-
-    The returned pseudocount is in **scaled** units (i.e. already multiplied by
-    target_scale via ``propagate_pseudocount``), matching the space that model
-    predictions operate in.
+    log(count) directly.
 
     Args:
-        model_config: Model configuration dict (must contain ``loss_cls`` and
-            ``loss_args`` keys).
+        model_config: Model configuration (must contain ``loss_cls`` and
+            ``count_pseudocount`` fields).
 
     Returns:
         Tuple of (log_counts_include_pseudocount, count_pseudocount):
             - log_counts_include_pseudocount: True if the loss uses
               log(count + pseudocount) space.
-            - count_pseudocount: The pseudocount value from loss_args
+            - count_pseudocount: The pseudocount value from model_config
               (scaled units), or 0.0 for losses that don't use pseudocount.
     """
-    loss_cls = import_class(model_config["loss_cls"])
+    loss_cls = import_class(model_config.loss_cls)
     log_counts_include_pseudocount = loss_cls.uses_count_pseudocount
     if log_counts_include_pseudocount:
-        count_pseudocount = model_config["loss_args"]["count_pseudocount"]
+        count_pseudocount = model_config.count_pseudocount
     else:
         count_pseudocount = 0.0
     return log_counts_include_pseudocount, count_pseudocount
 
 
-def propagate_pseudocount(data_config: DataConfig, model_config: ModelConfig) -> ModelConfig:
-    """
-    Propagate the scaled count_pseudocount from data_config into model_config's
-    loss_args and metrics_args.
-
-    The user specifies count_pseudocount in raw coverage units (e.g. read length);
-    scaling by target_scale converts it to the units that the loss and metrics
-    actually operate on. Uses setdefault so an explicitly provided value in
-    loss_args/metrics_args is never overwritten.
-
-    Returns a new ModelConfig; the input is not modified so callers can safely
-    reuse the same model_config dict across folds.
-
-    Args:
-        data_config: Validated data configuration containing count_pseudocount
-            and target_scale.
-        model_config: Model configuration containing loss_args and metrics_args.
-
-    Returns:
-        A new ModelConfig with count_pseudocount set in loss_args and metrics_args.
-    """
-    loss_cls = import_class(model_config["loss_cls"])
-    raw_pseudocount = data_config["count_pseudocount"]
-
-    if not loss_cls.uses_count_pseudocount and raw_pseudocount > 0:
-        logger.warning(
-            "count_pseudocount=%.4g has no effect with %s (uses log(count) directly); "
-            "consider setting count_pseudocount to 0.0",
-            raw_pseudocount,
-            loss_cls.__name__,
-        )
-
-    scaled_pseudocount = raw_pseudocount * data_config["target_scale"]
-    loss_args = {**model_config["loss_args"]}
-    loss_args.setdefault("count_pseudocount", scaled_pseudocount)
-    metrics_args = {**model_config["metrics_args"]}
-    metrics_args.setdefault("count_pseudocount", scaled_pseudocount)
-    metrics_args.setdefault("log_counts_include_pseudocount", loss_cls.uses_count_pseudocount)
-    return {**model_config, "loss_args": loss_args, "metrics_args": metrics_args}
-
-
 def parse_hparams_config(
-    path: str | Path, 
-    search_paths: list[Path] | None = None
+    path: str | Path,
+    search_paths: list[Path] | None = None,
 ) -> CerberusConfig:
     """
     Parses a hparams.yaml file and returns validated configuration objects.
-    
+
     Args:
         path: Path to the hparams.yaml file.
         search_paths: List of directories to search for referenced files if not found at original paths.
-        
+
     Returns:
-        CerberusConfig: Dictionary containing all validated configurations.
-        
+        CerberusConfig: Validated and frozen configuration.
+
     Raises:
         FileNotFoundError: If the file does not exist.
-        ValueError: If the file content is invalid or missing required sections.
+        ValidationError: If the file content is invalid or missing required sections.
     """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"hparams file not found at: {p}")
-        
+
     # Add hparams directory to search paths by default
     if search_paths is None:
         search_paths = []
     if p.parent not in search_paths:
-        search_paths.append(p.parent)
-        
-    with open(p, 'r') as f:
+        search_paths = [*search_paths, p.parent]
+
+    with open(p, "r") as f:
         data = yaml.safe_load(f)
-        
+
     if not isinstance(data, dict):
         raise ValueError("hparams file must contain a dictionary")
-        
+
     # Required top-level keys
     required_keys = {
         "train_config",
-        "genome_config", 
+        "genome_config",
         "data_config",
         "sampler_config",
-        "model_config"
+        "model_config",
     }
-    
-    # Check if all required keys are present
-    # We allow extra keys (like other PL hparams), but ensure we have ours
+
     if not all(key in data for key in required_keys):
         missing = required_keys - data.keys()
         raise ValueError(f"hparams missing required sections: {missing}")
-        
-    # Validate each section
-    train_conf = validate_train_config(data["train_config"])
-    genome_conf = validate_genome_config(data["genome_config"], search_paths=search_paths)
-    data_conf = validate_data_config(data["data_config"], search_paths=search_paths)
-    sampler_conf = validate_sampler_config(data["sampler_config"], search_paths=search_paths)
-    # Backfill pretrained for YAML files saved before the field existed.
-    # This backwards compatibility shim will be removed in a future release —
-    # retrain models to generate hparams.yaml files with the pretrained field.
-    raw_model_config = data["model_config"]
+
+    # Extract only known keys (Lightning may add extra hparams)
+    config_data = {k: data[k] for k in required_keys}
+
+    # Backwards compatibility: backfill pretrained for old YAML files
+    raw_model_config = config_data["model_config"]
     if "pretrained" not in raw_model_config:
         logger.warning(
             "hparams.yaml at %s is missing 'pretrained' field in model_config. "
@@ -953,30 +598,30 @@ def parse_hparams_config(
             p,
         )
         raw_model_config["pretrained"] = []
-    model_conf = validate_model_config(raw_model_config)
-    
-    # Cross-validation
-    validate_data_and_sampler_compatibility(data_conf, sampler_conf)
-    validate_data_and_model_compatibility(data_conf, model_conf)
 
-    config: CerberusConfig = {
-        "train_config": train_conf,
-        "genome_config": genome_conf,
-        "data_config": data_conf,
-        "sampler_config": sampler_conf,
-        "model_config": model_conf,
-    }
-    
+    # Backwards compatibility: migrate legacy count_pseudocount from data_config
+    raw_data_config = config_data["data_config"]
+    if "count_pseudocount" in raw_data_config and "count_pseudocount" not in raw_model_config:
+        target_scale = raw_data_config.get("target_scale", 1.0)
+        raw_pseudocount = raw_data_config["count_pseudocount"]
+        scaled = raw_pseudocount * target_scale
+        raw_model_config["count_pseudocount"] = scaled
+        logger.warning(
+            "hparams.yaml at %s has legacy count_pseudocount=%.4g in data_config. "
+            "Migrated to model_config.count_pseudocount=%.4g (raw × target_scale=%.4g). "
+            "Retrain the model to update the config.",
+            p,
+            raw_pseudocount,
+            scaled,
+            target_scale,
+        )
+    # Remove count_pseudocount from data_config if present (legacy field)
+    raw_data_config.pop("count_pseudocount", None)
+
+    config = CerberusConfig.model_validate(
+        config_data, context={"search_paths": search_paths}
+    )
+
     logger.info(f"Successfully parsed hparams from {p}")
-        
-    return config
 
-def _sanitize_config(config: Any) -> Any:
-    """Recursively convert Path objects to strings for clean serialization."""
-    if isinstance(config, dict):
-        return {k: _sanitize_config(v) for k, v in config.items()}
-    elif isinstance(config, list):
-        return [_sanitize_config(v) for v in config]
-    elif isinstance(config, Path):
-        return str(config)
     return config

@@ -8,10 +8,6 @@ from .config import (
     DataConfig,
     SamplerConfig,
     GenomeConfig,
-    validate_data_config,
-    validate_genome_config,
-    validate_sampler_config,
-    validate_data_and_sampler_compatibility,
 )
 from .exclude import get_exclude_intervals
 from .samplers import Sampler, create_sampler
