@@ -1,6 +1,6 @@
 # %% [markdown]
 # # Training a BPNet Model with Cerberus
-# 
+#
 # This notebook demonstrates how to train a BPNet (Base-Resolution Prediction Net) style model using the Cerberus framework.
 # We will use the MDA-PCA-2b AR ChIP-seq dataset and the hg38 human reference genome.
 #
@@ -15,14 +15,20 @@ except ImportError:
 # Cerberus imports
 from pprint import pprint
 from cerberus.download import download_dataset, download_human_reference
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
+from cerberus.config import (
+    GenomeConfig,
+    DataConfig,
+    SamplerConfig,
+    TrainConfig,
+    ModelConfig,
+)
 from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
 from cerberus.train import _train
 
 # %% [markdown]
 # ## 1. Setup Directories and Download Data
-# 
+#
 # We'll define a working directory for our data and download the necessary files. We
 # will download the human reference genome (hg38) and the MDA-PCA-2b AR dataset.
 
@@ -45,9 +51,9 @@ print("Dataset Files:", dataset_files)
 
 # %% [markdown]
 # ## 2. Configuration
-# 
+#
 # We define the configurations for the Genome, Data, Sampler, and Training.
-# 
+#
 # **Key Requirements for BPNet:**
 # - Input: 2114bp DNA (Standard BPNet input)
 # - Output: 1000bp (Standard BPNet output) at base resolution
@@ -67,7 +73,7 @@ genome_config: GenomeConfig = create_genome_config(
     exclude_intervals={
         "blacklist": genome_files["blacklist"],
         "gaps": genome_files["gaps"],
-    }
+    },
 )
 
 # Data Config
@@ -127,7 +133,7 @@ pprint(train_config)
 
 # %% [markdown]
 # ## 3. Initialize DataModule
-# 
+#
 # We create the `CerberusDataModule` which handles dataset creation and DataLoaders.
 
 # %%
@@ -153,8 +159,8 @@ if datamodule.val_dataset:
 
 # Verify a batch
 batch = next(iter(datamodule.train_dataloader()))
-print("Batch inputs shape:", batch["inputs"].shape)   # Expected: (B, 4, 2114)
-print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 1000)
+print("Batch inputs shape:", batch["inputs"].shape)  # Expected: (B, 4, 2114)
+print("Batch targets shape:", batch["targets"].shape)  # Expected: (B, 1, 1000)
 
 # %% [markdown]
 # ## 4. Model Configuration

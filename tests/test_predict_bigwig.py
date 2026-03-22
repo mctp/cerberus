@@ -67,10 +67,12 @@ class TestReconstructLinearSignal:
         total_count = 300.0
         pseudocount = 1.0
         logits = torch.randn(2, L)  # non-uniform
-        log_counts = torch.tensor([
-            math.log(total_count + pseudocount),
-            math.log(total_count + pseudocount),
-        ])
+        log_counts = torch.tensor(
+            [
+                math.log(total_count + pseudocount),
+                math.log(total_count + pseudocount),
+            ]
+        )
 
         output = ProfileCountOutput(logits=logits, log_counts=log_counts)
         signal = _reconstruct_linear_signal(output, count_pseudocount=pseudocount)
@@ -111,6 +113,7 @@ class TestReconstructLinearSignal:
         @dataclass
         class LogitsOnly(ModelOutput):
             logits: torch.Tensor
+
             def detach(self):
                 return self
 
@@ -126,6 +129,7 @@ class TestReconstructLinearSignal:
         @dataclass
         class Weird(ModelOutput):
             data: torch.Tensor
+
             def detach(self):
                 return self
 
@@ -209,15 +213,23 @@ def _make_mock_ensemble_and_dataset(
         data_config=data_config,
         model_config_=model_config,
         sampler_config=SamplerConfig.model_construct(
-            sampler_type="interval", padded_size=input_len, sampler_args={},
+            sampler_type="interval",
+            padded_size=input_len,
+            sampler_args={},
         ),
         train_config=TrainConfig.model_construct(
-            batch_size=1, max_epochs=1, learning_rate=1e-3,
-            weight_decay=0.0, patience=1, optimizer="adam",
-            scheduler_type="default", scheduler_args={},
+            batch_size=1,
+            max_epochs=1,
+            learning_rate=1e-3,
+            weight_decay=0.0,
+            patience=1,
+            optimizer="adam",
+            scheduler_type="default",
+            scheduler_args={},
             filter_bias_and_bn=False,
             reload_dataloaders_every_n_epochs=0,
-            adam_eps=1e-8, gradient_clip_val=None,
+            adam_eps=1e-8,
+            gradient_clip_val=None,
         ),
     )
     ensemble.cerberus_config = cerberus_config
@@ -260,7 +272,12 @@ class TestProcessIsland:
 
         result = list(
             _process_island(
-                [interval], dataset, ensemble, ["test"], 64, count_pseudocount,
+                [interval],
+                dataset,
+                ensemble,
+                ["test"],
+                64,
+                count_pseudocount,
             )
         )
 
@@ -302,7 +319,12 @@ class TestProcessIsland:
 
         result = list(
             _process_island(
-                [interval], dataset, ensemble, ["test"], 64, count_pseudocount,
+                [interval],
+                dataset,
+                ensemble,
+                ["test"],
+                64,
+                count_pseudocount,
             )
         )
 
@@ -341,14 +363,21 @@ class TestProcessIsland:
         # Yield two batches (one per window)
         batch1 = ProfileCountOutput(logits=logits1, log_counts=lc1)
         batch2 = ProfileCountOutput(logits=logits2, log_counts=lc2)
-        ensemble.predict_intervals_batched.return_value = iter([
-            (batch1, [iv1]),
-            (batch2, [iv2]),
-        ])
+        ensemble.predict_intervals_batched.return_value = iter(
+            [
+                (batch1, [iv1]),
+                (batch2, [iv2]),
+            ]
+        )
 
         result = list(
             _process_island(
-                [iv1, iv2], dataset, ensemble, ["test"], 64, count_pseudocount,
+                [iv1, iv2],
+                dataset,
+                ensemble,
+                ["test"],
+                64,
+                count_pseudocount,
             )
         )
 
@@ -390,7 +419,12 @@ class TestProcessIsland:
 
         result = list(
             _process_island(
-                [interval], dataset, ensemble, ["test"], 64, count_pseudocount,
+                [interval],
+                dataset,
+                ensemble,
+                ["test"],
+                64,
+                count_pseudocount,
             )
         )
 
@@ -441,8 +475,10 @@ class TestPredictToBigwig:
 
         mock_bw.write.side_effect = capture_write
 
-        with patch("cerberus.predict_bigwig.pybigtools") as mock_pbt, \
-             patch("cerberus.predict_bigwig.SlidingWindowSampler") as mock_sw:
+        with (
+            patch("cerberus.predict_bigwig.pybigtools") as mock_pbt,
+            patch("cerberus.predict_bigwig.SlidingWindowSampler") as mock_sw,
+        ):
             mock_pbt.open.return_value = mock_bw
 
             # SlidingWindowSampler yields one window
@@ -537,8 +573,10 @@ class TestPredictToBigwig:
         mock_bw = MagicMock()
         mock_bw.write.side_effect = lambda cs, gen: list(gen)
 
-        with patch("cerberus.predict_bigwig.pybigtools") as mock_pbt, \
-             patch("cerberus.predict_bigwig.SlidingWindowSampler") as mock_sw:
+        with (
+            patch("cerberus.predict_bigwig.pybigtools") as mock_pbt,
+            patch("cerberus.predict_bigwig.SlidingWindowSampler") as mock_sw,
+        ):
             mock_pbt.open.return_value = mock_bw
             mock_sw.return_value = iter([])
 
@@ -562,8 +600,10 @@ class TestPredictToBigwig:
         mock_bw = MagicMock()
         mock_bw.write.side_effect = lambda cs, gen: list(gen)
 
-        with patch("cerberus.predict_bigwig.pybigtools") as mock_pbt, \
-             patch("cerberus.predict_bigwig.SlidingWindowSampler") as mock_sw:
+        with (
+            patch("cerberus.predict_bigwig.pybigtools") as mock_pbt,
+            patch("cerberus.predict_bigwig.SlidingWindowSampler") as mock_sw,
+        ):
             mock_pbt.open.return_value = mock_bw
             mock_sw.return_value = iter([])
 

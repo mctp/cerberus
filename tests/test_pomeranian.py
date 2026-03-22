@@ -8,52 +8,55 @@ from cerberus.models.pomeranian import Pomeranian, PomeranianK5
 def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+
 def test_pomeranian_default_initialization():
     # Test Default (K9 Config)
     model = Pomeranian()
     # Check dimensions
     assert model.input_len == 2112
     assert model.output_len == 1024
-    
+
     # Check Stem (Factorized [11, 11] - Matching K5)
     assert isinstance(model.stem, torch.nn.Sequential)
     assert len(model.stem) == 2
-    assert model.stem[0].dwconv.kernel_size == (11,) # type: ignore
-    assert model.stem[1].dwconv.kernel_size == (11,) # type: ignore
-    assert model.stem[1].dwconv.groups == 64 # Depthwise # type: ignore
-    
+    assert model.stem[0].dwconv.kernel_size == (11,)  # type: ignore
+    assert model.stem[1].dwconv.kernel_size == (11,)  # type: ignore
+    assert model.stem[1].dwconv.groups == 64  # Depthwise # type: ignore
+
     # Check Body (K=9, 8 Layers)
     assert len(model.layers) == 8
     for layer in model.layers:
-        assert layer.conv.kernel_size == (9,) # type: ignore
-        
+        assert layer.conv.kernel_size == (9,)  # type: ignore
+
     # Check Head (K=45)
-    assert model.profile_spatial.kernel_size == (45,) # type: ignore
+    assert model.profile_spatial.kernel_size == (45,)  # type: ignore
+
 
 def test_pomeranian_k5_initialization():
     model = PomeranianK5()
     # Check dimensions
     assert model.input_len == 2112
     assert model.output_len == 1024
-    
+
     # Check Stem (Factorized [11, 11])
     # The stem is an nn.Sequential
     assert isinstance(model.stem, torch.nn.Sequential)
     assert len(model.stem) == 2
     # Layer 0: ConvNeXtV2Block (K=11, Dense)
-    assert model.stem[0].dwconv.kernel_size == (11,) # type: ignore
-    assert model.stem[0].dwconv.groups == 1 # Dense (First layer) # type: ignore
+    assert model.stem[0].dwconv.kernel_size == (11,)  # type: ignore
+    assert model.stem[0].dwconv.groups == 1  # Dense (First layer) # type: ignore
     # Layer 1: ConvNeXtV2Block (K=11, Depthwise)
-    assert model.stem[1].dwconv.kernel_size == (11,) # type: ignore
-    assert model.stem[1].dwconv.groups == 64 # Depthwise (Second layer) # type: ignore
-    
+    assert model.stem[1].dwconv.kernel_size == (11,)  # type: ignore
+    assert model.stem[1].dwconv.groups == 64  # Depthwise (Second layer) # type: ignore
+
     # Check Body (K=5, 8 Layers)
     assert len(model.layers) == 8
     for layer in model.layers:
-        assert layer.conv.kernel_size == (5,) # type: ignore
-        
+        assert layer.conv.kernel_size == (5,)  # type: ignore
+
     # Check Head (K=49)
-    assert model.profile_spatial.kernel_size == (49,) # type: ignore
+    assert model.profile_spatial.kernel_size == (49,)  # type: ignore
+
 
 def test_pomeranian_default_shape():
     model = Pomeranian()
@@ -62,6 +65,7 @@ def test_pomeranian_default_shape():
     assert output.logits.shape == (2, 1, 1024)
     assert output.log_counts.shape == (2, 1)
 
+
 def test_pomeranian_k5_shape():
     model = PomeranianK5()
     x = torch.randn(2, 4, 2112)
@@ -69,21 +73,23 @@ def test_pomeranian_k5_shape():
     assert output.logits.shape == (2, 1, 1024)
     assert output.log_counts.shape == (2, 1)
 
+
 def test_parameter_counts():
     model_k5 = PomeranianK5()
     model_default = Pomeranian()
-    
+
     params_k5 = count_params(model_k5)
     params_default = count_params(model_default)
-    
+
     print(f"K5 Params: {params_k5}")
     print(f"Default (K9) Params: {params_default}")
-    
+
     # K5 should be around 151k
     assert 145000 < params_k5 < 160000
-    
+
     # Default (K9) should be similar
     assert 145000 < params_default < 165000
+
 
 def test_geometric_alignment_default():
     # Verify exact alignment math for Default (K9)
@@ -95,11 +101,12 @@ def test_geometric_alignment_default():
     # Head: K=45. Shrinkage: 44.
     # Total Shrinkage: 20 + 1024 + 44 = 1088.
     # Output: 2112 - 1088 = 1024.
-    
+
     model = Pomeranian()
     x = torch.randn(1, 4, 2112)
     output = model(x)
     assert output.logits.shape[-1] == 1024
+
 
 def test_geometric_alignment_k5():
     # Verify exact alignment math for K5
@@ -111,7 +118,7 @@ def test_geometric_alignment_k5():
     # Head: K=49. Shrinkage: 48.
     # Total Shrinkage: 20 + 1020 + 48 = 1088.
     # Output: 2112 - 1088 = 1024.
-    
+
     model = PomeranianK5()
     x = torch.randn(1, 4, 2112)
     output = model(x)
@@ -120,23 +127,28 @@ def test_geometric_alignment_k5():
 
 def test_pomeranian_dilations_n_dilated_layers_mismatch():
     """Regression: n_dilated_layers must match len(dilations) when both are provided."""
-    with pytest.raises(ValueError, match="n_dilated_layers=16 conflicts with len\\(dilations\\)=4"):
+    with pytest.raises(
+        ValueError, match="n_dilated_layers=16 conflicts with len\\(dilations\\)=4"
+    ):
         Pomeranian(n_dilated_layers=16, dilations=[1, 2, 4, 8])
 
 
 # --- Depthwise-only mode (expansion=0) ---
 
+
 class TestPGCBlockDepthwiseOnly:
     """Tests for PGCBlock depthwise-only mode (expansion=0)."""
 
     def test_shape_same_padding(self):
-        block = PGCBlock(dim=16, kernel_size=9, dilation=1, expansion=0, padding='same')
+        block = PGCBlock(dim=16, kernel_size=9, dilation=1, expansion=0, padding="same")
         x = torch.randn(2, 16, 64)
         out = block(x)
         assert out.shape == x.shape
 
     def test_shape_valid_padding(self):
-        block = PGCBlock(dim=16, kernel_size=9, dilation=4, expansion=0, padding='valid')
+        block = PGCBlock(
+            dim=16, kernel_size=9, dilation=4, expansion=0, padding="valid"
+        )
         x = torch.randn(2, 16, 128)
         out = block(x)
         # Shrinkage = dilation * (kernel_size - 1) = 4 * 8 = 32
@@ -144,12 +156,12 @@ class TestPGCBlockDepthwiseOnly:
 
     def test_no_pointwise_params(self):
         block = PGCBlock(dim=16, kernel_size=9, dilation=1, expansion=0)
-        assert not hasattr(block, 'in_proj')
-        assert not hasattr(block, 'out_proj')
-        assert not hasattr(block, 'norm1')
-        assert not hasattr(block, 'norm2')
-        assert hasattr(block, 'norm')
-        assert hasattr(block, 'conv')
+        assert not hasattr(block, "in_proj")
+        assert not hasattr(block, "out_proj")
+        assert not hasattr(block, "norm1")
+        assert not hasattr(block, "norm2")
+        assert hasattr(block, "norm")
+        assert hasattr(block, "conv")
 
     def test_fewer_params_than_full(self):
         dw_only = PGCBlock(dim=16, kernel_size=9, dilation=1, expansion=0)
@@ -171,7 +183,7 @@ class TestPGCBlockDepthwiseOnly:
         assert block.conv.groups == 16  # groups == dim == depthwise
 
     def test_gradient_flows(self):
-        block = PGCBlock(dim=8, kernel_size=5, dilation=2, expansion=0, padding='valid')
+        block = PGCBlock(dim=8, kernel_size=5, dilation=2, expansion=0, padding="valid")
         x = torch.randn(1, 8, 64, requires_grad=True)
         out = block(x)
         out.sum().backward()
@@ -224,11 +236,16 @@ class TestPomeranianDepthwiseOnly:
     def test_custom_filters(self):
         # Small model like the bias experiments (filters=8)
         model = Pomeranian(
-            filters=8, n_dilated_layers=10, expansion=0,
+            filters=8,
+            n_dilated_layers=10,
+            expansion=0,
             dilations=[1, 1, 2, 4, 8, 16, 32, 64, 128, 256],
-            dil_kernel_size=9, conv_kernel_size=[11, 11],
+            dil_kernel_size=9,
+            conv_kernel_size=[11, 11],
             profile_kernel_size=45,
-            input_len=5186, output_len=1024, stem_expansion=1,
+            input_len=5186,
+            output_len=1024,
+            stem_expansion=1,
         )
         x = torch.randn(1, 4, 5186)
         output = model(x)
@@ -240,5 +257,5 @@ class TestPomeranianDepthwiseOnly:
         model = Pomeranian(expansion=1)
         for layer in model.layers:
             assert layer.depthwise_only is False  # type: ignore
-            assert hasattr(layer, 'in_proj')
-            assert hasattr(layer, 'out_proj')
+            assert hasattr(layer, "in_proj")
+            assert hasattr(layer, "out_proj")

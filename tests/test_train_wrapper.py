@@ -37,6 +37,7 @@ def _make_train_config() -> TrainConfig:
         gradient_clip_val=None,
     )
 
+
 def _make_model_config(loss_args: dict | None = None) -> ModelConfig:
     return ModelConfig(
         name="TestModel",
@@ -51,6 +52,7 @@ def _make_model_config(loss_args: dict | None = None) -> ModelConfig:
         },
         pretrained=[],
     )
+
 
 def _make_data_config() -> DataConfig:
     """Create a minimal DataConfig for testing.
@@ -71,12 +73,20 @@ def _make_data_config() -> DataConfig:
     dc.log_transform = False
     dc.reverse_complement = False
     dc.model_dump.return_value = {
-        "input_len": 2114, "output_len": 1000, "output_bin_size": 1,
-        "targets": {}, "inputs": {}, "use_sequence": True,
-        "target_scale": 1.0, "max_jitter": 0, "encoding": "ACGT",
-        "log_transform": False, "reverse_complement": False,
+        "input_len": 2114,
+        "output_len": 1000,
+        "output_bin_size": 1,
+        "targets": {},
+        "inputs": {},
+        "use_sequence": True,
+        "target_scale": 1.0,
+        "max_jitter": 0,
+        "encoding": "ACGT",
+        "log_transform": False,
+        "reverse_complement": False,
     }
     return dc
+
 
 def _make_genome_config(k: int = 3) -> MagicMock:
     """Create a MagicMock GenomeConfig with fold_args as a plain dict."""
@@ -86,6 +96,7 @@ def _make_genome_config(k: int = 3) -> MagicMock:
     gc.model_dump.return_value = {"fold_args": {"k": k}}
     return gc
 
+
 def test_train_wrapper_calls_trainer_fit():
     mock_module = MagicMock(spec=pl.LightningModule)
     datamodule = MagicMock()
@@ -93,10 +104,16 @@ def test_train_wrapper_calls_trainer_fit():
     data_config = _make_data_config()
     train_config = _make_train_config()
 
-    with patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
-         patch("cerberus.train.instantiate", return_value=mock_module) as mock_instantiate, \
-         patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc):
-
+    with (
+        patch("pytorch_lightning.Trainer") as mock_trainer_cls,
+        patch(
+            "cerberus.train.instantiate", return_value=mock_module
+        ) as mock_instantiate,
+        patch(
+            "cerberus.train.resolve_adaptive_loss_args",
+            side_effect=lambda mc, dm, **kw: mc,
+        ),
+    ):
         mock_trainer_instance = mock_trainer_cls.return_value
 
         train(
@@ -124,7 +141,9 @@ def test_train_wrapper_calls_trainer_fit():
         assert EarlyStopping in callback_types
 
         # Verify fit called with the mock module
-        mock_trainer_instance.fit.assert_called_once_with(mock_module, datamodule=datamodule)
+        mock_trainer_instance.fit.assert_called_once_with(
+            mock_module, datamodule=datamodule
+        )
 
         # Verify datamodule setup called with runtime params
         datamodule.setup.assert_called_once_with(
@@ -136,6 +155,7 @@ def test_train_wrapper_calls_trainer_fit():
 
         # Verify instantiate was called with the resolved model_config
         mock_instantiate.assert_called_once()
+
 
 def test_save_model_pt_strips_prefix():
     """_save_model_pt writes model.pt with 'model.' prefix stripped."""
@@ -153,14 +173,17 @@ def test_save_model_pt_strips_prefix():
     trainer.checkpoint_callback = ckpt_callback
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        with patch("cerberus.train.torch.load", return_value=fake_ckpt), \
-             patch("cerberus.train.torch.save") as mock_save:
+        with (
+            patch("cerberus.train.torch.load", return_value=fake_ckpt),
+            patch("cerberus.train.torch.save") as mock_save,
+        ):
             _save_model_pt(trainer, tmp_dir)
 
         mock_save.assert_called_once()
         saved_sd, saved_path = mock_save.call_args[0]
         assert saved_path == Path(tmp_dir) / "model.pt"
         assert set(saved_sd.keys()) == {"conv.weight", "conv.bias"}
+
 
 def test_save_model_pt_strips_compile_prefix():
     """_save_model_pt strips _orig_mod. prefix when model was torch.compiled."""
@@ -177,12 +200,15 @@ def test_save_model_pt_strips_compile_prefix():
     trainer.checkpoint_callback = ckpt_callback
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        with patch("cerberus.train.torch.load", return_value=fake_ckpt), \
-             patch("cerberus.train.torch.save") as mock_save:
+        with (
+            patch("cerberus.train.torch.load", return_value=fake_ckpt),
+            patch("cerberus.train.torch.save") as mock_save,
+        ):
             _save_model_pt(trainer, tmp_dir)
 
         saved_sd, _ = mock_save.call_args[0]
         assert set(saved_sd.keys()) == {"layer.weight", "layer.bias"}
+
 
 def test_save_model_pt_skips_when_no_checkpoint():
     """_save_model_pt logs a warning and exits when best_model_path is empty."""
@@ -196,6 +222,7 @@ def test_save_model_pt_skips_when_no_checkpoint():
         _save_model_pt(trainer, "/some/dir")
         mock_save.assert_not_called()
 
+
 def test_train_wrapper_custom_callbacks():
     mock_module = MagicMock(spec=pl.LightningModule)
     datamodule = MagicMock()
@@ -204,10 +231,14 @@ def test_train_wrapper_custom_callbacks():
     train_config = _make_train_config()
     custom_cb = MagicMock(spec=pl.Callback)
 
-    with patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
-         patch("cerberus.train.instantiate", return_value=mock_module), \
-         patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc):
-
+    with (
+        patch("pytorch_lightning.Trainer") as mock_trainer_cls,
+        patch("cerberus.train.instantiate", return_value=mock_module),
+        patch(
+            "cerberus.train.resolve_adaptive_loss_args",
+            side_effect=lambda mc, dm, **kw: mc,
+        ),
+    ):
         train(
             model_config=model_config,
             data_config=data_config,
@@ -221,12 +252,14 @@ def test_train_wrapper_custom_callbacks():
         call_kwargs = mock_trainer_cls.call_args[1]
         assert custom_cb in call_kwargs["callbacks"]
 
+
 def test_train_single_run_test_false():
     """run_test=False (default) must NOT call trainer.test()."""
-    with patch("cerberus.train._train") as mock_train, \
-         patch("cerberus.train.CerberusDataModule"), \
-         patch("cerberus.train.update_ensemble_metadata"):
-
+    with (
+        patch("cerberus.train._train") as mock_train,
+        patch("cerberus.train.CerberusDataModule"),
+        patch("cerberus.train.update_ensemble_metadata"),
+    ):
         mock_trainer = MagicMock(spec=pl.Trainer)
         mock_train.return_value = mock_trainer
 
@@ -244,12 +277,14 @@ def test_train_single_run_test_false():
 
         mock_trainer.test.assert_not_called()
 
+
 def test_train_single_run_test_true():
     """run_test=True calls trainer.test(datamodule=..., ckpt_path='best') when a best checkpoint exists."""
-    with patch("cerberus.train._train") as mock_train, \
-         patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
-         patch("cerberus.train.update_ensemble_metadata"):
-
+    with (
+        patch("cerberus.train._train") as mock_train,
+        patch("cerberus.train.CerberusDataModule") as mock_dm_cls,
+        patch("cerberus.train.update_ensemble_metadata"),
+    ):
         mock_trainer = MagicMock(spec=pl.Trainer)
         # Simulate a ModelCheckpoint callback with a valid best path
         mock_ckpt_cb = MagicMock(spec=ModelCheckpoint)
@@ -274,12 +309,14 @@ def test_train_single_run_test_true():
             datamodule=mock_datamodule, ckpt_path="best"
         )
 
+
 def test_train_single_run_test_skips_when_no_checkpoint():
     """run_test=True with no best checkpoint logs a warning and does not call trainer.test()."""
-    with patch("cerberus.train._train") as mock_train, \
-         patch("cerberus.train.CerberusDataModule"), \
-         patch("cerberus.train.update_ensemble_metadata"):
-
+    with (
+        patch("cerberus.train._train") as mock_train,
+        patch("cerberus.train.CerberusDataModule"),
+        patch("cerberus.train.update_ensemble_metadata"),
+    ):
         mock_trainer = MagicMock(spec=pl.Trainer)
         # Simulate no ModelCheckpoint (e.g. enable_checkpointing=False)
         mock_trainer.checkpoint_callback = None

@@ -55,7 +55,9 @@ def predict_to_bigwig(
     genome_config = dataset.genome_config
     data_config = dataset.data_config
 
-    _, count_pseudocount = get_log_count_params(model_ensemble.cerberus_config.model_config_)
+    _, count_pseudocount = get_log_count_params(
+        model_ensemble.cerberus_config.model_config_
+    )
     logger.info("count_pseudocount=%.4g (from model config)", count_pseudocount)
 
     if use_folds is None:
@@ -93,8 +95,12 @@ def predict_to_bigwig(
                         break
                 if windows:
                     yield from _process_island(
-                        windows, dataset, model_ensemble,
-                        use_folds, batch_size, count_pseudocount,
+                        windows,
+                        dataset,
+                        model_ensemble,
+                        use_folds,
+                        batch_size,
+                        count_pseudocount,
                     )
         else:
             # Genome-wide prediction
@@ -117,7 +123,9 @@ def predict_to_bigwig(
                 prev_input_start = -999999
 
                 for window in sampler:
-                    if current_island and (window.start >= prev_input_start + output_len):
+                    if current_island and (
+                        window.start >= prev_input_start + output_len
+                    ):
                         yield from _process_island(
                             current_island,
                             dataset,
@@ -149,7 +157,9 @@ def predict_to_bigwig(
         bw.close()
 
 
-def _reconstruct_linear_signal(output: ModelOutput, count_pseudocount: float = 0.0) -> torch.Tensor:
+def _reconstruct_linear_signal(
+    output: ModelOutput, count_pseudocount: float = 0.0
+) -> torch.Tensor:
     """
     Converts a per-window model output to linear signal (counts per bin).
 
@@ -168,13 +178,15 @@ def _reconstruct_linear_signal(output: ModelOutput, count_pseudocount: float = 0
         Tensor of shape (C, L) with linear signal values.
     """
     if isinstance(output, ProfileCountOutput):
-        logits = output.logits.float()       # (C, L)
+        logits = output.logits.float()  # (C, L)
         log_counts = output.log_counts.float()  # (C,)
         # Numerically stable softmax over the length axis
         logits_shifted = logits - logits.max(dim=-1, keepdim=True).values
         exp_logits = torch.exp(logits_shifted)
         probs = exp_logits / exp_logits.sum(dim=-1, keepdim=True)  # (C, L)
-        total_counts = (torch.exp(log_counts) - count_pseudocount).clamp_min(0.0).unsqueeze(-1)  # (C, 1)
+        total_counts = (
+            (torch.exp(log_counts) - count_pseudocount).clamp_min(0.0).unsqueeze(-1)
+        )  # (C, 1)
         return probs * total_counts
     elif isinstance(output, ProfileLogRates):
         return torch.exp(output.log_rates.float())
@@ -279,7 +291,9 @@ def _process_island(
     values = track_data[0]  # (n_bins,)
 
     start = merged_interval.start
-    logger.info("island: %s:%d-%d  len=%d", chrom, start, merged_interval.end, len(values))
+    logger.info(
+        "island: %s:%d-%d  len=%d", chrom, start, merged_interval.end, len(values)
+    )
 
     for i, val in enumerate(values):
         bin_start = start + i * output_bin_size

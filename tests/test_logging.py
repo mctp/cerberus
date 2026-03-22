@@ -16,6 +16,7 @@ def test_setup_logging_basic():
     assert logger.level == logging.INFO
     assert logger.propagate is False
 
+
 def test_setup_logging_idempotent():
     """Test that setup_logging doesn't add duplicate handlers."""
     logger = logging.getLogger("cerberus")
@@ -28,6 +29,7 @@ def test_setup_logging_idempotent():
     assert len(logger.handlers) == 1
     assert logger.propagate is False
 
+
 def test_setup_logging_level():
     """Test setting a custom logging level."""
     logger = logging.getLogger("cerberus")
@@ -38,6 +40,7 @@ def test_setup_logging_level():
 
     assert logger.level == logging.DEBUG
     assert logger.handlers[0].level == logging.DEBUG
+
 
 def test_setup_logging_does_not_modify_root():
     """Regression: setup_logging must not add handlers to the root logger."""

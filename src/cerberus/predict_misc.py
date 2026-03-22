@@ -6,6 +6,7 @@ an argument rather than living as methods on ``ModelEnsemble``.  This keeps
 ``ModelEnsemble`` focused on fold-routing and batched inference while providing
 convenient entry points for scripts and notebooks.
 """
+
 import logging
 from pathlib import Path
 
@@ -21,7 +22,9 @@ from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
 logger = logging.getLogger(__name__)
 
 
-def create_eval_dataset(config: CerberusConfig, in_memory: bool = False) -> CerberusDataset:
+def create_eval_dataset(
+    config: CerberusConfig, in_memory: bool = False
+) -> CerberusDataset:
     """Create a :class:`CerberusDataset` configured for inference.
 
     Returns a dataset with no sampler and ``is_train=False`` (deterministic
@@ -132,12 +135,16 @@ def get_eval_intervals(
     intervals = [split_sampler[i] for i in range(n)]
     sources = [split_sampler.get_interval_source(i) for i in range(n)]
 
-    peak_intervals = [iv for iv, s in zip(intervals, sources, strict=True) if s == "IntervalSampler"]
+    peak_intervals = [
+        iv for iv, s in zip(intervals, sources, strict=True) if s == "IntervalSampler"
+    ]
 
     if not include_background:
         return peak_intervals
 
-    bg_intervals = [iv for iv, s in zip(intervals, sources, strict=True) if s != "IntervalSampler"]
+    bg_intervals = [
+        iv for iv, s in zip(intervals, sources, strict=True) if s != "IntervalSampler"
+    ]
     return peak_intervals, bg_intervals
 
 
@@ -162,11 +169,15 @@ def predict_log_counts(
         List of predicted total log-count values (one per interval).
     """
     model_config = ensemble.cerberus_config.model_config_
-    log_counts_include_pseudocount, count_pseudocount = get_log_count_params(model_config)
+    log_counts_include_pseudocount, count_pseudocount = get_log_count_params(
+        model_config
+    )
 
     results: list[float] = []
     for batch_output, _batch_intervals in ensemble.predict_intervals_batched(
-        intervals, dataset, batch_size=batch_size,
+        intervals,
+        dataset,
+        batch_size=batch_size,
     ):
         pred_log_total = compute_total_log_counts(
             batch_output,

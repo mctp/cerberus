@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.module -- untested code paths."""
+
 from unittest.mock import MagicMock
 
 import torch
@@ -20,8 +21,8 @@ from cerberus.module import (
 # configure_callbacks
 # ---------------------------------------------------------------------------
 
-class TestConfigureCallbacks:
 
+class TestConfigureCallbacks:
     def _train_config(self) -> TrainConfig:
         return TrainConfig.model_construct(
             patience=5,
@@ -84,8 +85,8 @@ class TestConfigureCallbacks:
 # instantiate_metrics_and_loss
 # ---------------------------------------------------------------------------
 
-class TestInstantiateMetricsAndLoss:
 
+class TestInstantiateMetricsAndLoss:
     def _model_config(self) -> ModelConfig:
         return ModelConfig.model_construct(
             name="test",
@@ -107,7 +108,9 @@ class TestInstantiateMetricsAndLoss:
 
     def test_with_cpu_device(self):
         mc = self._model_config()
-        metrics, criterion = instantiate_metrics_and_loss(mc, device=torch.device("cpu"))
+        metrics, criterion = instantiate_metrics_and_loss(
+            mc, device=torch.device("cpu")
+        )
         assert metrics is not None
         assert criterion is not None
 
@@ -116,8 +119,8 @@ class TestInstantiateMetricsAndLoss:
 # CerberusModule.lr_scheduler_step
 # ---------------------------------------------------------------------------
 
-class TestLrSchedulerStep:
 
+class TestLrSchedulerStep:
     def _make_module(self):
         """Create a minimal CerberusModule for testing."""
         from cerberus.loss import MSEMultinomialLoss

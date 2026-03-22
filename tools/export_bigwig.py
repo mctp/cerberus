@@ -11,6 +11,7 @@ Usage:
     # Regions from a BED file
     python tools/export_bigwig.py path/to/model_dir --output predictions.bw --regions-bed peaks.bed
 """
+
 import argparse
 import logging
 import re
@@ -190,7 +191,9 @@ def main():
     # 6. Run prediction and write BigWig
     output_path = Path(args.output)
     mode = f"{len(regions)} region(s)" if regions else "genome-wide"
-    logger.info(f"Starting {mode} prediction (stride={args.stride}, batch_size={args.batch_size})...")
+    logger.info(
+        f"Starting {mode} prediction (stride={args.stride}, batch_size={args.batch_size})..."
+    )
 
     predict_to_bigwig(
         output_path=output_path,

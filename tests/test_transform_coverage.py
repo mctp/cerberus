@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.transform — untested code paths."""
+
 import pytest
 import torch
 
@@ -34,8 +35,8 @@ def inputs_and_targets():
 # create_default_transforms with DataConfig options
 # ---------------------------------------------------------------------------
 
-class TestCreateDefaultTransforms:
 
+class TestCreateDefaultTransforms:
     def _make_data_config(self, **overrides) -> DataConfig:
         base: dict = {
             "inputs": {},
@@ -92,8 +93,8 @@ class TestCreateDefaultTransforms:
 # Log1p apply_to variants
 # ---------------------------------------------------------------------------
 
-class TestLog1pApplyTo:
 
+class TestLog1pApplyTo:
     def test_apply_to_both(self, inputs_and_targets, interval):
         inputs, targets = inputs_and_targets
         t = Log1p(apply_to="both")
@@ -113,8 +114,8 @@ class TestLog1pApplyTo:
 # Sqrt apply_to variants
 # ---------------------------------------------------------------------------
 
-class TestSqrtApplyTo:
 
+class TestSqrtApplyTo:
     def test_apply_to_both(self, inputs_and_targets, interval):
         inputs, targets = inputs_and_targets
         t = Sqrt(apply_to="both")
@@ -127,8 +128,8 @@ class TestSqrtApplyTo:
 # Arcsinh apply_to variants
 # ---------------------------------------------------------------------------
 
-class TestArcsinhApplyTo:
 
+class TestArcsinhApplyTo:
     def test_apply_to_both(self, inputs_and_targets, interval):
         inputs, targets = inputs_and_targets
         t = Arcsinh(apply_to="both")
@@ -148,8 +149,8 @@ class TestArcsinhApplyTo:
 # Scale apply_to variants
 # ---------------------------------------------------------------------------
 
-class TestScaleApplyTo:
 
+class TestScaleApplyTo:
     def test_apply_to_both(self, inputs_and_targets, interval):
         inputs, targets = inputs_and_targets
         factor = 3.0
@@ -171,8 +172,8 @@ class TestScaleApplyTo:
 # Bin with method="avg"
 # ---------------------------------------------------------------------------
 
-class TestBinAvg:
 
+class TestBinAvg:
     def test_avg_method(self, interval):
         targets = torch.arange(16, dtype=torch.float).unsqueeze(0)  # (1, 16)
         inputs = torch.randn(4, 16)
@@ -188,8 +189,8 @@ class TestBinAvg:
 # TargetCrop no-op case
 # ---------------------------------------------------------------------------
 
-class TestTargetCropNoOp:
 
+class TestTargetCropNoOp:
     def test_target_shorter_than_output_len(self, interval):
         """When target length <= output_len, no cropping occurs."""
         inputs = torch.randn(4, 100)
@@ -211,8 +212,8 @@ class TestTargetCropNoOp:
 # Jitter with max_jitter=None
 # ---------------------------------------------------------------------------
 
-class TestJitterFullRange:
 
+class TestJitterFullRange:
     def test_max_jitter_none_uses_full_range(self):
         """max_jitter=None allows full slack range."""
         torch.manual_seed(70)
@@ -235,8 +236,8 @@ class TestJitterFullRange:
 # ReverseComplement with probability=0.0
 # ---------------------------------------------------------------------------
 
-class TestReverseComplementNever:
 
+class TestReverseComplementNever:
     def test_probability_zero_never_applies(self, interval):
         """With probability=0.0, the transform should never be applied."""
         torch.manual_seed(71)

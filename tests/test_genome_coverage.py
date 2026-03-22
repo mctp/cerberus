@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.genome — untested code paths."""
+
 import pytest
 
 from cerberus.genome import _create_folds_chrom_partition, create_genome_folds
@@ -7,20 +8,22 @@ from cerberus.genome import _create_folds_chrom_partition, create_genome_folds
 # create_genome_folds
 # ---------------------------------------------------------------------------
 
-class TestCreateGenomeFolds:
 
+class TestCreateGenomeFolds:
     def test_unknown_fold_type_raises(self):
         chrom_sizes = {"chr1": 1000, "chr2": 2000}
         with pytest.raises(ValueError, match="Unknown fold_type"):
-            create_genome_folds(chrom_sizes, fold_type="unknown_strategy", fold_args={"k": 3})
+            create_genome_folds(
+                chrom_sizes, fold_type="unknown_strategy", fold_args={"k": 3}
+            )
 
 
 # ---------------------------------------------------------------------------
 # _create_folds_chrom_partition
 # ---------------------------------------------------------------------------
 
-class TestChromPartition:
 
+class TestChromPartition:
     def test_distributes_chroms_into_k_folds(self):
         chrom_sizes = {
             "chr1": 100000,
@@ -62,7 +65,9 @@ class TestChromPartition:
         avg = sum(fold_totals) / k
         for total in fold_totals:
             # Each fold should be within ~35% of average for this distribution
-            assert abs(total - avg) / avg < 0.35, f"Fold total {total} too far from avg {avg}"
+            assert abs(total - avg) / avg < 0.35, (
+                f"Fold total {total} too far from avg {avg}"
+            )
 
     def test_k_equals_num_chroms(self):
         """When k equals the number of chromosomes, each fold has exactly one chrom."""

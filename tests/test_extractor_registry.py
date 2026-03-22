@@ -23,32 +23,58 @@ class TestResolveExtractorCls:
     """Tests for the _resolve_extractor_cls helper."""
 
     def test_bigwig_default(self):
-        assert _resolve_extractor_cls(Path("track.bw"), in_memory=False) is SignalExtractor
+        assert (
+            _resolve_extractor_cls(Path("track.bw"), in_memory=False) is SignalExtractor
+        )
 
     def test_bigwig_in_memory(self):
-        assert _resolve_extractor_cls(Path("track.bw"), in_memory=True) is InMemorySignalExtractor
+        assert (
+            _resolve_extractor_cls(Path("track.bw"), in_memory=True)
+            is InMemorySignalExtractor
+        )
 
     def test_bigwig_alternate_extension(self):
-        assert _resolve_extractor_cls(Path("track.bigwig"), in_memory=False) is SignalExtractor
+        assert (
+            _resolve_extractor_cls(Path("track.bigwig"), in_memory=False)
+            is SignalExtractor
+        )
 
     def test_bigbed_default(self):
-        assert _resolve_extractor_cls(Path("mask.bb"), in_memory=False) is BigBedMaskExtractor
+        assert (
+            _resolve_extractor_cls(Path("mask.bb"), in_memory=False)
+            is BigBedMaskExtractor
+        )
 
     def test_bigbed_in_memory(self):
-        assert _resolve_extractor_cls(Path("mask.bb"), in_memory=True) is InMemoryBigBedMaskExtractor
+        assert (
+            _resolve_extractor_cls(Path("mask.bb"), in_memory=True)
+            is InMemoryBigBedMaskExtractor
+        )
 
     def test_bigbed_alternate_extension(self):
-        assert _resolve_extractor_cls(Path("mask.bigbed"), in_memory=False) is BigBedMaskExtractor
+        assert (
+            _resolve_extractor_cls(Path("mask.bigbed"), in_memory=False)
+            is BigBedMaskExtractor
+        )
 
     def test_bed_default(self):
-        assert _resolve_extractor_cls(Path("peaks.bed"), in_memory=False) is BedMaskExtractor
+        assert (
+            _resolve_extractor_cls(Path("peaks.bed"), in_memory=False)
+            is BedMaskExtractor
+        )
 
     def test_bed_in_memory_still_returns_default(self):
         # BedMaskExtractor has no in-memory variant (it's always in-memory)
-        assert _resolve_extractor_cls(Path("peaks.bed"), in_memory=True) is BedMaskExtractor
+        assert (
+            _resolve_extractor_cls(Path("peaks.bed"), in_memory=True)
+            is BedMaskExtractor
+        )
 
     def test_bed_gz_compound_extension(self):
-        assert _resolve_extractor_cls(Path("peaks.bed.gz"), in_memory=False) is BedMaskExtractor
+        assert (
+            _resolve_extractor_cls(Path("peaks.bed.gz"), in_memory=False)
+            is BedMaskExtractor
+        )
 
     def test_unknown_extension_raises(self):
         with pytest.raises(ValueError, match="No extractor registered"):
@@ -63,12 +89,15 @@ class TestRegisterExtractor:
         class DummyExtractor:
             pass
 
-        register_extractor('.dummy', DummyExtractor)
+        register_extractor(".dummy", DummyExtractor)
         try:
-            assert _resolve_extractor_cls(Path("file.dummy"), in_memory=False) is DummyExtractor
+            assert (
+                _resolve_extractor_cls(Path("file.dummy"), in_memory=False)
+                is DummyExtractor
+            )
         finally:
             # Clean up registry
-            _EXTRACTOR_REGISTRY.pop('.dummy', None)
+            _EXTRACTOR_REGISTRY.pop(".dummy", None)
 
     def test_register_with_in_memory_variant(self):
         class DummyExtractor:
@@ -77,22 +106,31 @@ class TestRegisterExtractor:
         class DummyInMemoryExtractor:
             pass
 
-        register_extractor('.dummy2', DummyExtractor, DummyInMemoryExtractor)
+        register_extractor(".dummy2", DummyExtractor, DummyInMemoryExtractor)
         try:
-            assert _resolve_extractor_cls(Path("f.dummy2"), in_memory=False) is DummyExtractor
-            assert _resolve_extractor_cls(Path("f.dummy2"), in_memory=True) is DummyInMemoryExtractor
+            assert (
+                _resolve_extractor_cls(Path("f.dummy2"), in_memory=False)
+                is DummyExtractor
+            )
+            assert (
+                _resolve_extractor_cls(Path("f.dummy2"), in_memory=True)
+                is DummyInMemoryExtractor
+            )
         finally:
-            _EXTRACTOR_REGISTRY.pop('.dummy2', None)
+            _EXTRACTOR_REGISTRY.pop(".dummy2", None)
 
     def test_register_case_insensitive(self):
         class DummyExtractor:
             pass
 
-        register_extractor('.DuMmY3', DummyExtractor)
+        register_extractor(".DuMmY3", DummyExtractor)
         try:
-            assert _resolve_extractor_cls(Path("file.dummy3"), in_memory=False) is DummyExtractor
+            assert (
+                _resolve_extractor_cls(Path("file.dummy3"), in_memory=False)
+                is DummyExtractor
+            )
         finally:
-            _EXTRACTOR_REGISTRY.pop('.dummy3', None)
+            _EXTRACTOR_REGISTRY.pop(".dummy3", None)
 
 
 class TestUniversalExtractorRegistry:
@@ -122,6 +160,7 @@ class TestUniversalExtractorRegistry:
 
         # Create a minimal bigwig
         import pybigtools
+
         bw_path = tmp_path / "signal.bw"
         bw = pybigtools.open(str(bw_path), "w")  # type: ignore[attr-defined]
         bw.write({"chr1": 1000}, [("chr1", 0, 1000, [0.0] * 1000)])

@@ -4,14 +4,15 @@ from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
 
 
 class GRN1d(nn.Module):
-    """ 
+    """
     ConvNeXt v2 GRN (Global Response Normalization) layer, adapted for 1d.
-    
+
     This layer computes the L2 norm across the temporal dimension and divides
     by the mean norm to normalize channel responses globally.
-    
+
     Reference: facebookresearch/ConvNeXt-V2
     """
+
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.gamma = nn.Parameter(torch.zeros(1, 1, dim))
@@ -22,10 +23,11 @@ class GRN1d(nn.Module):
         Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * Nx) + self.beta + x
 
+
 class ConvNeXtV2Block(nn.Module):
     """
     ConvNeXt V2 Block adapted for 1D genomic data.
-    
+
     Structure:
     - Depthwise Conv1d (Spatial mixing)
     - LayerNorm
@@ -35,6 +37,7 @@ class ConvNeXtV2Block(nn.Module):
     - Pointwise Conv1d (Channel compression)
     - Residual connection
     """
+
     def __init__(
         self,
         channels_in: int,
@@ -85,7 +88,7 @@ class ConvNeXtV2Block(nn.Module):
         x = self.pwconv2(x)
 
         x = x.permute(0, 2, 1)
-        
+
         # If residual is active but shapes differ (due to valid padding), crop the residual
         if self.res_early and x_.shape[-1] != x.shape[-1]:
             diff = x_.shape[-1] - x.shape[-1]
@@ -94,10 +97,13 @@ class ConvNeXtV2Block(nn.Module):
                 crop_r = diff - crop_l
                 x_ = x_[..., crop_l:-crop_r]
             elif diff < 0:
-                raise ValueError(f"Output larger than input in Block? In: {x_.shape}, Out: {x.shape}")
+                raise ValueError(
+                    f"Output larger than input in Block? In: {x_.shape}, Out: {x.shape}"
+                )
 
         x = x_ + x
         return x
+
 
 class PGCBlock(nn.Module):
     """
@@ -133,21 +139,31 @@ class PGCBlock(nn.Module):
         dropout (float): Dropout rate.
         padding (str): Padding mode. Default: 'same'.
     """
-    def __init__(self, dim: int, kernel_size: int, dilation: int, expansion: int = 2, dropout: float = 0.1, padding: str = 'same'):
+
+    def __init__(
+        self,
+        dim: int,
+        kernel_size: int,
+        dilation: int,
+        expansion: int = 2,
+        dropout: float = 0.1,
+        padding: str = "same",
+    ):
         super().__init__()
 
         self.dim = dim
-        self.depthwise_only = (expansion == 0)
+        self.depthwise_only = expansion == 0
 
         if self.depthwise_only:
             # Depthwise-only: norm -> conv -> dropout -> residual
             self.norm = nn.RMSNorm(dim)
             self.conv = nn.Conv1d(
-                dim, dim,
+                dim,
+                dim,
                 kernel_size=kernel_size,
                 dilation=dilation,
                 groups=dim,
-                padding=padding
+                padding=padding,
             )
             self.dropout = nn.Dropout(dropout)
         else:
@@ -163,11 +179,12 @@ class PGCBlock(nn.Module):
             # 3. Depthwise Conv
             # Applied to X part only (first half)
             self.conv = nn.Conv1d(
-                self.hidden_dim, self.hidden_dim,
+                self.hidden_dim,
+                self.hidden_dim,
                 kernel_size=kernel_size,
                 dilation=dilation,
-                groups=self.hidden_dim, # Depthwise
-                padding=padding
+                groups=self.hidden_dim,  # Depthwise
+                padding=padding,
             )
 
             # 4. Output Projection
@@ -193,9 +210,9 @@ class PGCBlock(nn.Module):
             x = self.in_proj(x)
 
             # 2. Norm (requires B, L, C)
-            x = x.transpose(1, 2) # (B, L, C)
+            x = x.transpose(1, 2)  # (B, L, C)
             x = self.norm1(x.float()).type_as(x)
-            x = x.transpose(1, 2) # (B, C, L)
+            x = x.transpose(1, 2)  # (B, C, L)
 
             # 3. Split
             x, v = torch.chunk(x, 2, dim=1)
@@ -211,7 +228,9 @@ class PGCBlock(nn.Module):
                     crop_r = diff - crop_l
                     v = v[..., crop_l:-crop_r]
                 elif diff < 0:
-                     raise ValueError(f"Conv output larger than input? {x.shape} vs {v.shape}")
+                    raise ValueError(
+                        f"Conv output larger than input? {x.shape} vs {v.shape}"
+                    )
 
             # 5. Gating
             x = x * v
@@ -235,9 +254,12 @@ class PGCBlock(nn.Module):
                 crop_r = diff - crop_l
                 residual = residual[..., crop_l:-crop_r]
             elif diff < 0:
-                 raise ValueError(f"Output larger than residual? {x.shape} vs {residual.shape}")
+                raise ValueError(
+                    f"Output larger than residual? {x.shape} vs {residual.shape}"
+                )
 
         return residual + x
+
 
 class DilatedResidualBlock(nn.Module):
     """
@@ -266,15 +288,23 @@ class DilatedResidualBlock(nn.Module):
             or ``"activated_residual_pre-activation_conv"``.
             Default: ``"residual_post-activation_conv"``.
     """
-    def __init__(self, filters: int, kernel_size: int, dilation: int,
-                 activation: str = "relu", weight_norm: bool = False,
-                 residual_architecture: str = "residual_post-activation_conv"):
+
+    def __init__(
+        self,
+        filters: int,
+        kernel_size: int,
+        dilation: int,
+        activation: str = "relu",
+        weight_norm: bool = False,
+        residual_architecture: str = "residual_post-activation_conv",
+    ):
         super().__init__()
         conv = nn.Conv1d(
-            filters, filters,
+            filters,
+            filters,
             kernel_size=kernel_size,
             dilation=dilation,
-            padding='valid'
+            padding="valid",
         )
         if weight_norm:
             _apply_weight_norm(conv)
@@ -353,8 +383,15 @@ class SimpleResidualBlock(nn.Module):
         dropout: Dropout rate. Default: 0.1.
         residual: Whether to add a residual connection. Default: True.
     """
-    def __init__(self, dim: int, kernel_size: int, dilation: int = 1,
-                 dropout: float = 0.1, residual: bool = True):
+
+    def __init__(
+        self,
+        dim: int,
+        kernel_size: int,
+        dilation: int = 1,
+        dropout: float = 0.1,
+        residual: bool = True,
+    ):
         super().__init__()
         self.shrinkage = dilation * (kernel_size - 1)
         self.residual = residual
@@ -369,6 +406,6 @@ class SimpleResidualBlock(nn.Module):
             # Center-crop residual to match valid-padded output
             if self.shrinkage > 0:
                 crop = self.shrinkage // 2
-                x = x[..., crop: crop + out.shape[-1]]
+                x = x[..., crop : crop + out.shape[-1]]
             return out + x
         return out

@@ -7,24 +7,26 @@ from cerberus.download import download_human_reference
 from cerberus.genome import create_human_genome_config
 
 
-@pytest.mark.skipif(os.environ.get("RUN_SLOW_TESTS") is None, reason="Skipping slow download tests")
+@pytest.mark.skipif(
+    os.environ.get("RUN_SLOW_TESTS") is None, reason="Skipping slow download tests"
+)
 def test_download_human_reference():
     base_dir = Path(os.environ.get("CERBERUS_DATA_DIR", "tests/data"))
     output_base = base_dir / "genome"
     genome_name = "hg38"
     genome_dir = output_base / genome_name
-    
+
     # Call the function
     # This should create {tmp_path}/genome/hg38 and download files there
     results = download_human_reference(output_base, name=genome_name)
-    
+
     # Verify outputs
     assert genome_dir.exists()
     assert results["fasta"].exists()
     assert results["fai"].exists()
     assert results["blacklist"].exists()
     assert results["gaps"].exists()
-    
+
     # Verify file sizes are not zero (basic check)
     assert results["fasta"].stat().st_size > 0
     assert results["fai"].stat().st_size > 0
@@ -39,8 +41,10 @@ def test_download_human_reference():
             parts = line.split()
             start, end = int(parts[1]), int(parts[2])
             length = end - start
-            assert length > 3, f"Found gap of length {length} at {parts[0]}:{start}-{end}"
-    
+            assert length > 3, (
+                f"Found gap of length {length} at {parts[0]}:{start}-{end}"
+            )
+
     print(f"\nDownload completed. Files saved to {genome_dir}")
 
     # Test config creation

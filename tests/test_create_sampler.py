@@ -14,6 +14,7 @@ def test_create_sampler_unknown_type():
     with pytest.raises(ValueError, match="Unsupported sampler type: unknown_type"):
         create_sampler(cfg, chrom_sizes={}, exclude_intervals={}, folds=[])
 
+
 def test_create_sampler_random(tmp_path):
     cfg = SamplerConfig(
         sampler_type="random",
@@ -21,5 +22,7 @@ def test_create_sampler_random(tmp_path):
         sampler_args={"num_intervals": 10},
     )
     chrom_sizes = {"chr1": 1000}
-    sampler = create_sampler(cfg, chrom_sizes=chrom_sizes, exclude_intervals={}, folds=[])
+    sampler = create_sampler(
+        cfg, chrom_sizes=chrom_sizes, exclude_intervals={}, folds=[]
+    )
     assert len(sampler) == 10

@@ -8,9 +8,12 @@ from cerberus.datamodule import CerberusDataModule
 
 @pytest.fixture
 def mock_dataset_cls():
-    with patch("cerberus.datamodule.CerberusDataset") as mock, \
-         patch.object(CerberusDataModule, "_validate_paths"):
+    with (
+        patch("cerberus.datamodule.CerberusDataset") as mock,
+        patch.object(CerberusDataModule, "_validate_paths"),
+    ):
         yield mock
+
 
 def test_datamodule_setup(
     mock_dataset_cls,
@@ -78,6 +81,7 @@ def test_datamodule_setup(
     assert dm.batch_size == 16
     assert dm.num_workers == 2
 
+
 def test_datamodule_dataloaders(
     mock_dataset_cls,
 ):
@@ -128,7 +132,7 @@ def test_datamodule_dataloaders(
     assert train_dl.batch_size == 16
     assert train_dl.num_workers == 2
     assert train_dl.dataset == train_ds
-    assert train_dl.drop_last == False # Default
+    assert train_dl.drop_last == False  # Default
 
     val_dl = dm.val_dataloader()
     assert val_dl.batch_size == 16
@@ -137,6 +141,7 @@ def test_datamodule_dataloaders(
     test_dl = dm.test_dataloader()
     assert test_dl.batch_size == 16
     assert test_dl.dataset == test_ds
+
 
 def test_datamodule_resample_via_dataloader(
     mock_dataset_cls,
@@ -191,6 +196,7 @@ def test_datamodule_resample_via_dataloader(
     # Check if resample was called with correct seed (seed + epoch*world + rank)
     train_ds.resample.assert_called_once_with(seed=dm.seed + 1)
 
+
 def test_datamodule_drop_last(
     mock_dataset_cls,
 ):
@@ -241,6 +247,7 @@ def test_datamodule_drop_last(
 # ---------------------------------------------------------------------------
 # _validate_paths tests
 # ---------------------------------------------------------------------------
+
 
 def test_validate_paths_missing_fasta(tmp_path):
     """_validate_paths raises FileNotFoundError when fasta_path does not exist."""

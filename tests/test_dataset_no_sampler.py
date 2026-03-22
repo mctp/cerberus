@@ -61,6 +61,7 @@ def test_dataset_no_sampler_implicit(tmp_path):
     # Verify resample does not crash
     ds.resample()
 
+
 def test_dataset_no_sampler_explicit_none_config(tmp_path):
     # Similar to above but explicitly passing None for sampler_config
     genome = tmp_path / "genome.fa"

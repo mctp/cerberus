@@ -21,15 +21,15 @@ from cerberus.output import ProfileCountOutput
 class BPNet(nn.Module):
     """
     BPNet: Base-Resolution Prediction Net.
-    
+
     Architecture based on the Consensus BPNet specification:
     - Input: One-hot sequence (Batch, 4, Length)
     - Body: Initial Conv -> N Dilated Residual Blocks
     - Head 1 (Profile): Conv1D -> Logits
     - Head 2 (Counts): Global Avg Pool -> Dense -> Log(Total Counts)
-    
+
     Uses 'valid' padding with center cropping to match the reference implementation.
-    
+
     Args:
         input_len (int): Length of input sequence.
         output_len (int): Length of output sequence.
@@ -61,6 +61,7 @@ class BPNet(nn.Module):
             To match ``bpnet-refactor`` semantics, the two pre-activation variants
             apply an additional final ``ReLU`` after the full dilated tower.
     """
+
     def __init__(
         self,
         input_len: int = 2114,
@@ -91,7 +92,9 @@ class BPNet(nn.Module):
         self.n_output_channels = len(output_channels)
         self.predict_total_count = predict_total_count
         self.residual_architecture = residual_architecture
-        self._activate_iconv_before_tower = residual_architecture == "residual_post-activation_conv"
+        self._activate_iconv_before_tower = (
+            residual_architecture == "residual_post-activation_conv"
+        )
         self._apply_final_tower_relu = residual_architecture in {
             "residual_pre-activation_conv",
             "activated_residual_pre-activation_conv",
@@ -99,9 +102,10 @@ class BPNet(nn.Module):
 
         # 1. Initial Convolution (plain — weight_norm applied after reinit if requested)
         self.iconv: nn.Module = nn.Conv1d(
-            self.n_input_channels, filters,
+            self.n_input_channels,
+            filters,
             kernel_size=conv_kernel_size,
-            padding='valid'
+            padding="valid",
         )
 
         # Activation module used for the initial conv output when the selected
@@ -111,7 +115,9 @@ class BPNet(nn.Module):
         elif activation == "gelu":
             self.iconv_act = nn.GELU()
         else:
-            raise ValueError(f"BPNet: unsupported activation {activation!r}. Must be 'relu' or 'gelu'.")
+            raise ValueError(
+                f"BPNet: unsupported activation {activation!r}. Must be 'relu' or 'gelu'."
+            )
 
         # 2. Dilated Residual Tower (built plain — weight_norm applied after reinit if requested)
         self.res_layers = nn.ModuleList()
@@ -119,17 +125,23 @@ class BPNet(nn.Module):
             # Dilation increases exponentially: 2^1, 2^2, ...
             dilation = 2**i
             self.res_layers.append(
-                DilatedResidualBlock(filters, dil_kernel_size, dilation,
-                                     activation=activation, weight_norm=False,
-                                     residual_architecture=residual_architecture)
+                DilatedResidualBlock(
+                    filters,
+                    dil_kernel_size,
+                    dilation,
+                    activation=activation,
+                    weight_norm=False,
+                    residual_architecture=residual_architecture,
+                )
             )
 
         # 3. Profile Head
         # Predicts shape (logits)
         self.profile_conv = nn.Conv1d(
-            filters, self.n_output_channels,
+            filters,
+            self.n_output_channels,
             kernel_size=profile_kernel_size,
-            padding='valid'
+            padding="valid",
         )
 
         # 4. Counts Head
@@ -154,8 +166,13 @@ class BPNet(nn.Module):
             "BPNet initialized: filters=%d, n_dilated_layers=%d, activation=%s, "
             "weight_norm=%s, residual_architecture=%s, iconv_activation_before_tower=%s, "
             "final_tower_relu=%s",
-            filters, n_dilated_layers, activation, weight_norm, residual_architecture,
-            self._activate_iconv_before_tower, self._apply_final_tower_relu,
+            filters,
+            n_dilated_layers,
+            activation,
+            weight_norm,
+            residual_architecture,
+            self._activate_iconv_before_tower,
+            self._apply_final_tower_relu,
         )
 
     def _tf_style_reinit(self):
@@ -204,7 +221,7 @@ class BPNet(nn.Module):
         x = self.iconv(x)
         if self._activate_iconv_before_tower:
             x = self.iconv_act(x)
-        
+
         # 2. Residual Tower
         for layer in self.res_layers:
             x = layer(x)
@@ -213,47 +230,49 @@ class BPNet(nn.Module):
         # pre-activation variants (syntax_module final activation).
         if self._apply_final_tower_relu:
             x = F.relu(x)
-            
+
         # --- Profile Head ---
-        profile_logits = self.profile_conv(x) # (B, Out_Channels, Length)
-        
+        profile_logits = self.profile_conv(x)  # (B, Out_Channels, Length)
+
         # Crop to target output_len if needed
         # We assume output_len is set to the desired length after all valid convolutions
         # Typically bpnet expects 1000 output from 2114 input
         current_len = profile_logits.shape[-1]
         target_len = self.output_len
-        
+
         if current_len > target_len:
             diff = current_len - target_len
             crop_l = diff // 2
             crop_r = diff - crop_l
             profile_logits = profile_logits[..., crop_l:-crop_r]
         elif current_len < target_len:
-            raise ValueError(f"Output length {current_len} is smaller than requested {target_len}")
-        
+            raise ValueError(
+                f"Output length {current_len} is smaller than requested {target_len}"
+            )
+
         if self.output_bin_size > 1:
             # Average Pooling if binning is requested
             # Note: This reduces resolution from Input_Len to Output_Len
             profile_logits = F.avg_pool1d(
-                profile_logits, 
-                kernel_size=self.output_bin_size, 
-                stride=self.output_bin_size
+                profile_logits,
+                kernel_size=self.output_bin_size,
+                stride=self.output_bin_size,
             )
 
         # --- Counts Head ---
         # Global Average Pooling over the sequence length of the latent representation
         # x is (B, Filters, Input_Len) (or cropped length)
-        x_pooled = x.mean(dim=-1) # (B, Filters)
-        
-        log_counts = self.count_dense(x_pooled) # (B, Out_Channels)
-        
+        x_pooled = x.mean(dim=-1)  # (B, Filters)
+
+        log_counts = self.count_dense(x_pooled)  # (B, Out_Channels)
+
         return ProfileCountOutput(logits=profile_logits, log_counts=log_counts)
 
 
 class BPNet1024(BPNet):
     """
     BPNet1024: A configuration of BPNet optimized for 2112 -> 1024 prediction without cropping.
-    
+
     Key Features:
     - Input: 2112 bp
     - Output: 1024 bp
@@ -265,6 +284,7 @@ class BPNet1024(BPNet):
     - Parameter Count: ~152k (roughly 50% increase over standard BPNet).
       - Achieved by increasing filters to 77.
     """
+
     def __init__(
         self,
         input_len: int = 2112,
@@ -303,36 +323,37 @@ class BPNet1024(BPNet):
 class BPNetLoss(MSEMultinomialLoss):
     """
     BPNet Loss with parameters fixed to match chrombpnet-pytorch implementation.
-    
+
     Objective:
       1. Profile Loss: Multinomial NLL (using logits as unnormalized log-probs).
       2. Count Loss: MSE of log(global_count).
-      
+
     Weights:
       Loss = beta * profile_loss + alpha * count_loss
-      
+
     Differences from MSEMultinomialLoss:
       - Profile loss is averaged over channels (instead of summed) (average_channels=True).
       - Uses alpha/beta parameterization map to count_weight/profile_weight.
 
     Compatibility Note:
         This loss is mathematically equivalent to the loss in `bpnet-lite` and `chrombpnet-pytorch`.
-        
+
         1. Profile Loss:
            - chrombpnet-pytorch: Calculates Multinomial NLL per channel (summing over sequence length),
-             resulting in a (Batch, Channels) tensor. Then takes the MEAN over all elements 
+             resulting in a (Batch, Channels) tensor. Then takes the MEAN over all elements
              (batch and channels).
-           - BPNetLoss: Sets `average_channels=True` and `flatten_channels=False`. This computes 
+           - BPNetLoss: Sets `average_channels=True` and `flatten_channels=False`. This computes
              NLL per channel (summing over length) and then takes the MEAN over batch and channels.
              Result: Identical.
-             
+
         2. Count Loss:
-           - chrombpnet-pytorch: Sums target counts over all channels and length. Calculates MSE between 
+           - chrombpnet-pytorch: Sums target counts over all channels and length. Calculates MSE between
              predicted log-counts and log(total_counts + 1). Takes MEAN over batch.
            - BPNetLoss: Sets `count_per_channel=False`. This sums target counts over channels and length,
              computes log1p, and calculates MSE with predicted log-counts. Takes MEAN over batch.
              Result: Identical.
     """
+
     def __init__(self, alpha=1.0, beta=1.0, **kwargs):
         """
         Args:
@@ -362,13 +383,13 @@ class BPNetLoss(MSEMultinomialLoss):
         # MSEMultinomialLoss: loss = profile_weight * profile + count_weight * count
         # We explicitly set all parameters to ensure strict compatibility regardless of defaults
         super().__init__(
-            count_weight=alpha, 
-            profile_weight=beta, 
-            average_channels=True, 
+            count_weight=alpha,
+            profile_weight=beta,
+            average_channels=True,
             flatten_channels=False,
             count_per_channel=False,
             log1p_targets=False,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -377,10 +398,30 @@ class BPNetMetricCollection(MetricCollection):
     MetricCollection for BPNet models.
     Includes Decoupled Pearson Correlation and Decoupled MSE (operating on reconstructed counts).
     """
-    def __init__(self, log1p_targets: bool = False, count_pseudocount: float = 1.0, log_counts_include_pseudocount: bool = False):
-        super().__init__({
-            "pearson": CountProfilePearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
-            "mse_profile": CountProfileMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount),
-            "mse_log_counts": LogCountsMeanSquaredError(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount, log_counts_include_pseudocount=log_counts_include_pseudocount),
-            "pearson_log_counts": LogCountsPearsonCorrCoef(log1p_targets=log1p_targets, count_pseudocount=count_pseudocount, log_counts_include_pseudocount=log_counts_include_pseudocount),
-        })
+
+    def __init__(
+        self,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        log_counts_include_pseudocount: bool = False,
+    ):
+        super().__init__(
+            {
+                "pearson": CountProfilePearsonCorrCoef(
+                    log1p_targets=log1p_targets, count_pseudocount=count_pseudocount
+                ),
+                "mse_profile": CountProfileMeanSquaredError(
+                    log1p_targets=log1p_targets, count_pseudocount=count_pseudocount
+                ),
+                "mse_log_counts": LogCountsMeanSquaredError(
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+                "pearson_log_counts": LogCountsPearsonCorrCoef(
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+            }
+        )

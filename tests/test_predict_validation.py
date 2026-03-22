@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from unittest.mock import MagicMock
 
@@ -24,6 +23,7 @@ from cerberus.output import ModelOutput
 class MockOutput(ModelOutput):
     out_track: torch.Tensor
 
+
 MOCK_DATA_CONFIG = DataConfig.model_construct(
     input_len=1000,
     output_len=200,
@@ -47,6 +47,7 @@ MOCK_GENOME_CONFIG = GenomeConfig.model_construct(
     exclude_intervals={},
     fasta_path="mock.fa",
 )
+
 
 class MockEnsemble(ModelEnsemble):
     def __init__(self):
@@ -88,14 +89,15 @@ class MockEnsemble(ModelEnsemble):
         )
         self.folds = []
         # Mocking the internal dictionary of models
-        self.update({"0": nn.Linear(1,1)})
+        self.update({"0": nn.Linear(1, 1)})
 
     def forward(self, x, intervals=None, use_folds=None, aggregation="model"):
         batch_size = x.shape[0]
         return MockOutput(
             out_track=torch.zeros(batch_size, 1, MOCK_DATA_CONFIG.output_len),
-            out_interval=None
+            out_interval=None,
         )
+
 
 def test_predict_intervals_invalid_length():
     """Verify that predict_intervals raises ValueError for incorrect interval lengths."""
@@ -109,8 +111,9 @@ def test_predict_intervals_invalid_length():
         return {
             "inputs": torch.randn(4, length),
             "targets": torch.randn(1, length),
-            "intervals": str(interval)
+            "intervals": str(interval),
         }
+
     dataset.get_interval = MagicMock(side_effect=side_effect_get_interval)
 
     ensemble = MockEnsemble()
@@ -120,6 +123,7 @@ def test_predict_intervals_invalid_length():
 
     with pytest.raises(ValueError, match="match model input length"):
         ensemble.predict_intervals([iv], dataset)
+
 
 def test_predict_intervals_valid_length():
     """Verify that predict_intervals works for correct interval lengths."""
@@ -132,8 +136,9 @@ def test_predict_intervals_valid_length():
         return {
             "inputs": torch.randn(4, length),
             "targets": torch.randn(1, length),
-            "intervals": str(interval)
+            "intervals": str(interval),
         }
+
     dataset.get_interval = MagicMock(side_effect=side_effect_get_interval)
 
     ensemble = MockEnsemble()

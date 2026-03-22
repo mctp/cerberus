@@ -62,6 +62,7 @@ class BiasNet(nn.Module):
         linear_head (bool): If True, profile head is a single linear spatial conv
             (no pointwise + ReLU). More interpretable for attribution. Default: True.
     """
+
     def __init__(
         self,
         input_len: int = 1128,
@@ -104,7 +105,7 @@ class BiasNet(nn.Module):
         stem_layers: list[nn.Module] = []
         for i, k in enumerate(conv_kernel_size):
             c_in = self.n_input_channels if i == 0 else filters
-            stem_layers.append(nn.Conv1d(c_in, filters, k, padding='valid'))
+            stem_layers.append(nn.Conv1d(c_in, filters, k, padding="valid"))
             stem_layers.append(nn.ReLU())
         self.stem = nn.Sequential(*stem_layers)
 
@@ -113,8 +114,11 @@ class BiasNet(nn.Module):
         for d in dilations:
             self.layers.append(
                 SimpleResidualBlock(
-                    filters, dil_kernel_size, dilation=d,
-                    dropout=dropout, residual=residual,
+                    filters,
+                    dil_kernel_size,
+                    dilation=d,
+                    dropout=dropout,
+                    residual=residual,
                 )
             )
 
@@ -122,16 +126,20 @@ class BiasNet(nn.Module):
         if linear_head:
             # Single linear spatial conv — most interpretable for attribution
             self.profile_spatial = nn.Conv1d(
-                filters, self.n_output_channels,
-                kernel_size=profile_kernel_size, padding='valid',
+                filters,
+                self.n_output_channels,
+                kernel_size=profile_kernel_size,
+                padding="valid",
             )
         else:
             # Pointwise → ReLU → spatial conv
             self.profile_pointwise = nn.Conv1d(filters, filters, kernel_size=1)
             self.profile_act = nn.ReLU()
             self.profile_spatial = nn.Conv1d(
-                filters, self.n_output_channels,
-                kernel_size=profile_kernel_size, padding='valid',
+                filters,
+                self.n_output_channels,
+                kernel_size=profile_kernel_size,
+                padding="valid",
             )
 
         # 4. Count Head (MLP)
@@ -154,7 +162,7 @@ class BiasNet(nn.Module):
         # Center-crop or reject input based on expected input_len
         if x.shape[-1] > self.input_len:
             crop = (x.shape[-1] - self.input_len) // 2
-            x = x[..., crop: crop + self.input_len]
+            x = x[..., crop : crop + self.input_len]
         elif x.shape[-1] < self.input_len:
             raise ValueError(
                 f"Input length {x.shape[-1]} is shorter than required {self.input_len}"

@@ -1,4 +1,3 @@
-
 from unittest.mock import patch
 
 import pytest
@@ -17,6 +16,7 @@ class DummyModel(nn.Module):
 
     def forward(self, x):
         return self.linear(x)
+
 
 def test_instantiate_model_compile():
     if not hasattr(torch, "compile"):
@@ -52,12 +52,13 @@ def test_instantiate_model_compile():
         mock_import.return_value = DummyModel
 
         with patch("torch.compile") as mock_compile:
-            mock_compile.side_effect = lambda m: m # identity
+            mock_compile.side_effect = lambda m: m  # identity
 
             model = instantiate_model(model_config, data_config, compile=True)
 
             assert isinstance(model, DummyModel)
             mock_compile.assert_called_once()
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

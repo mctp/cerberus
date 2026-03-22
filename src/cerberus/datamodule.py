@@ -27,10 +27,11 @@ logger = logging.getLogger(__name__)
 class CerberusDataModule(pl.LightningDataModule):
     """
     PyTorch Lightning DataModule for Cerberus.
-    
+
     Manages data loading, splitting, and setup for training, validation, and testing.
     Handles efficient data loading with multi-processing and shared memory.
     """
+
     def __init__(
         self,
         genome_config: GenomeConfig,
@@ -65,7 +66,7 @@ class CerberusDataModule(pl.LightningDataModule):
         self.genome_config = genome_config
         self.data_config = data_config
         self.sampler_config = sampler_config
-        
+
         # Runtime settings (configured via setup)
         self.batch_size = 1
         self.val_batch_size = 1
@@ -77,7 +78,7 @@ class CerberusDataModule(pl.LightningDataModule):
             test_fold = self.genome_config.fold_args["test_fold"]
         if val_fold is None:
             val_fold = self.genome_config.fold_args["val_fold"]
-        
+
         self.test_fold = test_fold
         self.val_fold = val_fold
 
@@ -89,7 +90,9 @@ class CerberusDataModule(pl.LightningDataModule):
         self.multiprocessing_context = multiprocessing_context
         self.seed = seed
         self.drop_last = drop_last
-        self.cache_dir = Path(cache_dir) if cache_dir is not None else get_default_cache_dir()
+        self.cache_dir = (
+            Path(cache_dir) if cache_dir is not None else get_default_cache_dir()
+        )
 
         self.train_dataset: CerberusDataset | None = None
         self.val_dataset: CerberusDataset | None = None
@@ -100,7 +103,7 @@ class CerberusDataModule(pl.LightningDataModule):
     def _worker_init_fn(worker_id: int) -> None:
         """
         Internal worker initialization function for DataLoader.
-        
+
         CRITICAL for reproducibility and data diversity:
         1. Ensures each worker has a different random seed derived from the torch seed.
         2. Without this, if workers use numpy.random (e.g. in Samplers or custom transforms),
@@ -173,7 +176,9 @@ class CerberusDataModule(pl.LightningDataModule):
             if sampler.negatives is not None:  # type: ignore[union-attr]
                 metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
             else:
-                logger.info("prepare_data: peak sampler has no negatives, nothing to cache")
+                logger.info(
+                    "prepare_data: peak sampler has no negatives, nothing to cache"
+                )
                 return
         elif sampler_type == "negative_peak":
             metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
@@ -204,8 +209,10 @@ class CerberusDataModule(pl.LightningDataModule):
         p = Path(self.genome_config.fasta_path)
         if not p.exists():
             raise FileNotFoundError(f"Genome FASTA not found: {p}")
-        for label, channel_map in [("input", self.data_config.inputs),
-                                    ("target", self.data_config.targets)]:
+        for label, channel_map in [
+            ("input", self.data_config.inputs),
+            ("target", self.data_config.targets),
+        ]:
             for channel, path_val in channel_map.items():
                 if not Path(path_val).exists():
                     raise FileNotFoundError(
@@ -213,7 +220,9 @@ class CerberusDataModule(pl.LightningDataModule):
                     )
         intervals_path = self.sampler_config.sampler_args.get("intervals_path")
         if intervals_path and not Path(intervals_path).exists():
-            raise FileNotFoundError(f"Sampler intervals file not found: {intervals_path}")
+            raise FileNotFoundError(
+                f"Sampler intervals file not found: {intervals_path}"
+            )
 
     def setup(
         self,
@@ -254,7 +263,9 @@ class CerberusDataModule(pl.LightningDataModule):
 
         self._validate_paths()
 
-        logger.info(f"Setting up DataModule (test_fold={self.test_fold}, val_fold={self.val_fold})...")
+        logger.info(
+            f"Setting up DataModule (test_fold={self.test_fold}, val_fold={self.val_fold})..."
+        )
 
         # Load cached complexity metrics if available (populated by prepare_data)
         prepare_cache = self._load_prepare_cache()
@@ -270,10 +281,12 @@ class CerberusDataModule(pl.LightningDataModule):
         )
 
         # Split into folds
-        self.train_dataset, self.val_dataset, self.test_dataset = full_dataset.split_folds(
-            test_fold=self.test_fold, val_fold=self.val_fold
+        self.train_dataset, self.val_dataset, self.test_dataset = (
+            full_dataset.split_folds(test_fold=self.test_fold, val_fold=self.val_fold)
         )
-        logger.info(f"DataModule setup complete. Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}, Test: {len(self.test_dataset)}")
+        logger.info(
+            f"DataModule setup complete. Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}, Test: {len(self.test_dataset)}"
+        )
         self._is_initialized = True
 
     def save_interval_manifests(self, output_dir: Path) -> None:
@@ -399,7 +412,9 @@ class CerberusDataModule(pl.LightningDataModule):
             )
         dataset = self.train_dataset
         if dataset.sampler is None:
-            raise RuntimeError("train_dataset has no sampler; cannot compute median counts.")
+            raise RuntimeError(
+                "train_dataset has no sampler; cannot compute median counts."
+            )
         n = len(dataset)
         indices = random.sample(range(n), min(n_samples, n))
 
@@ -422,7 +437,7 @@ class CerberusDataModule(pl.LightningDataModule):
         counts = []
         for i in indices:
             interval = dataset.sampler[i]
-            raw = tmp_extractor.extract(interval)   # (C, input_len), no transforms
+            raw = tmp_extractor.extract(interval)  # (C, input_len), no transforms
             if raw.shape[-1] > output_len:
                 raw = raw[..., crop_start:crop_end]
             counts.append(float(raw.sum()))

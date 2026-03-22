@@ -49,6 +49,7 @@ from cerberus.samplers import (
 # 1. generate_sub_seeds
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateSubSeeds:
     """Comprehensive tests for generate_sub_seeds."""
 
@@ -90,19 +91,25 @@ class TestGenerateSubSeeds:
         result = generate_sub_seeds(42, 10)
         assert None not in result
 
+
 # ---------------------------------------------------------------------------
 # 2. Sampler seed defaults
 # ---------------------------------------------------------------------------
+
 
 class TestSamplerSeedDefaults:
     """Verify all sampler __init__ signatures default seed to 42."""
 
     def test_random_sampler_default_seed(self):
-        rs = RandomSampler(chrom_sizes={"chr1": 10000}, padded_size=100, num_intervals=5)
+        rs = RandomSampler(
+            chrom_sizes={"chr1": 10000}, padded_size=100, num_intervals=5
+        )
         assert rs.seed == 42
 
     def test_random_sampler_explicit_seed(self):
-        rs = RandomSampler(chrom_sizes={"chr1": 10000}, padded_size=100, num_intervals=5, seed=99)
+        rs = RandomSampler(
+            chrom_sizes={"chr1": 10000}, padded_size=100, num_intervals=5, seed=99
+        )
         assert rs.seed == 99
 
     def test_scaled_sampler_default_seed(self):
@@ -112,13 +119,17 @@ class TestSamplerSeedDefaults:
         assert ss.seed == 42
 
     def test_multi_sampler_default_seed(self):
-        rs = RandomSampler(chrom_sizes={"chr1": 10000}, padded_size=100, num_intervals=5, seed=1)
+        rs = RandomSampler(
+            chrom_sizes={"chr1": 10000}, padded_size=100, num_intervals=5, seed=1
+        )
         ms = MultiSampler([rs], chrom_sizes={"chr1": 10000}, exclude_intervals={})
         assert ms.seed == 42
+
 
 # ---------------------------------------------------------------------------
 # 3. PeakSampler seed propagation
 # ---------------------------------------------------------------------------
+
 
 class TestPeakSamplerSeedPropagation:
     """Verify PeakSampler passes its seed to child samplers."""
@@ -126,13 +137,16 @@ class TestPeakSamplerSeedPropagation:
     @pytest.fixture
     def _mock_peak_children(self):
         """Mock child sampler constructors to capture seed arguments."""
-        with patch("cerberus.samplers.IntervalSampler") as mock_interval, \
-             patch("cerberus.samplers.RandomSampler") as mock_random, \
-             patch("cerberus.samplers.ComplexityMatchedSampler") as mock_cms:
-
+        with (
+            patch("cerberus.samplers.IntervalSampler") as mock_interval,
+            patch("cerberus.samplers.RandomSampler") as mock_random,
+            patch("cerberus.samplers.ComplexityMatchedSampler") as mock_cms,
+        ):
             mock_interval_inst = MagicMock()
             mock_interval_inst.__len__.return_value = 50
-            intervals = [Interval("chr1", i * 100, i * 100 + 50, "+") for i in range(50)]
+            intervals = [
+                Interval("chr1", i * 100, i * 100 + 50, "+") for i in range(50)
+            ]
             mock_interval_inst.__iter__.return_value = iter(intervals)
             mock_interval_inst.__getitem__.side_effect = lambda i: intervals[i]
             mock_interval.return_value = mock_interval_inst
@@ -192,9 +206,11 @@ class TestPeakSamplerSeedPropagation:
         _mock_peak_children["random_sampler"].assert_not_called()
         _mock_peak_children["complexity_matched_sampler"].assert_not_called()
 
+
 # ---------------------------------------------------------------------------
 # 4. create_sampler seed propagation for complexity_matched
 # ---------------------------------------------------------------------------
+
 
 class TestCreateSamplerSeedPropagation:
     """Verify create_sampler uses generate_sub_seeds for child samplers."""
@@ -202,9 +218,9 @@ class TestCreateSamplerSeedPropagation:
     @pytest.fixture(autouse=True)
     def _mock_complexity(self):
         with patch("cerberus.samplers.compute_intervals_complexity") as m:
-            m.side_effect = lambda intervals, fasta, metrics, center_size=None: np.random.rand(
-                len(intervals), len(metrics)
-            ).astype(np.float32)
+            m.side_effect = lambda intervals, fasta, metrics, center_size=None: (
+                np.random.rand(len(intervals), len(metrics)).astype(np.float32)
+            )
             yield m
 
     def test_complexity_matched_child_seeds_differ(self):
@@ -214,11 +230,13 @@ class TestCreateSamplerSeedPropagation:
             padded_size=100,
             sampler_args={
                 "target_sampler": SamplerConfig.model_construct(
-                    sampler_type="random", padded_size=100,
+                    sampler_type="random",
+                    padded_size=100,
                     sampler_args={"num_intervals": 5},
                 ),
                 "candidate_sampler": SamplerConfig.model_construct(
-                    sampler_type="random", padded_size=100,
+                    sampler_type="random",
+                    padded_size=100,
                     sampler_args={"num_intervals": 10},
                 ),
                 "bins": 10,
@@ -229,8 +247,12 @@ class TestCreateSamplerSeedPropagation:
         chrom_sizes = {"chr1": 100_000}
 
         sampler = create_sampler(
-            config, chrom_sizes=chrom_sizes, folds=[], exclude_intervals={},
-            fasta_path="mock.fa", seed=42,
+            config,
+            chrom_sizes=chrom_sizes,
+            folds=[],
+            exclude_intervals={},
+            fasta_path="mock.fa",
+            seed=42,
         )
         assert isinstance(sampler, ComplexityMatchedSampler)
 
@@ -244,7 +266,8 @@ class TestCreateSamplerSeedPropagation:
     def test_same_seed_reproduces_sampler(self):
         """create_sampler with same seed produces identical intervals."""
         config = SamplerConfig.model_construct(
-            sampler_type="random", padded_size=100,
+            sampler_type="random",
+            padded_size=100,
             sampler_args={"num_intervals": 20},
         )
 
@@ -255,7 +278,8 @@ class TestCreateSamplerSeedPropagation:
     def test_different_seed_produces_different_sampler(self):
         """create_sampler with different seed produces different intervals."""
         config = SamplerConfig.model_construct(
-            sampler_type="random", padded_size=100,
+            sampler_type="random",
+            padded_size=100,
             sampler_args={"num_intervals": 20},
         )
 
@@ -263,9 +287,11 @@ class TestCreateSamplerSeedPropagation:
         s2 = create_sampler(config, {"chr1": 1_000_000}, [], {}, seed=99)
         assert [str(i) for i in s1] != [str(i) for i in s2]
 
+
 # ---------------------------------------------------------------------------
 # 5. cache.py edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestCacheEdgeCases:
     """Edge-case tests for cache utilities."""
@@ -274,10 +300,18 @@ class TestCacheEdgeCases:
         """Different chrom_sizes produce different cache dirs."""
         fasta = tmp_path / "genome.fa"
         fasta.write_text(">chr1\nACGT\n")
-        config = SamplerConfig.model_construct(sampler_type="peak", sampler_args={"intervals_path": "peaks.bed"}, padded_size=100)
+        config = SamplerConfig.model_construct(
+            sampler_type="peak",
+            sampler_args={"intervals_path": "peaks.bed"},
+            padded_size=100,
+        )
 
-        dir_a = resolve_cache_dir(tmp_path, fasta, config, seed=42, chrom_sizes={"chr1": 1000})
-        dir_b = resolve_cache_dir(tmp_path, fasta, config, seed=42, chrom_sizes={"chr1": 2000})
+        dir_a = resolve_cache_dir(
+            tmp_path, fasta, config, seed=42, chrom_sizes={"chr1": 1000}
+        )
+        dir_b = resolve_cache_dir(
+            tmp_path, fasta, config, seed=42, chrom_sizes={"chr1": 2000}
+        )
         assert dir_a != dir_b
 
     def test_resolve_cache_dir_different_padded_size(self, tmp_path):
@@ -286,11 +320,23 @@ class TestCacheEdgeCases:
         fasta.write_text(">chr1\nACGT\n")
         chrom_sizes = {"chr1": 10000}
 
-        config_a = SamplerConfig.model_construct(sampler_type="peak", sampler_args={"intervals_path": "peaks.bed"}, padded_size=100)
-        config_b = SamplerConfig.model_construct(sampler_type="peak", sampler_args={"intervals_path": "peaks.bed"}, padded_size=200)
+        config_a = SamplerConfig.model_construct(
+            sampler_type="peak",
+            sampler_args={"intervals_path": "peaks.bed"},
+            padded_size=100,
+        )
+        config_b = SamplerConfig.model_construct(
+            sampler_type="peak",
+            sampler_args={"intervals_path": "peaks.bed"},
+            padded_size=200,
+        )
 
-        dir_a = resolve_cache_dir(tmp_path, fasta, config_a, seed=42, chrom_sizes=chrom_sizes)
-        dir_b = resolve_cache_dir(tmp_path, fasta, config_b, seed=42, chrom_sizes=chrom_sizes)
+        dir_a = resolve_cache_dir(
+            tmp_path, fasta, config_a, seed=42, chrom_sizes=chrom_sizes
+        )
+        dir_b = resolve_cache_dir(
+            tmp_path, fasta, config_b, seed=42, chrom_sizes=chrom_sizes
+        )
         assert dir_a != dir_b
 
     def test_save_empty_cache(self, tmp_path):
@@ -303,7 +349,7 @@ class TestCacheEdgeCases:
     def test_save_large_cache(self, tmp_path):
         """Saving and loading a cache with many entries works."""
         cache = {
-            f"chr1:{i*100}-{i*100+100}(+)": np.random.rand(3).astype(np.float32)
+            f"chr1:{i * 100}-{i * 100 + 100}(+)": np.random.rand(3).astype(np.float32)
             for i in range(1000)
         }
         save_prepare_cache(tmp_path / "large", cache)
@@ -325,43 +371,61 @@ class TestCacheEdgeCases:
         assert loaded is not None
         np.testing.assert_array_almost_equal(loaded["chr1:0-100(+)"], [0.9])
 
+
 # ---------------------------------------------------------------------------
 # 6. CerberusDataModule seed and cache_dir
 # ---------------------------------------------------------------------------
 
+
 def _dm_genome_config(fasta_path="pyproject.toml"):
     return GenomeConfig.model_construct(
-        name="test", fasta_path=fasta_path,
-        chrom_sizes={"chr1": 1000}, allowed_chroms=["chr1"],
-        exclude_intervals={}, fold_type="chrom_partition",
+        name="test",
+        fasta_path=fasta_path,
+        chrom_sizes={"chr1": 1000},
+        allowed_chroms=["chr1"],
+        exclude_intervals={},
+        fold_type="chrom_partition",
         fold_args={"k": 2, "test_fold": 0, "val_fold": 1},
     )
 
+
 def _dm_data_config():
     return DataConfig.model_construct(
-        inputs={}, targets={}, input_len=100, output_len=100,
-        output_bin_size=1, max_jitter=0, encoding="ACGT",
-        log_transform=False, reverse_complement=False,
-        target_scale=1.0, use_sequence=True,
+        inputs={},
+        targets={},
+        input_len=100,
+        output_len=100,
+        output_bin_size=1,
+        max_jitter=0,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
     )
+
 
 def _dm_sampler_config(sampler_type="random"):
     if sampler_type == "random":
         return SamplerConfig.model_construct(
-            sampler_type="random", padded_size=100,
+            sampler_type="random",
+            padded_size=100,
             sampler_args={"num_intervals": 10},
         )
     else:
         return SamplerConfig.model_construct(
-            sampler_type="peak", padded_size=100,
+            sampler_type="peak",
+            padded_size=100,
             sampler_args={"intervals_path": "peaks.bed", "background_ratio": 1.0},
         )
+
 
 class TestDataModuleSeedStorage:
     """Verify CerberusDataModule stores seed and cache_dir correctly."""
 
     def test_default_seed(self):
         from cerberus.datamodule import CerberusDataModule
+
         dm = CerberusDataModule(
             genome_config=_dm_genome_config(),
             data_config=_dm_data_config(),
@@ -371,6 +435,7 @@ class TestDataModuleSeedStorage:
 
     def test_explicit_seed(self):
         from cerberus.datamodule import CerberusDataModule
+
         dm = CerberusDataModule(
             genome_config=_dm_genome_config(),
             data_config=_dm_data_config(),
@@ -381,6 +446,7 @@ class TestDataModuleSeedStorage:
 
     def test_default_cache_dir(self):
         from cerberus.datamodule import CerberusDataModule
+
         dm = CerberusDataModule(
             genome_config=_dm_genome_config(),
             data_config=_dm_data_config(),
@@ -390,6 +456,7 @@ class TestDataModuleSeedStorage:
 
     def test_explicit_cache_dir(self, tmp_path):
         from cerberus.datamodule import CerberusDataModule
+
         dm = CerberusDataModule(
             genome_config=_dm_genome_config(),
             data_config=_dm_data_config(),
@@ -401,6 +468,7 @@ class TestDataModuleSeedStorage:
     def test_resolve_cache_dir_none_for_random(self):
         """_resolve_cache_dir returns None for random sampler."""
         from cerberus.datamodule import CerberusDataModule
+
         dm = CerberusDataModule(
             genome_config=_dm_genome_config(),
             data_config=_dm_data_config(),
@@ -425,9 +493,11 @@ class TestDataModuleSeedStorage:
         assert result is not None
         assert str(result).startswith(str(tmp_path / "cache"))
 
+
 # ---------------------------------------------------------------------------
 # 7. train_single / train_multi seed propagation
 # ---------------------------------------------------------------------------
+
 
 def _mock_genome_config(k: int) -> MagicMock:
     """Create a MagicMock GenomeConfig with fold_args attribute access."""
@@ -435,6 +505,7 @@ def _mock_genome_config(k: int) -> MagicMock:
     gc.fold_args = {"k": k, "test_fold": None, "val_fold": None}
     gc.model_copy.return_value = gc
     return gc
+
 
 def _mock_model_config() -> ModelConfig:
     """Create a minimal ModelConfig for tests calling _train."""
@@ -448,6 +519,7 @@ def _mock_model_config() -> ModelConfig:
         model_args={},
         pretrained=[],
     )
+
 
 def _mock_train_config() -> TrainConfig:
     """Create a minimal TrainConfig for tests calling _train."""
@@ -466,15 +538,17 @@ def _mock_train_config() -> TrainConfig:
         gradient_clip_val=None,
     )
 
+
 class TestTrainSeedPropagation:
     """Verify train_single and train_multi pass seed to CerberusDataModule."""
 
     def test_train_single_passes_seed(self):
         """train_single(seed=77) passes seed=77 to CerberusDataModule."""
-        with patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
-             patch("cerberus.train.instantiate"), \
-             patch("cerberus.train._train"):
-
+        with (
+            patch("cerberus.train.CerberusDataModule") as mock_dm_cls,
+            patch("cerberus.train.instantiate"),
+            patch("cerberus.train._train"),
+        ):
             from cerberus.train import train_single
 
             train_single(
@@ -493,10 +567,11 @@ class TestTrainSeedPropagation:
 
     def test_train_single_default_seed(self):
         """train_single() defaults seed to 42."""
-        with patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
-             patch("cerberus.train.instantiate"), \
-             patch("cerberus.train._train"):
-
+        with (
+            patch("cerberus.train.CerberusDataModule") as mock_dm_cls,
+            patch("cerberus.train.instantiate"),
+            patch("cerberus.train._train"),
+        ):
             from cerberus.train import train_single
 
             train_single(
@@ -549,7 +624,9 @@ class TestTrainSeedPropagation:
 
             assert mock_ts.call_count == 4
             expected_pairs = [(0, 1), (1, 2), (2, 3), (3, 0)]
-            for c, (test_f, val_f) in zip(mock_ts.call_args_list, expected_pairs, strict=True):
+            for c, (test_f, val_f) in zip(
+                mock_ts.call_args_list, expected_pairs, strict=True
+            ):
                 assert c.kwargs["test_fold"] == test_f
                 assert c.kwargs["val_fold"] == val_f
 
@@ -572,19 +649,22 @@ class TestTrainSeedPropagation:
             for c in mock_ts.call_args_list:
                 assert c.kwargs["root_dir"] == "/tmp/shared_root"
 
+
 # ---------------------------------------------------------------------------
 # 8. train_single fold directory and metadata
 # ---------------------------------------------------------------------------
+
 
 class TestTrainSingleFoldStructure:
     """Verify train_single creates fold subdirectory and updates metadata."""
 
     def test_fold_dir_created(self, tmp_path):
         """train_single creates fold_N subdirectory."""
-        with patch("cerberus.train.CerberusDataModule"), \
-             patch("cerberus.train.instantiate"), \
-             patch("cerberus.train._train") as mock_train:
-
+        with (
+            patch("cerberus.train.CerberusDataModule"),
+            patch("cerberus.train.instantiate"),
+            patch("cerberus.train._train") as mock_train,
+        ):
             from cerberus.train import train_single
 
             root = tmp_path / "exp"
@@ -604,10 +684,11 @@ class TestTrainSingleFoldStructure:
 
     def test_metadata_created(self, tmp_path):
         """train_single creates ensemble_metadata.yaml."""
-        with patch("cerberus.train.CerberusDataModule"), \
-             patch("cerberus.train.instantiate"), \
-             patch("cerberus.train._train"):
-
+        with (
+            patch("cerberus.train.CerberusDataModule"),
+            patch("cerberus.train.instantiate"),
+            patch("cerberus.train._train"),
+        ):
             from cerberus.train import train_single
 
             root = tmp_path / "exp_meta"
@@ -629,10 +710,11 @@ class TestTrainSingleFoldStructure:
 
     def test_metadata_accumulates_folds(self, tmp_path):
         """Sequential train_single calls accumulate folds in metadata."""
-        with patch("cerberus.train.CerberusDataModule"), \
-             patch("cerberus.train.instantiate"), \
-             patch("cerberus.train._train"):
-
+        with (
+            patch("cerberus.train.CerberusDataModule"),
+            patch("cerberus.train.instantiate"),
+            patch("cerberus.train._train"),
+        ):
             from cerberus.train import train_single
 
             root = tmp_path / "exp_accum"
@@ -651,9 +733,11 @@ class TestTrainSingleFoldStructure:
                 meta = yaml.safe_load(f)
             assert set(meta["folds"]) == {0, 1, 2}
 
+
 # ---------------------------------------------------------------------------
 # 9. Ensemble metadata edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestEnsembleMetadata:
     """Tests for update_ensemble_metadata edge cases."""
@@ -706,9 +790,11 @@ class TestEnsembleMetadata:
             meta = yaml.safe_load(f)
         assert meta["folds"] == [0, 1, 2, 3, 4]
 
+
 # ---------------------------------------------------------------------------
 # 10. prepare_data with peak sampler
 # ---------------------------------------------------------------------------
+
 
 class TestPrepareDataPeakSampler:
     """Verify prepare_data() works for peak sampler type."""
@@ -772,9 +858,11 @@ class TestPrepareDataPeakSampler:
         assert loaded is not None
         assert set(loaded.keys()) == set(m["fake_cache"].keys())
 
+
 # ---------------------------------------------------------------------------
 # 11. Datamodule seed formula (epoch, rank, world_size)
 # ---------------------------------------------------------------------------
+
 
 class TestDataModuleSeedFormula:
     """Verify the resample seed formula: base + epoch * world_size + rank."""
@@ -847,9 +935,11 @@ class TestDataModuleSeedFormula:
 
         assert len(set(seeds)) == 4
 
+
 # ---------------------------------------------------------------------------
 # 12. CerberusDataset prepare_cache → create_sampler full chain
 # ---------------------------------------------------------------------------
+
 
 class TestDatasetSamplerCacheChain:
     """Verify CerberusDataset passes prepare_cache through _initialize_sampler to create_sampler."""
@@ -857,21 +947,30 @@ class TestDatasetSamplerCacheChain:
     @pytest.fixture
     def _patched_dataset(self):
         genome_config = GenomeConfig.model_construct(
-            name="test", fasta_path="mock.fa",
-            chrom_sizes={"chr1": 10000}, allowed_chroms=["chr1"],
-            exclude_intervals={}, fold_type="chrom_partition",
+            name="test",
+            fasta_path="mock.fa",
+            chrom_sizes={"chr1": 10000},
+            allowed_chroms=["chr1"],
+            exclude_intervals={},
+            fold_type="chrom_partition",
             fold_args={"k": 2, "test_fold": None, "val_fold": None},
         )
         data_config = DataConfig.model_construct(
-            inputs={"sig": "mock.bw"}, targets={},
-            input_len=1000, output_len=1000,
-            output_bin_size=1, max_jitter=0,
-            encoding="one_hot", log_transform=False,
-            reverse_complement=False, target_scale=1.0,
+            inputs={"sig": "mock.bw"},
+            targets={},
+            input_len=1000,
+            output_len=1000,
+            output_bin_size=1,
+            max_jitter=0,
+            encoding="one_hot",
+            log_transform=False,
+            reverse_complement=False,
+            target_scale=1.0,
             use_sequence=False,
         )
         sampler_config = SamplerConfig.model_construct(
-            sampler_type="random", padded_size=1000,
+            sampler_type="random",
+            padded_size=1000,
             sampler_args={"num_intervals": 10},
         )
 
@@ -931,9 +1030,11 @@ class TestDatasetSamplerCacheChain:
         kwargs = m["create_sampler"].call_args.kwargs
         assert kwargs["prepare_cache"] is None
 
+
 # ---------------------------------------------------------------------------
 # 13. MultiSampler de-correlation via generate_sub_seeds
 # ---------------------------------------------------------------------------
+
 
 class TestMultiSamplerDeCorrelation:
     """Verify MultiSampler assigns distinct derived seeds to sub-samplers."""
@@ -956,8 +1057,7 @@ class TestMultiSamplerDeCorrelation:
         """Three sub-samplers all get distinct seeds."""
         chrom_sizes = {"chr1": 100_000}
         samplers: list[RandomSampler] = [
-            RandomSampler(chrom_sizes, 100, 20, seed=42)
-            for _ in range(3)
+            RandomSampler(chrom_sizes, 100, 20, seed=42) for _ in range(3)
         ]
         MultiSampler(list(samplers), chrom_sizes, exclude_intervals={}, seed=7)  # type: ignore[arg-type]
 
@@ -965,9 +1065,11 @@ class TestMultiSamplerDeCorrelation:
         # All three should be different
         assert len(set(interval_sets)) == 3
 
+
 # ---------------------------------------------------------------------------
 # 14. Full seed chain: DataModule → setup → Dataset → create_sampler
 # ---------------------------------------------------------------------------
+
 
 class TestFullSeedChain:
     """End-to-end test verifying seed flows from DataModule all the way to create_sampler."""
@@ -1005,9 +1107,11 @@ class TestFullSeedChain:
             # CerberusDataset was called with seed=77
             assert mock_ds.call_args.kwargs["seed"] == 77
 
+
 # ---------------------------------------------------------------------------
 # 15. _train calls prepare_data before setup
 # ---------------------------------------------------------------------------
+
 
 class TestTrainCallsPrepareThenSetup:
     """Verify _train() calls prepare_data() before setup()."""
@@ -1022,11 +1126,15 @@ class TestTrainCallsPrepareThenSetup:
         mock_dm.setup.side_effect = lambda **kw: call_order.append("setup")
         mock_dm.compute_median_counts.return_value = 100.0
 
-        with patch("cerberus.train.configure_callbacks", return_value=[]), \
-             patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm: mc), \
-             patch("cerberus.train.instantiate"), \
-             patch("pytorch_lightning.Trainer") as mock_trainer_cls:
-
+        with (
+            patch("cerberus.train.configure_callbacks", return_value=[]),
+            patch(
+                "cerberus.train.resolve_adaptive_loss_args",
+                side_effect=lambda mc, dm: mc,
+            ),
+            patch("cerberus.train.instantiate"),
+            patch("pytorch_lightning.Trainer") as mock_trainer_cls,
+        ):
             mock_trainer = MagicMock()
             mock_trainer.is_global_zero = True
             mock_trainer_cls.return_value = mock_trainer

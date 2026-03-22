@@ -1,6 +1,6 @@
 # %% [markdown]
 # # Cerberus DataModule Setup
-# 
+#
 # This notebook demonstrates how to set up a Cerberus DataModule end-to-end using the example data located in `tests/data`.
 # It covers configuration of the genome, dataset, and sampler, and shows how to inspect the resulting data batches.
 
@@ -22,7 +22,7 @@ print(f"Project root: {project_root}")
 
 # %% [markdown]
 # ## 1. Define Paths
-# 
+#
 # We assume the data has been downloaded to `tests/data` (as done by `tests/conftest.py` or manually).
 
 # %%
@@ -56,7 +56,7 @@ required_paths = {
     "Mappability": mappability_path,
     "ENCODE cRE": encode_cre_path,
     "Peaks": peaks_path,
-    "Signal": signal_path
+    "Signal": signal_path,
 }
 
 for name, path in required_paths.items():
@@ -65,14 +65,15 @@ for name, path in required_paths.items():
 
 if missing_paths:
     raise FileNotFoundError(
-        f"The following required files are missing:\n" + "\n".join(f"  - {p}" for p in missing_paths)
+        f"The following required files are missing:\n"
+        + "\n".join(f"  - {p}" for p in missing_paths)
     )
 
 print("✓ All required files exist")
 
 # %% [markdown]
 # ## 2. Genome Configuration
-# 
+#
 # Configure the reference genome, including species, fasta file, and exclusion regions (blacklist).
 # We also define the fold splitting strategy here.
 
@@ -85,7 +86,7 @@ genome_config: GenomeConfig = create_genome_config(
     exclude_intervals={"blacklist": blacklist_path},
     # Use chromosome partitioning for train/val/test splits
     fold_type="chrom_partition",
-    fold_args={"k": 5, "test_fold": 0, "val_fold": 1}
+    fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
 )
 
 print("Genome Config Created:")
@@ -93,8 +94,8 @@ pp = pprint.PrettyPrinter(width=160, compact=True)
 pp.pprint(genome_config)
 # %% [markdown]
 # ## 3. Data Configuration
-# 
-# Define the input and output tracks. 
+#
+# Define the input and output tracks.
 # - `inputs`: Here we rely on sequence (implied), so it's empty.
 # - `targets`: The signal tracks we want to predict (AR ChIP-seq signal).
 # - `input_len`: Length of the input sequence (e.g., 2114 bp).
@@ -120,7 +121,7 @@ pp.pprint(data_config)
 
 # %% [markdown]
 # ## 4. Sampler Configuration
-# 
+#
 # Define how examples are sampled from the genome.
 # We use a `multi` sampler to combine positive examples (peaks) and negative examples (background).
 
@@ -136,7 +137,7 @@ sampler_config = SamplerConfig(
 
 # %% [markdown]
 # ## 5. Instantiate DataModule
-# 
+#
 # Create the `CerberusDataModule` which manages the datasets and dataloaders.
 
 # %%
@@ -144,12 +145,12 @@ data_module = CerberusDataModule(
     genome_config=genome_config,
     data_config=data_config,
     sampler_config=sampler_config,
-    pin_memory=False
+    pin_memory=False,
 )
 
 # %% [markdown]
 # ## 6. Setup Datasets
-# 
+#
 # `setup()` prepares the train, validation, and test datasets based on the genome fold configuration.
 # We also set the batch size and number of workers here.
 
@@ -168,16 +169,16 @@ if data_module.test_dataset:
 
 # %% [markdown]
 # ## 7. Inspect a Batch
-# 
+#
 # Retrieve a batch from the training dataloader and inspect the shapes and content.
 
 # %%
 train_loader = data_module.train_dataloader()
 batch = next(iter(train_loader))
 
-inputs = batch['inputs']
-targets = batch['targets']
-intervals = batch['intervals']
+inputs = batch["inputs"]
+targets = batch["targets"]
+intervals = batch["intervals"]
 
 print("Batch keys:", batch.keys())
 
@@ -194,7 +195,7 @@ if isinstance(targets, torch.Tensor):
 
 # %% [markdown]
 # ## 8. Visualize (Optional)
-# 
+#
 # Simple visualization of the signal.
 
 # %%
@@ -205,9 +206,9 @@ target_signal = targets.numpy().mean(axis=0).squeeze()
 x_axis = range(0, 256 * 4, 4)
 plt.figure(figsize=(12, 4))
 plt.plot(x_axis, target_signal, linewidth=1)
-plt.xlabel('Genomic Position (bp)')
-plt.ylabel('Signal')
-plt.title('Target Signal')
+plt.xlabel("Genomic Position (bp)")
+plt.ylabel("Signal")
+plt.title("Target Signal")
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plots_dir = project_root / "notebooks/plots"

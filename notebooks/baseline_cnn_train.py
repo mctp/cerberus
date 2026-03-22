@@ -1,6 +1,6 @@
 # %% [markdown]
 # # Training a Simple CNN with Cerberus
-# 
+#
 # This notebook demonstrates how to train a simple CNN model (Baseline) using the Cerberus framework.
 # We will use the MDA-PCA-2b AR ChIP-seq dataset and the hg38 human reference genome.
 #
@@ -15,16 +15,22 @@ except ImportError:
 # Cerberus imports
 from pprint import pprint
 from cerberus.download import download_dataset, download_human_reference
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
+from cerberus.config import (
+    GenomeConfig,
+    DataConfig,
+    SamplerConfig,
+    TrainConfig,
+    ModelConfig,
+)
 from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
 from cerberus.train import _train
 
 # %% [markdown]
 # ## 1. Setup Directories and Download Data
-# 
+#
 # We'll define a working directory for our data and download the necessary files. We
-# will download the human reference genome (hg38) and the MDA-PCA-2b AR dataset (also 
+# will download the human reference genome (hg38) and the MDA-PCA-2b AR dataset (also
 # used in Cerberus tests).
 
 # %%
@@ -46,9 +52,9 @@ print("Dataset Files:", dataset_files)
 
 # %% [markdown]
 # ## 2. Configuration
-# 
+#
 # We define the configurations for the Genome, Data, Sampler, and Training.
-# 
+#
 # **Key Requirements:**
 # - Input: 2048bp DNA
 # - Output: 256 bins @ 4bp resolution (covering 1024bp)
@@ -68,7 +74,7 @@ genome_config: GenomeConfig = create_genome_config(
     exclude_intervals={
         "blacklist": genome_files["blacklist"],
         "gaps": genome_files["gaps"],
-    }
+    },
 )
 
 # Data Config
@@ -127,7 +133,7 @@ pprint(train_config)
 
 # %% [markdown]
 # ## 3. Initialize DataModule
-# 
+#
 # We create the `CerberusDataModule` which handles dataset creation and DataLoaders.
 
 # %%
@@ -154,8 +160,8 @@ if datamodule.val_dataset:
 
 # Verify a batch
 batch = next(iter(datamodule.train_dataloader()))
-print("Batch inputs shape:", batch["inputs"].shape)   # Expected: (B, 4, 2048)
-print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
+print("Batch inputs shape:", batch["inputs"].shape)  # Expected: (B, 4, 2048)
+print("Batch targets shape:", batch["targets"].shape)  # Expected: (B, 1, 256)
 
 # %% [markdown]
 # ## 4. Model Configuration
@@ -222,7 +228,7 @@ print("Training finished.")
 
 # %% [markdown]
 # ## 6. Analyze Training Results
-# 
+#
 # We inspect the training and validation loss over epochs.
 
 # %%
@@ -255,7 +261,9 @@ try:
     loss_cols = [c for c in next(iter(epoch_data.values())) if "loss" in c]
     print("\nLoss per Epoch:")
     for ep in sorted(epoch_data):
-        vals = "  ".join(f"{c}={epoch_data[ep].get(c, float('nan')):.4f}" for c in loss_cols)
+        vals = "  ".join(
+            f"{c}={epoch_data[ep].get(c, float('nan')):.4f}" for c in loss_cols
+        )
         print(f"  epoch {ep}: {vals}")
 
     # Plot
@@ -263,7 +271,7 @@ try:
     plt.figure(figsize=(10, 6))
     for col in loss_cols:
         values = [epoch_data[ep].get(col) for ep in epochs]
-        style = dict(marker='o') if "train" in col else dict(marker='x', linestyle='--')
+        style = dict(marker="o") if "train" in col else dict(marker="x", linestyle="--")
         plt.plot(epochs, values, label=col, **style)
 
     plt.xlabel("Epoch")
@@ -278,7 +286,7 @@ except Exception as e:
 
 # %% [markdown]
 # ## 7. Epoch Analysis
-# 
+#
 # Report the number of samples in one epoch.
 
 # %%

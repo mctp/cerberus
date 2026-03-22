@@ -8,9 +8,12 @@ from cerberus.datamodule import CerberusDataModule
 
 @pytest.fixture
 def mock_dataset_cls():
-    with patch("cerberus.datamodule.CerberusDataset") as mock, \
-         patch.object(CerberusDataModule, "_validate_paths"):
+    with (
+        patch("cerberus.datamodule.CerberusDataset") as mock,
+        patch.object(CerberusDataModule, "_validate_paths"),
+    ):
         yield mock
+
 
 def test_val_batch_size_configuration(
     mock_dataset_cls,

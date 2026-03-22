@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.metrics — untested code paths."""
+
 import warnings
 
 import pytest
@@ -31,8 +32,8 @@ def log_rates_2ch():
 # LogCountsMeanSquaredError with count_per_channel=True
 # ---------------------------------------------------------------------------
 
-class TestLogCountsMSEPerChannel:
 
+class TestLogCountsMSEPerChannel:
     def test_count_per_channel_profile_count_output(self, targets_2ch):
         metric = LogCountsMeanSquaredError(count_per_channel=True)
         log_counts = torch.randn(4, 2)
@@ -53,8 +54,8 @@ class TestLogCountsMSEPerChannel:
 # LogCountsPearsonCorrCoef with count_per_channel=True
 # ---------------------------------------------------------------------------
 
-class TestLogCountsPearsonPerChannel:
 
+class TestLogCountsPearsonPerChannel:
     def test_count_per_channel_profile_count_output(self, targets_2ch):
         metric = LogCountsPearsonCorrCoef(count_per_channel=True)
         log_counts = torch.randn(4, 2)
@@ -102,8 +103,8 @@ class TestLogCountsPearsonPerChannel:
 # Metrics with ProfileLogRates inputs (not just ProfileLogits)
 # ---------------------------------------------------------------------------
 
-class TestMetricsWithProfileLogRates:
 
+class TestMetricsWithProfileLogRates:
     def test_profile_pearson_with_log_rates(self, targets_2ch, log_rates_2ch):
         metric = ProfilePearsonCorrCoef()
         output = ProfileLogRates(log_rates=log_rates_2ch)

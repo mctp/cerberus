@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.complexity — untested code paths."""
+
 import numpy as np
 import pytest
 
@@ -12,8 +13,8 @@ from cerberus.complexity import (
 # calculate_dust_score edge cases
 # ---------------------------------------------------------------------------
 
-class TestDustScoreEdgeCases:
 
+class TestDustScoreEdgeCases:
     def test_k_less_than_1_raises(self):
         with pytest.raises(ValueError, match="k must be >= 1"):
             calculate_dust_score("ACGT", k=0)
@@ -45,8 +46,8 @@ class TestDustScoreEdgeCases:
 # calculate_log_cpg_ratio edge cases
 # ---------------------------------------------------------------------------
 
-class TestLogCpgRatioEdgeCases:
 
+class TestLogCpgRatioEdgeCases:
     def test_length_less_than_2_normalized(self):
         result = calculate_log_cpg_ratio("A", normalize=True)
         assert result == 0.5
@@ -77,8 +78,8 @@ class TestLogCpgRatioEdgeCases:
 # get_bin_index edge cases
 # ---------------------------------------------------------------------------
 
-class TestGetBinIndex:
 
+class TestGetBinIndex:
     def test_nan_values_returns_none(self):
         row = np.array([0.5, np.nan, 0.3])
         result = get_bin_index(row, bins=10)

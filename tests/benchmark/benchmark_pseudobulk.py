@@ -61,7 +61,9 @@ def bench_load_h5ad():
         for barcode, group in zip(adata.obs_names, adata.obs["cell_type"], strict=True):
             groups.setdefault(str(group), set()).add(str(barcode))
         adata.file.close()
-    logger.info(f"  {sum(len(v) for v in groups.values())} barcodes, {len(groups)} groups")
+    logger.info(
+        f"  {sum(len(v) for v in groups.values())} barcodes, {len(groups)} groups"
+    )
     return groups
 
 
@@ -130,7 +132,9 @@ def bench_array_allocation():
     """Benchmark allocating full-genome float32 arrays."""
     chrom_sizes = load_chrom_sizes()
     total_bp = sum(chrom_sizes.values())
-    logger.info(f"  Total genome size: {total_bp:,} bp = {total_bp * 4 / 1e9:.2f} GB float32")
+    logger.info(
+        f"  Total genome size: {total_bp:,} bp = {total_bp * 4 / 1e9:.2f} GB float32"
+    )
 
     with timed("allocate all chrom arrays (float32)"):
         arrays = {}

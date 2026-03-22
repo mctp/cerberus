@@ -1,4 +1,5 @@
 """Tests for cerberus.predict_misc — high-level inference utilities."""
+
 import math
 from pathlib import Path
 from unittest.mock import patch
@@ -42,7 +43,9 @@ class DummyBPNetModel(nn.Module):
         B = x.shape[0]
         logits = torch.zeros((B, 1, self.output_dim), device=x.device)
         log_counts = torch.full(
-            (B, 1), math.log(100.0 + 1.0), device=x.device,
+            (B, 1),
+            math.log(100.0 + 1.0),
+            device=x.device,
         )
         return ProfileCountOutput(logits=logits, log_counts=log_counts)
 
@@ -94,15 +97,23 @@ def _make_config_and_ensemble(tmp_path, loss_cls, loss_args):
 
     # Minimal train/sampler configs for CerberusConfig construction
     train_config = TrainConfig.model_construct(
-        batch_size=1, max_epochs=1, learning_rate=1e-3,
-        weight_decay=0.0, patience=1, optimizer="adam",
-        scheduler_type="constant", scheduler_args={},
+        batch_size=1,
+        max_epochs=1,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        patience=1,
+        optimizer="adam",
+        scheduler_type="constant",
+        scheduler_args={},
         filter_bias_and_bn=False,
         reload_dataloaders_every_n_epochs=0,
-        adam_eps=1e-8, gradient_clip_val=None,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
     )
     sampler_config = SamplerConfig.model_construct(
-        sampler_type="interval", padded_size=100, sampler_args={},
+        sampler_type="interval",
+        padded_size=100,
+        sampler_args={},
     )
 
     config = CerberusConfig.model_construct(
@@ -130,12 +141,19 @@ def _make_config_and_ensemble(tmp_path, loss_cls, loss_args):
         train_config=train_config,
     )
 
-    with patch(
-        "cerberus.model_ensemble.ModelEnsemble._find_hparams",
-        return_value=Path("hparams.yaml"),
-    ), patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config):
+    with (
+        patch(
+            "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+            return_value=Path("hparams.yaml"),
+        ),
+        patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config),
+    ):
         ensemble = ModelEnsemble(
-            tmp_path, model_config, data_config, genome_config, torch.device("cpu"),
+            tmp_path,
+            model_config,
+            data_config,
+            genome_config,
+            torch.device("cpu"),
         )
 
     return config, ensemble
@@ -167,7 +185,6 @@ def poisson_setup(tmp_path):
 
 
 class TestCreateEvalDataset:
-
     def test_returns_dataset(self, mse_setup):
         config, _ = mse_setup
         ds = create_eval_dataset(config)
@@ -190,7 +207,6 @@ class TestCreateEvalDataset:
 
 
 class TestLoadBedIntervals:
-
     def test_loads_bed(self, mse_setup, tmp_path):
         config, _ = mse_setup
         bed = tmp_path / "peaks.bed"
@@ -226,7 +242,6 @@ class TestLoadBedIntervals:
 
 
 class TestPredictLogCounts:
-
     def test_returns_correct_count(self, mse_setup):
         """DummyBPNetModel: log_counts = log(101). MSE loss with pseudocount=1."""
         config, ensemble = mse_setup

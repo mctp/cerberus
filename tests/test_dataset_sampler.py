@@ -18,7 +18,7 @@ def test_dataset_instantiates_interval_sampler(tmp_path):
     peaks.write_text("chr1\t100\t200\nchr1\t500\t600\n")
 
     blacklist = tmp_path / "blacklist.bed"
-    blacklist.write_text("chr1\t150\t250\n") # Overlaps first peak
+    blacklist.write_text("chr1\t150\t250\n")  # Overlaps first peak
 
     # 2. Configs
     genome_config = create_genome_config(
@@ -26,7 +26,7 @@ def test_dataset_instantiates_interval_sampler(tmp_path):
         fasta_path=genome,
         species="human",
         allowed_chroms=["chr1"],
-        exclude_intervals={"blacklist": blacklist}
+        exclude_intervals={"blacklist": blacklist},
     )
 
     data_config = DataConfig.model_construct(
@@ -50,7 +50,14 @@ def test_dataset_instantiates_interval_sampler(tmp_path):
     )
 
     # 3. Instantiate
-    ds = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
+    ds = CerberusDataset(
+        genome_config,
+        data_config,
+        sampler_config,
+        sequence_extractor=None,
+        sampler=None,
+        exclude_intervals=None,
+    )
 
     # 4. Verify Sampler
     assert isinstance(ds.sampler, IntervalSampler)
@@ -83,12 +90,15 @@ def test_dataset_instantiates_interval_sampler(tmp_path):
     seq = out["inputs"]
     assert seq.shape == (4, 200)
 
+
 def test_dataset_invalid_sampler(tmp_path):
     genome = tmp_path / "genome.fa"
     genome.touch()
     (tmp_path / "genome.fa.fai").touch()
 
-    genome_config = create_genome_config(name="test", fasta_path=genome, species="human")
+    genome_config = create_genome_config(
+        name="test", fasta_path=genome, species="human"
+    )
     data_config = DataConfig.model_construct(
         inputs={},
         targets={},
@@ -109,4 +119,11 @@ def test_dataset_invalid_sampler(tmp_path):
     )
 
     with pytest.raises(ValueError, match="Unsupported sampler type"):
-        CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
+        CerberusDataset(
+            genome_config,
+            data_config,
+            sampler_config,
+            sequence_extractor=None,
+            sampler=None,
+            exclude_intervals=None,
+        )

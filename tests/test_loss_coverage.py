@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.loss — untested code paths."""
+
 import pytest
 import torch
 
@@ -38,8 +39,8 @@ def log_counts_per_channel():
 # NegativeBinomialMultinomialLoss — count_per_channel
 # ---------------------------------------------------------------------------
 
-class TestNBMultinomialCountPerChannel:
 
+class TestNBMultinomialCountPerChannel:
     def test_count_per_channel_true(self, logits_2ch, targets_2ch):
         loss_fn = NegativeBinomialMultinomialLoss(
             total_count=10.0, count_per_channel=True
@@ -52,7 +53,9 @@ class TestNBMultinomialCountPerChannel:
         assert torch.isfinite(loss)
 
     def test_count_per_channel_false(self, logits_2ch, targets_2ch):
-        loss_fn = NegativeBinomialMultinomialLoss(total_count=10.0, count_per_channel=False)
+        loss_fn = NegativeBinomialMultinomialLoss(
+            total_count=10.0, count_per_channel=False
+        )
         log_counts = torch.tensor([[5.0], [4.5]])
         output = ProfileCountOutput(logits=logits_2ch, log_counts=log_counts)
         loss = loss_fn(output, targets_2ch)
@@ -63,8 +66,8 @@ class TestNBMultinomialCountPerChannel:
 # CoupledNegativeBinomialMultinomialLoss — count_per_channel and TypeError
 # ---------------------------------------------------------------------------
 
-class TestCoupledNBMultinomial:
 
+class TestCoupledNBMultinomial:
     def test_count_per_channel_true(self, targets_2ch):
         loss_fn = CoupledNegativeBinomialMultinomialLoss(
             total_count=10.0, count_per_channel=True
@@ -84,9 +87,13 @@ class TestCoupledNBMultinomial:
         loss = loss_fn(output, targets_2ch)
         assert torch.isfinite(loss)
 
-    def test_rejects_profile_count_output(self, logits_2ch, targets_2ch, log_counts_per_channel):
+    def test_rejects_profile_count_output(
+        self, logits_2ch, targets_2ch, log_counts_per_channel
+    ):
         loss_fn = CoupledNegativeBinomialMultinomialLoss(total_count=10.0)
-        output = ProfileCountOutput(logits=logits_2ch, log_counts=log_counts_per_channel)
+        output = ProfileCountOutput(
+            logits=logits_2ch, log_counts=log_counts_per_channel
+        )
         with pytest.raises(TypeError, match="does not accept ProfileCountOutput"):
             loss_fn(output, targets_2ch)
 
@@ -95,8 +102,8 @@ class TestCoupledNBMultinomial:
 # CoupledMSEMultinomialLoss — count_per_channel
 # ---------------------------------------------------------------------------
 
-class TestCoupledMSEMultinomial:
 
+class TestCoupledMSEMultinomial:
     def test_count_per_channel_true(self, logits_2ch, targets_2ch):
         loss_fn = CoupledMSEMultinomialLoss(count_per_channel=True)
         output = ProfileLogRates(log_rates=logits_2ch)
@@ -109,9 +116,13 @@ class TestCoupledMSEMultinomial:
         loss = loss_fn(output, targets_2ch)
         assert torch.isfinite(loss)
 
-    def test_rejects_profile_count_output(self, logits_2ch, targets_2ch, log_counts_per_channel):
+    def test_rejects_profile_count_output(
+        self, logits_2ch, targets_2ch, log_counts_per_channel
+    ):
         loss_fn = CoupledMSEMultinomialLoss()
-        output = ProfileCountOutput(logits=logits_2ch, log_counts=log_counts_per_channel)
+        output = ProfileCountOutput(
+            logits=logits_2ch, log_counts=log_counts_per_channel
+        )
         with pytest.raises(TypeError, match="does not accept ProfileCountOutput"):
             loss_fn(output, targets_2ch)
 
@@ -120,11 +131,15 @@ class TestCoupledMSEMultinomial:
 # CoupledPoissonMultinomialLoss — TypeError
 # ---------------------------------------------------------------------------
 
-class TestCoupledPoissonMultinomial:
 
-    def test_rejects_profile_count_output(self, logits_2ch, targets_2ch, log_counts_per_channel):
+class TestCoupledPoissonMultinomial:
+    def test_rejects_profile_count_output(
+        self, logits_2ch, targets_2ch, log_counts_per_channel
+    ):
         loss_fn = CoupledPoissonMultinomialLoss()
-        output = ProfileCountOutput(logits=logits_2ch, log_counts=log_counts_per_channel)
+        output = ProfileCountOutput(
+            logits=logits_2ch, log_counts=log_counts_per_channel
+        )
         with pytest.raises(TypeError, match="does not accept ProfileCountOutput"):
             loss_fn(output, targets_2ch)
 
@@ -145,8 +160,8 @@ class TestCoupledPoissonMultinomial:
 # flatten_channels + average_channels combo
 # ---------------------------------------------------------------------------
 
-class TestFlattenAndAverageChannels:
 
+class TestFlattenAndAverageChannels:
     def test_mse_multinomial_flatten_true_average_true(self, logits_2ch, targets_2ch):
         """flatten_channels=True ignores average_channels."""
         loss_fn = MSEMultinomialLoss(flatten_channels=True, average_channels=True)
@@ -156,7 +171,9 @@ class TestFlattenAndAverageChannels:
         loss = loss_fn(output, targets_2ch)
         assert torch.isfinite(loss)
 
-    def test_poisson_multinomial_flatten_true_average_true(self, logits_2ch, targets_2ch):
+    def test_poisson_multinomial_flatten_true_average_true(
+        self, logits_2ch, targets_2ch
+    ):
         loss_fn = PoissonMultinomialLoss(flatten_channels=True, average_channels=True)
         log_counts = torch.randn(2, 1)
         output = ProfileCountOutput(logits=logits_2ch, log_counts=log_counts)
@@ -168,9 +185,11 @@ class TestFlattenAndAverageChannels:
 # MSEMultinomialLoss._compute_profile_loss with average_channels
 # ---------------------------------------------------------------------------
 
-class TestMSEProfileLossAverageChannels:
 
-    def test_average_channels_true_gives_different_result(self, logits_2ch, targets_2ch):
+class TestMSEProfileLossAverageChannels:
+    def test_average_channels_true_gives_different_result(
+        self, logits_2ch, targets_2ch
+    ):
         """average_channels=True vs False should give different magnitudes."""
         loss_avg = MSEMultinomialLoss(average_channels=True)
         loss_sum = MSEMultinomialLoss(average_channels=False)
@@ -191,20 +210,28 @@ class TestMSEProfileLossAverageChannels:
 # MSEMultinomialLoss count_per_channel=True
 # ---------------------------------------------------------------------------
 
-class TestMSEMultinomialCountPerChannel:
 
+class TestMSEMultinomialCountPerChannel:
     def test_count_per_channel(self, logits_2ch, targets_2ch, log_counts_per_channel):
         loss_fn = MSEMultinomialLoss(count_per_channel=True)
-        output = ProfileCountOutput(logits=logits_2ch, log_counts=log_counts_per_channel)
+        output = ProfileCountOutput(
+            logits=logits_2ch, log_counts=log_counts_per_channel
+        )
         loss = loss_fn(output, targets_2ch)
         assert torch.isfinite(loss)
 
-    def test_count_per_channel_loss_differs_from_global(self, logits_2ch, targets_2ch, log_counts_per_channel):
+    def test_count_per_channel_loss_differs_from_global(
+        self, logits_2ch, targets_2ch, log_counts_per_channel
+    ):
         loss_per = MSEMultinomialLoss(count_per_channel=True)
         loss_global = MSEMultinomialLoss(count_per_channel=False)
 
-        output_per = ProfileCountOutput(logits=logits_2ch, log_counts=log_counts_per_channel)
-        output_global = ProfileCountOutput(logits=logits_2ch, log_counts=log_counts_per_channel[:, :1])
+        output_per = ProfileCountOutput(
+            logits=logits_2ch, log_counts=log_counts_per_channel
+        )
+        output_global = ProfileCountOutput(
+            logits=logits_2ch, log_counts=log_counts_per_channel[:, :1]
+        )
 
         l_per = loss_per(output_per, targets_2ch)
         l_global = loss_global(output_global, targets_2ch)
@@ -216,11 +243,15 @@ class TestMSEMultinomialCountPerChannel:
 # PoissonMultinomialLoss count_per_channel
 # ---------------------------------------------------------------------------
 
-class TestPoissonMultinomialCountPerChannel:
 
-    def test_count_per_channel_true(self, logits_2ch, targets_2ch, log_counts_per_channel):
+class TestPoissonMultinomialCountPerChannel:
+    def test_count_per_channel_true(
+        self, logits_2ch, targets_2ch, log_counts_per_channel
+    ):
         loss_fn = PoissonMultinomialLoss(count_per_channel=True)
-        output = ProfileCountOutput(logits=logits_2ch, log_counts=log_counts_per_channel)
+        output = ProfileCountOutput(
+            logits=logits_2ch, log_counts=log_counts_per_channel
+        )
         loss = loss_fn(output, targets_2ch)
         assert torch.isfinite(loss)
 

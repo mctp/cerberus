@@ -20,6 +20,7 @@ from cerberus.train import compute_counts_loss_weight, resolve_adaptive_loss_arg
 # compute_counts_loss_weight
 # ---------------------------------------------------------------------------
 
+
 def test_compute_counts_loss_weight_basic():
     assert compute_counts_loss_weight(500.0) == pytest.approx(50.0)
 
@@ -48,6 +49,7 @@ def test_compute_counts_loss_weight_negative_raises():
 # ---------------------------------------------------------------------------
 # resolve_adaptive_loss_args
 # ---------------------------------------------------------------------------
+
 
 def _model_config(loss_args: dict) -> ModelConfig:
     return ModelConfig(
@@ -128,8 +130,10 @@ def test_resolve_adaptive_multiple_keys_same_weight():
 # CerberusDataModule.compute_median_counts
 # ---------------------------------------------------------------------------
 
+
 def test_compute_median_counts_requires_setup():
     from cerberus.datamodule import CerberusDataModule
+
     dm = MagicMock(spec=CerberusDataModule)
     dm._is_initialized = False
     dm.train_dataset = None

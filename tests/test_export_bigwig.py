@@ -6,6 +6,7 @@ Covers:
   2. Linear count reconstruction for ProfileCountOutput and ProfileLogRates.
   3. target_scale and output_bin_size normalization.
 """
+
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,6 +41,7 @@ from cerberus.predict_bigwig import _process_island, predict_to_bigwig
 @dataclass
 class DummyLogitsOnly(ModelOutput):
     """Plain logits — no log_counts, no log_rates."""
+
     logits: torch.Tensor
 
     def detach(self):
@@ -48,6 +50,7 @@ class DummyLogitsOnly(ModelOutput):
 
 class DummyModelLogitsOnly(nn.Module):
     """Returns DummyLogitsOnly (fallback path in _process_island)."""
+
     def __init__(self, input_len, output_len, output_bin_size, **kwargs):
         super().__init__()
         self.output_dim = output_len // output_bin_size
@@ -60,6 +63,7 @@ class DummyModelLogitsOnly(nn.Module):
 
 class BPNetLikeModel(nn.Module):
     """Returns ProfileCountOutput with known logits and log_counts."""
+
     def __init__(self, input_len, output_len, output_bin_size, **kwargs):
         super().__init__()
         self.output_dim = output_len // output_bin_size
@@ -75,6 +79,7 @@ class BPNetLikeModel(nn.Module):
 
 class LogRatesModel(nn.Module):
     """Returns ProfileLogRates with known log_rates."""
+
     def __init__(self, input_len, output_len, output_bin_size, **kwargs):
         super().__init__()
         self.output_dim = output_len // output_bin_size
@@ -82,9 +87,7 @@ class LogRatesModel(nn.Module):
     def forward(self, x):
         B = x.shape[0]
         # log_rates = log(2.0) → exp gives 2.0 counts per bin
-        log_rates = torch.full(
-            (B, 1, self.output_dim), math.log(2.0), device=x.device
-        )
+        log_rates = torch.full((B, 1, self.output_dim), math.log(2.0), device=x.device)
         return ProfileLogRates(log_rates=log_rates)
 
 
@@ -159,15 +162,23 @@ def _make_setup(
 
     # Minimal train/sampler configs for CerberusConfig construction
     train_config = TrainConfig.model_construct(
-        batch_size=1, max_epochs=1, learning_rate=1e-3,
-        weight_decay=0.0, patience=1, optimizer="adam",
-        scheduler_type="constant", scheduler_args={},
+        batch_size=1,
+        max_epochs=1,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        patience=1,
+        optimizer="adam",
+        scheduler_type="constant",
+        scheduler_args={},
         filter_bias_and_bn=False,
         reload_dataloaders_every_n_epochs=0,
-        adam_eps=1e-8, gradient_clip_val=None,
+        adam_eps=1e-8,
+        gradient_clip_val=None,
     )
     sampler_config = SamplerConfig.model_construct(
-        sampler_type="interval", padded_size=100, sampler_args={},
+        sampler_type="interval",
+        padded_size=100,
+        sampler_args={},
     )
 
     mock_config = CerberusConfig.model_construct(
@@ -178,10 +189,13 @@ def _make_setup(
         train_config=train_config,
     )
 
-    with patch(
-        "cerberus.model_ensemble.ModelEnsemble._find_hparams",
-        return_value=Path("hparams.yaml"),
-    ), patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config):
+    with (
+        patch(
+            "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+            return_value=Path("hparams.yaml"),
+        ),
+        patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config),
+    ):
         ensemble = ModelEnsemble(
             tmp_path, model_config, data_config, genome_config, torch.device("cpu")
         )
@@ -319,7 +333,9 @@ def test_bpnet_target_scale_halves_values(tmp_path):
     dir1 = tmp_path / "s1"
     dir1.mkdir()
     ds1, ens1, _ = _make_setup(
-        dir1, BPNetLikeModel, "tests.test_export_bigwig.BPNetLikeModel",
+        dir1,
+        BPNetLikeModel,
+        "tests.test_export_bigwig.BPNetLikeModel",
         target_scale=1.0,
     )
     out1 = dir1 / "out.bw"
@@ -329,7 +345,9 @@ def test_bpnet_target_scale_halves_values(tmp_path):
     dir2 = tmp_path / "s2"
     dir2.mkdir()
     ds2, ens2, _ = _make_setup(
-        dir2, BPNetLikeModel, "tests.test_export_bigwig.BPNetLikeModel",
+        dir2,
+        BPNetLikeModel,
+        "tests.test_export_bigwig.BPNetLikeModel",
         target_scale=2.0,
     )
     out2 = dir2 / "out.bw"
@@ -474,7 +492,6 @@ def test_process_island_values_are_python_floats_not_numpy(bpnet_setup):
         assert type(val) is float, f"Expected exact float type, got {type(val)}"
 
 
-
 def test_bpnet_log_counts_shape_after_overlapping_windows(bpnet_setup):
     """Regression: per-window reconstruction must happen before spatial merging.
 
@@ -520,8 +537,7 @@ def test_bpnet_log_counts_shape_after_overlapping_windows(bpnet_setup):
     values = [val for _, _, _, val in results]
     for val in values:
         assert abs(val - 2.0) < 0.1, (
-            f"Per-bin value should be ~2.0, got {val:.4f} "
-            f"(scaling bug if ~0.001)"
+            f"Per-bin value should be ~2.0, got {val:.4f} (scaling bug if ~0.001)"
         )
 
 
@@ -586,6 +602,7 @@ class MSEBPNetModel(nn.Module):
     With true_count=100 and pseudocount=150, log_counts = log(250).
     output_dim bins, uniform logits → each bin = true_count / output_dim.
     """
+
     PSEUDOCOUNT = 150.0
     TRUE_COUNT = 100.0
 
@@ -614,14 +631,20 @@ def test_pseudocount_inversion_correct_values(tmp_path):
     Without pseudocount inversion: 250/50 = 5.0 (WRONG).
     """
     ds, ens, _ = _make_setup(
-        tmp_path, MSEBPNetModel, "tests.test_export_bigwig.MSEBPNetModel",
+        tmp_path,
+        MSEBPNetModel,
+        "tests.test_export_bigwig.MSEBPNetModel",
     )
     intervals = [Interval("chr1", 500, 600)]
 
     results = list(
         _process_island(
-            intervals, ds, ens,
-            use_folds=["test", "val"], batch_size=4, count_pseudocount=150.0,
+            intervals,
+            ds,
+            ens,
+            use_folds=["test", "val"],
+            batch_size=4,
+            count_pseudocount=150.0,
         )
     )
 
@@ -639,14 +662,20 @@ def test_pseudocount_zero_gives_inflated_values(tmp_path):
     With count_pseudocount=0: total = 250, per-bin = 250/50 = 5.0.
     """
     ds, ens, _ = _make_setup(
-        tmp_path, MSEBPNetModel, "tests.test_export_bigwig.MSEBPNetModel",
+        tmp_path,
+        MSEBPNetModel,
+        "tests.test_export_bigwig.MSEBPNetModel",
     )
     intervals = [Interval("chr1", 500, 600)]
 
     results = list(
         _process_island(
-            intervals, ds, ens,
-            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+            intervals,
+            ds,
+            ens,
+            use_folds=["test", "val"],
+            batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
@@ -660,7 +689,9 @@ def test_pseudocount_zero_gives_inflated_values(tmp_path):
 def test_pseudocount_inversion_bigwig_end_to_end(tmp_path):
     """End-to-end: BigWig values reflect pseudocount-corrected signal."""
     ds, ens, _ = _make_setup(
-        tmp_path, MSEBPNetModel, "tests.test_export_bigwig.MSEBPNetModel",
+        tmp_path,
+        MSEBPNetModel,
+        "tests.test_export_bigwig.MSEBPNetModel",
         loss_cls="cerberus.loss.MSEMultinomialLoss",
         loss_args={"count_pseudocount": 150.0},
     )
@@ -695,7 +726,7 @@ def test_reconstruct_profile_count_sum_equals_total_counts():
     """softmax(logits) * exp(log_counts) must sum to exp(log_counts) per channel."""
     log_total = 7.0  # exp(7) ≈ 1096.6
     output = ProfileCountOutput(
-        logits=torch.randn(1, 100),   # non-uniform
+        logits=torch.randn(1, 100),  # non-uniform
         log_counts=torch.tensor([log_total]),
     )
     signal = _reconstruct_linear_signal(output)
@@ -750,10 +781,13 @@ def test_reconstruct_logits_only_fallback():
 
 def test_reconstruct_unknown_output_raises():
     """Unknown output type raises ValueError."""
+
     @dataclass
     class UnknownOutput(ModelOutput):
         data: torch.Tensor
-        def detach(self): return self
+
+        def detach(self):
+            return self
 
     output = UnknownOutput(data=torch.randn(1, 50))
     with pytest.raises(ValueError, match="Cannot extract profile track"):
@@ -785,8 +819,12 @@ def test_process_island_coordinates_contiguous(bpnet_setup):
 
     results = list(
         _process_island(
-            intervals, dataset, ensemble,
-            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+            intervals,
+            dataset,
+            ensemble,
+            use_folds=["test", "val"],
+            batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
@@ -813,15 +851,16 @@ def test_process_island_many_overlapping_windows_correct_scale(bpnet_setup):
     stride = output_len // 2  # 25
 
     # 6 overlapping windows covering [525, 700)
-    intervals = [
-        Interval("chr1", 500 + i * stride, 600 + i * stride)
-        for i in range(6)
-    ]
+    intervals = [Interval("chr1", 500 + i * stride, 600 + i * stride) for i in range(6)]
 
     results = list(
         _process_island(
-            intervals, dataset, ensemble,
-            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+            intervals,
+            dataset,
+            ensemble,
+            use_folds=["test", "val"],
+            batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
@@ -835,15 +874,21 @@ def test_process_island_many_overlapping_windows_correct_scale(bpnet_setup):
 def test_process_island_target_scale_applied(tmp_path):
     """target_scale divides the reconstructed signal."""
     ds, ens, _ = _make_setup(
-        tmp_path, BPNetLikeModel, "tests.test_export_bigwig.BPNetLikeModel",
+        tmp_path,
+        BPNetLikeModel,
+        "tests.test_export_bigwig.BPNetLikeModel",
         target_scale=2.0,
     )
     intervals = [Interval("chr1", 500, 600)]
 
     results = list(
         _process_island(
-            intervals, ds, ens,
-            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+            intervals,
+            ds,
+            ens,
+            use_folds=["test", "val"],
+            batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 
@@ -857,8 +902,12 @@ def test_process_island_empty_island(bpnet_setup):
     dataset, ensemble, _ = bpnet_setup
     results = list(
         _process_island(
-            [], dataset, ensemble,
-            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+            [],
+            dataset,
+            ensemble,
+            use_folds=["test", "val"],
+            batch_size=4,
+            count_pseudocount=0.0,
         )
     )
     assert results == []
@@ -903,15 +952,21 @@ def test_predict_to_bigwig_region_smaller_than_genome_wide(bpnet_setup):
     # Genome-wide
     gw_path = tmp_path / "gw.bw"
     predict_to_bigwig(
-        gw_path, dataset, ensemble,
-        use_folds=["test", "val"], batch_size=4,
+        gw_path,
+        dataset,
+        ensemble,
+        use_folds=["test", "val"],
+        batch_size=4,
     )
 
     # Single small region
     region_path = tmp_path / "region.bw"
     predict_to_bigwig(
-        region_path, dataset, ensemble,
-        use_folds=["test", "val"], batch_size=4,
+        region_path,
+        dataset,
+        ensemble,
+        use_folds=["test", "val"],
+        batch_size=4,
         regions=[Interval("chr1", 800, 900, "+")],
     )
 
@@ -957,8 +1012,11 @@ def test_predict_to_bigwig_region_values_match_genome_wide(bpnet_setup):
     # regardless of whether we predict genome-wide or region-restricted
     region_path = tmp_path / "region_vals.bw"
     predict_to_bigwig(
-        region_path, dataset, ensemble,
-        use_folds=["test", "val"], batch_size=4,
+        region_path,
+        dataset,
+        ensemble,
+        use_folds=["test", "val"],
+        batch_size=4,
         regions=[Interval("chr1", 600, 800, "+")],
     )
 
@@ -970,6 +1028,7 @@ def test_predict_to_bigwig_region_values_match_genome_wide(bpnet_setup):
 
 class MultiChannelBPNetModel(nn.Module):
     """Returns ProfileCountOutput with 2 channels."""
+
     def __init__(self, input_len, output_len, output_bin_size, **kwargs):
         super().__init__()
         self.output_dim = output_len // output_bin_size
@@ -986,15 +1045,20 @@ class MultiChannelBPNetModel(nn.Module):
 def test_process_island_multichannel_exports_channel_zero(tmp_path):
     """Multi-channel model: only channel 0 is exported to BigWig."""
     ds, ens, _ = _make_setup(
-        tmp_path, MultiChannelBPNetModel,
+        tmp_path,
+        MultiChannelBPNetModel,
         "tests.test_export_bigwig.MultiChannelBPNetModel",
     )
     intervals = [Interval("chr1", 500, 600)]
 
     results = list(
         _process_island(
-            intervals, ds, ens,
-            use_folds=["test", "val"], batch_size=4, count_pseudocount=0.0,
+            intervals,
+            ds,
+            ens,
+            use_folds=["test", "val"],
+            batch_size=4,
+            count_pseudocount=0.0,
         )
     )
 

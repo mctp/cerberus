@@ -1,4 +1,3 @@
-
 import gzip
 import logging
 import shutil
@@ -11,15 +10,14 @@ import pyfaidx
 
 logger = logging.getLogger(__name__)
 
+
 def _download_file(url: str, dest: Path) -> None:
     """Downloads a file from a URL to a destination path.
 
     Tries urllib first, falls back to curl if blocked (HTTP 403).
     """
     try:
-        req = urllib.request.Request(
-            url, headers={"User-Agent": "Mozilla/5.0"}
-        )
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req) as response, open(dest, "wb") as out_file:
             shutil.copyfileobj(response, out_file)
     except urllib.error.HTTPError as e:
@@ -31,6 +29,7 @@ def _download_file(url: str, dest: Path) -> None:
             )
         else:
             raise
+
 
 def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
     """
@@ -57,18 +56,18 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
     """
     out_dir = Path(output_dir) / name
     out_dir.mkdir(parents=True, exist_ok=True)
-    
+
     results = {}
-    
+
     if name == "mdapca2b_ar":
         files = {
             "bigwig": "mdapca2b-ar.bigwig",
-            "narrowPeak": "mdapca2b-ar.narrowPeak.gz"
+            "narrowPeak": "mdapca2b-ar.narrowPeak.gz",
         }
 
         urls = {
             "bigwig": "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSM8605979&format=file&file=GSM8605979%5F05%5F0FP2%5F0255Genen%5FDMSO%2D3a%5FAR%5Fhs%5Fi37%5FR1%2Esrt%2Enodup%5Fx%5F00%5F0FPL%5F0255Genen%5FPooled%5FInput%5Fhs%5Fi67%5FR1%2Esrt%2Enodup%2Efc%2Esignal%2Ebigwig",
-            "narrowPeak": "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSM8605979&format=file&file=GSM8605979%5F05%5F0FP2%5F0255Genen%5FDMSO%2D3a%5FAR%5Fhs%5Fi37%5FR1%2Esrt%2Enodup%5Fx%5F00%5F0FPL%5F0255Genen%5FPooled%5FInput%5Fhs%5Fi67%5FR1%2Esrt%2Enodup%2Epval0%2E01%2E500K%2Ebfilt%2EnarrowPeak%2Egz"
+            "narrowPeak": "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSM8605979&format=file&file=GSM8605979%5F05%5F0FP2%5F0255Genen%5FDMSO%2D3a%5FAR%5Fhs%5Fi37%5FR1%2Esrt%2Enodup%5Fx%5F00%5F0FPL%5F0255Genen%5FPooled%5FInput%5Fhs%5Fi67%5FR1%2Esrt%2Enodup%2Epval0%2E01%2E500K%2Ebfilt%2EnarrowPeak%2Egz",
         }
 
         for key, filename in files.items():
@@ -123,8 +122,9 @@ def download_dataset(output_dir: Path | str, name: str) -> dict[str, Path]:
             f"Unknown dataset: {name}. "
             f"Supported: ['mdapca2b_ar', 'k562_chrombpnet', 'kidney_scatac']"
         )
-        
+
     return results
+
 
 GENOME_RESOURCES = {
     "hg38": {
@@ -144,7 +144,9 @@ GENOME_RESOURCES = {
 }
 
 
-def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> dict[str, Path]:
+def download_reference_genome(
+    output_dir: Path | str, genome: str = "hg38"
+) -> dict[str, Path]:
     """
     Downloads and prepares reference genome resources.
 
@@ -163,7 +165,9 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
         Dictionary mapping resource names to their file paths.
     """
     if genome not in GENOME_RESOURCES:
-        raise ValueError(f"Unknown genome: {genome}. Supported: {list(GENOME_RESOURCES.keys())}")
+        raise ValueError(
+            f"Unknown genome: {genome}. Supported: {list(GENOME_RESOURCES.keys())}"
+        )
 
     resources = GENOME_RESOURCES[genome]
     out_dir = Path(output_dir) / genome
@@ -197,7 +201,10 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
         logger.info(f"Downloading Blacklist from {resources['blacklist_url']}...")
         _download_file(resources["blacklist_url"], blacklist_gz)
         logger.info("Decompressing Blacklist...")
-        with gzip.open(blacklist_gz, "rb") as f_in, open(blacklist_final, "wb") as f_out:
+        with (
+            gzip.open(blacklist_gz, "rb") as f_in,
+            open(blacklist_final, "wb") as f_out,
+        ):
             shutil.copyfileobj(f_in, f_out)
         blacklist_gz.unlink()
     results["blacklist"] = blacklist_final
@@ -238,7 +245,9 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
     if resources["mappability_url"]:
         mappability_path = out_dir / "mappability.bw"
         if not mappability_path.exists():
-            logger.info(f"Downloading Mappability from {resources['mappability_url']}...")
+            logger.info(
+                f"Downloading Mappability from {resources['mappability_url']}..."
+            )
             _download_file(resources["mappability_url"], mappability_path)
         results["mappability"] = mappability_path
 
@@ -253,7 +262,9 @@ def download_reference_genome(output_dir: Path | str, genome: str = "hg38") -> d
     return results
 
 
-def download_human_reference(output_dir: Path | str, name: str = "hg38") -> dict[str, Path]:
+def download_human_reference(
+    output_dir: Path | str, name: str = "hg38"
+) -> dict[str, Path]:
     """
     Wrapper for download_reference_genome to maintain backward compatibility.
     """

@@ -39,14 +39,17 @@ def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
         return True, model_config.count_pseudocount
     return False, 0.0
 
+
 @dataclass(kw_only=True)
 class ModelOutput:
     """Base class for model outputs."""
+
     out_interval: Interval | None = None
 
     def detach(self) -> ModelOutput:
         """Returns a new instance with all tensors detached from the graph."""
         raise NotImplementedError
+
 
 @dataclass
 class ProfileLogits(ModelOutput):
@@ -54,10 +57,14 @@ class ProfileLogits(ModelOutput):
 
     softmax(logits, dim=-1) gives the per-position probability distribution.
     """
-    logits: torch.Tensor # (Batch, Channels, Length)
+
+    logits: torch.Tensor  # (Batch, Channels, Length)
 
     def detach(self) -> ProfileLogits:
-        return ProfileLogits(logits=self.logits.detach(), out_interval=self.out_interval)
+        return ProfileLogits(
+            logits=self.logits.detach(), out_interval=self.out_interval
+        )
+
 
 @dataclass
 class ProfileLogRates(ModelOutput):
@@ -65,10 +72,14 @@ class ProfileLogRates(ModelOutput):
 
     exp(log_rates) gives expected counts per bin.
     """
-    log_rates: torch.Tensor # (Batch, Channels, Length)
+
+    log_rates: torch.Tensor  # (Batch, Channels, Length)
 
     def detach(self) -> ProfileLogRates:
-        return ProfileLogRates(log_rates=self.log_rates.detach(), out_interval=self.out_interval)
+        return ProfileLogRates(
+            log_rates=self.log_rates.detach(), out_interval=self.out_interval
+        )
+
 
 @dataclass
 class ProfileCountOutput(ProfileLogits):
@@ -77,14 +88,16 @@ class ProfileCountOutput(ProfileLogits):
     The profile shape and total count are predicted independently:
     predicted_counts = softmax(logits) * exp(log_counts).
     """
-    log_counts: torch.Tensor # (Batch, Channels)
+
+    log_counts: torch.Tensor  # (Batch, Channels)
 
     def detach(self) -> ProfileCountOutput:
         return ProfileCountOutput(
             logits=self.logits.detach(),
             log_counts=self.log_counts.detach(),
-            out_interval=self.out_interval
+            out_interval=self.out_interval,
         )
+
 
 @dataclass
 class FactorizedProfileCountOutput(ProfileCountOutput):
@@ -94,10 +107,11 @@ class FactorizedProfileCountOutput(ProfileCountOutput):
     Adds decomposed bias and signal sub-model outputs for use by DalmatianLoss
     during training and interpretation tools.
     """
-    bias_logits: torch.Tensor       # (B, C, L) -- bias model profile logits
-    bias_log_counts: torch.Tensor   # (B, C)   -- bias model log counts
-    signal_logits: torch.Tensor     # (B, C, L) -- signal model profile logits
-    signal_log_counts: torch.Tensor # (B, C)   -- signal model log counts
+
+    bias_logits: torch.Tensor  # (B, C, L) -- bias model profile logits
+    bias_log_counts: torch.Tensor  # (B, C)   -- bias model log counts
+    signal_logits: torch.Tensor  # (B, C, L) -- signal model profile logits
+    signal_log_counts: torch.Tensor  # (B, C)   -- signal model log counts
 
     def detach(self) -> FactorizedProfileCountOutput:
         return FactorizedProfileCountOutput(
@@ -110,7 +124,10 @@ class FactorizedProfileCountOutput(ProfileCountOutput):
             out_interval=self.out_interval,
         )
 
-def unbatch_modeloutput(batched_output: ModelOutput, batch_size: int) -> list[dict[str, Any]]:
+
+def unbatch_modeloutput(
+    batched_output: ModelOutput, batch_size: int
+) -> list[dict[str, Any]]:
     """Splits a batched ModelOutput into per-sample dictionaries.
 
     Tensor fields are unbound along dim=0. Non-tensor fields (e.g. out_interval)
@@ -123,7 +140,10 @@ def unbatch_modeloutput(batched_output: ModelOutput, batch_size: int) -> list[di
     Returns:
         List of dicts, one per sample, with the same keys as the dataclass fields.
     """
-    batched_output_dict = {f.name: getattr(batched_output, f.name) for f in dataclasses.fields(batched_output)}
+    batched_output_dict = {
+        f.name: getattr(batched_output, f.name)
+        for f in dataclasses.fields(batched_output)
+    }
 
     unbatched_components = {}
     for key, val in batched_output_dict.items():
@@ -139,6 +159,7 @@ def unbatch_modeloutput(batched_output: ModelOutput, batch_size: int) -> list[di
         result_list.append(item)
 
     return result_list
+
 
 def aggregate_tensor_track_values(
     outputs: list[torch.Tensor],
@@ -188,17 +209,17 @@ def aggregate_tensor_track_values(
         interval_bins = (interval.end - interval.start) // output_bin_size
         end_bin = rel_start_bin + interval_bins
 
-        is_profile = (val.ndim >= 2 and val.shape[-1] == interval_bins)
+        is_profile = val.ndim >= 2 and val.shape[-1] == interval_bins
 
         if is_profile:
-            accumulator[:, rel_start_bin : end_bin] += val
-            counts[:, rel_start_bin : end_bin] += 1.0
+            accumulator[:, rel_start_bin:end_bin] += val
+            counts[:, rel_start_bin:end_bin] += 1.0
         else:
             has_scalar = True
             # Broadcast scalar (C,) → (C, 1) for overlap-aware spatial averaging
             val_b = np.expand_dims(val, -1) if val.ndim == 1 else val
-            accumulator[:, rel_start_bin : end_bin] += val_b
-            counts[:, rel_start_bin : end_bin] += 1.0
+            accumulator[:, rel_start_bin:end_bin] += val_b
+            counts[:, rel_start_bin:end_bin] += 1.0
 
     raw_counts = counts.copy()
     counts = np.maximum(counts, 1.0)
@@ -214,6 +235,7 @@ def aggregate_tensor_track_values(
             final_values = np.zeros(n_channels, dtype=np.float32)
 
     return final_values
+
 
 def aggregate_intervals(
     outputs: list[dict[str, Any]],
@@ -259,9 +281,8 @@ def aggregate_intervals(
     logger.debug(f"Aggregated {len(outputs)} intervals into {merged_interval}")
     return output_cls(**aggregated_components, out_interval=merged_interval)
 
-def aggregate_models(
-    outputs: Sequence[ModelOutput], method: str
-) -> ModelOutput:
+
+def aggregate_models(outputs: Sequence[ModelOutput], method: str) -> ModelOutput:
     """Ensembles outputs from multiple models by reducing each tensor field.
 
     All outputs must be the same ModelOutput subclass with identically-shaped
@@ -275,8 +296,15 @@ def aggregate_models(
     Returns:
         A single ModelOutput of the same type with ensembled tensor fields.
     """
-    output_dicts = [{f.name: getattr(out, f.name) for f in dataclasses.fields(out)} for out in outputs]
-    keys = [k for k in output_dicts[0].keys() if isinstance(output_dicts[0][k], torch.Tensor)]
+    output_dicts = [
+        {f.name: getattr(out, f.name) for f in dataclasses.fields(out)}
+        for out in outputs
+    ]
+    keys = [
+        k
+        for k in output_dicts[0].keys()
+        if isinstance(output_dicts[0][k], torch.Tensor)
+    ]
 
     aggregated_elements = {}
     for key in keys:
@@ -294,7 +322,12 @@ def aggregate_models(
     logger.debug(f"Aggregated {len(outputs)} model outputs using '{method}'")
     return cls(**aggregated_elements, out_interval=out_int)
 
-def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseudocount: bool = False, pseudocount: float = 1.0) -> torch.Tensor:
+
+def compute_total_log_counts(
+    model_output: ModelOutput,
+    log_counts_include_pseudocount: bool = False,
+    pseudocount: float = 1.0,
+) -> torch.Tensor:
     """Computes total log counts across all channels, returning shape (B,).
 
     Supports ProfileCountOutput (explicit log_counts) and ProfileLogRates
@@ -319,18 +352,24 @@ def compute_total_log_counts(model_output: ModelOutput, log_counts_include_pseud
         if log_counts.ndim == 2 and log_counts.shape[1] > 1:
             if log_counts_include_pseudocount:
                 # Undo log(x + pseudocount) per channel, sum channels, reapply.
-                total = (torch.exp(log_counts.float()) - pseudocount).clamp_min(0.0).sum(dim=1)
+                total = (
+                    (torch.exp(log_counts.float()) - pseudocount)
+                    .clamp_min(0.0)
+                    .sum(dim=1)
+                )
                 return torch.log(total + pseudocount)
             else:
                 return torch.logsumexp(log_counts.float(), dim=1)
         else:
             return log_counts.flatten()
-            
+
     elif isinstance(model_output, ProfileLogRates):
         log_rates = model_output.log_rates
         return torch.logsumexp(log_rates.float().flatten(start_dim=1), dim=-1)
-            
-    raise ValueError(f"Model output type {type(model_output)} not supported for total log counts extraction.")
+
+    raise ValueError(
+        f"Model output type {type(model_output)} not supported for total log counts extraction."
+    )
 
 
 def compute_obs_log_counts(

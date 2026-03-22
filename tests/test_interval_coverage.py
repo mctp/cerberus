@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.interval — untested code paths."""
+
 import pytest
 
 from cerberus.config import GenomeConfig
@@ -13,8 +14,8 @@ from cerberus.interval import (
 # Interval methods
 # ---------------------------------------------------------------------------
 
-class TestIntervalMethods:
 
+class TestIntervalMethods:
     def test_center(self):
         iv = Interval("chr1", 100, 200)
         centered = iv.center(50)
@@ -45,8 +46,8 @@ class TestIntervalMethods:
 # resolve_interval edge cases
 # ---------------------------------------------------------------------------
 
-class TestResolveInterval:
 
+class TestResolveInterval:
     def test_tuple_length_less_than_3_raises(self):
         with pytest.raises(ValueError, match="Invalid interval tuple"):
             resolve_interval(("chr1", 100))
@@ -84,8 +85,8 @@ class TestResolveInterval:
 # merge_intervals
 # ---------------------------------------------------------------------------
 
-class TestMergeIntervals:
 
+class TestMergeIntervals:
     def test_empty_list(self):
         result = merge_intervals([])
         assert result == []
@@ -133,8 +134,8 @@ class TestMergeIntervals:
 # parse_intervals
 # ---------------------------------------------------------------------------
 
-class TestParseIntervals:
 
+class TestParseIntervals:
     def _make_genome_config(self) -> GenomeConfig:
         return GenomeConfig.model_construct(
             chrom_sizes={"chr1": 1000000, "chr2": 500000},

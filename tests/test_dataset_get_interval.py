@@ -26,7 +26,7 @@ def test_get_interval_with_arbitrary_interval(tmp_path):
         fasta_path=genome,
         species="human",
         allowed_chroms=["chr1"],
-        exclude_intervals={}
+        exclude_intervals={},
     )
 
     data_config = DataConfig.model_construct(
@@ -64,6 +64,7 @@ def test_get_interval_with_arbitrary_interval(tmp_path):
     assert result["inputs"].shape == (4, 10)
     assert result["intervals"] == "chr1:50-60(+)"
 
+
 def test_get_interval_equivalence_to_getitem(tmp_path):
     """
     Test that get_interval(sampler[i]) returns the same as __getitem__(i).
@@ -82,7 +83,7 @@ def test_get_interval_equivalence_to_getitem(tmp_path):
         fasta_path=genome,
         species="human",
         allowed_chroms=["chr1"],
-        exclude_intervals={}
+        exclude_intervals={},
     )
 
     data_config = DataConfig.model_construct(
@@ -117,6 +118,7 @@ def test_get_interval_equivalence_to_getitem(tmp_path):
 
     assert torch.equal(item_from_getitem["inputs"], item_from_get_interval["inputs"])
 
+
 def test_no_sampler_and_parsing(tmp_path):
     """
     Test no sampler usage and input parsing in get_interval.
@@ -131,7 +133,7 @@ def test_no_sampler_and_parsing(tmp_path):
         fasta_path=genome,
         species="human",
         allowed_chroms=["chr1"],
-        exclude_intervals={}
+        exclude_intervals={},
     )
 
     data_config = DataConfig.model_construct(
@@ -161,7 +163,7 @@ def test_no_sampler_and_parsing(tmp_path):
     # Test string parsing
     res = ds.get_interval("chr1:100-110")
     assert res["inputs"].shape == (4, 10)
-    assert res["intervals"] == "chr1:100-110(+)" # default strand +
+    assert res["intervals"] == "chr1:100-110(+)"  # default strand +
 
     # Test tuple parsing
     res = ds.get_interval(("chr1", 200, 210))

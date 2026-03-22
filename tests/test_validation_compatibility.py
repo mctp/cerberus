@@ -16,6 +16,7 @@ from cerberus.config import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _genome_config(tmp_path: Path) -> GenomeConfig:
     fasta = tmp_path / "genome.fa"
     fasta.touch()
@@ -28,6 +29,7 @@ def _genome_config(tmp_path: Path) -> GenomeConfig:
         fold_type="chrom_partition",
         fold_args={"k": 2},
     )
+
 
 def _train_config() -> TrainConfig:
     return TrainConfig(
@@ -45,6 +47,7 @@ def _train_config() -> TrainConfig:
         gradient_clip_val=None,
     )
 
+
 def _model_config() -> ModelConfig:
     return ModelConfig(
         name="m",
@@ -56,6 +59,7 @@ def _model_config() -> ModelConfig:
         model_args={},
         pretrained=[],
     )
+
 
 def _data_config(input_len: int = 100, max_jitter: int = 50) -> DataConfig:
     return DataConfig(
@@ -72,6 +76,7 @@ def _data_config(input_len: int = 100, max_jitter: int = 50) -> DataConfig:
         use_sequence=True,
     )
 
+
 def _sampler_config(padded_size: int) -> SamplerConfig:
     return SamplerConfig(
         sampler_type="sliding_window",
@@ -79,9 +84,11 @@ def _sampler_config(padded_size: int) -> SamplerConfig:
         sampler_args={"stride": 50},
     )
 
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_data_and_sampler_compatibility_valid(tmp_path):
     """padded_size == input_len + 2 * max_jitter should pass."""
@@ -93,6 +100,7 @@ def test_data_and_sampler_compatibility_valid(tmp_path):
         model_config=_model_config(),
     )
 
+
 def test_data_and_sampler_compatibility_exact_boundary(tmp_path):
     """padded_size exactly at boundary should pass."""
     CerberusConfig(
@@ -103,9 +111,13 @@ def test_data_and_sampler_compatibility_exact_boundary(tmp_path):
         model_config=_model_config(),
     )
 
+
 def test_data_and_sampler_compatibility_invalid(tmp_path):
     """padded_size < input_len + 2 * max_jitter should raise."""
-    with pytest.raises(ValidationError, match=r"Sampler padded_size \(199\) is smaller than required size"):
+    with pytest.raises(
+        ValidationError,
+        match=r"Sampler padded_size \(199\) is smaller than required size",
+    ):
         CerberusConfig(
             train_config=_train_config(),
             genome_config=_genome_config(tmp_path),
@@ -114,9 +126,13 @@ def test_data_and_sampler_compatibility_invalid(tmp_path):
             model_config=_model_config(),
         )
 
+
 def test_data_and_sampler_compatibility_large_jitter(tmp_path):
     """Large jitter: required = 1000 + 2*500 = 2000, padded_size=1500 should fail."""
-    with pytest.raises(ValidationError, match=r"Sampler padded_size \(1500\) is smaller than required size"):
+    with pytest.raises(
+        ValidationError,
+        match=r"Sampler padded_size \(1500\) is smaller than required size",
+    ):
         CerberusConfig(
             train_config=_train_config(),
             genome_config=_genome_config(tmp_path),

@@ -143,9 +143,7 @@ def _outputs_exist(paths: list[Path], stage_name: str) -> bool:
         return False
     existing = [p for p in paths if p.exists() and p.stat().st_size > 0]
     if len(existing) == len(paths):
-        logger.info(
-            f"Skipping {stage_name}: all {len(paths)} output(s) already exist"
-        )
+        logger.info(f"Skipping {stage_name}: all {len(paths)} output(s) already exist")
         for p in existing:
             logger.info(f"  Found: {p}")
         return True
@@ -317,7 +315,16 @@ def _merge_peaks(
                 qval = float(parts[8])
                 summit_offset = int(parts[9])
                 peaks.append(
-                    (chrom, start, end, score, signal, pval, qval, start + summit_offset)
+                    (
+                        chrom,
+                        start,
+                        end,
+                        score,
+                        signal,
+                        pval,
+                        qval,
+                        start + summit_offset,
+                    )
                 )
 
     logger.info(f"Read {len(peaks)} peaks from {len(peak_files)} files for merging")
@@ -350,12 +357,20 @@ def _merge_peaks(
         else:
             # Emit merged peak
             median_summit = int(statistics.median(cur_summits))
-            merged.append((
-                cur_chrom, cur_start, cur_end,
-                ".", min(max(cur_scores), 1000), ".",
-                max(cur_signals), max(cur_pvals), max(cur_qvals),
-                median_summit - cur_start,
-            ))
+            merged.append(
+                (
+                    cur_chrom,
+                    cur_start,
+                    cur_end,
+                    ".",
+                    min(max(cur_scores), 1000),
+                    ".",
+                    max(cur_signals),
+                    max(cur_pvals),
+                    max(cur_qvals),
+                    median_summit - cur_start,
+                )
+            )
             cur_chrom, cur_start, cur_end = chrom, start, end
             cur_scores = [score]
             cur_signals = [signal]
@@ -365,12 +380,20 @@ def _merge_peaks(
 
     # Emit last
     median_summit = int(statistics.median(cur_summits))
-    merged.append((
-        cur_chrom, cur_start, cur_end,
-        ".", min(max(cur_scores), 1000), ".",
-        max(cur_signals), max(cur_pvals), max(cur_qvals),
-        median_summit - cur_start,
-    ))
+    merged.append(
+        (
+            cur_chrom,
+            cur_start,
+            cur_end,
+            ".",
+            min(max(cur_scores), 1000),
+            ".",
+            max(cur_signals),
+            max(cur_pvals),
+            max(cur_qvals),
+            median_summit - cur_start,
+        )
+    )
 
     logger.info(f"Merged into {len(merged)} peaks")
 
@@ -603,7 +626,8 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -648,8 +672,7 @@ def main() -> None:
 
     # Resolve normalization (snapatac2 expects None for raw)
     normalization: _Normalization | None = (
-        None if args.normalization == "raw"
-        else args.normalization  # type: ignore[assignment]  # validated by argparse choices
+        None if args.normalization == "raw" else args.normalization  # type: ignore[assignment]  # validated by argparse choices
     )
     out_dir: Path = args.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -659,42 +682,32 @@ def main() -> None:
     # due to min_num_fragments filtering, but it is sufficient to detect
     # whether a previous run's outputs are present.
     expected_groups: list[str] = sorted(
-        set(args.groups) if args.groups else set(str(g) for g in barcode_to_group.values())
+        set(args.groups)
+        if args.groups
+        else set(str(g) for g in barcode_to_group.values())
     )
 
     # --- Determine which stages need to run (skip check) ---
-    skip_group_cov = (
+    skip_group_cov = not args.overwrite and _outputs_exist(
+        [out_dir / f"{g}.bw" for g in expected_groups],
+        "per-group coverage",
+    )
+    skip_group_peaks = not args.call_peaks or (
         not args.overwrite
         and _outputs_exist(
-            [out_dir / f"{g}.bw" for g in expected_groups],
-            "per-group coverage",
+            [out_dir / f"{g}.narrowPeak.bed.gz" for g in expected_groups],
+            "per-group peaks",
         )
     )
-    skip_group_peaks = (
-        not args.call_peaks
-        or (
-            not args.overwrite
-            and _outputs_exist(
-                [out_dir / f"{g}.narrowPeak.bed.gz" for g in expected_groups],
-                "per-group peaks",
-            )
-        )
+    skip_bulk_cov = not args.overwrite and _outputs_exist(
+        [out_dir / f"{_BULK_GROUP_VAL}.bw"],
+        "bulk coverage",
     )
-    skip_bulk_cov = (
+    skip_bulk_peaks = not (args.bulk_peaks and args.call_peaks) or (
         not args.overwrite
         and _outputs_exist(
-            [out_dir / f"{_BULK_GROUP_VAL}.bw"],
-            "bulk coverage",
-        )
-    )
-    skip_bulk_peaks = (
-        not (args.bulk_peaks and args.call_peaks)
-        or (
-            not args.overwrite
-            and _outputs_exist(
-                [out_dir / f"{_BULK_CALL_PREFIX}.narrowPeak.bed.gz"],
-                "bulk peaks",
-            )
+            [out_dir / f"{_BULK_CALL_PREFIX}.narrowPeak.bed.gz"],
+            "bulk peaks",
         )
     )
     skip_merge = (
@@ -710,8 +723,11 @@ def main() -> None:
     )
 
     all_skipped = (
-        skip_group_cov and skip_group_peaks
-        and skip_bulk_cov and skip_bulk_peaks and skip_merge
+        skip_group_cov
+        and skip_group_peaks
+        and skip_bulk_cov
+        and skip_bulk_peaks
+        and skip_merge
     )
     if all_skipped:
         logger.info("All outputs already exist. Nothing to do.")
@@ -763,7 +779,9 @@ def main() -> None:
 
     # Log group sizes (snapatac2 obs uses Polars)
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="_import_from_c", category=DeprecationWarning)
+        warnings.filterwarnings(
+            "ignore", message="_import_from_c", category=DeprecationWarning
+        )
         group_counts = data.obs[args.groupby].value_counts()
     for row in group_counts.iter_rows():
         logger.info(f"  {row[0]}: {row[1]} cells")
@@ -772,7 +790,9 @@ def main() -> None:
     selections = None
     if args.groups:
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message="_import_from_c", category=DeprecationWarning)
+            warnings.filterwarnings(
+                "ignore", message="_import_from_c", category=DeprecationWarning
+            )
             available = set(data.obs[args.groupby].unique().to_list())
         missing = set(args.groups) - available
         if missing:
@@ -795,18 +815,34 @@ def main() -> None:
         if not skip_group_cov:
             logger.info("Exporting per-group pseudobulk BigWig files...")
             _export_coverage(
-                snap_h5ad, args.groupby, selections, args, normalization, out_dir,
+                snap_h5ad,
+                args.groupby,
+                selections,
+                args,
+                normalization,
+                out_dir,
             )
         if need_group_peaks:
             _call_peaks(snap_h5ad, args.groupby, selections, args, out_dir)
         if need_bulk_cov:
             logger.info(f"Exporting bulk BigWig ({n_obs} cells)...")
             _export_coverage(
-                snap_h5ad, _BULK_GROUP_COL, None, args, normalization, out_dir,
+                snap_h5ad,
+                _BULK_GROUP_COL,
+                None,
+                args,
+                normalization,
+                out_dir,
             )
         if need_bulk_peaks:
-            _call_peaks(snap_h5ad, _BULK_GROUP_COL, None, args, out_dir,
-                        name_map={_BULK_GROUP_VAL: _BULK_CALL_PREFIX})
+            _call_peaks(
+                snap_h5ad,
+                _BULK_GROUP_COL,
+                None,
+                args,
+                out_dir,
+                name_map={_BULK_GROUP_VAL: _BULK_CALL_PREFIX},
+            )
     else:
         # --- Parallel mode ---
         # Bulk peaks is the slowest stage (all cells, single MACS3 call),
@@ -825,7 +861,12 @@ def main() -> None:
             logger.info("Starting bulk peaks in background (slowest stage)...")
             bg_futures["bulk peaks"] = pool.submit(
                 _call_peaks,
-                snap_h5ad, _BULK_GROUP_COL, None, args, out_dir, 1,
+                snap_h5ad,
+                _BULK_GROUP_COL,
+                None,
+                args,
+                out_dir,
+                1,
                 {_BULK_GROUP_VAL: _BULK_CALL_PREFIX},
             )
 
@@ -833,21 +874,35 @@ def main() -> None:
         if not skip_group_cov:
             logger.info("Exporting per-group pseudobulk BigWig files...")
             _export_coverage(
-                snap_h5ad, args.groupby, selections, args, normalization, out_dir,
+                snap_h5ad,
+                args.groupby,
+                selections,
+                args,
+                normalization,
+                out_dir,
             )
 
         # Submit remaining stages to pool (overlap with bulk peaks)
         if need_group_peaks:
             bg_futures["per-group peaks"] = pool.submit(
                 _call_peaks,
-                snap_h5ad, args.groupby, selections, args, out_dir,
+                snap_h5ad,
+                args.groupby,
+                selections,
+                args,
+                out_dir,
                 args.n_jobs,
             )
         if need_bulk_cov:
             bg_futures["bulk coverage"] = pool.submit(
                 _export_coverage,
-                snap_h5ad, _BULK_GROUP_COL, None, args, normalization,
-                out_dir, args.n_jobs,
+                snap_h5ad,
+                _BULK_GROUP_COL,
+                None,
+                args,
+                normalization,
+                out_dir,
+                args.n_jobs,
             )
 
         if bg_futures:
@@ -884,8 +939,7 @@ def main() -> None:
         peak_files = [p for p in peak_files if p.name not in _exclude]
         if len(peak_files) > 1:
             logger.info(
-                f"Merging {len(peak_files)} narrowPeak files into "
-                f"{merge_out}.bed.gz..."
+                f"Merging {len(peak_files)} narrowPeak files into {merge_out}.bed.gz..."
             )
             _merge_peaks(peak_files, out_dir, out_name=_BULK_MERGE_PREFIX)
         elif len(peak_files) == 1:

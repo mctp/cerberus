@@ -47,7 +47,9 @@ class GenomeConfig(BaseModel):
         """Every allowed_chrom must have an entry in chrom_sizes."""
         missing = set(self.allowed_chroms) - set(self.chrom_sizes)
         if missing:
-            raise ValueError(f"chrom_sizes missing entries for allowed_chroms: {missing}")
+            raise ValueError(
+                f"chrom_sizes missing entries for allowed_chroms: {missing}"
+            )
         return self
 
 
@@ -250,6 +252,8 @@ class CerberusConfig(BaseModel):
             model_inputs = set(model_args["input_channels"])
             if not input_tracks.issubset(model_inputs):
                 missing = input_tracks - model_inputs
-                raise ValueError(f"Data inputs {missing} are not in model input channels")
+                raise ValueError(
+                    f"Data inputs {missing} are not in model input channels"
+                )
 
         return self

@@ -270,11 +270,18 @@ class TestModelConstruction:
 
     def test_frozen_train_config_raises_on_assignment(self):
         tc = TrainConfig(
-            batch_size=32, max_epochs=100, learning_rate=0.001,
-            weight_decay=0.01, patience=5, optimizer="adamw",
-            scheduler_type="default", scheduler_args={},
-            filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0,
-            adam_eps=1e-8, gradient_clip_val=None,
+            batch_size=32,
+            max_epochs=100,
+            learning_rate=0.001,
+            weight_decay=0.01,
+            patience=5,
+            optimizer="adamw",
+            scheduler_type="default",
+            scheduler_args={},
+            filter_bias_and_bn=True,
+            reload_dataloaders_every_n_epochs=0,
+            adam_eps=1e-8,
+            gradient_clip_val=None,
         )
         with pytest.raises(ValidationError):
             tc.batch_size = 64  # type: ignore[misc]
@@ -306,41 +313,68 @@ class TestValidation:
         with pytest.raises(ValidationError):
             TrainConfig(
                 batch_size="not_an_int",  # type: ignore[arg-type]
-                max_epochs=100, learning_rate=0.001,
-                weight_decay=0.01, patience=5, optimizer="adamw",
-                scheduler_type="default", scheduler_args={},
-                filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0,
-                adam_eps=1e-8, gradient_clip_val=None,
+                max_epochs=100,
+                learning_rate=0.001,
+                weight_decay=0.01,
+                patience=5,
+                optimizer="adamw",
+                scheduler_type="default",
+                scheduler_args={},
+                filter_bias_and_bn=True,
+                reload_dataloaders_every_n_epochs=0,
+                adam_eps=1e-8,
+                gradient_clip_val=None,
             )
 
     def test_train_config_negative_batch_size_raises(self):
         with pytest.raises(ValidationError):
             TrainConfig(
-                batch_size=-1, max_epochs=100, learning_rate=0.001,
-                weight_decay=0.01, patience=5, optimizer="adamw",
-                scheduler_type="default", scheduler_args={},
-                filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0,
-                adam_eps=1e-8, gradient_clip_val=None,
+                batch_size=-1,
+                max_epochs=100,
+                learning_rate=0.001,
+                weight_decay=0.01,
+                patience=5,
+                optimizer="adamw",
+                scheduler_type="default",
+                scheduler_args={},
+                filter_bias_and_bn=True,
+                reload_dataloaders_every_n_epochs=0,
+                adam_eps=1e-8,
+                gradient_clip_val=None,
             )
 
     def test_train_config_zero_learning_rate_raises(self):
         with pytest.raises(ValidationError):
             TrainConfig(
-                batch_size=32, max_epochs=100, learning_rate=0.0,
-                weight_decay=0.01, patience=5, optimizer="adamw",
-                scheduler_type="default", scheduler_args={},
-                filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0,
-                adam_eps=1e-8, gradient_clip_val=None,
+                batch_size=32,
+                max_epochs=100,
+                learning_rate=0.0,
+                weight_decay=0.01,
+                patience=5,
+                optimizer="adamw",
+                scheduler_type="default",
+                scheduler_args={},
+                filter_bias_and_bn=True,
+                reload_dataloaders_every_n_epochs=0,
+                adam_eps=1e-8,
+                gradient_clip_val=None,
             )
 
     def test_train_config_extra_key_raises(self):
         with pytest.raises(ValidationError):
             TrainConfig(
-                batch_size=32, max_epochs=100, learning_rate=0.001,
-                weight_decay=0.01, patience=5, optimizer="adamw",
-                scheduler_type="default", scheduler_args={},
-                filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0,
-                adam_eps=1e-8, gradient_clip_val=None,
+                batch_size=32,
+                max_epochs=100,
+                learning_rate=0.001,
+                weight_decay=0.01,
+                patience=5,
+                optimizer="adamw",
+                scheduler_type="default",
+                scheduler_args={},
+                filter_bias_and_bn=True,
+                reload_dataloaders_every_n_epochs=0,
+                adam_eps=1e-8,
+                gradient_clip_val=None,
                 unknown_key="oops",  # type: ignore[call-arg]
             )
 
@@ -586,11 +620,18 @@ class TestSerializationRoundTrip:
 
     def test_train_config_round_trip(self):
         tc = TrainConfig(
-            batch_size=32, max_epochs=100, learning_rate=0.001,
-            weight_decay=0.01, patience=5, optimizer="adamw",
-            scheduler_type="default", scheduler_args={},
-            filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0,
-            adam_eps=1e-8, gradient_clip_val=None,
+            batch_size=32,
+            max_epochs=100,
+            learning_rate=0.001,
+            weight_decay=0.01,
+            patience=5,
+            optimizer="adamw",
+            scheduler_type="default",
+            scheduler_args={},
+            filter_bias_and_bn=True,
+            reload_dataloaders_every_n_epochs=0,
+            adam_eps=1e-8,
+            gradient_clip_val=None,
         )
         dumped = tc.model_dump()
         restored = TrainConfig.model_validate(dumped)
@@ -644,7 +685,10 @@ class TestSerializationRoundTrip:
 
         restored = CerberusConfig.model_validate(loaded)
         assert restored.train_config.batch_size == config.train_config.batch_size
-        assert restored.model_config_.count_pseudocount == config.model_config_.count_pseudocount
+        assert (
+            restored.model_config_.count_pseudocount
+            == config.model_config_.count_pseudocount
+        )
 
 
 # ===========================================================================
@@ -707,11 +751,18 @@ class TestModelCopy:
 
     def test_train_config_copy_update(self):
         tc = TrainConfig(
-            batch_size=32, max_epochs=100, learning_rate=0.001,
-            weight_decay=0.01, patience=5, optimizer="adamw",
-            scheduler_type="default", scheduler_args={},
-            filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0,
-            adam_eps=1e-8, gradient_clip_val=None,
+            batch_size=32,
+            max_epochs=100,
+            learning_rate=0.001,
+            weight_decay=0.01,
+            patience=5,
+            optimizer="adamw",
+            scheduler_type="default",
+            scheduler_args={},
+            filter_bias_and_bn=True,
+            reload_dataloaders_every_n_epochs=0,
+            adam_eps=1e-8,
+            gradient_clip_val=None,
         )
         tc2 = tc.model_copy(update={"batch_size": 64})
         assert tc2.batch_size == 64

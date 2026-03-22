@@ -1,4 +1,3 @@
-
 import unittest
 from unittest.mock import MagicMock
 
@@ -42,7 +41,7 @@ class TestDataModuleSeeding(unittest.TestCase):
             genome_config=self.genome_config,
             data_config=self.data_config,
             sampler_config=self.sampler_config,
-            seed=123 # Configured seed
+            seed=123,  # Configured seed
         )
 
         # Mock trainer
@@ -50,20 +49,20 @@ class TestDataModuleSeeding(unittest.TestCase):
         self.trainer_mock.global_rank = 0
         self.trainer_mock.current_epoch = 0
         self.trainer_mock.world_size = 1
-        self.dm.trainer = self.trainer_mock # type: ignore
+        self.dm.trainer = self.trainer_mock  # type: ignore
 
         # Mock dataset creation to avoid loading actual files
         self.train_ds_mock = MagicMock()
         self.train_ds_mock.__len__.return_value = 100
-        self.dm.train_dataset = self.train_ds_mock # type: ignore
+        self.dm.train_dataset = self.train_ds_mock  # type: ignore
 
         self.val_ds_mock = MagicMock()
         self.val_ds_mock.__len__.return_value = 100
-        self.dm.val_dataset = self.val_ds_mock # type: ignore
+        self.dm.val_dataset = self.val_ds_mock  # type: ignore
 
         self.test_ds_mock = MagicMock()
         self.test_ds_mock.__len__.return_value = 100
-        self.dm.test_dataset = self.test_ds_mock # type: ignore
+        self.dm.test_dataset = self.test_ds_mock  # type: ignore
 
         self.dm._is_initialized = True
 
@@ -118,5 +117,6 @@ class TestDataModuleSeeding(unittest.TestCase):
         self.dm.val_dataloader()
         self.val_ds_mock.resample.assert_not_called()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

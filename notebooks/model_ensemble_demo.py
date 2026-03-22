@@ -1,6 +1,6 @@
 # %% [markdown]
 # # Model Ensemble & Prediction Demo
-# 
+#
 # This notebook demonstrates how to load a trained model using `ModelEnsemble` and run predictions.
 # We use a pre-trained BPNet model (single-fold) located in `tests/data/models`.
 
@@ -18,7 +18,7 @@ from cerberus.samplers import IntervalSampler
 
 # %% [markdown]
 # ## 1. Setup Configuration
-# 
+#
 # We need to recreate the configuration used during training to correctly instantiate the model architecture and data pipeline.
 
 # %%
@@ -28,8 +28,12 @@ DATA_DIR = Path("tests/data")
 MODEL_DIR = Path("tests/data/models/chip_ar_mdapca2b_bpnet/multi-fold")
 if not MODEL_DIR.exists():
     print(f"Skipping: checkpoint directory not found: {MODEL_DIR}")
-    print("Run 'bash examples/chip_ar_mdapca2b_bpnet.sh' with a multi-fold setup to generate it.")
-    import sys; sys.exit(0)
+    print(
+        "Run 'bash examples/chip_ar_mdapca2b_bpnet.sh' with a multi-fold setup to generate it."
+    )
+    import sys
+
+    sys.exit(0)
 
 # 1. Genome Config
 # We use the same genome config as training
@@ -42,7 +46,7 @@ genome_config: GenomeConfig = create_genome_config(
     exclude_intervals={
         "blacklist": DATA_DIR / "genome/hg38/blacklist.bed",
         "gaps": DATA_DIR / "genome/hg38/gaps.bed",
-    }
+    },
 )
 
 # 2. Data Config
@@ -80,7 +84,7 @@ model_config = ModelConfig(
 
 # %% [markdown]
 # ## 2. Load Model Ensemble
-# 
+#
 # We initialize `ModelEnsemble` pointing to the directory containing the checkpoint.
 # Since this is a single-fold model, it will be loaded under the key "single".
 
@@ -93,14 +97,14 @@ ensemble = ModelEnsemble(
     model_config=model_config,
     data_config=data_config,
     genome_config=genome_config,
-    device=device
+    device=device,
 )
 
 print(f"Loaded models: {list(ensemble.keys())}")
 
 # %% [markdown]
 # ## 3. Prepare Dataset
-# 
+#
 # We create a `CerberusDataset` in inference mode (`is_train=False`).
 # We also need a list of intervals to predict on. We'll load some from the test set peaks.
 
@@ -111,21 +115,22 @@ sampler = IntervalSampler(
     file_path=peaks_path,
     chrom_sizes=genome_config.chrom_sizes,
     padded_size=data_config.input_len,
-    exclude_intervals={}, # Don't filter for this demo
-    folds=[] # No fold logic for simple interval loading
+    exclude_intervals={},  # Don't filter for this demo
+    folds=[],  # No fold logic for simple interval loading
 )
 
 dataset = CerberusDataset(
     genome_config=genome_config,
     data_config=data_config,
     sampler=sampler,
-    is_train=False
+    is_train=False,
 )
 
 # Get first 5 intervals
 test_intervals = []
 for i, interval in enumerate(sampler):
-    if i >= 5: break
+    if i >= 5:
+        break
     test_intervals.append(interval)
 
 print(f"Predicting on {len(test_intervals)} intervals:")
@@ -142,7 +147,8 @@ pred_iv0 = ensemble.predict_intervals(
     intervals=[test_intervals[0]],
     dataset=dataset,
     use_folds=["test"],
-    aggregation="interval+model")
+    aggregation="interval+model",
+)
 
 print(f"Predicted output for interval {test_intervals[0]}:")
 print(f"pred_iv0.out_interval: {pred_iv0.out_interval}")
@@ -161,7 +167,8 @@ pred_block = ensemble.predict_output_intervals(
     dataset=dataset,
     stride=100,
     use_folds=["test"],
-    aggregation="interval+model")
+    aggregation="interval+model",
+)
 
 # %% [markdown]
 # ## 6. Visualize Predictions
@@ -174,21 +181,21 @@ import matplotlib.pyplot as plt
 if pred_block:
     # Assuming pred_block is a list of results, and we want the first one
     prediction = pred_block[0]
-    
+
     # Check if logits exists and is a tensor
     if hasattr(prediction, "logits") and isinstance(prediction.logits, torch.Tensor):
         logits = prediction.logits.squeeze().cpu().numpy()
-        
+
         # If multi-channel, maybe plot first channel or sum
         if logits.ndim > 1:
-             logits = logits[0] # Take first channel
-             
+            logits = logits[0]  # Take first channel
+
         plt.figure(figsize=(15, 4))
         plt.plot(logits)
         plt.title(f"Predicted Logits for {prediction.out_interval}")
         plt.xlabel("Position (bins)")
         plt.ylabel("Logits")
-        
+
         # Save figure if running as script
         plots_dir = Path("notebooks/plots")
         plots_dir.mkdir(exist_ok=True, parents=True)

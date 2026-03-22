@@ -10,6 +10,7 @@ from cerberus.sequence import encode_dna
 # Gold-standard reference: the original LUT-scatter implementation
 # ---------------------------------------------------------------------------
 
+
 def _create_mapping(encoding: str) -> np.ndarray:
     mapping = np.zeros(256, dtype=np.int8) - 1
     for i, base in enumerate(encoding):
@@ -41,7 +42,9 @@ BASES = "ACGT"
 ENCODINGS = ["ACGT", "AGCT"]
 
 
-def _random_dna(length: int, rng: np.random.RandomState, ambiguity_rate: float = 0.05) -> str:
+def _random_dna(
+    length: int, rng: np.random.RandomState, ambiguity_rate: float = 0.05
+) -> str:
     """Generate a random DNA string with occasional ambiguous bases."""
     bases = list(BASES) + ["N"]
     weights = [(1.0 - ambiguity_rate) / 4] * 4 + [ambiguity_rate]
@@ -61,6 +64,7 @@ def random_sequences() -> list[str]:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestEncodeDnaCorrectness:
     """Verify encode_dna matches the gold-standard reference on random inputs."""
 
@@ -79,7 +83,9 @@ class TestEncodeDnaCorrectness:
     @pytest.mark.parametrize("encoding", ENCODINGS)
     def test_case_insensitivity(self, encoding: str) -> None:
         seq = "AcGtNaCgT"
-        assert torch.equal(encode_dna(seq, encoding), encode_dna_reference(seq, encoding))
+        assert torch.equal(
+            encode_dna(seq, encoding), encode_dna_reference(seq, encoding)
+        )
 
     def test_all_n(self) -> None:
         result = encode_dna("NNNNN")

@@ -61,6 +61,7 @@ def synthetic_batch():
 # 1. Gradient flow
 # ---------------------------------------------------------------------------
 
+
 def test_gradient_flow_all_params(model, synthetic_batch):
     """Every learnable parameter receives a finite, non-zero gradient."""
     x, targets = synthetic_batch
@@ -95,6 +96,7 @@ def test_gradient_wrt_input(model, synthetic_batch):
 # 2. Numerical accuracy — loss formula
 # ---------------------------------------------------------------------------
 
+
 def test_loss_profile_component_numerical_accuracy(model, synthetic_batch):
     """Profile loss matches manually computed multinomial NLL."""
     x, targets = synthetic_batch
@@ -106,10 +108,10 @@ def test_loss_profile_component_numerical_accuracy(model, synthetic_batch):
 
     logits = out.logits  # (B, C, L)
     log_probs = F.log_softmax(logits, dim=-1)
-    profile_counts = targets.sum(dim=-1)                   # (B, C)
-    log_fact_sum = torch.lgamma(profile_counts + 1)        # (B, C)
+    profile_counts = targets.sum(dim=-1)  # (B, C)
+    log_fact_sum = torch.lgamma(profile_counts + 1)  # (B, C)
     log_prod_fact = torch.lgamma(targets + 1).sum(dim=-1)  # (B, C)
-    log_prod_exp = (targets * log_probs).sum(dim=-1)       # (B, C)
+    log_prod_exp = (targets * log_probs).sum(dim=-1)  # (B, C)
     per_channel = -log_fact_sum + log_prod_fact - log_prod_exp  # (B, C)
     expected = per_channel.mean()
 
@@ -126,9 +128,9 @@ def test_loss_count_component_numerical_accuracy(model, synthetic_batch):
     out = model(x)
     actual = loss_fn(out, targets)
 
-    target_global = targets.sum(dim=(1, 2))           # (B,)
-    target_log = torch.log1p(target_global)            # (B,)
-    pred_log = out.log_counts.flatten()                # (B,) — log_counts is (B,1)
+    target_global = targets.sum(dim=(1, 2))  # (B,)
+    target_log = torch.log1p(target_global)  # (B,)
+    pred_log = out.log_counts.flatten()  # (B,) — log_counts is (B,1)
     expected = F.mse_loss(pred_log, target_log)
 
     assert torch.allclose(actual, expected, atol=1e-5), (
@@ -155,6 +157,7 @@ def test_loss_combined_is_sum_of_components(model, synthetic_batch):
 # ---------------------------------------------------------------------------
 # 3. Finite-difference gradient check
 # ---------------------------------------------------------------------------
+
 
 def test_finite_difference_gradient(model, synthetic_batch):
     """
@@ -192,6 +195,7 @@ def test_finite_difference_gradient(model, synthetic_batch):
 # ---------------------------------------------------------------------------
 # 4. Training convergence
 # ---------------------------------------------------------------------------
+
 
 def test_training_loss_decreases(model, synthetic_batch):
     """Loss decreases over five Adam steps on a fixed synthetic batch."""
@@ -237,6 +241,7 @@ def test_training_gradients_stable_across_steps(model, synthetic_batch):
 #    batch_size=1 to keep wall-time well under budget; no_grad where possible.
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def default_model():
     torch.manual_seed(SEED)
@@ -256,8 +261,12 @@ def test_default_bpnet_output_shapes(default_model, default_batch):
     x, _ = default_batch
     with torch.no_grad():
         out = default_model(x)
-    assert out.logits.shape == (1, 1, 1000), f"Unexpected logits shape: {out.logits.shape}"
-    assert out.log_counts.shape == (1, 1), f"Unexpected log_counts shape: {out.log_counts.shape}"
+    assert out.logits.shape == (1, 1, 1000), (
+        f"Unexpected logits shape: {out.logits.shape}"
+    )
+    assert out.log_counts.shape == (1, 1), (
+        f"Unexpected log_counts shape: {out.log_counts.shape}"
+    )
 
 
 def test_default_bpnet_loss_finite(default_model, default_batch):
@@ -293,5 +302,9 @@ def test_default_bpnet_multichannel_output_shapes(default_batch):
     with torch.no_grad():
         out = model(x)
     # predict_total_count=True by default → single scalar count regardless of channels
-    assert out.logits.shape == (1, 2, 1000), f"Unexpected logits shape: {out.logits.shape}"
-    assert out.log_counts.shape == (1, 1), f"Unexpected log_counts shape: {out.log_counts.shape}"
+    assert out.logits.shape == (1, 2, 1000), (
+        f"Unexpected logits shape: {out.logits.shape}"
+    )
+    assert out.log_counts.shape == (1, 1), (
+        f"Unexpected log_counts shape: {out.log_counts.shape}"
+    )

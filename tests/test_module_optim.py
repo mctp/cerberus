@@ -14,8 +14,10 @@ class DummyModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.layer = nn.Linear(1, 1)
+
     def forward(self, x):
         return ProfileLogits(logits=self.layer(x))
+
 
 @pytest.fixture
 def base_config():
@@ -34,25 +36,38 @@ def base_config():
         reload_dataloaders_every_n_epochs=0,
     )
 
+
 def test_configure_optimizers_default(base_config):
     model = DummyModel()
-    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=base_config)
+    module = CerberusModule(
+        model,
+        criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
+        metrics=DefaultMetricCollection(),
+        train_config=base_config,
+    )
 
     optim_conf = module.configure_optimizers()
 
     assert isinstance(optim_conf["optimizer"], torch.optim.AdamW)
     assert optim_conf["monitor"] == "val_loss"
-    assert "lr_scheduler" not in optim_conf # Default has no scheduler
+    assert "lr_scheduler" not in optim_conf  # Default has no scheduler
+
 
 def test_configure_optimizers_sgd(base_config):
     config = TrainConfig.model_construct(
         **{**base_config.__dict__, "optimizer": "sgd"},
     )
     model = DummyModel()
-    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=config)
+    module = CerberusModule(
+        model,
+        criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
+        metrics=DefaultMetricCollection(),
+        train_config=config,
+    )
 
     optim_conf = module.configure_optimizers()
     assert isinstance(optim_conf["optimizer"], torch.optim.SGD)
+
 
 def test_configure_optimizers_with_cosine_scheduler(base_config):
     config = TrainConfig.model_construct(
@@ -71,7 +86,12 @@ def test_configure_optimizers_with_cosine_scheduler(base_config):
     )
 
     model = DummyModel()
-    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=config)
+    module = CerberusModule(
+        model,
+        criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
+        metrics=DefaultMetricCollection(),
+        train_config=config,
+    )
 
     optim_conf = module.configure_optimizers()
 
@@ -86,13 +106,19 @@ def test_configure_optimizers_with_cosine_scheduler(base_config):
     assert scheduler.t_initial == 100
     assert scheduler.warmup_t == 5
 
+
 def test_configure_optimizers_invalid_opt(base_config):
     config = TrainConfig.model_construct(
         **{**base_config.__dict__, "optimizer": "invalid_opt_name_xyz"},
     )
 
     model = DummyModel()
-    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=config)
+    module = CerberusModule(
+        model,
+        criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
+        metrics=DefaultMetricCollection(),
+        train_config=config,
+    )
 
     # timm raises Exception/KeyError
     with pytest.raises(Exception):

@@ -20,6 +20,7 @@ from cerberus.output import ProfileCountOutput, ProfileLogRates
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_profile_count_output(batch=2, channels=1, length=10, device="cpu"):
     logits = torch.randn(batch, channels, length, device=device)
     log_counts = torch.log1p(torch.rand(batch, channels, device=device) * 10 + 1)
@@ -42,7 +43,10 @@ DEVICES = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
 # ProfilePearsonCorrCoef
 # ---------------------------------------------------------------------------
 
-@pytest.mark.filterwarnings("ignore:The ``compute`` method of metric.*was called before the ``update`` method")
+
+@pytest.mark.filterwarnings(
+    "ignore:The ``compute`` method of metric.*was called before the ``update`` method"
+)
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_profile_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
@@ -67,7 +71,10 @@ def test_per_example_profile_pearson_normal_compute_device(device):
 # CountProfilePearsonCorrCoef
 # ---------------------------------------------------------------------------
 
-@pytest.mark.filterwarnings("ignore:The ``compute`` method of metric.*was called before the ``update`` method")
+
+@pytest.mark.filterwarnings(
+    "ignore:The ``compute`` method of metric.*was called before the ``update`` method"
+)
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_count_profile_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
@@ -92,7 +99,10 @@ def test_per_example_count_profile_pearson_normal_compute_device(device):
 # LogCountsPearsonCorrCoef
 # ---------------------------------------------------------------------------
 
-@pytest.mark.filterwarnings("ignore:The ``compute`` method of metric.*was called before the ``update`` method")
+
+@pytest.mark.filterwarnings(
+    "ignore:The ``compute`` method of metric.*was called before the ``update`` method"
+)
 @pytest.mark.parametrize("device", DEVICES)
 def test_per_example_log_counts_pearson_empty_compute_device(device):
     """compute() on a fresh (empty) metric returns nan on the correct device."""
@@ -146,6 +156,7 @@ def test_per_example_log_counts_pearson_normal_compute_device(device):
 # ---------------------------------------------------------------------------
 # BPNetMetricCollection smoke test
 # ---------------------------------------------------------------------------
+
 
 def test_bpnet_metric_collection_compute_device():
     """BPNetMetricCollection.compute() returns all metrics on CPU without error."""

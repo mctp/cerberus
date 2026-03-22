@@ -24,6 +24,7 @@ from cerberus.output import ProfileCountOutput, get_log_count_params
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _model_config(**overrides) -> ModelConfig:
     kw: dict = {
         "name": "TestModel",
@@ -46,6 +47,7 @@ def _model_config(**overrides) -> ModelConfig:
 # ===========================================================================
 # 1. ModelConfig.count_pseudocount field tests
 # ===========================================================================
+
 
 class TestModelConfigCountPseudocount:
     """Unit tests for count_pseudocount as a first-class field on ModelConfig."""
@@ -73,12 +75,14 @@ class TestModelConfigCountPseudocount:
     def test_negative_rejected(self):
         """Negative count_pseudocount should be rejected."""
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="count_pseudocount"):
             _model_config(count_pseudocount=-5.0)
 
     def test_frozen_immutable(self):
         """count_pseudocount cannot be mutated on a frozen model."""
         from pydantic import ValidationError
+
         cfg = _model_config(count_pseudocount=150.0)
         with pytest.raises(ValidationError):
             cfg.count_pseudocount = 999.0  # type: ignore[misc]
@@ -87,6 +91,7 @@ class TestModelConfigCountPseudocount:
 # ===========================================================================
 # 2. instantiate_metrics_and_loss injection tests
 # ===========================================================================
+
 
 class TestInstantiateMetricsAndLoss:
     """Verify instantiate_metrics_and_loss injects count_pseudocount."""
@@ -103,7 +108,9 @@ class TestInstantiateMetricsAndLoss:
         metrics, criterion = instantiate_metrics_and_loss(cfg)
         # BPNetMetricCollection passes count_pseudocount to each sub-metric
         for name, metric in metrics.items():
-            assert metric.count_pseudocount == 150.0, f"Sub-metric '{name}' has wrong pseudocount"
+            assert metric.count_pseudocount == 150.0, (
+                f"Sub-metric '{name}' has wrong pseudocount"
+            )
 
     def test_zero_pseudocount_injected(self):
         """count_pseudocount=0 is still injected."""
@@ -124,6 +131,7 @@ class TestInstantiateMetricsAndLoss:
 # 3. End-to-end: BPNetLoss actually receives the pseudocount
 # ===========================================================================
 
+
 class TestBPNetLossReceivesPseudocount:
     """Verify BPNetLoss constructed with injected pseudocount uses it correctly."""
 
@@ -143,7 +151,8 @@ class TestBPNetLossReceivesPseudocount:
 
         # With beta=0 (no profile loss), count loss should be 0 for perfect pred
         loss_fn_isolated = BPNetLoss(
-            beta=0.0, count_pseudocount=150.0,
+            beta=0.0,
+            count_pseudocount=150.0,
         )
         loss_val = loss_fn_isolated(out, targets)
         assert loss_val.item() == pytest.approx(0.0, abs=1e-4)
@@ -172,6 +181,7 @@ class TestBPNetLossReceivesPseudocount:
 # 4. Scatter plot target consistency
 # ===========================================================================
 
+
 class TestScatterPlotPseudocount:
     """Verify that log-count targets with pseudocount are consistent with the loss."""
 
@@ -183,14 +193,18 @@ class TestScatterPlotPseudocount:
         targets[0, 0, 0] = total
 
         loss_target = torch.log(torch.tensor(total) + pseudocount)
-        accum_target = torch.log(targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount)
+        accum_target = torch.log(
+            targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount
+        )
         assert accum_target.item() == pytest.approx(loss_target.item(), abs=1e-6)
 
     def test_scatter_target_min_with_pseudocount_150(self):
         """With pseudocount=150, the minimum X value is log(150), not 0."""
         pseudocount = 150.0
         targets = torch.zeros(1, 1, 10)
-        target_lc = torch.log(targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount)
+        target_lc = torch.log(
+            targets.sum(dim=(1, 2), dtype=torch.float32) + pseudocount
+        )
         assert target_lc.item() == pytest.approx(math.log(150.0), abs=1e-6)
         assert target_lc.item() > 5.0
 
@@ -204,6 +218,7 @@ class TestScatterPlotPseudocount:
 # ===========================================================================
 # 5. get_log_count_params reads from ModelConfig
 # ===========================================================================
+
 
 class TestGetLogCountParams:
     """Verify get_log_count_params reads count_pseudocount from ModelConfig."""

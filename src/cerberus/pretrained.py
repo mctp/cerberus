@@ -37,7 +37,7 @@ def _extract_prefix(
     """
     dot_prefix = prefix + "."
     extracted = {
-        k[len(dot_prefix):]: v
+        k[len(dot_prefix) :]: v
         for k, v in state_dict.items()
         if k.startswith(dot_prefix)
     }
@@ -114,10 +114,14 @@ def load_pretrained_weights(
                 p.requires_grad_(False)
             logger.info(
                 "Loaded and froze pretrained %s (%s params) from %s",
-                label, f"{n_params:,}", weights_path,
+                label,
+                f"{n_params:,}",
+                weights_path,
             )
         else:
             logger.info(
                 "Loaded pretrained %s (%s params) from %s",
-                label, f"{n_params:,}", weights_path,
+                label,
+                f"{n_params:,}",
+                weights_path,
             )

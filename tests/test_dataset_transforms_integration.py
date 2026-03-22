@@ -21,6 +21,7 @@ def mock_genome(tmp_path):
     fai_path.write_text("chr1\t1000\t0\t80\t81\n")
     return genome_path
 
+
 def test_dataset_auto_transforms(mock_genome):
     # Config: Jitter(10), Shrink(50), Bin(2), Log, RC
     data_config = DataConfig.model_construct(
@@ -47,7 +48,9 @@ def test_dataset_auto_transforms(mock_genome):
         sampler_args={"intervals_path": dummy_bed},
     )
 
-    genome_config = create_genome_config(name="test", fasta_path=mock_genome, species="human")
+    genome_config = create_genome_config(
+        name="test", fasta_path=mock_genome, species="human"
+    )
 
     ds = CerberusDataset(genome_config, data_config, sampler_config)
 
@@ -77,6 +80,7 @@ def test_dataset_auto_transforms(mock_genome):
     # 5. Log
     assert isinstance(transforms[4], Log1p)
 
+
 def test_dataset_no_jitter_defaults(mock_genome):
     # Config: No Jitter, Input=Output=100
     data_config = DataConfig.model_construct(
@@ -101,7 +105,9 @@ def test_dataset_no_jitter_defaults(mock_genome):
         sampler_args={"intervals_path": mock_genome.parent / "dummy.bed"},
     )
 
-    genome_config = create_genome_config(name="test", fasta_path=mock_genome, species="human")
+    genome_config = create_genome_config(
+        name="test", fasta_path=mock_genome, species="human"
+    )
 
     ds = CerberusDataset(genome_config, data_config, sampler_config)
 

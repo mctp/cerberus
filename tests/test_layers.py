@@ -1,4 +1,3 @@
-
 import torch
 
 from cerberus.layers import ConvNeXtV2Block, DilatedResidualBlock, GRN1d, PGCBlock
@@ -16,6 +15,7 @@ def test_dilated_residual_block_shape():
     # 20 - 2 * (3-1) = 20 - 4 = 16
     assert out.shape == (1, filters, 16)
 
+
 def test_grn1d():
     dim = 32
     layer = GRN1d(dim)
@@ -25,6 +25,7 @@ def test_grn1d():
     assert out.shape == x.shape
     assert not torch.isnan(out).any()
 
+
 def test_convnextv2_block_shape_same_channels():
     dim = 32
     # channels_in = channels_out
@@ -32,7 +33,8 @@ def test_convnextv2_block_shape_same_channels():
     x = torch.randn(2, dim, 50)
     out = block(x)
     assert out.shape == x.shape
-    
+
+
 def test_convnextv2_block_channel_change():
     c_in = 16
     c_out = 32
@@ -40,6 +42,7 @@ def test_convnextv2_block_channel_change():
     x = torch.randn(2, c_in, 50)
     out = block(x)
     assert out.shape == (2, c_out, 50)
+
 
 def test_pgc_block_shape():
     dim = 16

@@ -59,10 +59,10 @@ def calculate_dust_score(
     """
     if not isinstance(sequence, str):
         raise TypeError(f"Input must be str. Got {type(sequence).__name__}")
-        
+
     if k > 5:
         raise ValueError(f"k must be <= 5. Got {k}.")
-        
+
     if k < 1:
         raise ValueError("k must be >= 1.")
 
@@ -70,10 +70,10 @@ def calculate_dust_score(
     # A=0, C=1, G=2, T=3, Other=4
     arr_bytes = np.frombuffer(sequence.upper().encode("ascii"), dtype=np.uint8)
     lookup = np.full(256, 4, dtype=np.int8)
-    lookup[ord('A')] = 0
-    lookup[ord('C')] = 1
-    lookup[ord('G')] = 2
-    lookup[ord('T')] = 3
+    lookup[ord("A")] = 0
+    lookup[ord("C")] = 1
+    lookup[ord("G")] = 2
+    lookup[ord("T")] = 3
     arr = lookup[arr_bytes]
 
     seq_len = len(arr)
@@ -84,13 +84,13 @@ def calculate_dust_score(
     windows = np.lib.stride_tricks.sliding_window_view(arr, window_shape=k)
     powers = 5 ** np.arange(k - 1, -1, -1)
     kmer_indices = np.dot(windows, powers)
-    
+
     # max index is 5^k - 1
     counts = np.bincount(kmer_indices, minlength=5**k)
     score = np.sum(counts * (counts - 1) / 2)
-    
+
     val = float(score / (seq_len - k + 1))
-    
+
     if normalize:
         # Expected random val
         exp_random = max((seq_len - k + 1) / (2 * 4**k), 1e-9)
@@ -136,17 +136,17 @@ def calculate_log_cpg_ratio(
 
     if len(sequence) < 2:
         return 0.5 if normalize else 0.0
-        
+
     s = sequence.upper()
-    n_c = s.count('C')
-    n_g = s.count('G')
-    n_cg = s.count('CG')
+    n_c = s.count("C")
+    n_g = s.count("G")
+    n_cg = s.count("CG")
     length = len(s)
-    
+
     exp = (n_c * n_g) / length
     ratio = (n_cg + epsilon) / (exp + epsilon)
     val = math.log2(ratio)
-    
+
     if normalize:
         # Normalize to spread scores. Random DNA (ratio ~1, val ~0) maps to ~0.5.
         # Uses logistic sigmoid: (tanh(val/2) + 1) / 2
@@ -182,7 +182,7 @@ def compute_intervals_complexity(
     """
     if metrics is None:
         metrics = ["gc", "dust", "cpg"]
-        
+
     valid_metrics = {"gc", "dust", "cpg"}
     for m in metrics:
         if m not in valid_metrics:
@@ -205,7 +205,7 @@ def compute_intervals_complexity(
                 # pyfaidx expects 0-based [start:end]
                 seq_obj = fasta[interval.chrom][start:end]
                 seq = str(seq_obj)
-                
+
                 row = []
                 for m in metrics:
                     if m == "gc":
@@ -218,7 +218,9 @@ def compute_intervals_complexity(
             else:
                 results.append([np.nan] * len(metrics))
         except Exception as exc:
-            logger.warning("Failed to extract complexity metrics for %s: %s", interval, exc)
+            logger.warning(
+                "Failed to extract complexity metrics for %s: %s", interval, exc
+            )
             results.append([np.nan] * len(metrics))
 
     if not results:
@@ -260,7 +262,7 @@ def compute_hist(metrics: np.ndarray, bins: int) -> dict[tuple[int, ...], int]:
     # Handle 1D
     if metrics.ndim == 1:
         metrics = metrics.reshape(-1, 1)
-        
+
     for row in metrics:
         bin_idx = get_bin_index(row, bins)
         if bin_idx is not None:

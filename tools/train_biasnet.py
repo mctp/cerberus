@@ -69,82 +69,237 @@ def get_args():
     )
 
     # Input files
-    parser.add_argument("--bigwig", type=str, required=True, help="Path to the BigWig file (signal)")
-    parser.add_argument("--peaks", type=str, required=True, help="Path to the BED/narrowPeak file (peak regions)")
+    parser.add_argument(
+        "--bigwig", type=str, required=True, help="Path to the BigWig file (signal)"
+    )
+    parser.add_argument(
+        "--peaks",
+        type=str,
+        required=True,
+        help="Path to the BED/narrowPeak file (peak regions)",
+    )
 
     # Genome arguments
-    parser.add_argument("--genome", type=str, default="hg38", help="Genome name (default: hg38)")
-    parser.add_argument("--species", type=str, default="human", help="Species (default: human)")
-    parser.add_argument("--fasta", type=str, help="Path to genome FASTA file (if not provided, will try to download for hg38)")
+    parser.add_argument(
+        "--genome", type=str, default="hg38", help="Genome name (default: hg38)"
+    )
+    parser.add_argument(
+        "--species", type=str, default="human", help="Species (default: human)"
+    )
+    parser.add_argument(
+        "--fasta",
+        type=str,
+        help="Path to genome FASTA file (if not provided, will try to download for hg38)",
+    )
     parser.add_argument("--blacklist", type=str, help="Path to blacklist file")
     parser.add_argument("--gaps", type=str, help="Path to gaps file")
 
     # Script arguments
-    parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data (e.g., genome reference)")
-    parser.add_argument("--output-dir", type=str, required=True, help="Root directory for logs and checkpoints")
-    parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for data sampling (default: 42)")
-    parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
-    parser.add_argument("--silent", action="store_true", help="Disable tqdm progress bar during training")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="tests/data",
+        help="Directory to store/load data (e.g., genome reference)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        required=True,
+        help="Root directory for logs and checkpoints",
+    )
+    parser.add_argument(
+        "--num-workers", type=int, default=8, help="Number of dataloader workers"
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=32, help="Batch size per device"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for data sampling (default: 42)",
+    )
+    parser.add_argument(
+        "--max-epochs", type=int, default=50, help="Maximum number of epochs"
+    )
+    parser.add_argument(
+        "--silent",
+        action="store_true",
+        help="Disable tqdm progress bar during training",
+    )
 
     # Mode arguments
-    parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
-    parser.add_argument("--val-fold", type=int, default=1, help="Validation fold (for single-fold training)")
+    parser.add_argument(
+        "--multi",
+        action="store_true",
+        help="Run multi-fold cross-validation instead of single fold",
+    )
+    parser.add_argument(
+        "--val-fold",
+        type=int,
+        default=1,
+        help="Validation fold (for single-fold training)",
+    )
     parser.add_argument("--test-fold", type=int, default=0, help="Test fold")
 
     # Data hyperparameters
-    parser.add_argument("--output-len", type=int, default=1024, help="Output signal length")
-    parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
-    parser.add_argument("--sampler-type", type=str, default="negative_peak",
-                        choices=["peak", "negative_peak"],
-                        help="Sampler type (default: negative_peak for bias-only training)")
-    parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background intervals to peaks (for peak sampler)")
-    parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets")
-    parser.add_argument("--count-pseudocount", type=float, default=1.0, help="Additive offset before log-transforming count targets")
+    parser.add_argument(
+        "--output-len", type=int, default=1024, help="Output signal length"
+    )
+    parser.add_argument(
+        "--jitter",
+        type=int,
+        default=256,
+        help="Maximum jitter for data augmentation (half-width)",
+    )
+    parser.add_argument(
+        "--sampler-type",
+        type=str,
+        default="negative_peak",
+        choices=["peak", "negative_peak"],
+        help="Sampler type (default: negative_peak for bias-only training)",
+    )
+    parser.add_argument(
+        "--background-ratio",
+        type=float,
+        default=1.0,
+        help="Ratio of background intervals to peaks (for peak sampler)",
+    )
+    parser.add_argument(
+        "--target-scale",
+        type=float,
+        default=1.0,
+        help="Multiplicative scaling factor for targets",
+    )
+    parser.add_argument(
+        "--count-pseudocount",
+        type=float,
+        default=1.0,
+        help="Additive offset before log-transforming count targets",
+    )
 
     # Architecture
-    parser.add_argument("--filters", type=int, default=12, help="Number of conv filters (model dimension)")
-    parser.add_argument("--n-layers", type=int, default=5, help="Number of residual tower layers")
-    parser.add_argument("--dilations", type=int, nargs="+", default=[1, 1, 1, 1, 1],
-                        help="Dilation schedule for tower layers")
-    parser.add_argument("--dil-kernel-size", type=int, default=9, help="Tower conv kernel size")
-    parser.add_argument("--conv-kernel-size", type=int, nargs="+", default=[11, 11],
-                        help="Stem kernel size(s)")
-    parser.add_argument("--profile-kernel-size", type=int, default=45, help="Profile head spatial kernel size")
+    parser.add_argument(
+        "--filters",
+        type=int,
+        default=12,
+        help="Number of conv filters (model dimension)",
+    )
+    parser.add_argument(
+        "--n-layers", type=int, default=5, help="Number of residual tower layers"
+    )
+    parser.add_argument(
+        "--dilations",
+        type=int,
+        nargs="+",
+        default=[1, 1, 1, 1, 1],
+        help="Dilation schedule for tower layers",
+    )
+    parser.add_argument(
+        "--dil-kernel-size", type=int, default=9, help="Tower conv kernel size"
+    )
+    parser.add_argument(
+        "--conv-kernel-size",
+        type=int,
+        nargs="+",
+        default=[11, 11],
+        help="Stem kernel size(s)",
+    )
+    parser.add_argument(
+        "--profile-kernel-size",
+        type=int,
+        default=45,
+        help="Profile head spatial kernel size",
+    )
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
-    parser.add_argument("--no-residual", action="store_true", help="Disable residual connections in tower blocks")
-    parser.add_argument("--linear-head", action="store_true", default=True,
-                        help="Use single linear spatial conv for profile head (default: True)")
-    parser.add_argument("--no-linear-head", action="store_true",
-                        help="Use pointwise+ReLU+spatial conv for profile head")
+    parser.add_argument(
+        "--no-residual",
+        action="store_true",
+        help="Disable residual connections in tower blocks",
+    )
+    parser.add_argument(
+        "--linear-head",
+        action="store_true",
+        default=True,
+        help="Use single linear spatial conv for profile head (default: True)",
+    )
+    parser.add_argument(
+        "--no-linear-head",
+        action="store_true",
+        help="Use pointwise+ReLU+spatial conv for profile head",
+    )
 
     # Pretrained weights
-    parser.add_argument("--pretrained", type=str, default=None,
-                        help="Path to pretrained BiasNet model.pt for warm-start / fine-tuning")
+    parser.add_argument(
+        "--pretrained",
+        type=str,
+        default=None,
+        help="Path to pretrained BiasNet model.pt for warm-start / fine-tuning",
+    )
 
     # Loss
-    parser.add_argument("--loss", type=str, default="mse", choices=["mse", "bpnet", "poisson"],
-                        help="Loss function (default: mse)")
-    parser.add_argument("--count-weight", type=_parse_count_weight, default="adaptive",
-                        help="Count loss weight. Use 'adaptive' (default) for data-derived, or a float.")
+    parser.add_argument(
+        "--loss",
+        type=str,
+        default="mse",
+        choices=["mse", "bpnet", "poisson"],
+        help="Loss function (default: mse)",
+    )
+    parser.add_argument(
+        "--count-weight",
+        type=_parse_count_weight,
+        default="adaptive",
+        help="Count loss weight. Use 'adaptive' (default) for data-derived, or a float.",
+    )
 
     # Training parameters
-    parser.add_argument("--learning-rate", type=float, default=1e-3, help="Learning rate")
+    parser.add_argument(
+        "--learning-rate", type=float, default=1e-3, help="Learning rate"
+    )
     parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay")
-    parser.add_argument("--patience", type=int, default=10, help="Patience for early stopping")
+    parser.add_argument(
+        "--patience", type=int, default=10, help="Patience for early stopping"
+    )
     parser.add_argument("--optimizer", type=str, default="adamw", help="Optimizer type")
-    parser.add_argument("--scheduler-type", type=str, default="default", help="Learning rate scheduler type")
-    parser.add_argument("--warmup-epochs", type=int, default=0, help="Number of warmup epochs (for cosine scheduler)")
-    parser.add_argument("--min-lr", type=float, default=5e-6, help="Minimum learning rate (for cosine scheduler)")
+    parser.add_argument(
+        "--scheduler-type",
+        type=str,
+        default="default",
+        help="Learning rate scheduler type",
+    )
+    parser.add_argument(
+        "--warmup-epochs",
+        type=int,
+        default=0,
+        help="Number of warmup epochs (for cosine scheduler)",
+    )
+    parser.add_argument(
+        "--min-lr",
+        type=float,
+        default=5e-6,
+        help="Minimum learning rate (for cosine scheduler)",
+    )
 
     # Hardware arguments
-    parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
-    parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
-    parser.add_argument("--precision", type=str, default="bf16", choices=["bf16", "mps", "full"],
-                        help="Precision strategy: 'bf16' for NVIDIA bf16-mixed (default), "
-                             "'mps' for Apple Silicon fp16-mixed, "
-                             "'full' for safest float32 (32-true, matmul=highest, no compile)")
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="auto",
+        choices=["auto", "gpu", "cpu", "mps"],
+        help="Accelerator type",
+    )
+    parser.add_argument(
+        "--devices", type=str, default="auto", help="Number of devices or 'auto'"
+    )
+    parser.add_argument(
+        "--precision",
+        type=str,
+        default="bf16",
+        choices=["bf16", "mps", "full"],
+        help="Precision strategy: 'bf16' for NVIDIA bf16-mixed (default), "
+        "'mps' for Apple Silicon fp16-mixed, "
+        "'full' for safest float32 (32-true, matmul=highest, no compile)",
+    )
 
     return parser.parse_args()
 
@@ -182,7 +337,9 @@ def main():
             blacklist_path = args.blacklist or genome_files["blacklist"]
             gaps_path = args.gaps or genome_files["gaps"]
         else:
-            raise ValueError(f"Fasta path must be provided for genome {args.genome} if not hg38")
+            raise ValueError(
+                f"Fasta path must be provided for genome {args.genome} if not hg38"
+            )
     else:
         fasta_path = Path(args.fasta)
         blacklist_path = Path(args.blacklist) if args.blacklist else None
@@ -293,7 +450,9 @@ def main():
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
         loss_args: dict = {"count_weight": args.count_weight}
-        logging.info("Using PoissonMultinomialLoss (count_weight=%s)...", args.count_weight)
+        logging.info(
+            "Using PoissonMultinomialLoss (count_weight=%s)...", args.count_weight
+        )
     elif args.loss == "bpnet":
         loss_cls = "cerberus.models.bpnet.BPNetLoss"
         loss_args = {"alpha": args.count_weight}
@@ -309,12 +468,14 @@ def main():
     # Build pretrained weight configs
     pretrained: list[PretrainedConfig] = []
     if args.pretrained:
-        pretrained.append(PretrainedConfig(
-            weights_path=args.pretrained,
-            source=None,
-            target=None,
-            freeze=False,
-        ))
+        pretrained.append(
+            PretrainedConfig(
+                weights_path=args.pretrained,
+                source=None,
+                target=None,
+                freeze=False,
+            )
+        )
 
     model_config = ModelConfig(
         name="BiasNet",
@@ -423,7 +584,9 @@ def main():
         )
 
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-        logging.info(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
+        logging.info(
+            f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}"
+        )
 
 
 if __name__ == "__main__":

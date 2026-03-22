@@ -36,20 +36,33 @@ def test_dataset_in_memory_extractor(tmp_path):
 
     # Test 1: in_memory=True
     genome_config = create_genome_config(
-        name="test",
-        fasta_path=genome,
-        species="human",
-        allowed_chroms=["chr1"]
+        name="test", fasta_path=genome, species="human", allowed_chroms=["chr1"]
     )
 
-    ds_mem = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None, in_memory=True)
+    ds_mem = CerberusDataset(
+        genome_config,
+        data_config,
+        sampler_config,
+        sequence_extractor=None,
+        sampler=None,
+        exclude_intervals=None,
+        in_memory=True,
+    )
     assert isinstance(ds_mem.sequence_extractor, InMemorySequenceExtractor)
 
     seq = ds_mem[0]["inputs"]
     assert seq.shape == (4, 10)
 
     # Test 2: in_memory=False
-    ds_disk = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None, in_memory=False)
+    ds_disk = CerberusDataset(
+        genome_config,
+        data_config,
+        sampler_config,
+        sequence_extractor=None,
+        sampler=None,
+        exclude_intervals=None,
+        in_memory=False,
+    )
     assert isinstance(ds_disk.sequence_extractor, SequenceExtractor)
 
     seq = ds_disk[0]["inputs"]

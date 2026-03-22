@@ -53,6 +53,7 @@ class ModelEnsemble(nn.ModuleDict):
     Wraps a dictionary of models (fold_idx -> model) and manages
     selection based on genomic intervals.
     """
+
     def __init__(
         self,
         checkpoint_path: Path | str,
@@ -72,7 +73,7 @@ class ModelEnsemble(nn.ModuleDict):
 
         # Resolve configuration
         hparams_path = self._find_hparams(path)
-        self.cerberus_config : CerberusConfig = parse_hparams_config(hparams_path)
+        self.cerberus_config: CerberusConfig = parse_hparams_config(hparams_path)
 
         overrides = {}
         if model_config is not None:
@@ -88,9 +89,7 @@ class ModelEnsemble(nn.ModuleDict):
         data_config = self.cerberus_config.data_config
         genome_config = self.cerberus_config.genome_config
 
-        loader = _ModelManager(
-            path, model_config, data_config, genome_config, device
-        )
+        loader = _ModelManager(path, model_config, data_config, genome_config, device)
         models, folds = loader.load_models_and_folds()
 
         super().__init__(models)
@@ -105,7 +104,7 @@ class ModelEnsemble(nn.ModuleDict):
         candidates = list(checkpoint_dir.rglob("hparams.yaml"))
         if not candidates:
             raise FileNotFoundError(f"No hparams.yaml found in {checkpoint_dir}")
-        
+
         # Sort by modification time (newest first)
         candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         return candidates[0]
@@ -119,18 +118,18 @@ class ModelEnsemble(nn.ModuleDict):
         """
         if use_folds is not None:
             return use_folds
-        
+
         if len(self) == 1:
             return ["train", "test", "val"]
         else:
             return ["test", "val"]
 
     def forward(
-        self, 
-        x: torch.Tensor, 
-        intervals: list[Interval] | None = None, 
+        self,
+        x: torch.Tensor,
+        intervals: list[Interval] | None = None,
         use_folds: list[str] | None = None,
-        aggregation: str = "model" # "model", "interval+model"
+        aggregation: str = "model",  # "model", "interval+model"
     ) -> ModelOutput:
         """
         Runs the forward pass on selected models and aggregates their outputs.
@@ -155,7 +154,7 @@ class ModelEnsemble(nn.ModuleDict):
 
         Returns:
             ModelOutput: The aggregated model output. The exact type depends on the models used.
-        
+
         Raises:
             RuntimeError: If no models are selected for execution.
             ValueError: If `aggregation` is invalid or if `intervals` are missing when required.
@@ -164,28 +163,27 @@ class ModelEnsemble(nn.ModuleDict):
 
         # 1. Run models -> list[ModelOutput] (one per model, batched)
         batch_outputs = self._forward_models(x, intervals, use_folds)
-        
+
         if not batch_outputs:
             raise RuntimeError("No model outputs generated.")
 
         if aggregation == "model":
             # Aggregate over models, return batched [aggregated]
             return aggregate_models(batch_outputs, method="mean")
-        
+
         if aggregation == "interval+model":
             if intervals is None:
                 raise ValueError("Intervals are required for interval aggregation.")
 
             # Center intervals to output length
             centered_intervals = [
-                i.center(self.cerberus_config.data_config.output_len)
-                for i in intervals
+                i.center(self.cerberus_config.data_config.output_len) for i in intervals
             ]
 
             # Aggregate over models
             aggregated_batch = aggregate_models(batch_outputs, method="mean")
             output_cls = type(aggregated_batch)
-            
+
             # Unbatch
             unbatched = unbatch_modeloutput(aggregated_batch, len(centered_intervals))
 
@@ -199,62 +197,67 @@ class ModelEnsemble(nn.ModuleDict):
             )
             return merged
 
-        raise ValueError(f"Unknown aggregation mode: {aggregation} (supported: 'model', 'interval+model')")
+        raise ValueError(
+            f"Unknown aggregation mode: {aggregation} (supported: 'model', 'interval+model')"
+        )
 
     def _forward_models(
-        self, 
-        x: torch.Tensor, 
-        intervals: list[Interval] | None = None, 
-        use_folds: list[str] | None = None
+        self,
+        x: torch.Tensor,
+        intervals: list[Interval] | None = None,
+        use_folds: list[str] | None = None,
     ) -> list[ModelOutput]:
         """
         Runs the forward pass for selected models.
-        
+
         Args:
             x: Input tensor (Batch, Channels, Length).
             intervals: Optional list of intervals to determine which models to run.
             use_folds: List of fold roles to use ('train', 'test', 'val').
-            
+
         Returns:
             list[ModelOutput]: A list of outputs from the selected models.
         """
         use_folds = self._resolve_use_folds(use_folds)
-        
+
         if not intervals:
             # Fallback: run all models if no intervals provided (or for single model)
             models_to_run = self.values()
         else:
             # Determine applicable models
             target_partitions = set()
-            
+
             # We assume all intervals in the batch belong to the same partition
             interval = intervals[0]
             for fold_idx, fold_map in enumerate(self.folds):
                 if interval.chrom in fold_map:
-                    if any(fold_map[interval.chrom].find((interval.start, interval.end - 1))):
+                    if any(
+                        fold_map[interval.chrom].find(
+                            (interval.start, interval.end - 1)
+                        )
+                    ):
                         target_partitions.add(fold_idx)
 
-            # Determine which models to load based on use_folds            
+            # Determine which models to load based on use_folds
             # The rotation logic assumes:
             # - Model 'i' treats Partition 'i' as TEST.
             # - Model 'i' treats Partition '(i+1)%k' as VAL.
             # Therefore:
             # - To get TEST predictions for Partition 'p', we need Model 'p'.
             # - To get VAL predictions for Partition 'p', we need Model 'p-1' (mod k).
-            
+
             models_to_load = set()
             if len(self.folds) > 0 and target_partitions:
                 for p_idx in target_partitions:
-
                     # 1. 'test'
                     if "test" in use_folds:
                         models_to_load.add(p_idx)
-                    
+
                     # 2. 'val'
                     if "val" in use_folds:
                         val_model_idx = (p_idx - 1) % len(self.folds)
                         models_to_load.add(val_model_idx)
-                        
+
                     # 3. 'train'
                     if "train" in use_folds:
                         test_model = p_idx
@@ -262,7 +265,7 @@ class ModelEnsemble(nn.ModuleDict):
                         for i in range(len(self.folds)):
                             if i != test_model and i != val_model:
                                 models_to_load.add(i)
-                
+
                 # Retrieve models by index string
                 models_to_run = []
                 for idx in sorted(list(models_to_load)):
@@ -291,27 +294,27 @@ class ModelEnsemble(nn.ModuleDict):
     ) -> Iterator[tuple[ModelOutput, list[Interval]]]:
         """
         Runs prediction for a sequence of intervals in batches, yielding results as they are computed.
-        
+
         This method is a generator that duplicates the batch processing logic of `predict_intervals`
         but returns each batch immediately instead of aggregating everything at the end.
-        
+
         Args:
             intervals: Iterable of genomic intervals.
             dataset: Dataset for input retrieval.
             use_folds: List of folds to use. Defaults to None (resolves based on ensemble size).
             aggregation: Aggregation mode ("model" or "interval+model").
             batch_size: Batch size.
-            
+
         Yields:
             tuple[ModelOutput, list[Interval]]: A tuple containing the batch output and the list of
             intervals in that batch.
-            
+
             If aggregation="model", ModelOutput is batched.
             If aggregation="interval+model", ModelOutput is merged/unbatched for that batch's spatial extent.
         """
         use_folds = self._resolve_use_folds(use_folds)
         input_len = dataset.data_config.input_len
-        
+
         if aggregation not in ["model", "interval+model"]:
             raise ValueError(
                 f"aggregation must be 'model' or 'interval+model', got '{aggregation}'"
@@ -344,7 +347,7 @@ class ModelEnsemble(nn.ModuleDict):
                 use_folds=use_folds,
                 aggregation=aggregation,
             )
-            
+
             yield batched_output, batch_intervals
 
     def predict_intervals(
@@ -406,11 +409,11 @@ class ModelEnsemble(nn.ModuleDict):
 
         # 4. Final Aggregation
         if not results:
-             raise RuntimeError("No results generated.")
-             
+            raise RuntimeError("No results generated.")
+
         outputs_list = [r[0] for r in results]
         intervals_list = [r[1] for r in results]
-        
+
         merged = aggregate_intervals(
             outputs_list,
             intervals_list,
@@ -497,6 +500,7 @@ class _ModelManager:
     pretrained-weight-loading update) and falls back to Lightning ``.ckpt``
     checkpoints for backward compatibility with older training runs.
     """
+
     def __init__(
         self,
         checkpoint_path: Path | str,
@@ -510,12 +514,12 @@ class _ModelManager:
         self.data_config = data_config
         self.genome_config = genome_config
         self.device = device
-        
+
         self.cache: dict[str, nn.Module] = {}
-        
+
         # Parse metadata
         meta_path = self.checkpoint_path / "ensemble_metadata.yaml"
-            
+
         with open(meta_path) as f:
             meta = yaml.safe_load(f)
             self.fold_indices = meta.get("folds", [])
@@ -531,6 +535,7 @@ class _ModelManager:
         """
         Selects the best checkpoint from a list based on validation loss.
         """
+
         def get_val_loss(p: Path) -> float:
             # Pattern to match val_loss=0.1234
             match = re.search(r"val_loss[=_](\d+\.?\d*)", p.name)
@@ -539,8 +544,8 @@ class _ModelManager:
                     return float(match.group(1))
                 except ValueError:
                     pass
-            return float('inf')
-        
+            return float("inf")
+
         # Sort by val_loss ascending, then by name (for determinism)
         sorted_ckpts = sorted(checkpoints, key=lambda p: (get_val_loss(p), p.name))
         return sorted_ckpts[0]
@@ -565,10 +570,12 @@ class _ModelManager:
                 continue
 
             # Fallback: find best Lightning checkpoint
-            logger.debug("model.pt not found for fold %s, falling back to .ckpt", fold_idx)
+            logger.debug(
+                "model.pt not found for fold %s, falling back to .ckpt", fold_idx
+            )
             checkpoints = list(fold_dir.glob("*.ckpt"))
             if not checkpoints:
-                 checkpoints = list(fold_dir.rglob("*.ckpt"))
+                checkpoints = list(fold_dir.rglob("*.ckpt"))
 
             if checkpoints:
                 ckpt_path = self._select_best_checkpoint(checkpoints)
@@ -649,21 +656,21 @@ def update_ensemble_metadata(root_dir: Path | str, fold: int):
     path = Path(root_dir)
     path.mkdir(parents=True, exist_ok=True)
     meta_path = path / "ensemble_metadata.yaml"
-    
+
     existing_folds: set[int] = set()
     if meta_path.exists():
         with open(meta_path) as f:
             try:
                 meta = yaml.safe_load(f)
                 if meta and "folds" in meta:
-                     existing_folds = set(meta["folds"])
+                    existing_folds = set(meta["folds"])
             except yaml.YAMLError:
                 logger.warning(
                     f"Corrupt ensemble metadata at {meta_path}; "
                     "existing fold information will be lost"
                 )
-    
+
     existing_folds.add(fold)
-    
+
     with open(meta_path, "w") as f:
         yaml.dump({"folds": sorted(list(existing_folds))}, f)

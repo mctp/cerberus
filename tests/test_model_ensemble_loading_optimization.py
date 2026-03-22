@@ -33,6 +33,7 @@ class SimpleModel(nn.Module):
         h = self.linear(x_flat)
         return self.output(h)
 
+
 @pytest.fixture
 def mock_ensemble_dir(tmp_path):
     ensemble_dir = tmp_path / "test_ensemble"
@@ -59,6 +60,7 @@ def mock_ensemble_dir(tmp_path):
 
     return ensemble_dir
 
+
 def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
     model_config = ModelConfig.model_construct(
         name="SimpleModel",
@@ -73,17 +75,24 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
     )
 
     data_config = DataConfig.model_construct(
-        inputs={}, targets={},
-        input_len=10, output_len=1,
-        output_bin_size=1, max_jitter=0,
-        encoding="ACGT", log_transform=False,
-        reverse_complement=False, target_scale=1.0,
+        inputs={},
+        targets={},
+        input_len=10,
+        output_len=1,
+        output_bin_size=1,
+        max_jitter=0,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
         use_sequence=True,
     )
 
     genome_config = GenomeConfig.model_construct(
-        name="hg38", fasta_path=Path("genome.fa"),
-        exclude_intervals={}, allowed_chroms=["chr1"],
+        name="hg38",
+        fasta_path=Path("genome.fa"),
+        exclude_intervals={},
+        allowed_chroms=["chr1"],
         chrom_sizes={"chr1": 1000},
         fold_type="chrom_partition",
         fold_args={"k": 1, "test_fold": None, "val_fold": None},
@@ -93,19 +102,29 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
         data_config=data_config,
         genome_config=genome_config,
         sampler_config=SamplerConfig.model_construct(
-            sampler_type="random", padded_size=10,
+            sampler_type="random",
+            padded_size=10,
             sampler_args={"num_intervals": 10},
         ),
         train_config=TrainConfig.model_construct(
-            batch_size=1, max_epochs=1, learning_rate=1e-3, weight_decay=0.0,
-            patience=5, optimizer="adam", scheduler_type="default", scheduler_args={},
-            filter_bias_and_bn=True, reload_dataloaders_every_n_epochs=0, adam_eps=1e-8,
+            batch_size=1,
+            max_epochs=1,
+            learning_rate=1e-3,
+            weight_decay=0.0,
+            patience=5,
+            optimizer="adam",
+            scheduler_type="default",
+            scheduler_args={},
+            filter_bias_and_bn=True,
+            reload_dataloaders_every_n_epochs=0,
+            adam_eps=1e-8,
             gradient_clip_val=None,
         ),
         model_config_=model_config,
     )
 
     from cerberus import module
+
     original_import = module.import_class
 
     def mock_import(name):
@@ -116,14 +135,22 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
     module.import_class = mock_import
 
     try:
-        with patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
-             patch("cerberus.model_ensemble.parse_hparams_config", return_value=cerberus_config):
+        with (
+            patch(
+                "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+                return_value=Path("hparams.yaml"),
+            ),
+            patch(
+                "cerberus.model_ensemble.parse_hparams_config",
+                return_value=cerberus_config,
+            ),
+        ):
             ensemble = ModelEnsemble(
                 mock_ensemble_dir,
                 model_config=model_config,
                 data_config=data_config,
                 genome_config=genome_config,
-                device="cpu"
+                device="cpu",
             )
 
         assert "0" in ensemble

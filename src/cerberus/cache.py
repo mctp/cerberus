@@ -55,13 +55,16 @@ def resolve_cache_dir(
         Path to the config-specific cache subdirectory.
     """
     fasta_path = str(fasta_path)
-    key_data = json.dumps({
-        "fasta_path": fasta_path,
-        "fasta_mtime": os.path.getmtime(fasta_path),
-        "sampler_config": sampler_config.model_dump(mode="json"),
-        "seed": seed,
-        "chrom_sizes": chrom_sizes,
-    }, sort_keys=True)
+    key_data = json.dumps(
+        {
+            "fasta_path": fasta_path,
+            "fasta_mtime": os.path.getmtime(fasta_path),
+            "sampler_config": sampler_config.model_dump(mode="json"),
+            "seed": seed,
+            "chrom_sizes": chrom_sizes,
+        },
+        sort_keys=True,
+    )
     h = hashlib.sha256(key_data.encode()).hexdigest()[:16]
     return cache_dir / h
 

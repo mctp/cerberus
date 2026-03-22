@@ -29,16 +29,17 @@ logger = logging.getLogger(__name__)
 class CerberusDataset(Dataset):
     """
     A PyTorch Dataset for loading genomic data using the Cerberus framework.
-    
+
     This dataset integrates genome configuration, data samplers, and feature extractors
     to provide a unified interface for training deep learning models on genomic data.
-    
+
     It supports:
     - On-the-fly or in-memory data loading.
     - Custom sampling strategies (intervals, sliding windows, multi-sampler).
     - Data transformations (jitter, reverse complement, etc.).
     - K-fold cross-validation splitting.
     """
+
     genome_config: GenomeConfig
     data_config: DataConfig
     sampler_config: SamplerConfig | None
@@ -123,7 +124,9 @@ class CerberusDataset(Dataset):
         if sampler is not None:
             self.sampler = sampler
         elif self.sampler_config is not None:
-            logger.debug(f"Initializing sampler of type {self.sampler_config.sampler_type}...")
+            logger.debug(
+                f"Initializing sampler of type {self.sampler_config.sampler_type}..."
+            )
             self.sampler = self._initialize_sampler()
         else:
             self.sampler = None
@@ -151,8 +154,7 @@ class CerberusDataset(Dataset):
             self.input_signal_extractor = input_signal_extractor
         elif self.data_config.inputs:
             self.input_signal_extractor = UniversalExtractor(
-                paths=self.data_config.inputs,
-                in_memory=self.in_memory
+                paths=self.data_config.inputs, in_memory=self.in_memory
             )
         else:
             self.input_signal_extractor = None
@@ -162,12 +164,11 @@ class CerberusDataset(Dataset):
             self.target_signal_extractor = target_signal_extractor
         elif self.data_config.targets:
             self.target_signal_extractor = UniversalExtractor(
-                paths=self.data_config.targets,
-                in_memory=self.in_memory
+                paths=self.data_config.targets, in_memory=self.in_memory
             )
         else:
             self.target_signal_extractor = None
-            
+
         # Ensure at least one input source is available
         if self.sequence_extractor is None and self.input_signal_extractor is None:
             raise ValueError(
@@ -224,29 +225,29 @@ class CerberusDataset(Dataset):
     def get_raw_targets(
         self,
         query: str | tuple[str, int, int] | list[object] | Interval,
-        crop_to_output_len: bool = True
+        crop_to_output_len: bool = True,
     ) -> torch.Tensor:
         """
         Retrieves raw target signals for a specific interval, bypassing transforms.
-        
+
         This is useful for getting true observed counts without binning or log transforms
         that might be applied in the standard pipeline.
-        
+
         Args:
             query: Interval object, string "chr:start-end", or tuple (chr, start, end).
             crop_to_output_len: Whether to crop the extracted signal to the output length.
-            
+
         Returns:
             torch.Tensor: The raw target signal.
         """
         interval = resolve_interval(query)
-        
+
         if self.target_signal_extractor is None:
             raise RuntimeError("Target signal extractor is not initialized.")
 
         # Extract (C, Input_Len)
-        raw_target = self.target_signal_extractor.extract(interval) 
-        
+        raw_target = self.target_signal_extractor.extract(interval)
+
         if crop_to_output_len:
             crop_start = (self.data_config.input_len - self.data_config.output_len) // 2
             crop_end = crop_start + self.data_config.output_len
@@ -254,10 +255,12 @@ class CerberusDataset(Dataset):
             # Check if we need to crop
             if raw_target.shape[-1] > self.data_config.output_len:
                 raw_target = raw_target[..., crop_start:crop_end]
-                
+
         return raw_target
 
-    def get_interval(self, query: str | tuple[str, int, int] | list[object] | Interval) -> dict[str, Any]:
+    def get_interval(
+        self, query: str | tuple[str, int, int] | list[object] | Interval
+    ) -> dict[str, Any]:
         """
         Retrieves inputs and targets for a specific interval, side-stepping the sampler.
         Resolves query into an Interval object first.
@@ -274,31 +277,33 @@ class CerberusDataset(Dataset):
     def _get_interval(self, interval: Interval) -> dict[str, Any]:
         """
         Internal method to extract data for a resolved interval.
-        
+
         This method performs the core logic of fetching data from extractors
         and applying transformations.
-        
+
         Note: The 'interval' object is passed to transforms, which may modify it in-place
         (e.g., Jitter updates the start/end coordinates). The returned dictionary contains
         the string representation of this potentially modified interval.
-        
+
         Args:
             interval: The genomic interval to retrieve.
-            
+
         Returns:
             dict: Containing 'inputs', 'targets', and 'intervals' string.
         """
         # Extract inputs
         input_tensors = []
-        
+
         # Extract sequence
         if self.sequence_extractor is not None:
             input_tensors.append(self.sequence_extractor.extract(interval))  # (4, L)
 
         # Extract input signals
         if self.input_signal_extractor is not None:
-            input_tensors.append(self.input_signal_extractor.extract(interval))  # (C, L)
-            
+            input_tensors.append(
+                self.input_signal_extractor.extract(interval)
+            )  # (C, L)
+
         # Stack along channel dimension
         inputs = torch.cat(input_tensors, dim=0)
 
@@ -311,9 +316,7 @@ class CerberusDataset(Dataset):
         # Apply transforms (self.transforms and self.deterministic_transforms
         # are always Compose objects, possibly wrapping an empty list)
         if self.is_train:
-            inputs, targets, interval = self.transforms(
-                inputs, targets, interval
-            )
+            inputs, targets, interval = self.transforms(inputs, targets, interval)
         else:
             inputs, targets, interval = self.deterministic_transforms(
                 inputs, targets, interval
@@ -345,12 +348,14 @@ class CerberusDataset(Dataset):
                                      Requires the sampler to implement ``get_interval_source()``
                                      (e.g. :class:`MultiSampler` / :class:`PeakSampler`); defaults to
                                      ``"unknown"`` for samplers that do not support source labelling.
-        
+
         Raises:
             TypeError: If no sampler is configured for this dataset.
         """
         if self.sampler is None:
-            raise TypeError("Dataset has no sampler configured. Use get_interval() for specific queries.")
+            raise TypeError(
+                "Dataset has no sampler configured. Use get_interval() for specific queries."
+            )
         interval = self.sampler[idx]
         result = self._get_interval(interval)
         result["interval_source"] = self.sampler.get_interval_source(idx)
@@ -361,18 +366,20 @@ class CerberusDataset(Dataset):
         # Batch optimization if needed, for now loop
         return [self.__getitem__(idx) for idx in indices]
 
-    def _subset(self, sampler: Sampler | None, is_train: bool = True) -> "CerberusDataset":
+    def _subset(
+        self, sampler: Sampler | None, is_train: bool = True
+    ) -> "CerberusDataset":
         """
         Internal method to create a new dataset instance using the provided sampler.
-        
+
         This is used by split_folds to create train/val/test datasets that share
         underlying resources (extractors, caches) with the parent dataset but
         iterate over different subsets of intervals.
-        
+
         Args:
             sampler: The subset sampler to use.
             is_train: Whether the subset is for training.
-            
+
         Returns:
             CerberusDataset: A new dataset instance sharing resources.
         """
@@ -397,7 +404,7 @@ class CerberusDataset(Dataset):
     ) -> tuple["CerberusDataset", "CerberusDataset", "CerberusDataset"]:
         """
         Split the dataset into train, validation, and test sets using k-fold cross-validation.
-        
+
         This method delegates to the underlying sampler's split_folds method, creating new
         dataset instances for each split that share the underlying data extractors.
 
@@ -428,7 +435,7 @@ class CerberusDataset(Dataset):
     def resample(self, seed: int | None = None) -> None:
         """
         Trigger resampling if the underlying sampler supports it.
-        
+
         This is useful for MultiSampler to re-draw indices based on scaling factors
         at the beginning of each epoch.
 

@@ -57,7 +57,9 @@ def encode_dna(sequence: str, encoding: str = "ACGT") -> torch.Tensor:
     return torch.from_numpy(one_hot)
 
 
-def compute_intervals_gc(intervals: Iterable[Interval], fasta_path: Path | str) -> list[float]:
+def compute_intervals_gc(
+    intervals: Iterable[Interval], fasta_path: Path | str
+) -> list[float]:
     """
     Computes GC content for a collection of intervals using a FASTA file.
 
@@ -87,21 +89,22 @@ def compute_intervals_gc(intervals: Iterable[Interval], fasta_path: Path | str) 
 class BaseSequenceExtractor(Protocol):
     """
     Protocol for sequence extractors.
-    
+
     Classes implementing this protocol must provide an `extract` method that returns
     a one-hot encoded DNA sequence tensor for a given genomic interval.
     """
+
     def extract(self, interval: Interval) -> torch.Tensor: ...
 
 
 class SequenceExtractor(BaseSequenceExtractor):
     """
     Extracts DNA sequence from a FASTA file on-the-fly.
-    
+
     This extractor keeps the FASTA file open (lazily) and reads specific intervals as requested.
     It is memory-efficient but may be slower than in-memory extraction for random access patterns.
     """
-    
+
     def __init__(self, fasta_path: Path | str, encoding: str = "ACGT"):
         """
         Args:
@@ -127,7 +130,7 @@ class SequenceExtractor(BaseSequenceExtractor):
 
         Returns:
             torch.Tensor: Tensor of shape (4, Length), where Length = interval.end - interval.start.
-            
+
         Raises:
             ValueError: If the chromosome is not found in the FASTA file.
         """
@@ -155,10 +158,10 @@ class SequenceExtractor(BaseSequenceExtractor):
 class InMemorySequenceExtractor(BaseSequenceExtractor):
     """
     Extracts DNA sequence from memory.
-    
+
     This extractor loads the entire FASTA content into memory (RAM) upon initialization.
     It provides faster random access at the cost of high memory usage.
-    
+
     Data is stored as uint8 and shared across processes to reduce overhead when using PyTorch DataLoaders.
     """
 
@@ -200,7 +203,7 @@ class InMemorySequenceExtractor(BaseSequenceExtractor):
 
         Returns:
             torch.Tensor: Tensor of shape (4, Length) as float32.
-            
+
         Raises:
             ValueError: If the chromosome is not found in the memory cache.
         """

@@ -106,7 +106,10 @@ class TestLoadPretrainedFull:
         )
 
         cfg = PretrainedConfig(
-            weights_path=str(weights_path), source=None, target=None, freeze=False,
+            weights_path=str(weights_path),
+            source=None,
+            target=None,
+            freeze=False,
         )
         load_pretrained_weights(model2, [cfg])
 
@@ -124,7 +127,10 @@ class TestLoadPretrainedFull:
         torch.save(model.state_dict(), weights_path)
 
         cfg = PretrainedConfig(
-            weights_path=str(weights_path), source=None, target=None, freeze=False,
+            weights_path=str(weights_path),
+            source=None,
+            target=None,
+            freeze=False,
         )
         load_pretrained_weights(model, [cfg])
 
@@ -232,7 +238,10 @@ class TestLoadPretrainedFreeze:
         torch.save(model.state_dict(), weights_path)
 
         cfg = PretrainedConfig(
-            weights_path=str(weights_path), source=None, target=None, freeze=True,
+            weights_path=str(weights_path),
+            source=None,
+            target=None,
+            freeze=True,
         )
         load_pretrained_weights(model, [cfg])
 
@@ -325,7 +334,9 @@ class TestLoadPretrainedStrict:
         # Save weights from a Linear(4, 4)
         small = nn.Linear(4, 4)
         weights_path = tmp_path / "small.pt"
-        torch.save({"linear.weight": small.weight, "linear.bias": small.bias}, weights_path)
+        torch.save(
+            {"linear.weight": small.weight, "linear.bias": small.bias}, weights_path
+        )
 
         # Try to load into a Linear(8, 8)
         class BigModule(nn.Module):
@@ -335,7 +346,10 @@ class TestLoadPretrainedStrict:
 
         model = BigModule()
         cfg = PretrainedConfig(
-            weights_path=str(weights_path), source=None, target=None, freeze=False,
+            weights_path=str(weights_path),
+            source=None,
+            target=None,
+            freeze=False,
         )
         with pytest.raises(RuntimeError):
             load_pretrained_weights(model, [cfg])
@@ -347,7 +361,10 @@ class TestLoadPretrainedStrict:
 
         model = SubModule()  # expects linear.weight AND linear.bias
         cfg = PretrainedConfig(
-            weights_path=str(weights_path), source=None, target=None, freeze=False,
+            weights_path=str(weights_path),
+            source=None,
+            target=None,
+            freeze=False,
         )
         with pytest.raises(RuntimeError):
             load_pretrained_weights(model, [cfg])

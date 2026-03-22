@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.output — untested code paths."""
+
 import pytest
 import torch
 
@@ -16,6 +17,7 @@ from cerberus.output import (
 # ---------------------------------------------------------------------------
 # compute_total_log_counts
 # ---------------------------------------------------------------------------
+
 
 class TestComputeTotalLogCountsProfileLogRates:
     """Tests for compute_total_log_counts with ProfileLogRates input."""
@@ -50,12 +52,13 @@ class TestComputeTotalLogCountsPseudocount:
         torch.manual_seed(2)
         logits = torch.randn(2, 3, 10)
         # Simulate log_counts in log(count + 1) space per channel
-        counts_per_channel = torch.tensor([[100.0, 200.0, 50.0],
-                                            [30.0, 60.0, 10.0]])
+        counts_per_channel = torch.tensor([[100.0, 200.0, 50.0], [30.0, 60.0, 10.0]])
         log_counts = torch.log(counts_per_channel + 1.0)
         output = ProfileCountOutput(logits=logits, log_counts=log_counts)
 
-        result = compute_total_log_counts(output, log_counts_include_pseudocount=True, pseudocount=1.0)
+        result = compute_total_log_counts(
+            output, log_counts_include_pseudocount=True, pseudocount=1.0
+        )
         assert result.shape == (2,)
 
         # Manual: undo log(x+1) -> x, sum channels, reapply log(total+1)
@@ -94,8 +97,8 @@ class TestComputeTotalLogCountsUnsupported:
 # aggregate_models
 # ---------------------------------------------------------------------------
 
-class TestAggregateModels:
 
+class TestAggregateModels:
     def test_median_method(self):
         """aggregate_models with 'median' computes element-wise median."""
         torch.manual_seed(4)
@@ -143,8 +146,8 @@ class TestAggregateModels:
 # unbatch_modeloutput
 # ---------------------------------------------------------------------------
 
-class TestUnbatchModelOutput:
 
+class TestUnbatchModelOutput:
     def test_metadata_replication(self):
         """out_interval (non-tensor) is replicated across all unbatched items."""
         iv = Interval("chr1", 0, 1000)
@@ -181,7 +184,10 @@ class TestUnbatchModelOutput:
         batched = ProfileLogits(logits=logits, out_interval=None)
         items = unbatch_modeloutput(batched, batch_size=2)
         # unbind creates views that share storage with the original
-        assert items[0]["logits"].untyped_storage().data_ptr() == logits.untyped_storage().data_ptr()
+        assert (
+            items[0]["logits"].untyped_storage().data_ptr()
+            == logits.untyped_storage().data_ptr()
+        )
 
     def test_none_interval(self):
         """out_interval=None is replicated as None."""
@@ -201,8 +207,8 @@ class TestUnbatchModelOutput:
 # ModelOutput.detach() and subclasses
 # ---------------------------------------------------------------------------
 
-class TestDetach:
 
+class TestDetach:
     def test_base_model_output_detach_raises(self):
         """ModelOutput.detach() raises NotImplementedError."""
         base = ModelOutput()

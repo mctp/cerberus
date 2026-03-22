@@ -38,6 +38,7 @@ from cerberus.output import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_count_output(batch=1, channels=1, length=10, log_counts=None):
     """Return a ProfileCountOutput with flat logits and given log_counts."""
     logits = torch.zeros(batch, channels, length)
@@ -56,6 +57,7 @@ def _make_targets(batch=1, channels=1, length=10, total_per_channel=100.0):
 # ===========================================================================
 # 1. MSEMultinomialLoss — forward path
 # ===========================================================================
+
 
 class TestMSEMultinomialLossForward:
     """count_pseudocount affects the count-loss target in the forward pass.
@@ -104,7 +106,9 @@ class TestMSEMultinomialLossForward:
 
     def test_per_channel_pseudocount_100(self):
         """count_per_channel=True with pseudocount=100 sets target per channel."""
-        loss_fn = MSEMultinomialLoss(count_pseudocount=100.0, count_per_channel=True, profile_weight=0.0)
+        loss_fn = MSEMultinomialLoss(
+            count_pseudocount=100.0, count_per_channel=True, profile_weight=0.0
+        )
         total_ch0, total_ch1 = 200.0, 300.0
         targets = torch.zeros(1, 2, 10)
         targets[0, 0, 0] = total_ch0
@@ -118,6 +122,7 @@ class TestMSEMultinomialLossForward:
 # ===========================================================================
 # 2. CoupledMSEMultinomialLoss — forward path (inherits count_pseudocount)
 # ===========================================================================
+
 
 class TestCoupledMSEMultinomialLossForward:
     """CoupledMSEMultinomialLoss inherits __init__ from MSEMultinomialLoss."""
@@ -164,6 +169,7 @@ class TestCoupledMSEMultinomialLossForward:
 # 3. BPNetLoss — count_pseudocount flows through **kwargs
 # ===========================================================================
 
+
 class TestBPNetLoss:
     """BPNetLoss passes unknown kwargs to MSEMultinomialLoss.__init__."""
 
@@ -189,6 +195,7 @@ class TestBPNetLoss:
 # ===========================================================================
 # 4. LogCountsPearsonCorrCoef — pseudocount
 # ===========================================================================
+
 
 class TestLogCountsPearsonCorrCoef:
     """LogCountsPearsonCorrCoef collects scalar pairs per example."""
@@ -234,6 +241,7 @@ class TestLogCountsPearsonCorrCoef:
 # 6. LogCountsMeanSquaredError — count_per_channel + custom pseudocount
 # ===========================================================================
 
+
 class TestLogCountsMSEPerChannel:
     """count_per_channel=True with custom count_pseudocount."""
 
@@ -267,14 +275,18 @@ class TestLogCountsMSEPerChannel:
 # 7. MetricCollections — count_pseudocount propagated to inner metrics
 # ===========================================================================
 
+
 class TestMetricCollectionPropagation:
     """Verify count_pseudocount is stored on each inner LogCounts* metric."""
 
-    @pytest.mark.parametrize("cls,kwargs", [
-        (DefaultMetricCollection, {}),
-        (BPNetMetricCollection, {}),
-        (PomeranianMetricCollection, {}),
-    ])
+    @pytest.mark.parametrize(
+        "cls,kwargs",
+        [
+            (DefaultMetricCollection, {}),
+            (BPNetMetricCollection, {}),
+            (PomeranianMetricCollection, {}),
+        ],
+    )
     def test_default_pseudocount(self, cls, kwargs):
         mc = cls(**kwargs)
         for name, metric in mc.items():
@@ -283,11 +295,14 @@ class TestMetricCollectionPropagation:
                     f"{cls.__name__}.{name} has wrong default count_pseudocount"
                 )
 
-    @pytest.mark.parametrize("cls,kwargs", [
-        (DefaultMetricCollection, {}),
-        (BPNetMetricCollection, {}),
-        (PomeranianMetricCollection, {}),
-    ])
+    @pytest.mark.parametrize(
+        "cls,kwargs",
+        [
+            (DefaultMetricCollection, {}),
+            (BPNetMetricCollection, {}),
+            (PomeranianMetricCollection, {}),
+        ],
+    )
     def test_custom_pseudocount_propagated(self, cls, kwargs):
         mc = cls(**kwargs, count_pseudocount=100.0)
         for name, metric in mc.items():
@@ -301,6 +316,7 @@ class TestMetricCollectionPropagation:
 # 8. compute_total_log_counts — log_counts_include_pseudocount path
 # ===========================================================================
 
+
 class TestComputeTotalLogCountsPseudocount:
     """Multi-channel inversion using the pseudocount offset."""
 
@@ -308,7 +324,9 @@ class TestComputeTotalLogCountsPseudocount:
         """Single-channel: log_counts returned directly (no aggregation)."""
         lc = torch.tensor([[math.log(600.0)]])
         out = ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=lc)
-        result = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=100.0)
+        result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=100.0
+        )
         assert result.item() == pytest.approx(math.log(600.0), abs=1e-5)
 
     def test_multi_channel_correct_aggregation(self):
@@ -317,7 +335,9 @@ class TestComputeTotalLogCountsPseudocount:
         # log_counts stores log(count + 100):
         lc = torch.tensor([[math.log(300.0), math.log(500.0)]])  # (1, 2)
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 10), log_counts=lc)
-        result = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=100.0)
+        result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=100.0
+        )
         expected = math.log(600.0 + 100.0)  # log(700)
         assert result.item() == pytest.approx(expected, abs=1e-4)
 
@@ -325,18 +345,28 @@ class TestComputeTotalLogCountsPseudocount:
         """Without the flag, logsumexp gives incorrect answer for pseudocount space."""
         lc = torch.tensor([[math.log(300.0), math.log(500.0)]])
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 10), log_counts=lc)
-        logsumexp_result = compute_total_log_counts(out, log_counts_include_pseudocount=False)
-        correct_result = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=100.0)
+        logsumexp_result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=False
+        )
+        correct_result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=100.0
+        )
         # They should differ
         assert abs(logsumexp_result.item() - correct_result.item()) > 0.1
 
     def test_zero_counts_clamp(self):
         """exp(log_count) - pseudocount can go negative; clamp_min(0) prevents negative totals."""
         # log_count = log(50) meaning count = 50 - 100 = -50 → clamped to 0
-        lc = torch.tensor([[math.log(50.0), math.log(200.0)]])  # ch0 underflows, ch1=100
+        lc = torch.tensor(
+            [[math.log(50.0), math.log(200.0)]]
+        )  # ch0 underflows, ch1=100
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 10), log_counts=lc)
-        result = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=100.0)
-        expected = math.log(0.0 + 100.0 + 100.0)  # ch0 clamped to 0; ch1=100; total=100; +100=200
+        result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=100.0
+        )
+        expected = math.log(
+            0.0 + 100.0 + 100.0
+        )  # ch0 clamped to 0; ch1=100; total=100; +100=200
         assert result.item() == pytest.approx(expected, abs=1e-4)
 
     def test_pseudocount_1_matches_log1p_behaviour(self):
@@ -346,7 +376,9 @@ class TestComputeTotalLogCountsPseudocount:
         counts = [200.0, 400.0]
         lc = torch.tensor([[math.log(counts[0] + 1.0), math.log(counts[1] + 1.0)]])
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 10), log_counts=lc)
-        result = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=1.0)
+        result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=1.0
+        )
         expected = math.log1p(sum(counts))
         assert result.item() == pytest.approx(expected, abs=1e-4)
 
@@ -354,6 +386,7 @@ class TestComputeTotalLogCountsPseudocount:
 # ===========================================================================
 # 9. Config injection — count_pseudocount * target_scale ends up in loss/metrics
 # ===========================================================================
+
 
 class TestConfigInjection:
     """Verify the setdefault injection logic used in propagate_pseudocount.
@@ -363,7 +396,9 @@ class TestConfigInjection:
     relevant part of propagate_pseudocount.
     """
 
-    def _inject(self, count_pseudocount, target_scale, loss_args=None, metrics_args=None):
+    def _inject(
+        self, count_pseudocount, target_scale, loss_args=None, metrics_args=None
+    ):
         """Reproduce the injection done by propagate_pseudocount."""
         if loss_args is None:
             loss_args = {}
@@ -393,7 +428,8 @@ class TestConfigInjection:
     def test_explicit_loss_arg_not_overridden(self):
         """An explicit count_pseudocount in loss_args takes precedence over injection."""
         loss_args, metrics_args = self._inject(
-            100.0, 1.0,
+            100.0,
+            1.0,
             loss_args={"count_pseudocount": 999.0},
         )
         # loss_args had explicit value — must not be overwritten
@@ -417,6 +453,7 @@ class TestConfigInjection:
 # ===========================================================================
 # 10. Zero-count edge cases — all metric/loss classes
 # ===========================================================================
+
 
 class TestZeroCountEdgeCases:
     """With large pseudocount, zero-coverage targets produce finite log-counts."""

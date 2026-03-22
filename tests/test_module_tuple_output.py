@@ -17,7 +17,8 @@ class MockTupleModel(nn.Module):
 
     def forward(self, x):
         out = self.layer(x)
-        return (out, out) # Returns tuple
+        return (out, out)  # Returns tuple
+
 
 class MockTupleLoss(nn.Module):
     def loss_components(self, outputs, targets, **kwargs):
@@ -26,6 +27,7 @@ class MockTupleLoss(nn.Module):
     def forward(self, outputs, targets, **kwargs):
         components = self.loss_components(outputs, targets, **kwargs)
         return components["mse_loss"]
+
 
 class MockTupleMetric(Metric):
     def __init__(self):
@@ -42,15 +44,20 @@ class MockTupleMetric(Metric):
         self.count += 1
 
     def compute(self):
-        return self.sum / self.count # type: ignore
+        return self.sum / self.count  # type: ignore
+
 
 class DictDataset(Dataset):
     def __init__(self, inputs, targets):
         self.inputs = inputs
         self.targets = targets
-    def __len__(self): return len(self.inputs)
+
+    def __len__(self):
+        return len(self.inputs)
+
     def __getitem__(self, idx):
         return {"inputs": self.inputs[idx], "targets": self.targets[idx]}
+
 
 def test_cerberus_module_tuple_output():
     model = MockTupleModel()
@@ -90,7 +97,7 @@ def test_cerberus_module_tuple_output():
         accelerator="auto",
         devices=1,
         limit_train_batches=1,
-        limit_val_batches=1
+        limit_val_batches=1,
     )
 
     with warnings.catch_warnings():

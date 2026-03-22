@@ -25,25 +25,67 @@ from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
 
 logger = logging.getLogger(__name__)
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Export predicted vs observed log-counts to TSV.")
-    parser.add_argument("model_path", type=str, help="Path to the trained model directory.")
-    parser.add_argument("peaks", type=str, help="Path to the peak file (bed/narrowPeak).")
-    parser.add_argument("bigwig", type=str, help="Path to the bigwig file for observed counts.")
-    parser.add_argument("--output", type=str, default="predictions.tsv", help="Output filename (TSV).")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size for prediction.")
-    parser.add_argument("--device", type=str, default=None, help="Device to use (cuda/mps/cpu).")
-    parser.add_argument("--max_batches", type=int, default=None, help="Maximum number of batches to process (default: all).")
-    parser.add_argument("--use_folds", type=str, default=None, help="Folds to use (e.g. 'test', 'test+val'). Default depends on model type.")
-    parser.add_argument(
-        "--eval-split", type=str, default="test", choices=["test", "val", "train", "all"],
-        help="Which chromosome split to evaluate on: 'test' (default, held-out test chromosomes), "
-             "'val' (validation chromosomes), 'train' (training chromosomes), or 'all' (every chromosome). "
-             "Use 'all' only for exploratory analysis — it includes training chromosomes and inflates metrics."
+    parser = argparse.ArgumentParser(
+        description="Export predicted vs observed log-counts to TSV."
     )
-    parser.add_argument("--include-background", action="store_true", help="Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a 'peak' sampler. Adds an 'interval_source' column to the output (sampler class name).")
-    parser.add_argument("--background-ratio", type=float, default=None, help="Ratio of background intervals to peaks (default: taken from model's sampler config, typically 1.0).")
-    parser.add_argument("--seed", type=int, default=1234, help="Random seed for background interval generation (only used with --include-background).")
+    parser.add_argument(
+        "model_path", type=str, help="Path to the trained model directory."
+    )
+    parser.add_argument(
+        "peaks", type=str, help="Path to the peak file (bed/narrowPeak)."
+    )
+    parser.add_argument(
+        "bigwig", type=str, help="Path to the bigwig file for observed counts."
+    )
+    parser.add_argument(
+        "--output", type=str, default="predictions.tsv", help="Output filename (TSV)."
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=64, help="Batch size for prediction."
+    )
+    parser.add_argument(
+        "--device", type=str, default=None, help="Device to use (cuda/mps/cpu)."
+    )
+    parser.add_argument(
+        "--max_batches",
+        type=int,
+        default=None,
+        help="Maximum number of batches to process (default: all).",
+    )
+    parser.add_argument(
+        "--use_folds",
+        type=str,
+        default=None,
+        help="Folds to use (e.g. 'test', 'test+val'). Default depends on model type.",
+    )
+    parser.add_argument(
+        "--eval-split",
+        type=str,
+        default="test",
+        choices=["test", "val", "train", "all"],
+        help="Which chromosome split to evaluate on: 'test' (default, held-out test chromosomes), "
+        "'val' (validation chromosomes), 'train' (training chromosomes), or 'all' (every chromosome). "
+        "Use 'all' only for exploratory analysis — it includes training chromosomes and inflates metrics.",
+    )
+    parser.add_argument(
+        "--include-background",
+        action="store_true",
+        help="Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a 'peak' sampler. Adds an 'interval_source' column to the output (sampler class name).",
+    )
+    parser.add_argument(
+        "--background-ratio",
+        type=float,
+        default=None,
+        help="Ratio of background intervals to peaks (default: taken from model's sampler config, typically 1.0).",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1234,
+        help="Random seed for background interval generation (only used with --include-background).",
+    )
 
     args = parser.parse_args()
 
@@ -100,7 +142,9 @@ def main():
         raise ValueError("Model configuration has no targets defined.")
 
     if len(data_config.targets) > 1:
-        raise ValueError(f"Model has multiple targets ({list(data_config.targets.keys())}), which is not supported by this script.")
+        raise ValueError(
+            f"Model has multiple targets ({list(data_config.targets.keys())}), which is not supported by this script."
+        )
 
     # Override the single target — data_config is frozen, so use model_copy
     key = list(data_config.targets.keys())[0]
@@ -115,7 +159,7 @@ def main():
         data_config=data_config,
         sampler_config=None,
         in_memory=False,
-        is_train=False
+        is_train=False,
     )
 
     # 3. Load Peaks (and optionally background), then restrict to the requested chromosome split.
@@ -162,11 +206,17 @@ def main():
         # (e.g. larger window for complexity computation), but predict_intervals_batched
         # requires intervals pre-sized to input_len.
         orig_sampler_args = sampler_config.sampler_args
-        bg_ratio = args.background_ratio if args.background_ratio is not None else orig_sampler_args["background_ratio"]
+        bg_ratio = (
+            args.background_ratio
+            if args.background_ratio is not None
+            else orig_sampler_args["background_ratio"]
+        )
         bg_sampler_args = {
             "intervals_path": Path(args.peaks),
             "background_ratio": bg_ratio,
-            "complexity_center_size": orig_sampler_args["complexity_center_size"] if "complexity_center_size" in orig_sampler_args else None,
+            "complexity_center_size": orig_sampler_args["complexity_center_size"]
+            if "complexity_center_size" in orig_sampler_args
+            else None,
         }
         bg_sampler_config = SamplerConfig(
             sampler_type=sampler_config.sampler_type,
@@ -194,15 +244,23 @@ def main():
         # Restrict to the requested chromosome split so backgrounds come from the
         # same fold as the peaks (matching the training split_folds() behaviour).
         if args.eval_split != "all":
-            train_s, val_s, test_s = combined_sampler.split_folds(test_fold_idx, val_fold_idx)
-            split_sampler: MultiSampler = {"test": test_s, "val": val_s, "train": train_s}[args.eval_split]
+            train_s, val_s, test_s = combined_sampler.split_folds(
+                test_fold_idx, val_fold_idx
+            )
+            split_sampler: MultiSampler = {
+                "test": test_s,
+                "val": val_s,
+                "train": train_s,
+            }[args.eval_split]
             if not isinstance(split_sampler, MultiSampler):
                 raise RuntimeError("Expected split sampler to be a MultiSampler.")
             combined_sampler = split_sampler
 
         n_combined = len(combined_sampler)
         all_intervals = [combined_sampler[i] for i in range(n_combined)]
-        all_interval_source = [combined_sampler.get_interval_source(i) for i in range(n_combined)]
+        all_interval_source = [
+            combined_sampler.get_interval_source(i) for i in range(n_combined)
+        ]
         sampler_to_use: IntervalSampler | list = all_intervals
         n_peaks = sum(1 for s in all_interval_source if s == "IntervalSampler")
         logger.info(
@@ -220,8 +278,12 @@ def main():
         )
 
         if args.eval_split != "all":
-            train_sp, val_sp, test_sp = peak_sampler.split_folds(test_fold_idx, val_fold_idx)
-            chosen = {"test": test_sp, "val": val_sp, "train": train_sp}[args.eval_split]
+            train_sp, val_sp, test_sp = peak_sampler.split_folds(
+                test_fold_idx, val_fold_idx
+            )
+            chosen = {"test": test_sp, "val": val_sp, "train": train_sp}[
+                args.eval_split
+            ]
             all_intervals = list(chosen)
         else:
             all_intervals = list(peak_sampler)
@@ -241,7 +303,9 @@ def main():
     # Determine pseudocount parameters from the loss class.
     # MSE losses train log_counts in log(count + pseudocount) space;
     # Poisson/NB losses use log(count) directly.
-    log_counts_include_pseudocount, count_pseudocount = get_log_count_params(model_config)
+    log_counts_include_pseudocount, count_pseudocount = get_log_count_params(
+        model_config
+    )
 
     total_loss = 0.0
     total_samples = 0
@@ -257,7 +321,7 @@ def main():
         dataset,
         use_folds=use_folds,
         aggregation="model",
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
     )
 
     batch_count = 0
@@ -279,7 +343,9 @@ def main():
             )
             preds_batch = pred_log_total.cpu().numpy()
         except ValueError:
-            logger.warning("Model output does not have log_counts or log_rates. Skipping batch.")
+            logger.warning(
+                "Model output does not have log_counts or log_rates. Skipping batch."
+            )
             continue
 
         # 4b. Get Observed Log Counts
@@ -352,7 +418,15 @@ def main():
 
     try:
         writer = csv.writer(f, delimiter="\t")
-        header = ["chrom", "start", "end", "strand", "pred_interval", "predicted_log_count", "observed_log_count"]
+        header = [
+            "chrom",
+            "start",
+            "end",
+            "strand",
+            "pred_interval",
+            "predicted_log_count",
+            "observed_log_count",
+        ]
         if args.include_background:
             header.append("interval_source")
         writer.writerow(header)
@@ -375,7 +449,7 @@ def main():
     summary = {
         "model_name": str(args.model_path),
         "parameters": num_params,
-        "metrics": summary_metrics
+        "metrics": summary_metrics,
     }
 
     summary_path = output_path.with_suffix("").with_suffix(".metrics.json")
@@ -384,6 +458,7 @@ def main():
         json.dump(summary, f, indent=2)
 
     logger.info("Done.")
+
 
 if __name__ == "__main__":
     main()

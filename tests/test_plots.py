@@ -17,6 +17,7 @@ from cerberus.plots import save_count_scatter
 # save_count_scatter unit tests
 # ---------------------------------------------------------------------------
 
+
 def test_save_count_scatter_creates_file():
     rng = np.random.default_rng(0)
     preds = rng.standard_normal(100).astype(np.float32)
@@ -46,6 +47,7 @@ def test_save_count_scatter_skips_without_matplotlib():
 # ---------------------------------------------------------------------------
 # CerberusModule scatter plot integration tests
 # ---------------------------------------------------------------------------
+
 
 class _DummyModel(torch.nn.Module):
     def __init__(self):

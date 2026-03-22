@@ -49,11 +49,15 @@ def test_train_wrapper_logger_setup():
     datamodule = MagicMock()
     train_config, model_config, data_config = _make_configs()
 
-    with patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
-         patch("pytorch_lightning.loggers.CSVLogger") as mock_csv_logger_cls, \
-         patch("cerberus.train.instantiate", return_value=mock_module), \
-         patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc):
-
+    with (
+        patch("pytorch_lightning.Trainer") as mock_trainer_cls,
+        patch("pytorch_lightning.loggers.CSVLogger") as mock_csv_logger_cls,
+        patch("cerberus.train.instantiate", return_value=mock_module),
+        patch(
+            "cerberus.train.resolve_adaptive_loss_args",
+            side_effect=lambda mc, dm, **kw: mc,
+        ),
+    ):
         train(
             model_config=model_config,
             data_config=data_config,
@@ -79,11 +83,15 @@ def test_train_wrapper_logger_setup_default_dir():
     datamodule = MagicMock()
     train_config, model_config, data_config = _make_configs()
 
-    with patch("pytorch_lightning.Trainer"), \
-         patch("pytorch_lightning.loggers.CSVLogger") as mock_csv_logger_cls, \
-         patch("cerberus.train.instantiate", return_value=mock_module), \
-         patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc):
-
+    with (
+        patch("pytorch_lightning.Trainer"),
+        patch("pytorch_lightning.loggers.CSVLogger") as mock_csv_logger_cls,
+        patch("cerberus.train.instantiate", return_value=mock_module),
+        patch(
+            "cerberus.train.resolve_adaptive_loss_args",
+            side_effect=lambda mc, dm, **kw: mc,
+        ),
+    ):
         train(
             model_config=model_config,
             data_config=data_config,

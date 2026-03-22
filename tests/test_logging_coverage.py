@@ -1,11 +1,11 @@
 """Coverage tests for cerberus.logging — untested code paths."""
+
 import logging
 
 from cerberus.logging import setup_logging
 
 
 class TestSetupLogging:
-
     def test_handlers_already_exist(self):
         """When handlers already exist, setup_logging only updates the level."""
         cerberus_logger = logging.getLogger("cerberus")

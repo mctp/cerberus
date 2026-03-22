@@ -18,6 +18,7 @@ from cerberus.signal import UniversalExtractor
 # Issue #2: .bed.gz suffix detection
 # ---------------------------------------------------------------------------
 
+
 class TestUniversalExtractorRouting:
     """Verify that UniversalExtractor routes files by extension correctly via the registry."""
 
@@ -35,15 +36,16 @@ class TestUniversalExtractorRouting:
         mock_bb_mem.__name__ = "InMemoryBigBedMaskExtractor"
 
         from cerberus.signal import _EXTRACTOR_REGISTRY
+
         saved = dict(_EXTRACTOR_REGISTRY)
         try:
             _EXTRACTOR_REGISTRY.clear()
-            _EXTRACTOR_REGISTRY['.bw'] = (mock_bw, mock_bw_mem)
-            _EXTRACTOR_REGISTRY['.bigwig'] = (mock_bw, mock_bw_mem)
-            _EXTRACTOR_REGISTRY['.bb'] = (mock_bb, mock_bb_mem)
-            _EXTRACTOR_REGISTRY['.bigbed'] = (mock_bb, mock_bb_mem)
-            _EXTRACTOR_REGISTRY['.bed'] = (mock_bed, None)
-            _EXTRACTOR_REGISTRY['.bed.gz'] = (mock_bed, None)
+            _EXTRACTOR_REGISTRY[".bw"] = (mock_bw, mock_bw_mem)
+            _EXTRACTOR_REGISTRY[".bigwig"] = (mock_bw, mock_bw_mem)
+            _EXTRACTOR_REGISTRY[".bb"] = (mock_bb, mock_bb_mem)
+            _EXTRACTOR_REGISTRY[".bigbed"] = (mock_bb, mock_bb_mem)
+            _EXTRACTOR_REGISTRY[".bed"] = (mock_bed, None)
+            _EXTRACTOR_REGISTRY[".bed.gz"] = (mock_bed, None)
             ext = UniversalExtractor(paths)  # type: ignore[arg-type]
         finally:
             _EXTRACTOR_REGISTRY.clear()
@@ -74,12 +76,14 @@ class TestUniversalExtractorRouting:
             self._get_channel_cls_names({"data": "/data/signal.foo.gz"})
 
     def test_mixed_routing(self):
-        routing = self._get_channel_cls_names({
-            "bw_track": "/data/a.bw",
-            "bed_track": "/data/b.bed.gz",
-            "bb_track": "/data/c.bigbed",
-            "plain_bed": "/data/d.bed",
-        })
+        routing = self._get_channel_cls_names(
+            {
+                "bw_track": "/data/a.bw",
+                "bed_track": "/data/b.bed.gz",
+                "bb_track": "/data/c.bigbed",
+                "plain_bed": "/data/d.bed",
+            }
+        )
         assert routing["bw_track"] == "SignalExtractor"
         assert routing["bed_track"] == "BedMaskExtractor"
         assert routing["bb_track"] == "BigBedMaskExtractor"
@@ -89,6 +93,7 @@ class TestUniversalExtractorRouting:
 # ---------------------------------------------------------------------------
 # Issue #3: Poisson/NB losses must accept count_pseudocount kwarg
 # ---------------------------------------------------------------------------
+
 
 class TestLossPseudocountCompat:
     """Regression: all loss classes must accept count_pseudocount without crashing."""
@@ -119,7 +124,9 @@ class TestLossPseudocountCompat:
     def test_nb_accepts_count_pseudocount(self):
         """NegativeBinomialMultinomialLoss must not crash when given count_pseudocount."""
         loss_fn = NegativeBinomialMultinomialLoss(
-            total_count=10.0, count_pseudocount=0.5, count_per_channel=True,
+            total_count=10.0,
+            count_pseudocount=0.5,
+            count_per_channel=True,
         )
         outputs, targets = self._make_profile_count_inputs()
         loss = loss_fn(outputs, targets)
@@ -135,7 +142,8 @@ class TestLossPseudocountCompat:
 
     def test_coupled_nb_accepts_count_pseudocount(self):
         loss_fn = CoupledNegativeBinomialMultinomialLoss(
-            total_count=10.0, count_pseudocount=0.5,
+            total_count=10.0,
+            count_pseudocount=0.5,
         )
         outputs, targets = self._make_log_rates_inputs()
         loss = loss_fn(outputs, targets)

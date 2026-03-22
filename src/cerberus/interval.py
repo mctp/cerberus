@@ -6,6 +6,7 @@ from cerberus.config import GenomeConfig
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class Interval:
     """
@@ -20,6 +21,7 @@ class Interval:
         end: End position (0-based, exclusive).
         strand: Strand ('+' or '-'). Default is '+'.
     """
+
     chrom: str
     start: int
     end: int
@@ -40,10 +42,10 @@ class Interval:
     def center(self, width: int) -> "Interval":
         """
         Returns a new interval of the specified width, centered within this interval.
-        
+
         Args:
             width: The desired length of the new interval.
-            
+
         Returns:
             A new Interval object centered on the current one.
         """
@@ -122,11 +124,15 @@ def resolve_interval(query: str | tuple | list | Interval) -> Interval:
             start, end = map(int, coords.split("-"))
             return Interval(chrom, start, end)
         except ValueError:
-            raise ValueError(f"Invalid interval string format: {query}. Expected 'chrom:start-end'.") from None
+            raise ValueError(
+                f"Invalid interval string format: {query}. Expected 'chrom:start-end'."
+            ) from None
 
     if isinstance(query, (tuple, list)):
         if len(query) < 3:
-            raise ValueError(f"Invalid interval tuple: {query}. Expected (chrom, start, end).")
+            raise ValueError(
+                f"Invalid interval tuple: {query}. Expected (chrom, start, end)."
+            )
         return Interval(str(query[0]), int(query[1]), int(query[2]))
 
     raise TypeError(f"Unsupported interval query type: {type(query)}")
@@ -154,7 +160,9 @@ def parse_intervals(
         for chrom in genome_config.allowed_chroms:
             if chrom in chrom_sizes:
                 parsed.append(Interval(chrom, 0, chrom_sizes[chrom]))
-        logger.debug(f"No intervals specified, defaulting to whole genome ({len(parsed)} chromosomes)")
+        logger.debug(
+            f"No intervals specified, defaulting to whole genome ({len(parsed)} chromosomes)"
+        )
         return parsed
 
     # Process intervals from strings
@@ -182,13 +190,13 @@ def parse_intervals(
                 if len(parts) >= 3:
                     parsed.append(Interval(parts[0], int(parts[1]), int(parts[2])))
 
-    logger.debug(f"Parsed {len(parsed)} interval(s) from {len(intervals)} string(s) and {len(interval_paths)} file(s)")
+    logger.debug(
+        f"Parsed {len(parsed)} interval(s) from {len(intervals)} string(s) and {len(interval_paths)} file(s)"
+    )
     return parsed
 
 
-def merge_intervals(
-    intervals: list[Interval]
-) -> list[Interval]:
+def merge_intervals(intervals: list[Interval]) -> list[Interval]:
     """
     Sorts and merges overlapping or adjacent intervals.
     """

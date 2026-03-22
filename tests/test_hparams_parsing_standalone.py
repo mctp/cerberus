@@ -37,7 +37,7 @@ def test_parse_hparams_config_generated_success(tmp_path):
             "allowed_chroms": ["chr1"],
             "chrom_sizes": {"chr1": 1000},
             "fold_type": "random",
-            "fold_args": {"k": 5}
+            "fold_args": {"k": 5},
         },
         "data_config": {
             "inputs": {"seq": str(tmp_path / "input.bw")},
@@ -50,12 +50,12 @@ def test_parse_hparams_config_generated_success(tmp_path):
             "log_transform": False,
             "reverse_complement": False,
             "target_scale": 1.0,
-            "use_sequence": True
+            "use_sequence": True,
         },
         "sampler_config": {
             "sampler_type": "interval",
             "padded_size": 100,
-            "sampler_args": {"intervals_path": str(tmp_path / "peaks.bed")}
+            "sampler_args": {"intervals_path": str(tmp_path / "peaks.bed")},
         },
         "model_config": {
             "name": "test_model",
@@ -67,10 +67,10 @@ def test_parse_hparams_config_generated_success(tmp_path):
             "model_args": {
                 "input_channels": ["seq"],
                 "output_channels": ["out"],
-                "output_type": "signal"
+                "output_type": "signal",
             },
             "pretrained": [],
-        }
+        },
     }
 
     hparams_path = tmp_path / "hparams.yaml"

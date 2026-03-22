@@ -15,6 +15,7 @@ Usage:
     # Change number of iterations:
     RUN_SLOW_TESTS=1 python tests/benchmark/bench_sampler_context_length.py --num-intervals 200
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,7 +40,9 @@ from cerberus.signal import SignalExtractor
 logger = logging.getLogger(__name__)
 
 # Context lengths to benchmark: 1 kb to 128 kb (powers of two)
-CONTEXT_LENGTHS = [1_024 * (2**i) for i in range(8)]  # 1k, 2k, 4k, 8k, 16k, 32k, 64k, 128k
+CONTEXT_LENGTHS = [
+    1_024 * (2**i) for i in range(8)
+]  # 1k, 2k, 4k, 8k, 16k, 32k, 64k, 128k
 
 DEFAULT_NUM_INTERVALS = 100
 DEFAULT_SEED = 42
@@ -74,7 +77,8 @@ def generate_random_intervals(
     )
     # Use only autosomes for consistent benchmarking
     chrom_sizes = {
-        c: s for c, s in genome_config.chrom_sizes.items()
+        c: s
+        for c, s in genome_config.chrom_sizes.items()
         if c.replace("chr", "").isdigit()
     }
 
@@ -169,9 +173,7 @@ def run_benchmark(num_intervals: int, seed: int) -> None:
     results: list[dict] = []
 
     for ctx_len in CONTEXT_LENGTHS:
-        intervals = generate_random_intervals(
-            fasta_path, num_intervals, ctx_len, seed
-        )
+        intervals = generate_random_intervals(fasta_path, num_intervals, ctx_len, seed)
 
         t_fasta = bench_fasta(seq_extractor, intervals)
         t_bigwig = bench_bigwig(sig_extractor, intervals)
@@ -187,7 +189,9 @@ def run_benchmark(num_intervals: int, seed: int) -> None:
         }
         results.append(row)
 
-        def _throughput(elapsed: float, _n: int = n, _ctx_len: int = ctx_len) -> tuple[float, float]:
+        def _throughput(
+            elapsed: float, _n: int = n, _ctx_len: int = ctx_len
+        ) -> tuple[float, float]:
             its = _n / elapsed if elapsed > 0 else float("inf")
             bps = _n * _ctx_len / elapsed if elapsed > 0 else float("inf")
             return its, bps
@@ -204,7 +208,7 @@ def run_benchmark(num_intervals: int, seed: int) -> None:
         )
 
     # Summary
-    print(f"\n{'='*130}")
+    print(f"\n{'=' * 130}")
     print(f"Intervals per context length: {num_intervals}")
     print(f"Seed: {seed}")
     print(f"FASTA: {fasta_path}")
@@ -241,7 +245,8 @@ def main() -> None:
         help=f"Random seed (default: {DEFAULT_SEED})",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -254,8 +259,7 @@ def main() -> None:
 
     if os.environ.get("RUN_SLOW_TESTS") is None:
         print(
-            "This benchmark requires real genome data. "
-            "Set RUN_SLOW_TESTS=1 to run.",
+            "This benchmark requires real genome data. Set RUN_SLOW_TESTS=1 to run.",
             file=sys.stderr,
         )
         sys.exit(1)

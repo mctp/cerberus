@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.config — untested code paths."""
+
 import pytest
 from pydantic import ValidationError
 
@@ -9,13 +10,14 @@ from cerberus.utils import import_class
 # model_dump(mode="json") — replacement for _sanitize_config
 # ---------------------------------------------------------------------------
 
-class TestModelDumpJson:
 
+class TestModelDumpJson:
     def test_path_objects_serialized_to_strings(self, tmp_path):
         """model_dump(mode='json') converts Path objects to strings."""
         cons = tmp_path / "cons.bw"
         cons.touch()
         from cerberus.config import DataConfig
+
         cfg = DataConfig(
             inputs={"cons": cons},
             targets={},
@@ -70,11 +72,12 @@ class TestModelDumpJson:
 # import_class
 # ---------------------------------------------------------------------------
 
-class TestImportClass:
 
+class TestImportClass:
     def test_valid_import(self):
         cls = import_class("cerberus.loss.MSEMultinomialLoss")
         from cerberus.loss import MSEMultinomialLoss
+
         assert cls is MSEMultinomialLoss
 
     def test_invalid_module_raises(self):
@@ -94,8 +97,8 @@ class TestImportClass:
 # ModelConfig Pydantic validation
 # ---------------------------------------------------------------------------
 
-class TestModelConfigValidation:
 
+class TestModelConfigValidation:
     def _base_kwargs(self) -> dict:
         return {
             "name": "test_model",

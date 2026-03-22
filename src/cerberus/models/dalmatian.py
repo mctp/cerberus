@@ -133,8 +133,8 @@ class Dalmatian(nn.Module):
 
         # Resolve signal preset defaults
         _signal_presets: dict[str, tuple[int, int]] = {
-            "large": (256, 2),      # ~3.9M params
-            "standard": (64, 1),    # ~150K params (matches Pomeranian K9)
+            "large": (256, 2),  # ~3.9M params
+            "standard": (64, 1),  # ~150K params (matches Pomeranian K9)
         }
         if signal_preset not in _signal_presets:
             raise ValueError(
@@ -158,8 +158,10 @@ class Dalmatian(nn.Module):
 
         # Compute BiasNet shrinkage and derive its input length
         bias_shrinkage = _compute_shrinkage(
-            bias_conv_kernel_size, bias_dilations,
-            bias_dil_kernel_size, bias_profile_kernel_size,
+            bias_conv_kernel_size,
+            bias_dilations,
+            bias_dil_kernel_size,
+            bias_profile_kernel_size,
         )
         self.bias_input_len = output_len + bias_shrinkage
 
@@ -172,8 +174,10 @@ class Dalmatian(nn.Module):
 
         # Verify SignalNet shrinkage matches input_len -> output_len exactly
         signal_shrinkage = _compute_shrinkage(
-            signal_conv_kernel_size, signal_dilations,
-            signal_dil_kernel_size, signal_profile_kernel_size,
+            signal_conv_kernel_size,
+            signal_dilations,
+            signal_dil_kernel_size,
+            signal_profile_kernel_size,
         )
         signal_natural_output = input_len - signal_shrinkage
         if signal_natural_output != output_len:

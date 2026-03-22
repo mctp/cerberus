@@ -1,4 +1,3 @@
-
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,9 +24,11 @@ class MockDataModule(LightningDataModule):
         dataset = torch.utils.data.TensorDataset(torch.randn(10, 1))
         return torch.utils.data.DataLoader(dataset, batch_size=2)
 
+
 @pytest.fixture
 def mock_datamodule():
     return MockDataModule()
+
 
 class MockModule(LightningModule):
     def __init__(self):
@@ -44,15 +45,19 @@ class MockModule(LightningModule):
     def configure_optimizers(self):
         return torch.optim.SGD(self.parameters(), lr=0.01)
 
+
 @pytest.fixture
 def mock_module():
     return MockModule()
+
 
 @pytest.mark.filterwarnings("ignore:.*does not have many workers.*")
 @pytest.mark.filterwarnings("ignore:.*GPU available but not used.*")
 @pytest.mark.parametrize("enable_checkpointing", [True, False])
 @pytest.mark.parametrize("use_logger", [True, False])
-def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_checkpointing, use_logger):
+def test_train_combinations(
+    tmp_path, mock_datamodule, mock_module, enable_checkpointing, use_logger
+):
     """
     Test train() with combinations of enable_checkpointing and logger.
     """
@@ -78,7 +83,7 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
         "default_root_dir": str(tmp_path),
         "enable_checkpointing": enable_checkpointing,
         "logger": use_logger,
-        "limit_train_batches": 1, # limit to 1 batch for speed
+        "limit_train_batches": 1,  # limit to 1 batch for speed
         "limit_val_batches": 1,
         "log_every_n_steps": 1,
     }
@@ -103,9 +108,14 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
     data_config.target_scale = 1.0
     data_config.max_jitter = 0
     data_config.model_dump.return_value = {
-        "input_len": 2114, "output_len": 1000, "output_bin_size": 1,
-        "targets": {}, "inputs": {}, "use_sequence": True,
-        "target_scale": 1.0, "max_jitter": 0,
+        "input_len": 2114,
+        "output_len": 1000,
+        "output_bin_size": 1,
+        "targets": {},
+        "inputs": {},
+        "use_sequence": True,
+        "target_scale": 1.0,
+        "max_jitter": 0,
     }
 
     # Call train — mock instantiate so the generic MockModule is used directly
@@ -116,10 +126,12 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
                 data_config=data_config,
                 datamodule=mock_datamodule,
                 train_config=train_config,
-                **trainer_kwargs
+                **trainer_kwargs,
             )
     except Exception as e:
-        pytest.fail(f"train() failed with enable_checkpointing={enable_checkpointing}, logger={use_logger}. Error: {e}")
+        pytest.fail(
+            f"train() failed with enable_checkpointing={enable_checkpointing}, logger={use_logger}. Error: {e}"
+        )
 
     # Check logger
     if use_logger:
@@ -135,10 +147,14 @@ def test_train_combinations(tmp_path, mock_datamodule, mock_module, enable_check
 
     # Check checkpointing
     # trainer.checkpoint_callback (deprecated?) -> trainer.checkpoint_callbacks (list) or check callbacks list
-    checkpoint_callbacks = [c for c in trainer.callbacks if isinstance(c, ModelCheckpoint)] # type: ignore
+    checkpoint_callbacks = [
+        c for c in trainer.callbacks if isinstance(c, ModelCheckpoint)
+    ]  # type: ignore
 
     if enable_checkpointing:
-        assert len(checkpoint_callbacks) > 0, "ModelCheckpoint should be present when enable_checkpointing=True"
+        assert len(checkpoint_callbacks) > 0, (
+            "ModelCheckpoint should be present when enable_checkpointing=True"
+        )
     else:
         # If enable_checkpointing=False, we expect NO ModelCheckpoint
         # BUT entrypoints.py unconditionally adds ModelCheckpoint in _configure_callbacks!

@@ -16,6 +16,7 @@ from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
 
 # --- Fixtures ---
 
+
 @pytest.fixture
 def shapes():
     return {
@@ -26,90 +27,106 @@ def shapes():
         "minimal": {"batch": 1, "channels": 1, "length": 1},
     }
 
+
 # --- Log1p Targets Equivalence Tests ---
+
 
 def test_bpnet_loss_log1p_targets_equivalence():
     """Verify MSEMultinomialLoss(log1p_targets=True) with log-targets equals MSEMultinomialLoss(log1p_targets=False) with raw-targets."""
     torch.manual_seed(42)
     B, C, L = 2, 2, 50
-    
+
     # Raw targets
     targets_raw = torch.randint(0, 10, (B, C, L)).float()
     targets_log = torch.log1p(targets_raw)
-    
+
     # Predictions
     logits = torch.randn(B, C, L, requires_grad=True)
     log_counts = torch.randn(B, 1, requires_grad=True)
     preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-    
+
     # 1. Standard Loss
     loss_std = MSEMultinomialLoss(log1p_targets=False)(preds, targets_raw)
-    
+
     # 2. Implicit Log Loss
     loss_impl = MSEMultinomialLoss(log1p_targets=True)(preds, targets_log)
-    
+
     assert torch.isclose(loss_std, loss_impl, atol=1e-5)
+
 
 def test_poisson_loss_log1p_targets_equivalence():
     """Verify PoissonMultinomialLoss log1p_targets equivalence."""
     torch.manual_seed(42)
     B, C, L = 2, 1, 50
-    
+
     targets_raw = torch.randint(0, 10, (B, C, L)).float()
     targets_log = torch.log1p(targets_raw)
-    
+
     logits = torch.randn(B, C, L, requires_grad=True)
     log_counts = torch.randn(B, 1, requires_grad=True)
     preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-    
+
     loss_std = PoissonMultinomialLoss(log1p_targets=False)(preds, targets_raw)
     loss_impl = PoissonMultinomialLoss(log1p_targets=True)(preds, targets_log)
-    
+
     assert torch.isclose(loss_std, loss_impl, atol=1e-5)
+
 
 def test_metrics_log1p_targets_equivalence():
     """Verify all metrics handle log1p targets correctly."""
     torch.manual_seed(42)
     B, C, L = 2, 2, 50
-    
-    targets_raw = torch.abs(torch.randn(B, C, L)) * 10 # ensure positive
+
+    targets_raw = torch.abs(torch.randn(B, C, L)) * 10  # ensure positive
     targets_log = torch.log1p(targets_raw)
-    
+
     logits = torch.randn(B, C, L)
-    log_counts = torch.randn(B, 1) # (B, 1) for decoupled
-    
+    log_counts = torch.randn(B, 1)  # (B, 1) for decoupled
+
     preds_prof = ProfileLogits(logits=logits)
     preds_count = ProfileCountOutput(logits=logits, log_counts=log_counts)
-    preds_rates = ProfileLogRates(log_rates=logits) # For Poisson loss which strictly requires rates
-    
+    preds_rates = ProfileLogRates(
+        log_rates=logits
+    )  # For Poisson loss which strictly requires rates
+
     metrics_to_test = [
         (ProfilePearsonCorrCoef(), preds_prof),
         (CountProfilePearsonCorrCoef(), preds_count),
         (CountProfileMeanSquaredError(), preds_count),
         (ProfileMeanSquaredError(), preds_prof),
-        (ProfilePoissonNLLLoss(), preds_rates) # It's a loss but also used as metric sometimes
+        (
+            ProfilePoissonNLLLoss(),
+            preds_rates,
+        ),  # It's a loss but also used as metric sometimes
     ]
-    
+
     for metric_cls, preds in metrics_to_test:
         metric_name = metric_cls.__class__.__name__
-        
+
         # 1. Standard Update
-        m_std = metric_cls.__class__(log1p_targets=False, **_get_init_kwargs(metric_cls))
+        m_std = metric_cls.__class__(
+            log1p_targets=False, **_get_init_kwargs(metric_cls)
+        )
         if isinstance(m_std, ProfilePoissonNLLLoss):
             val_std = m_std(preds, targets_raw)
         else:
             m_std.update(preds, targets_raw)
             val_std = m_std.compute()
-            
+
         # 2. Implicit Log Update
-        m_impl = metric_cls.__class__(log1p_targets=True, **_get_init_kwargs(metric_cls))
+        m_impl = metric_cls.__class__(
+            log1p_targets=True, **_get_init_kwargs(metric_cls)
+        )
         if isinstance(m_impl, ProfilePoissonNLLLoss):
             val_impl = m_impl(preds, targets_log)
         else:
             m_impl.update(preds, targets_log)
             val_impl = m_impl.compute()
-            
-        assert torch.isclose(val_std, val_impl, atol=1e-5), f"{metric_name} failed implicit log check"
+
+        assert torch.isclose(val_std, val_impl, atol=1e-5), (
+            f"{metric_name} failed implicit log check"
+        )
+
 
 def _get_init_kwargs(metric_instance):
     """Helper to extract init args that need to be passed back."""
@@ -122,26 +139,27 @@ def _get_init_kwargs(metric_instance):
 
 # --- Dimension Edge Cases ---
 
+
 def test_dimension_minimal(shapes):
     """Test Batch=1, Length=1 cases."""
     shape = shapes["minimal"]
     B, C, L = shape["batch"], shape["channels"], shape["length"]
-    
+
     logits = torch.randn(B, C, L)
     targets = torch.randn(B, C, L).abs()
-    
+
     # Profile MSE
     mse = ProfileMeanSquaredError()
     mse.update(ProfileLogits(logits=logits), targets)
     val = mse.compute()
     assert not torch.isnan(val)
-    
+
     # Profile Pearson
     # With Length=1, correlation is undefined (variance=0) or NaN depending on implementation
     # PearsonCorrCoef usually returns NaN if input has no variance?
     # Or if we flatten over B*L = 1*1 = 1 sample, correlation is definitely undefined.
     # We need at least 2 samples.
-    
+
     pearson = ProfilePearsonCorrCoef()
     # With Length=1, softmax gives constant 1.0 → zero variance → NaN correlation
     pearson.update(ProfileLogits(logits=logits), targets)
@@ -150,28 +168,33 @@ def test_dimension_minimal(shapes):
     # Pearson on 1 sample is undefined/NaN
     assert torch.isnan(val_p)
 
+
 def test_dimension_single_length(shapes):
     """Test Length=1 but Batch>1."""
-    shape = shapes["single_length"] # B=4, C=2, L=1
+    shape = shapes["single_length"]  # B=4, C=2, L=1
     B, C, L = shape["batch"], shape["channels"], shape["length"]
-    
+
     logits = torch.randn(B, C, L)
     targets = torch.randn(B, C, L).abs()
-    
+
     pearson = ProfilePearsonCorrCoef()
     # With Length=1, Softmax([x]) = [1.0] → zero variance → NaN correlation
     pearson.update(ProfileLogits(logits=logits), targets)
     val = pearson.compute()
-    assert torch.isnan(val), "Length=1 should result in NaN correlation due to Softmax normalization (constant 1.0 predictions)"
+    assert torch.isnan(val), (
+        "Length=1 should result in NaN correlation due to Softmax normalization (constant 1.0 predictions)"
+    )
+
 
 # --- Numerical Stability ---
+
 
 def test_profile_mse_zero_targets():
     """Test ProfileMeanSquaredError when targets sum to 0 (all zeros)."""
     B, C, L = 2, 1, 10
     logits = torch.randn(B, C, L)
-    targets = torch.zeros(B, C, L) # All zeros
-    
+    targets = torch.zeros(B, C, L)  # All zeros
+
     # Should handle normalization division by zero safely
     mse = ProfileMeanSquaredError()
     mse.update(ProfileLogits(logits=logits), targets)
@@ -183,6 +206,7 @@ def test_profile_mse_zero_targets():
     # But MSE should just compute difference from predicted probs (which sum to 1).
     # So error will be non-zero but finite.
 
+
 def test_decoupled_mse_broadcasting():
     """Test CountProfileMeanSquaredError broadcasting behavior."""
     # Logits: (B, C, L)
@@ -190,33 +214,35 @@ def test_decoupled_mse_broadcasting():
     # Should broadcast correctly.
     B, C, L = 2, 2, 10
     logits = torch.randn(B, C, L)
-    
+
     # Case 1: (B, 1)
     log_counts_1 = torch.randn(B, 1)
     preds_1 = ProfileCountOutput(logits=logits, log_counts=log_counts_1)
-    
+
     # Case 2: (B,) - older BPNet style might return this?
     # Our code checks dim() == 1 -> unsqueeze.
     log_counts_2 = torch.randn(B)
     preds_2 = ProfileCountOutput(logits=logits, log_counts=log_counts_2)
-    
+
     targets = torch.randn(B, C, L).abs()
-    
+
     mse = CountProfileMeanSquaredError()
-    
+
     # Run both, should not crash
     mse.update(preds_1, targets)
     mse.reset()
     mse.update(preds_2, targets)
 
+
 # --- Type Checking ---
+
 
 def test_invalid_input_types():
     """Test that metrics raise TypeError for wrong input types."""
     metric = ProfileMeanSquaredError()
     with pytest.raises(TypeError):
-        metric.update(torch.randn(10, 10), torch.randn(10, 10)) # type: ignore
+        metric.update(torch.randn(10, 10), torch.randn(10, 10))  # type: ignore
 
     metric_dec = CountProfileMeanSquaredError()
     with pytest.raises(TypeError):
-        metric_dec.update(ProfileLogits(logits=torch.randn(10)), torch.randn(10)) # type: ignore
+        metric_dec.update(ProfileLogits(logits=torch.randn(10)), torch.randn(10))  # type: ignore

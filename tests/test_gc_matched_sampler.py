@@ -18,9 +18,11 @@ def mock_fasta(tmp_path):
         f.write("ACGT" * 250 + "\n")
 
     import pyfaidx
+
     pyfaidx.Faidx(str(fasta_path))
 
     return fasta_path
+
 
 def test_calculate_gc_content():
     assert calculate_gc_content("GCGC") == 1.0
@@ -29,6 +31,7 @@ def test_calculate_gc_content():
     assert calculate_gc_content("NNNN") == 0.0
     assert calculate_gc_content("GCN") == 1.0
 
+
 def test_random_sampler():
     chrom_sizes = {"chr1": 1000, "chr2": 1000}
     padded_size = 100
@@ -36,7 +39,9 @@ def test_random_sampler():
     exclude_intervals = {}
     folds = []
 
-    sampler = RandomSampler(chrom_sizes, padded_size, num_intervals, folds, exclude_intervals, seed=42)
+    sampler = RandomSampler(
+        chrom_sizes, padded_size, num_intervals, folds, exclude_intervals, seed=42
+    )
 
     assert len(sampler) == num_intervals
     for interval in sampler:
@@ -45,24 +50,27 @@ def test_random_sampler():
         assert interval.start >= 0
         assert interval.end <= chrom_sizes[interval.chrom]
 
+
 def test_complexity_matched_sampler_gc_only(mock_fasta):
     chrom_sizes = {"chr1": 1000, "chr2": 1000, "chr3": 1000}
 
     target_bed = mock_fasta.parent / "target.bed"
     with open(target_bed, "w") as f:
         for i in range(10):
-            f.write(f"chr1\t{i*10}\t{i*10+10}\n")
+            f.write(f"chr1\t{i * 10}\t{i * 10 + 10}\n")
 
     config = SamplerConfig.model_construct(
         sampler_type="complexity_matched",
         padded_size=10,
         sampler_args={
             "target_sampler": SamplerConfig.model_construct(
-                sampler_type="interval", padded_size=10,
+                sampler_type="interval",
+                padded_size=10,
                 sampler_args={"intervals_path": target_bed},
             ),
             "candidate_sampler": SamplerConfig.model_construct(
-                sampler_type="random", padded_size=10,
+                sampler_type="random",
+                padded_size=10,
                 sampler_args={"num_intervals": 300},
             ),
             "bins": 10,
@@ -71,9 +79,7 @@ def test_complexity_matched_sampler_gc_only(mock_fasta):
         },
     )
 
-    sampler = create_sampler(
-        config, chrom_sizes, [], {}, fasta_path=mock_fasta
-    )
+    sampler = create_sampler(config, chrom_sizes, [], {}, fasta_path=mock_fasta)
 
     assert isinstance(sampler, ComplexityMatchedSampler)
     assert len(sampler) == 10
@@ -83,9 +89,12 @@ def test_complexity_matched_sampler_gc_only(mock_fasta):
     count_chr3 = 0
 
     for interval in sampler:
-        if interval.chrom == "chr1": count_chr1 += 1
-        elif interval.chrom == "chr2": count_chr2 += 1
-        elif interval.chrom == "chr3": count_chr3 += 1
+        if interval.chrom == "chr1":
+            count_chr1 += 1
+        elif interval.chrom == "chr2":
+            count_chr2 += 1
+        elif interval.chrom == "chr3":
+            count_chr3 += 1
 
     print(f"Counts: chr1={count_chr1}, chr2={count_chr2}, chr3={count_chr3}")
 

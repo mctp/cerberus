@@ -66,83 +66,95 @@ def mock_configs():
     )
     return model_config, data_config, train_config, genome_config
 
+
 @pytest.fixture
 def model_manager(mock_configs, tmp_path):
     m_conf, d_conf, t_conf, g_conf = mock_configs
-    
+
     # Create required metadata
     import yaml
+
     with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
         yaml.dump({"folds": ["single"]}, f)
-        
+
     return ModelManager(
         checkpoint_path=tmp_path,
         model_config=m_conf,
         data_config=d_conf,
         genome_config=g_conf,
-        device=torch.device("cpu")
+        device=torch.device("cpu"),
     )
+
 
 def test_select_best_checkpoint(model_manager, tmp_path):
     # Setup dummy files
     p1 = tmp_path / "checkpoint-epoch=01-val_loss=0.50.ckpt"
-    p2 = tmp_path / "checkpoint-epoch=02-val_loss=0.30.ckpt" # Best
+    p2 = tmp_path / "checkpoint-epoch=02-val_loss=0.30.ckpt"  # Best
     p3 = tmp_path / "checkpoint-epoch=03-val_loss=0.40.ckpt"
-    p4 = tmp_path / "checkpoint-no-metric.ckpt" # Should be treated as inf
-    
+    p4 = tmp_path / "checkpoint-no-metric.ckpt"  # Should be treated as inf
+
     for p in [p1, p2, p3, p4]:
         p.touch()
-        
+
     checkpoints = [p1, p2, p3, p4]
-    
+
     # Run selection
     best = model_manager._select_best_checkpoint(checkpoints)
-    
+
     # Assert
     assert best == p2
-    
+
     # Test case with only no-metric files (should pick by name sorting)
     p5 = tmp_path / "a.ckpt"
     p6 = tmp_path / "b.ckpt"
     p5.touch()
     p6.touch()
-    
+
     best_no_metric = model_manager._select_best_checkpoint([p6, p5])
-    assert best_no_metric == p5 # 'a.ckpt' comes before 'b.ckpt'
+    assert best_no_metric == p5  # 'a.ckpt' comes before 'b.ckpt'
+
 
 def test_load_model_ckpt(model_manager, tmp_path):
     """_load_model_ckpt loads a Lightning checkpoint with prefix stripping."""
     p2 = tmp_path / "ckpt2-val_loss=0.1.ckpt"
     p2.touch()
 
-    with patch("cerberus.model_ensemble.instantiate_model") as mock_instantiate_model, \
-         patch("torch.load") as mock_load:
-
+    with (
+        patch("cerberus.model_ensemble.instantiate_model") as mock_instantiate_model,
+        patch("torch.load") as mock_load,
+    ):
         mock_model = MagicMock()
         mock_instantiate_model.return_value = mock_model
         mock_load.return_value = {"state_dict": {}}
 
         model = model_manager._load_model_ckpt("test_dir", p2)
 
-        mock_load.assert_called_with(p2, map_location=model_manager.device, weights_only=False)
+        mock_load.assert_called_with(
+            p2, map_location=model_manager.device, weights_only=False
+        )
         assert model == mock_model
+
 
 def test_load_model_pt(model_manager, tmp_path):
     """_load_model_pt loads a clean .pt state dict with weights_only=True."""
     pt_path = tmp_path / "model.pt"
     pt_path.touch()
 
-    with patch("cerberus.model_ensemble.instantiate_model") as mock_instantiate_model, \
-         patch("torch.load") as mock_load:
-
+    with (
+        patch("cerberus.model_ensemble.instantiate_model") as mock_instantiate_model,
+        patch("torch.load") as mock_load,
+    ):
         mock_model = MagicMock()
         mock_instantiate_model.return_value = mock_model
         mock_load.return_value = {}
 
         model = model_manager._load_model_pt("test_key", pt_path)
 
-        mock_load.assert_called_with(pt_path, map_location=model_manager.device, weights_only=True)
+        mock_load.assert_called_with(
+            pt_path, map_location=model_manager.device, weights_only=True
+        )
         assert model == mock_model
+
 
 def test_load_model_caching(model_manager, tmp_path):
     ckpt_path = tmp_path / "model.ckpt"
@@ -161,6 +173,7 @@ def test_load_model_caching(model_manager, tmp_path):
         assert model_pt == cached_model
         mock_instantiate_model.assert_not_called()
 
+
 def test_load_models_and_folds_prefers_model_pt(model_manager, tmp_path):
     """When model.pt exists, it is preferred over .ckpt files."""
     fold_dir = tmp_path / "fold_single"
@@ -170,8 +183,10 @@ def test_load_models_and_folds_prefers_model_pt(model_manager, tmp_path):
     ckpt_path = fold_dir / "model.ckpt"
     ckpt_path.touch()
 
-    with patch.object(model_manager, "_load_model_pt") as mock_pt, \
-         patch.object(model_manager, "_load_model_ckpt") as mock_ckpt:
+    with (
+        patch.object(model_manager, "_load_model_pt") as mock_pt,
+        patch.object(model_manager, "_load_model_ckpt") as mock_ckpt,
+    ):
         mock_pt.return_value = MagicMock(spec=nn.Module)
 
         models, folds = model_manager.load_models_and_folds()
@@ -182,6 +197,7 @@ def test_load_models_and_folds_prefers_model_pt(model_manager, tmp_path):
         mock_pt.assert_called_with("fold_single", pt_path)
         mock_ckpt.assert_not_called()
 
+
 def test_load_models_and_folds_fallback_to_ckpt(model_manager, tmp_path):
     """When model.pt does not exist, falls back to .ckpt."""
     fold_dir = tmp_path / "fold_single"
@@ -189,8 +205,10 @@ def test_load_models_and_folds_fallback_to_ckpt(model_manager, tmp_path):
     ckpt_path = fold_dir / "model.ckpt"
     ckpt_path.touch()
 
-    with patch.object(model_manager, "_load_model_pt") as mock_pt, \
-         patch.object(model_manager, "_load_model_ckpt") as mock_ckpt:
+    with (
+        patch.object(model_manager, "_load_model_pt") as mock_pt,
+        patch.object(model_manager, "_load_model_ckpt") as mock_ckpt,
+    ):
         mock_ckpt.return_value = MagicMock(spec=nn.Module)
 
         models, folds = model_manager.load_models_and_folds()
@@ -201,8 +219,10 @@ def test_load_models_and_folds_fallback_to_ckpt(model_manager, tmp_path):
         mock_pt.assert_not_called()
         mock_ckpt.assert_called_with("fold_single", ckpt_path)
 
+
 def test_load_models_and_folds_multifold(model_manager, tmp_path):
     import yaml
+
     with open(tmp_path / "ensemble_metadata.yaml", "w") as f:
         yaml.dump({"folds": [0]}, f)
 

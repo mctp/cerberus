@@ -13,23 +13,27 @@ def test_sampler_split_folds(tmp_path):
         f.write("chr2\t100\t200\n")
         f.write("chr3\t100\t200\n")
 
-    chrom_sizes = {'chr1': 1000, 'chr2': 1000, 'chr3': 1000}
+    chrom_sizes = {"chr1": 1000, "chr2": 1000, "chr3": 1000}
 
     # Init sampler with 3 folds
-    folds = create_genome_folds(chrom_sizes, fold_type="chrom_partition", fold_args={"k": 3})
+    folds = create_genome_folds(
+        chrom_sizes, fold_type="chrom_partition", fold_args={"k": 3}
+    )
     sampler = IntervalSampler(
         file_path=bed_path,
         chrom_sizes=chrom_sizes,
         padded_size=100,
         exclude_intervals={},
-        folds=folds
+        folds=folds,
     )
 
     assert sampler.folds is not None
     assert len(sampler.folds) == 3
 
     # Split
-    train_sampler, val_sampler, test_sampler = sampler.split_folds(test_fold=0, val_fold=1)
+    train_sampler, val_sampler, test_sampler = sampler.split_folds(
+        test_fold=0, val_fold=1
+    )
 
     # Check lengths
     total = len(train_sampler) + len(val_sampler) + len(test_sampler)
@@ -42,6 +46,7 @@ def test_sampler_split_folds(tmp_path):
             assert id(interval) not in all_intervals
             all_intervals.add(id(interval))
 
+
 def test_dataset_split_folds(tmp_path):
     # Mock configs
     bed_path = tmp_path / "test.bed"
@@ -49,21 +54,21 @@ def test_dataset_split_folds(tmp_path):
         f.write("chr1\t100\t200\n")
         f.write("chr2\t100\t200\n")
 
-    chrom_sizes = {'chr1': 1000, 'chr2': 1000}
+    chrom_sizes = {"chr1": 1000, "chr2": 1000}
     genome_config = GenomeConfig.model_construct(
-        name='hg38',
+        name="hg38",
         fasta_path=tmp_path / "genome.fa",
-        allowed_chroms=['chr1', 'chr2'],
+        allowed_chroms=["chr1", "chr2"],
         chrom_sizes=chrom_sizes,
         exclude_intervals={},
-        fold_type='chrom_partition',
+        fold_type="chrom_partition",
         fold_args={"k": 2, "test_fold": None, "val_fold": None},
     )
 
     # Create dummy fasta
     with open(tmp_path / "genome.fa", "w") as f:
-        f.write(">chr1\n" + "A"*1000 + "\n")
-        f.write(">chr2\n" + "T"*1000 + "\n")
+        f.write(">chr1\n" + "A" * 1000 + "\n")
+        f.write(">chr2\n" + "T" * 1000 + "\n")
 
     data_config = DataConfig.model_construct(
         inputs={},
@@ -71,7 +76,7 @@ def test_dataset_split_folds(tmp_path):
         input_len=100,
         output_len=1,
         output_bin_size=1,
-        encoding='one_hot',
+        encoding="one_hot",
         max_jitter=0,
         log_transform=False,
         reverse_complement=False,
@@ -80,12 +85,19 @@ def test_dataset_split_folds(tmp_path):
     )
 
     sampler_config = SamplerConfig.model_construct(
-        sampler_type='interval',
+        sampler_type="interval",
         padded_size=100,
         sampler_args={"intervals_path": bed_path},
     )
 
-    dataset = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
+    dataset = CerberusDataset(
+        genome_config,
+        data_config,
+        sampler_config,
+        sequence_extractor=None,
+        sampler=None,
+        exclude_intervals=None,
+    )
 
     # Split using dataset method
     train_ds, val_ds, test_ds = dataset.split_folds(test_fold=0, val_fold=1)

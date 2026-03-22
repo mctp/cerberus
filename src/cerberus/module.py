@@ -62,13 +62,25 @@ class CerberusModule(pl.LightningModule):
         super().__init__()
 
         # Save serialized configurations for checkpoint reproducibility
-        self.save_hyperparameters({
-            "train_config": train_config.model_dump(mode="json") if train_config is not None else None,
-            "genome_config": genome_config.model_dump(mode="json") if genome_config is not None else None,
-            "data_config": data_config.model_dump(mode="json") if data_config is not None else None,
-            "sampler_config": sampler_config.model_dump(mode="json") if sampler_config is not None else None,
-            "model_config": model_config.model_dump(mode="json") if model_config is not None else None,
-        })
+        self.save_hyperparameters(
+            {
+                "train_config": train_config.model_dump(mode="json")
+                if train_config is not None
+                else None,
+                "genome_config": genome_config.model_dump(mode="json")
+                if genome_config is not None
+                else None,
+                "data_config": data_config.model_dump(mode="json")
+                if data_config is not None
+                else None,
+                "sampler_config": sampler_config.model_dump(mode="json")
+                if sampler_config is not None
+                else None,
+                "model_config": model_config.model_dump(mode="json")
+                if model_config is not None
+                else None,
+            }
+        )
 
         self.model = model
         self.train_config = train_config
@@ -78,9 +90,11 @@ class CerberusModule(pl.LightningModule):
         self.train_metrics = metrics.clone(prefix="train_")
         self.val_metrics = metrics.clone(prefix="val_")
 
-        logger.info(f"Initialized CerberusModule with model: {model.__class__.__name__}")
+        logger.info(
+            f"Initialized CerberusModule with model: {model.__class__.__name__}"
+        )
 
-    def configure_optimizers(self): # type: ignore[override]
+    def configure_optimizers(self):  # type: ignore[override]
         if self.train_config is None:
             raise RuntimeError("Cannot configure optimizers: train_config is missing.")
 
@@ -103,22 +117,22 @@ class CerberusModule(pl.LightningModule):
         scheduler_args = self.train_config.scheduler_args
 
         if scheduler_type != "default":
-             # Create scheduler using timm
-             scheduler, _ = create_scheduler_v2(
-                 optimizer,
-                 sched=scheduler_type,
-                 **scheduler_args
-             )
+            # Create scheduler using timm
+            scheduler, _ = create_scheduler_v2(
+                optimizer, sched=scheduler_type, **scheduler_args
+            )
 
-             optim_conf["lr_scheduler"] = {
-                 "scheduler": scheduler,
-                 "interval": "step",
-                 "frequency": 1,
-             }
+            optim_conf["lr_scheduler"] = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
+            }
 
         return optim_conf
 
-    def lr_scheduler_step(self, scheduler: Any, optimizer_idx: int, metric: float | None = None) -> None: # type: ignore[override]
+    def lr_scheduler_step(
+        self, scheduler: Any, optimizer_idx: int, metric: float | None = None
+    ) -> None:  # type: ignore[override]
         if hasattr(scheduler, "step_update"):
             scheduler.step(epoch=self.current_epoch, metric=metric)
             scheduler.step_update(num_updates=self.global_step)
@@ -128,7 +142,9 @@ class CerberusModule(pl.LightningModule):
             else:
                 scheduler.step(metric)
 
-    def _shared_step(self, batch: dict[str, torch.Tensor], batch_idx: int, prefix: str) -> torch.Tensor:
+    def _shared_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int, prefix: str
+    ) -> torch.Tensor:
         inputs = batch["inputs"]
         targets = batch["targets"]
 
@@ -136,18 +152,30 @@ class CerberusModule(pl.LightningModule):
         outputs = self.model(inputs)
 
         # Calculate loss and log named components
-        batch_context = {k: v for k, v in batch.items() if k not in ("inputs", "targets")}
+        batch_context = {
+            k: v for k, v in batch.items() if k not in ("inputs", "targets")
+        }
         batch_size = inputs.shape[0]
-        sync_dist = (prefix == "val_")
+        sync_dist = prefix == "val_"
 
         loss = self.criterion(outputs, targets, **batch_context)
-        self.log(f"{prefix}loss", loss, prog_bar=True, batch_size=batch_size, sync_dist=sync_dist)
+        self.log(
+            f"{prefix}loss",
+            loss,
+            prog_bar=True,
+            batch_size=batch_size,
+            sync_dist=sync_dist,
+        )
         components = self.criterion.loss_components(outputs, targets, **batch_context)
         for name, value in components.items():
-            self.log(f"{prefix}{name}", value, batch_size=batch_size, sync_dist=sync_dist)
+            self.log(
+                f"{prefix}{name}", value, batch_size=batch_size, sync_dist=sync_dist
+            )
 
         # Metrics
-        metric_collection = self.train_metrics if prefix == "train_" else self.val_metrics
+        metric_collection = (
+            self.train_metrics if prefix == "train_" else self.val_metrics
+        )
 
         if isinstance(outputs, (tuple, list)):
             outputs_detached = tuple(o.detach() for o in outputs)
@@ -158,10 +186,14 @@ class CerberusModule(pl.LightningModule):
 
         return loss
 
-    def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
+    def training_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
         return self._shared_step(batch, batch_idx, "train_")
 
-    def validation_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
+    def validation_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
         return self._shared_step(batch, batch_idx, "val_")
 
     def on_train_epoch_end(self):
@@ -197,7 +229,9 @@ class CerberusModule(pl.LightningModule):
         if scatter_preds is not None and scatter_targets is not None:
             trainer_log_dir = getattr(self.trainer.logger, "log_dir", None)
             save_dir = trainer_log_dir or self.trainer.default_root_dir or "."
-            save_count_scatter(scatter_preds, scatter_targets, save_dir, self.current_epoch)
+            save_count_scatter(
+                scatter_preds, scatter_targets, save_dir, self.current_epoch
+            )
 
 
 def configure_callbacks(
@@ -275,13 +309,13 @@ def instantiate_model(
         input_len=input_len,
         output_len=output_len,
         output_bin_size=output_bin_size,
-        **model_args
+        **model_args,
     )
 
     if compile:
         model = torch.compile(model)
 
-    return model # type: ignore
+    return model  # type: ignore
 
 
 def instantiate(
@@ -315,7 +349,9 @@ def instantiate(
     # Instantiate criterion and metrics (injects count_pseudocount at construction time)
     metrics, criterion = instantiate_metrics_and_loss(model_config)
 
-    logger.info(f"Instantiated CerberusModule (Model: {model_config.name}, Loss: {model_config.loss_cls})")
+    logger.info(
+        f"Instantiated CerberusModule (Model: {model_config.name}, Loss: {model_config.loss_cls})"
+    )
 
     return CerberusModule(
         model=model,
@@ -328,9 +364,9 @@ def instantiate(
         model_config=model_config,
     )
 
+
 def instantiate_metrics_and_loss(
-    model_config: ModelConfig,
-    device: torch.device | None = None
+    model_config: ModelConfig, device: torch.device | None = None
 ) -> tuple[MetricCollection, CerberusLoss]:
     """
     Instantiates metrics and loss functions from model configuration.
@@ -347,7 +383,10 @@ def instantiate_metrics_and_loss(
         tuple: (metrics, criterion)
     """
     loss_cls = import_class(model_config.loss_cls)
-    loss_args = {**model_config.loss_args, "count_pseudocount": model_config.count_pseudocount}
+    loss_args = {
+        **model_config.loss_args,
+        "count_pseudocount": model_config.count_pseudocount,
+    }
     criterion = loss_cls(**loss_args)
 
     metrics_cls = import_class(model_config.metrics_cls)

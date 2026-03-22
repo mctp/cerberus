@@ -1,4 +1,3 @@
-
 import pytest
 
 from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
@@ -11,6 +10,7 @@ def mock_fasta(tmp_path):
     with open(fasta_path, "w") as f:
         f.write(">chr1\n" + "A" * 1000 + "\n")
     return fasta_path
+
 
 def test_dataset_extractor_sharing(mock_fasta):
     genome_config = GenomeConfig.model_construct(
@@ -61,6 +61,7 @@ def test_dataset_extractor_sharing(mock_fasta):
 
     # Verify in-memory type
     from cerberus.sequence import InMemorySequenceExtractor
+
     assert isinstance(full_dataset.sequence_extractor, InMemorySequenceExtractor)
 
     # Check that tensors are in shared memory (since we added .share_memory_())

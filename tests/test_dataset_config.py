@@ -22,10 +22,12 @@ def test_create_genome_config_valid(tmp_path):
     assert config.fasta_path == genome
     assert config.name == "hg38"
 
+
 def test_genome_config_missing_required_fields():
     """GenomeConfig with missing required fields should raise ValidationError."""
     with pytest.raises(ValidationError):
         GenomeConfig(name="test")  # type: ignore[call-arg]
+
 
 def test_genome_config_allowed_chroms_invalid(tmp_path):
     """allowed_chroms must be a list, not a string."""
@@ -44,10 +46,14 @@ def test_genome_config_allowed_chroms_invalid(tmp_path):
             fold_args={"k": 5},
         )
 
+
 def test_create_genome_config_missing_file(tmp_path):
     """create_genome_config raises FileNotFoundError for missing FASTA."""
     with pytest.raises(FileNotFoundError):
-        create_genome_config(name="test", fasta_path=tmp_path / "missing.fa", species="human")
+        create_genome_config(
+            name="test", fasta_path=tmp_path / "missing.fa", species="human"
+        )
+
 
 def test_data_config_valid(tmp_path):
     cons = tmp_path / "cons.bw"
@@ -75,6 +81,7 @@ def test_data_config_valid(tmp_path):
     assert config.output_len == 1024
     assert config.input_len == 2048
 
+
 def test_data_config_missing_key():
     """DataConfig with missing required fields should raise ValidationError."""
     with pytest.raises(ValidationError):
@@ -83,6 +90,7 @@ def test_data_config_missing_key():
             output_len=1024,
             use_sequence=True,
         )  # type: ignore[call-arg]
+
 
 def test_dataset_init(tmp_path):
     genome_path = tmp_path / "genome.fa"
@@ -101,7 +109,7 @@ def test_dataset_init(tmp_path):
         name="test_genome",
         fasta_path=genome_path,
         species="human",
-        allowed_chroms=["chr1"]
+        allowed_chroms=["chr1"],
     )
 
     data_config = DataConfig(
@@ -122,7 +130,14 @@ def test_dataset_init(tmp_path):
         padded_size=100,
         sampler_args={"intervals_path": peaks},
     )
-    ds = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
+    ds = CerberusDataset(
+        genome_config,
+        data_config,
+        sampler_config,
+        sequence_extractor=None,
+        sampler=None,
+        exclude_intervals=None,
+    )
 
     # Check GenomeConfig object
     assert ds.genome_config.name == "test_genome"
@@ -130,6 +145,7 @@ def test_dataset_init(tmp_path):
     assert ds.genome_config.chrom_sizes is not None
     assert "chr1" in ds.genome_config.chrom_sizes
     assert "chr2" not in ds.genome_config.chrom_sizes
+
 
 def test_data_config_accepts_missing_file(tmp_path):
     """DataConfig accepts paths without checking existence."""
@@ -148,6 +164,7 @@ def test_data_config_accepts_missing_file(tmp_path):
     )
     assert cfg.inputs["cons"] == tmp_path / "missing.bw"
 
+
 def test_genome_config_invalid_chrom_sizes(tmp_path):
     """chrom_sizes values must be integers; non-numeric strings should fail."""
     genome = tmp_path / "genome.fa"
@@ -163,6 +180,7 @@ def test_genome_config_invalid_chrom_sizes(tmp_path):
             fold_args={"k": 5},
             chrom_sizes={"chr1": [1, 2, 3]},  # type: ignore[dict-item]
         )
+
 
 def test_genome_config_fold_args_accepts_any_dict(tmp_path):
     """fold_args is now dict[str, Any] — no type validation at model level.

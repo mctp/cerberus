@@ -16,10 +16,12 @@ class DummyModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.layer = nn.Linear(10, 1)
+
     def forward(self, x):
         # Output (Batch, 1, 1) to match (Batch, Channels, Length) expectation
         logits = torch.abs(self.layer(x)).unsqueeze(-1)
         return ProfileLogRates(log_rates=logits)
+
 
 @pytest.fixture
 def base_config():
@@ -38,26 +40,40 @@ def base_config():
         reload_dataloaders_every_n_epochs=0,
     )
 
+
 def test_training_step(base_config):
     model = DummyModel()
-    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=base_config)
+    module = CerberusModule(
+        model,
+        criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
+        metrics=DefaultMetricCollection(),
+        train_config=base_config,
+    )
     module.log = MagicMock()
 
     # Batch: inputs (B, 10), targets (B, 1, 1)
     # Poisson loss requires non-negative targets
     batch = {
         "inputs": torch.randn(5, 10),
-        "targets": torch.abs(torch.randn(5, 1)).unsqueeze(-1)
+        "targets": torch.abs(torch.randn(5, 1)).unsqueeze(-1),
     }
 
     loss = module.training_step(batch, 0)
 
     assert isinstance(loss, torch.Tensor)
-    module.log.assert_any_call("train_loss", loss, prog_bar=True, batch_size=5, sync_dist=False)
+    module.log.assert_any_call(
+        "train_loss", loss, prog_bar=True, batch_size=5, sync_dist=False
+    )
+
 
 def test_validation_step(base_config):
     model = DummyModel()
-    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=base_config)
+    module = CerberusModule(
+        model,
+        criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
+        metrics=DefaultMetricCollection(),
+        train_config=base_config,
+    )
     module.log = MagicMock()
     mock_trainer = MagicMock()
     mock_trainer.is_global_zero = True
@@ -65,17 +81,25 @@ def test_validation_step(base_config):
 
     batch = {
         "inputs": torch.randn(5, 10),
-        "targets": torch.abs(torch.randn(5, 1)).unsqueeze(-1)
+        "targets": torch.abs(torch.randn(5, 1)).unsqueeze(-1),
     }
 
     loss = module.validation_step(batch, 0)
 
     assert isinstance(loss, torch.Tensor)
-    module.log.assert_any_call("val_loss", loss, prog_bar=True, batch_size=5, sync_dist=True)
+    module.log.assert_any_call(
+        "val_loss", loss, prog_bar=True, batch_size=5, sync_dist=True
+    )
+
 
 def test_on_validation_epoch_end(base_config):
     model = DummyModel()
-    module = CerberusModule(model, criterion=ProfilePoissonNLLLoss(log_input=True, full=False), metrics=DefaultMetricCollection(), train_config=base_config)
+    module = CerberusModule(
+        model,
+        criterion=ProfilePoissonNLLLoss(log_input=True, full=False),
+        metrics=DefaultMetricCollection(),
+        train_config=base_config,
+    )
     module.log_dict = MagicMock()
     mock_trainer = MagicMock()
     mock_trainer.is_global_zero = True

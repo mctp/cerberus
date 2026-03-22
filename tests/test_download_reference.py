@@ -1,4 +1,3 @@
-
 from unittest.mock import patch
 
 from cerberus.download import GENOME_RESOURCES, download_reference_genome
@@ -9,12 +8,14 @@ from cerberus.download import GENOME_RESOURCES, download_reference_genome
 @patch("shutil.copyfileobj")
 @patch("pyfaidx.Fasta")
 @patch("pathlib.Path.unlink")
-def test_download_mouse_reference(mock_unlink, mock_fasta, mock_copy, mock_gzip, mock_download, tmp_path):
+def test_download_mouse_reference(
+    mock_unlink, mock_fasta, mock_copy, mock_gzip, mock_download, tmp_path
+):
     """Test that download_reference_genome works for mm10."""
     output_dir = tmp_path / "data"
-    
+
     # Mock file existence checks to simulate files NOT existing, then existing
-    with patch("pathlib.Path.exists", side_effect=[False] * 10): 
+    with patch("pathlib.Path.exists", side_effect=[False] * 10):
         results = download_reference_genome(output_dir, genome="mm10")
 
     assert results["fasta"].name == "mm10.fa"
@@ -28,17 +29,20 @@ def test_download_mouse_reference(mock_unlink, mock_fasta, mock_copy, mock_gzip,
     # We can't easily check call args order due to dict iteration order, but we can check count
     assert mock_download.call_count == 4
 
+
 @patch("cerberus.download._download_file")
 @patch("gzip.open")
 @patch("shutil.copyfileobj")
 @patch("pyfaidx.Fasta")
 @patch("pathlib.Path.unlink")
-def test_download_human_reference(mock_unlink, mock_fasta, mock_copy, mock_gzip, mock_download, tmp_path):
+def test_download_human_reference(
+    mock_unlink, mock_fasta, mock_copy, mock_gzip, mock_download, tmp_path
+):
     """Test that download_reference_genome works for hg38."""
     output_dir = tmp_path / "data"
-    
+
     # Mock file existence checks
-    with patch("pathlib.Path.exists", side_effect=[False] * 12): 
+    with patch("pathlib.Path.exists", side_effect=[False] * 12):
         results = download_reference_genome(output_dir, genome="hg38")
 
     assert results["fasta"].name == "hg38.fa"

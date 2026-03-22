@@ -48,64 +48,193 @@ def _parse_alpha(value: str) -> "float | str":
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Train BPNet models with Cerberus using any BigWig and BED file")
+    parser = argparse.ArgumentParser(
+        description="Train BPNet models with Cerberus using any BigWig and BED file"
+    )
 
     # Input files
-    parser.add_argument("--bigwig", type=str, required=True, help="Path to the BigWig file (signal)")
-    parser.add_argument("--peaks", type=str, required=True, help="Path to the BED/narrowPeak file (training regions)")
+    parser.add_argument(
+        "--bigwig", type=str, required=True, help="Path to the BigWig file (signal)"
+    )
+    parser.add_argument(
+        "--peaks",
+        type=str,
+        required=True,
+        help="Path to the BED/narrowPeak file (training regions)",
+    )
 
     # Genome arguments
-    parser.add_argument("--genome", type=str, default="hg38", help="Genome name (default: hg38)")
-    parser.add_argument("--species", type=str, default="human", help="Species (default: human)")
-    parser.add_argument("--fasta", type=str, help="Path to genome FASTA file (if not provided, will try to download for hg38)")
+    parser.add_argument(
+        "--genome", type=str, default="hg38", help="Genome name (default: hg38)"
+    )
+    parser.add_argument(
+        "--species", type=str, default="human", help="Species (default: human)"
+    )
+    parser.add_argument(
+        "--fasta",
+        type=str,
+        help="Path to genome FASTA file (if not provided, will try to download for hg38)",
+    )
     parser.add_argument("--blacklist", type=str, help="Path to blacklist file")
     parser.add_argument("--gaps", type=str, help="Path to gaps file")
 
     # Script arguments
-    parser.add_argument("--data-dir", type=str, default="tests/data", help="Directory to store/load data (e.g., genome reference)")
-    parser.add_argument("--output-dir", type=str, required=True, help="Root directory for logs and checkpoints")
-    parser.add_argument("--num-workers", type=int, default=8, help="Number of dataloader workers")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size per device")
-    parser.add_argument("--max-epochs", type=int, default=50, help="Maximum number of epochs")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for data sampling (default: 42)")
-    parser.add_argument("--silent", action="store_true", help="Disable tqdm progress bar during training")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="tests/data",
+        help="Directory to store/load data (e.g., genome reference)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        required=True,
+        help="Root directory for logs and checkpoints",
+    )
+    parser.add_argument(
+        "--num-workers", type=int, default=8, help="Number of dataloader workers"
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=32, help="Batch size per device"
+    )
+    parser.add_argument(
+        "--max-epochs", type=int, default=50, help="Maximum number of epochs"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for data sampling (default: 42)",
+    )
+    parser.add_argument(
+        "--silent",
+        action="store_true",
+        help="Disable tqdm progress bar during training",
+    )
 
     # Mode arguments
-    parser.add_argument("--multi", action="store_true", help="Run multi-fold cross-validation instead of single fold")
-    parser.add_argument("--val-fold", type=int, default=1, help="Validation fold (for single-fold training)")
+    parser.add_argument(
+        "--multi",
+        action="store_true",
+        help="Run multi-fold cross-validation instead of single fold",
+    )
+    parser.add_argument(
+        "--val-fold",
+        type=int,
+        default=1,
+        help="Validation fold (for single-fold training)",
+    )
     parser.add_argument("--test-fold", type=int, default=0, help="Test fold")
 
     # Model variants
-    parser.add_argument("--1024", dest="use_1024", action="store_true", help="Use BPNet1024 (2112bp -> 1024bp, tuned kernels and filters)")
+    parser.add_argument(
+        "--1024",
+        dest="use_1024",
+        action="store_true",
+        help="Use BPNet1024 (2112bp -> 1024bp, tuned kernels and filters)",
+    )
 
     # Hyperparameters
-    parser.add_argument("--input-len", type=int, default=2114, help="Input sequence length (ignored when --1024 is set)")
-    parser.add_argument("--output-len", type=int, default=1000, help="Output signal length (ignored when --1024 is set)")
-    parser.add_argument("--jitter", type=int, default=256, help="Maximum jitter for data augmentation (half-width)")
-    parser.add_argument("--alpha", type=_parse_alpha, default="adaptive",
-                        help="Weight for count loss. Use 'adaptive' (default) to compute from training data "
-                             "(alpha = median_total_counts / 10), or a float to set explicitly.")
-    parser.add_argument("--loss", type=str, default="bpnet", choices=["bpnet", "poisson", "nb"], help="Loss function to use")
-    parser.add_argument("--total-count", type=float, default=10.0, help="Total count (dispersion) parameter for NB loss")
-    parser.add_argument("--background-ratio", type=float, default=1.0, help="Ratio of background (negative) intervals to peaks")
-    parser.add_argument("--target-scale", type=float, default=1.0, help="Multiplicative scaling factor for targets (e.g., 1000 for fractional BigWig values)")
-    parser.add_argument("--count-pseudocount", type=float, default=150.0, help="Additive offset before log-transforming count targets (in raw coverage units)")
+    parser.add_argument(
+        "--input-len",
+        type=int,
+        default=2114,
+        help="Input sequence length (ignored when --1024 is set)",
+    )
+    parser.add_argument(
+        "--output-len",
+        type=int,
+        default=1000,
+        help="Output signal length (ignored when --1024 is set)",
+    )
+    parser.add_argument(
+        "--jitter",
+        type=int,
+        default=256,
+        help="Maximum jitter for data augmentation (half-width)",
+    )
+    parser.add_argument(
+        "--alpha",
+        type=_parse_alpha,
+        default="adaptive",
+        help="Weight for count loss. Use 'adaptive' (default) to compute from training data "
+        "(alpha = median_total_counts / 10), or a float to set explicitly.",
+    )
+    parser.add_argument(
+        "--loss",
+        type=str,
+        default="bpnet",
+        choices=["bpnet", "poisson", "nb"],
+        help="Loss function to use",
+    )
+    parser.add_argument(
+        "--total-count",
+        type=float,
+        default=10.0,
+        help="Total count (dispersion) parameter for NB loss",
+    )
+    parser.add_argument(
+        "--background-ratio",
+        type=float,
+        default=1.0,
+        help="Ratio of background (negative) intervals to peaks",
+    )
+    parser.add_argument(
+        "--target-scale",
+        type=float,
+        default=1.0,
+        help="Multiplicative scaling factor for targets (e.g., 1000 for fractional BigWig values)",
+    )
+    parser.add_argument(
+        "--count-pseudocount",
+        type=float,
+        default=150.0,
+        help="Additive offset before log-transforming count targets (in raw coverage units)",
+    )
 
     # Pretrained weights
-    parser.add_argument("--pretrained", type=str, default=None,
-                        help="Path to pretrained model.pt for warm-start / fine-tuning")
+    parser.add_argument(
+        "--pretrained",
+        type=str,
+        default=None,
+        help="Path to pretrained model.pt for warm-start / fine-tuning",
+    )
 
     # Training parameters
     # BPNet defaults: plain Adam with no weight decay, constant LR, eps=1e-7 (matching TF/Keras defaults).
     # Cosine decay with warmup is generally not used for BPNet since the un-normalized network needs
     # a stable LR to settle. Set --scheduler-type cosine to override if desired.
-    parser.add_argument("--learning-rate", type=float, default=1e-3, help="Learning rate")
-    parser.add_argument("--weight-decay", type=float, default=0.0, help="Weight decay (default 0: BPNet has no normalization layers)")
-    parser.add_argument("--patience", type=int, default=10, help="Patience for early stopping")
+    parser.add_argument(
+        "--learning-rate", type=float, default=1e-3, help="Learning rate"
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=0.0,
+        help="Weight decay (default 0: BPNet has no normalization layers)",
+    )
+    parser.add_argument(
+        "--patience", type=int, default=10, help="Patience for early stopping"
+    )
     parser.add_argument("--optimizer", type=str, default="adam", help="Optimizer type")
-    parser.add_argument("--scheduler-type", type=str, default="default", help="Learning rate scheduler type")
-    parser.add_argument("--warmup-epochs", type=int, default=0, help="Number of warmup epochs (for cosine scheduler)")
-    parser.add_argument("--min-lr", type=float, default=1e-6, help="Minimum learning rate (for cosine scheduler)")
+    parser.add_argument(
+        "--scheduler-type",
+        type=str,
+        default="default",
+        help="Learning rate scheduler type",
+    )
+    parser.add_argument(
+        "--warmup-epochs",
+        type=int,
+        default=0,
+        help="Number of warmup epochs (for cosine scheduler)",
+    )
+    parser.add_argument(
+        "--min-lr",
+        type=float,
+        default=1e-6,
+        help="Minimum learning rate (for cosine scheduler)",
+    )
 
     # Stable training mode
     parser.add_argument(
@@ -135,14 +264,28 @@ def get_args():
     )
 
     # Hardware arguments
-    parser.add_argument("--accelerator", type=str, default="auto", choices=["auto", "gpu", "cpu", "mps"], help="Accelerator type")
-    parser.add_argument("--devices", type=str, default="auto", help="Number of devices or 'auto'")
-    parser.add_argument("--precision", type=str, default="bf16", choices=["bf16", "mps", "full"],
-                        help="Precision strategy: 'bf16' for NVIDIA bf16-mixed (default), "
-                             "'mps' for Apple Silicon fp16-mixed, "
-                             "'full' for safest float32 (32-true, matmul=highest, no compile)")
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="auto",
+        choices=["auto", "gpu", "cpu", "mps"],
+        help="Accelerator type",
+    )
+    parser.add_argument(
+        "--devices", type=str, default="auto", help="Number of devices or 'auto'"
+    )
+    parser.add_argument(
+        "--precision",
+        type=str,
+        default="bf16",
+        choices=["bf16", "mps", "full"],
+        help="Precision strategy: 'bf16' for NVIDIA bf16-mixed (default), "
+        "'mps' for Apple Silicon fp16-mixed, "
+        "'full' for safest float32 (32-true, matmul=highest, no compile)",
+    )
 
     return parser.parse_args()
+
 
 def main():
     # Setup logging
@@ -167,8 +310,11 @@ def main():
         logging.info(
             "Stable mode enabled: weight_norm=True, activation=gelu, "
             "optimizer=%s, weight_decay=%s, scheduler=%s, warmup_epochs=%d, min_lr=%s",
-            args.optimizer, args.weight_decay, args.scheduler_type,
-            args.warmup_epochs, args.min_lr,
+            args.optimizer,
+            args.weight_decay,
+            args.scheduler_type,
+            args.warmup_epochs,
+            args.min_lr,
         )
 
     # Setup directories
@@ -194,7 +340,9 @@ def main():
             blacklist_path = args.blacklist or genome_files["blacklist"]
             gaps_path = args.gaps or genome_files["gaps"]
         else:
-            raise ValueError(f"Fasta path must be provided for genome {args.genome} if not hg38")
+            raise ValueError(
+                f"Fasta path must be provided for genome {args.genome} if not hg38"
+            )
     else:
         fasta_path = Path(args.fasta)
         blacklist_path = Path(args.blacklist) if args.blacklist else None
@@ -216,7 +364,7 @@ def main():
         species=args.species,
         fold_type="chrom_partition",
         fold_args={"k": 5, "val_fold": args.val_fold, "test_fold": args.test_fold},
-        exclude_intervals=exclude_intervals
+        exclude_intervals=exclude_intervals,
     )
 
     # Data Config
@@ -247,7 +395,9 @@ def main():
 
     # Sampler Config - Peak Intervals
     padded_size = input_len + 2 * max_jitter
-    logging.info(f"Using Peak Sampler (Positives + Negatives) with padded_size={padded_size}...")
+    logging.info(
+        f"Using Peak Sampler (Positives + Negatives) with padded_size={padded_size}..."
+    )
 
     sampler_config = SamplerConfig(
         sampler_type="peak",
@@ -325,8 +475,11 @@ def main():
     elif args.loss == "nb":
         loss_cls = "cerberus.loss.NegativeBinomialMultinomialLoss"
         loss_args = {"count_weight": args.alpha, "total_count": args.total_count}
-        logging.info("Using NegativeBinomialMultinomialLoss (count_weight=%s, total_count=%s)...",
-                     args.alpha, args.total_count)
+        logging.info(
+            "Using NegativeBinomialMultinomialLoss (count_weight=%s, total_count=%s)...",
+            args.alpha,
+            args.total_count,
+        )
     else:
         loss_cls = "cerberus.models.bpnet.BPNetLoss"
         loss_args = {"alpha": args.alpha}
@@ -334,9 +487,14 @@ def main():
 
     pretrained: list[PretrainedConfig] = []
     if args.pretrained:
-        pretrained.append(PretrainedConfig(
-            weights_path=args.pretrained, source=None, target=None, freeze=False,
-        ))
+        pretrained.append(
+            PretrainedConfig(
+                weights_path=args.pretrained,
+                source=None,
+                target=None,
+                freeze=False,
+            )
+        )
 
     model_config = ModelConfig(
         name=model_name,
@@ -370,7 +528,10 @@ def main():
     if accelerator == "mps":
         logging.info("Using Apple Silicon (MPS) acceleration.")
         if num_workers > 0:
-            logging.warning("num_workers=%d may cause instability on MPS. Recommend setting --num-workers 0.", num_workers)
+            logging.warning(
+                "num_workers=%d may cause instability on MPS. Recommend setting --num-workers 0.",
+                num_workers,
+            )
 
     # Precision settings
     if args.precision == "full":
@@ -400,7 +561,9 @@ def main():
             "matmul_precision": "medium",
             "accelerator": accelerator,
             "devices": devices,
-            "strategy": "ddp_find_unused_parameters_false" if accelerator == "gpu" and isinstance(devices, int) and devices > 1 else "auto",
+            "strategy": "ddp_find_unused_parameters_false"
+            if accelerator == "gpu" and isinstance(devices, int) and devices > 1
+            else "auto",
             "benchmark": True,
             "compile": True,
         }
@@ -429,7 +592,7 @@ def main():
             val_batch_size=args.batch_size * 4,
             enable_progress_bar=not args.silent,
             seed=args.seed,
-            **precision_args
+            **precision_args,
         )
     else:
         logging.info("Starting Single Fold Training (train_single)...")
@@ -447,11 +610,14 @@ def main():
             val_batch_size=args.batch_size * 4,
             enable_progress_bar=not args.silent,
             seed=args.seed,
-            **precision_args
+            **precision_args,
         )
 
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-        logging.info(f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}")
+        logging.info(
+            f"Training finished. Logs and checkpoints are in subdirectories of {output_dir}"
+        )
+
 
 if __name__ == "__main__":
     main()

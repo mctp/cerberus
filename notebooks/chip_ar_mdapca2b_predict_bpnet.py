@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 # Add project root to path if needed to import notebooks.paths
 import sys
+
 try:
     from paths import get_project_root
 except ImportError:
@@ -20,11 +21,11 @@ except ImportError:
 
 from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import (
-    GenomeConfig, 
-    DataConfig, 
-    SamplerConfig, 
-    TrainConfig, 
-    ModelConfig
+    GenomeConfig,
+    DataConfig,
+    SamplerConfig,
+    TrainConfig,
+    ModelConfig,
 )
 from cerberus.genome import create_genome_config
 from cerberus.dataset import CerberusDataset
@@ -77,7 +78,7 @@ genome_config: GenomeConfig = create_genome_config(
     exclude_intervals={
         "blacklist": genome_files["blacklist"],
         "gaps": genome_files["gaps"],
-    }
+    },
 )
 
 # Data Config for BPNet
@@ -160,7 +161,7 @@ dataset = CerberusDataset(
     genome_config=genome_config,
     data_config=data_config,
     sampler_config=sampler_config,
-    is_train=False 
+    is_train=False,
 )
 
 print("Splitting folds (Test Fold = 0)...")
@@ -210,13 +211,14 @@ print(f"Predicting on interval: {target_interval}")
 
 output = model_ensemble.predict_intervals(
     intervals=intervals_to_predict,
-    dataset=dataset, 
+    dataset=dataset,
     use_folds=["test"],
     aggregation="model",
-    batch_size=64
+    batch_size=64,
 )
 # Convert ModelOutput to dict for analysis
 import dataclasses
+
 outputs = dataclasses.asdict(output)
 merged_interval = output.out_interval
 
@@ -289,7 +291,7 @@ pred_counts_profile = probs * total_counts
 # gt_targets is in bp resolution. BPNet output is also bp resolution (bin_size=1).
 gt_start_bp = rel_start_bin * output_bin_size
 gt_end_bp = gt_start_bp + n_bins * output_bin_size
-gt_slice_bp = gt_targets[:, gt_start_bp : gt_end_bp]
+gt_slice_bp = gt_targets[:, gt_start_bp:gt_end_bp]
 
 # No binning needed if output_bin_size=1
 gt_slice = gt_slice_bp

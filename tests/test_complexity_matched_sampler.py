@@ -16,7 +16,7 @@ def mock_fasta(tmp_path):
     fasta_path = tmp_path / "genome.fa"
 
     rng = np.random.default_rng(42)
-    bases = np.array(['A', 'C', 'G', 'T'])
+    bases = np.array(["A", "C", "G", "T"])
 
     def generate_seq(length, p):
         return "".join(rng.choice(bases, size=length, p=p))
@@ -34,9 +34,11 @@ def mock_fasta(tmp_path):
         f.write(seq3 + "\n")
 
     import pyfaidx
+
     pyfaidx.Faidx(str(fasta_path))
 
     return fasta_path
+
 
 def test_complexity_matched_sampler(mock_fasta):
     chrom_sizes = {"chr1": 2000, "chr2": 2000, "chr3": 2000}
@@ -45,18 +47,20 @@ def test_complexity_matched_sampler(mock_fasta):
     with open(target_bed, "w") as f:
         for i in range(20):
             start = i * 50
-            f.write(f"chr1\t{start}\t{start+50}\n")
+            f.write(f"chr1\t{start}\t{start + 50}\n")
 
     config = SamplerConfig.model_construct(
         sampler_type="complexity_matched",
         padded_size=50,
         sampler_args={
             "target_sampler": SamplerConfig.model_construct(
-                sampler_type="interval", padded_size=50,
+                sampler_type="interval",
+                padded_size=50,
                 sampler_args={"intervals_path": target_bed},
             ),
             "candidate_sampler": SamplerConfig.model_construct(
-                sampler_type="random", padded_size=50,
+                sampler_type="random",
+                padded_size=50,
                 sampler_args={"num_intervals": 1000},
             ),
             "bins": 5,
@@ -82,6 +86,7 @@ def test_complexity_matched_sampler(mock_fasta):
     assert chr2_count < 5
     assert chr3_count < 5
 
+
 def test_complexity_matched_exclusions(mock_fasta):
     chrom_sizes = {"chr1": 2000}
 
@@ -90,9 +95,11 @@ def test_complexity_matched_exclusions(mock_fasta):
 
     candidate_intervals = [
         Interval("chr1", 100, 200, "+"),
-        Interval("chr1", 200, 300, "+")
+        Interval("chr1", 200, 300, "+"),
     ]
-    candidate_sampler = ListSampler(intervals=candidate_intervals, chrom_sizes=chrom_sizes)
+    candidate_sampler = ListSampler(
+        intervals=candidate_intervals, chrom_sizes=chrom_sizes
+    )
 
     exclude_intervals = {"chr1": InterLap()}
     exclude_intervals["chr1"].add((200, 300))
@@ -106,7 +113,7 @@ def test_complexity_matched_exclusions(mock_fasta):
         candidate_ratio=10.0,
         bins=1,
         metrics=["gc"],
-        seed=42
+        seed=42,
     )
 
     for interval in sampler:

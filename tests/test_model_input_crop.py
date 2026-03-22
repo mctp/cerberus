@@ -10,6 +10,7 @@ from cerberus.models.pomeranian import Pomeranian
 
 # --- Pomeranian ---
 
+
 class TestPomeranianInputCrop:
     def test_exact_input(self):
         model = Pomeranian(input_len=2112, output_len=1024)
@@ -25,7 +26,7 @@ class TestPomeranianInputCrop:
         x_exact = torch.randn(1, 4, 2112)
         x_over = torch.zeros(1, 4, 2212)
         # Embed exact input centered in the oversized tensor
-        x_over[..., 50:50 + 2112] = x_exact
+        x_over[..., 50 : 50 + 2112] = x_exact
         with torch.no_grad():
             out_exact = model(x_exact)
             out_over = model(x_over)
@@ -42,6 +43,7 @@ class TestPomeranianInputCrop:
 
 # --- BPNet ---
 
+
 class TestBPNetInputCrop:
     def test_exact_input(self):
         model = BPNet(input_len=2114, output_len=1000)
@@ -56,7 +58,7 @@ class TestBPNetInputCrop:
         model.eval()
         x_exact = torch.randn(1, 4, 2114)
         x_over = torch.zeros(1, 4, 2214)
-        x_over[..., 50:50 + 2114] = x_exact
+        x_over[..., 50 : 50 + 2114] = x_exact
         with torch.no_grad():
             out_exact = model(x_exact)
             out_over = model(x_over)
@@ -73,6 +75,7 @@ class TestBPNetInputCrop:
 
 # --- GlobalProfileCNN (Gopher) ---
 
+
 class TestGopherInputCrop:
     def test_exact_input(self):
         model = GlobalProfileCNN(input_len=2048, output_len=1024, output_bin_size=4)
@@ -88,7 +91,7 @@ class TestGopherInputCrop:
         x_exact = torch.randn(1, 4, 2048)
         x_over = torch.zeros(1, 4, 2176)
         # Center the exact input: (2176 - 2048) // 2 = 64
-        x_over[..., 64:64 + 2048] = x_exact
+        x_over[..., 64 : 64 + 2048] = x_exact
         with torch.no_grad():
             out_exact = model(x_exact)
             out_over = model(x_over)
@@ -104,6 +107,7 @@ class TestGopherInputCrop:
 
 # --- ConvNeXtDCNN (ASAP) ---
 
+
 class TestASAPInputCrop:
     def test_exact_input(self):
         model = ConvNeXtDCNN(input_len=2048, output_len=1024, output_bin_size=4)
@@ -118,7 +122,7 @@ class TestASAPInputCrop:
         model.eval()
         x_exact = torch.randn(1, 4, 2048)
         x_over = torch.zeros(1, 4, 2176)
-        x_over[..., 64:64 + 2048] = x_exact
+        x_over[..., 64 : 64 + 2048] = x_exact
         with torch.no_grad():
             out_exact = model(x_exact)
             out_over = model(x_over)

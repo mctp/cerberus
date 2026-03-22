@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.exclude — untested code paths."""
+
 import pytest
 
 from cerberus.exclude import get_exclude_intervals, is_excluded
@@ -7,8 +8,8 @@ from cerberus.exclude import get_exclude_intervals, is_excluded
 # get_exclude_intervals
 # ---------------------------------------------------------------------------
 
-class TestGetExcludeIntervals:
 
+class TestGetExcludeIntervals:
     def test_comment_and_header_lines_skipped(self, tmp_path):
         """Lines starting with #, track, or browser should be skipped."""
         bed = tmp_path / "exclude.bed"
@@ -72,8 +73,8 @@ class TestGetExcludeIntervals:
 # is_excluded
 # ---------------------------------------------------------------------------
 
-class TestIsExcluded:
 
+class TestIsExcluded:
     def test_chrom_not_in_intervals(self, tmp_path):
         """Chromosome not in intervals dict should return False."""
         bed = tmp_path / "test.bed"

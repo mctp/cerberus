@@ -41,6 +41,7 @@ NUC_MAP = {"A": 0, "C": 1, "G": 2, "T": 3}
 # Model loading (duplicated from plot_biasnet_ism.py)
 # ---------------------------------------------------------------------------
 
+
 def _resolve_fold_dir(path: Path) -> tuple[Path, Path]:
     """Resolve a model path to (fold_dir, model.pt)."""
     if path.is_file() and path.suffix == ".pt":
@@ -72,7 +73,7 @@ def _extract_bias_state_dict(sd: dict[str, torch.Tensor]) -> dict[str, torch.Ten
     prefix = "bias_model."
     bias_keys = [k for k in sd if k.startswith(prefix)]
     if bias_keys:
-        return {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
+        return {k[len(prefix) :]: v for k, v in sd.items() if k.startswith(prefix)}
     return sd
 
 
@@ -124,8 +125,10 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
         bias_residual = model_args.get("bias_residual", True)
 
         bias_shrinkage = _compute_shrinkage(
-            bias_conv_kernel_size, bias_dilations,
-            bias_dil_kernel_size, bias_profile_kernel_size,
+            bias_conv_kernel_size,
+            bias_dilations,
+            bias_dil_kernel_size,
+            bias_profile_kernel_size,
         )
         bias_input_len = output_len + bias_shrinkage
 
@@ -148,8 +151,7 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
         )
     else:
         raise ValueError(
-            f"Unsupported model type '{model_name}'. "
-            f"Expected 'BiasNet' or 'Dalmatian'."
+            f"Unsupported model type '{model_name}'. Expected 'BiasNet' or 'Dalmatian'."
         )
 
     sd = torch.load(model_pt, map_location="cpu", weights_only=True)
@@ -168,6 +170,7 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
 # ---------------------------------------------------------------------------
 # Sequence extraction (duplicated from plot_biasnet_ism.py)
 # ---------------------------------------------------------------------------
+
 
 def load_peak_intervals(peaks_path: Path, n: int = 5000, seed: int = 42):
     """Load peak intervals from a BED/narrowPeak file."""
@@ -189,8 +192,9 @@ def load_peak_intervals(peaks_path: Path, n: int = 5000, seed: int = 42):
     return intervals
 
 
-def extract_onehot(fasta: pyfaidx.Fasta, chrom: str, center: int,
-                   length: int) -> np.ndarray | None:
+def extract_onehot(
+    fasta: pyfaidx.Fasta, chrom: str, center: int, length: int
+) -> np.ndarray | None:
     """Extract a one-hot encoded sequence centered on a position."""
     start = center - length // 2
     end = start + length
@@ -257,9 +261,13 @@ def get_background_sequences(
     return sequences
 
 
-def get_real_sequences(fasta: pyfaidx.Fasta, intervals: list,
-                       input_len: int, n_seqs: int = 1000,
-                       seed: int = 42) -> list[np.ndarray]:
+def get_real_sequences(
+    fasta: pyfaidx.Fasta,
+    intervals: list,
+    input_len: int,
+    n_seqs: int = 1000,
+    seed: int = 42,
+) -> list[np.ndarray]:
     """Extract real genomic one-hot sequences centered on peak midpoints."""
     rng = np.random.RandomState(seed)
     sequences = []
@@ -288,8 +296,10 @@ def get_real_sequences(fasta: pyfaidx.Fasta, intervals: list,
 # Pairwise ISM computation
 # ---------------------------------------------------------------------------
 
-def _batch_forward(model: torch.nn.Module, batch: torch.Tensor,
-                   output_idx: int, batch_size: int) -> np.ndarray:
+
+def _batch_forward(
+    model: torch.nn.Module, batch: torch.Tensor, output_idx: int, batch_size: int
+) -> np.ndarray:
     """Run model forward on a batch in chunks, return center output values."""
     n = batch.shape[0]
     vals = np.empty(n, dtype=np.float64)
@@ -427,6 +437,7 @@ def compute_pairwise_ism(
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_logo(ax, weights: np.ndarray, title: str, as_ic: bool = True):
     """Plot a weight matrix as a sequence logo."""
     _, L = weights.shape
@@ -451,16 +462,32 @@ def plot_logo(ax, weights: np.ndarray, title: str, as_ic: bool = True):
                     continue
                 letter = NUCLEOTIDES[nuc_idx]
                 color = NUC_COLORS[letter]
-                ax.bar(pos, h, bottom=bottom, width=0.9, color=color,
-                       edgecolor="white", linewidth=0.2)
+                ax.bar(
+                    pos,
+                    h,
+                    bottom=bottom,
+                    width=0.9,
+                    color=color,
+                    edgecolor="white",
+                    linewidth=0.2,
+                )
                 col_total = col.sum()
                 if col_total > 0 and h / col_total > 0.15 and h > 0.05:
-                    ax.text(pos, bottom + h / 2, letter, ha="center", va="center",
-                            fontsize=6, fontweight="bold", color="white",
-                            fontfamily="monospace",
-                            path_effects=[path_effects.Stroke(linewidth=0.4,
-                                                               foreground="black"),
-                                          path_effects.Normal()])
+                    ax.text(
+                        pos,
+                        bottom + h / 2,
+                        letter,
+                        ha="center",
+                        va="center",
+                        fontsize=6,
+                        fontweight="bold",
+                        color="white",
+                        fontfamily="monospace",
+                        path_effects=[
+                            path_effects.Stroke(linewidth=0.4, foreground="black"),
+                            path_effects.Normal(),
+                        ],
+                    )
                 bottom += h
         else:
             pos_bottom = 0.0
@@ -470,19 +497,42 @@ def plot_logo(ax, weights: np.ndarray, title: str, as_ic: bool = True):
                 letter = NUCLEOTIDES[nuc_idx]
                 color = NUC_COLORS[letter]
                 if h >= 0:
-                    ax.bar(pos, h, bottom=pos_bottom, width=0.9, color=color,
-                           edgecolor="white", linewidth=0.2)
+                    ax.bar(
+                        pos,
+                        h,
+                        bottom=pos_bottom,
+                        width=0.9,
+                        color=color,
+                        edgecolor="white",
+                        linewidth=0.2,
+                    )
                     if abs(h) > 0.005:
-                        ax.text(pos, pos_bottom + h / 2, letter, ha="center",
-                                va="center", fontsize=5, fontweight="bold",
-                                color="white", fontfamily="monospace",
-                                path_effects=[path_effects.Stroke(linewidth=0.4,
-                                                                   foreground="black"),
-                                              path_effects.Normal()])
+                        ax.text(
+                            pos,
+                            pos_bottom + h / 2,
+                            letter,
+                            ha="center",
+                            va="center",
+                            fontsize=5,
+                            fontweight="bold",
+                            color="white",
+                            fontfamily="monospace",
+                            path_effects=[
+                                path_effects.Stroke(linewidth=0.4, foreground="black"),
+                                path_effects.Normal(),
+                            ],
+                        )
                     pos_bottom += h
                 else:
-                    ax.bar(pos, h, bottom=neg_bottom, width=0.9, color=color,
-                           edgecolor="white", linewidth=0.2)
+                    ax.bar(
+                        pos,
+                        h,
+                        bottom=neg_bottom,
+                        width=0.9,
+                        color=color,
+                        edgecolor="white",
+                        linewidth=0.2,
+                    )
                     neg_bottom += h
 
     ax.set_xlim(-0.5, L - 0.5)
@@ -495,6 +545,7 @@ def plot_logo(ax, weights: np.ndarray, title: str, as_ic: bool = True):
 # ---------------------------------------------------------------------------
 # CSV export
 # ---------------------------------------------------------------------------
+
 
 def save_pairwise_csv(
     epistasis: np.ndarray,
@@ -512,10 +563,17 @@ def save_pairwise_csv(
         writer = csv.writer(f)
         writer.writerow(["# n_seqs", n_seqs])
         writer.writerow(["# window", window])
-        writer.writerow([
-            "pos_i", "nuc_i", "pos_j", "nuc_j",
-            "delta_single_i", "delta_single_j", "epistasis",
-        ])
+        writer.writerow(
+            [
+                "pos_i",
+                "nuc_i",
+                "pos_j",
+                "nuc_j",
+                "delta_single_i",
+                "delta_single_j",
+                "epistasis",
+            ]
+        )
         for pos_i in range(window):
             for pos_j in range(pos_i + 1, window):
                 for nuc_a in range(4):
@@ -523,11 +581,17 @@ def save_pairwise_csv(
                         eps = epistasis[pos_i, nuc_a, pos_j, nuc_b]
                         ds_i = ism_single[nuc_a, pos_i]
                         ds_j = ism_single[nuc_b, pos_j]
-                        writer.writerow([
-                            pos_i, NUCLEOTIDES[nuc_a],
-                            pos_j, NUCLEOTIDES[nuc_b],
-                            f"{ds_i:.6f}", f"{ds_j:.6f}", f"{eps:.6f}",
-                        ])
+                        writer.writerow(
+                            [
+                                pos_i,
+                                NUCLEOTIDES[nuc_a],
+                                pos_j,
+                                NUCLEOTIDES[nuc_b],
+                                f"{ds_i:.6f}",
+                                f"{ds_j:.6f}",
+                                f"{eps:.6f}",
+                            ]
+                        )
     logger.info(f"Saved: {out_path}")
 
 
@@ -535,34 +599,76 @@ def save_pairwise_csv(
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Plot BiasNet pairwise ISM epistasis analysis")
-    parser.add_argument("model_path", type=str,
-                        help="Path to BiasNet run directory or model.pt file")
-    parser.add_argument("--fasta", type=str, default=None,
-                        help="Path to genome FASTA (auto-detected from hparams.yaml)")
-    parser.add_argument("--peaks", type=str, default=None,
-                        help="Path to peaks BED file (auto-detected from hparams.yaml)")
-    parser.add_argument("--output-dir", type=str, default=None,
-                        help="Output directory (default: same as model directory)")
-    parser.add_argument("--prefix", type=str, default="biasnet",
-                        help="Output filename prefix")
-    parser.add_argument("--n-seqs", type=int, default=200,
-                        help="Number of sequences for ISM averaging (default: 200)")
-    parser.add_argument("--ism-window", type=int, default=31,
-                        help="Window size for ISM around center")
-    parser.add_argument("--batch-size", type=int, default=512,
-                        help="GPU batch size for forward passes (default: 512)")
-    parser.add_argument("--background", action="store_true", default=True,
-                        help="Sample background sequences outside peaks (default)")
-    parser.add_argument("--no-background", dest="background", action="store_false",
-                        help="Sample sequences from peak centers instead of background")
-    parser.add_argument("--detail-pair", type=int, nargs=2, default=[11, 19],
-                        metavar=("POS_I", "POS_J"),
-                        help="Position pair for 4x4 epistasis detail panel (default: 11 19)")
-    parser.add_argument("--device", type=str, default=None,
-                        help="Device (e.g., 'cuda', 'cpu'). Auto-detects if not set.")
+        description="Plot BiasNet pairwise ISM epistasis analysis"
+    )
+    parser.add_argument(
+        "model_path", type=str, help="Path to BiasNet run directory or model.pt file"
+    )
+    parser.add_argument(
+        "--fasta",
+        type=str,
+        default=None,
+        help="Path to genome FASTA (auto-detected from hparams.yaml)",
+    )
+    parser.add_argument(
+        "--peaks",
+        type=str,
+        default=None,
+        help="Path to peaks BED file (auto-detected from hparams.yaml)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory (default: same as model directory)",
+    )
+    parser.add_argument(
+        "--prefix", type=str, default="biasnet", help="Output filename prefix"
+    )
+    parser.add_argument(
+        "--n-seqs",
+        type=int,
+        default=200,
+        help="Number of sequences for ISM averaging (default: 200)",
+    )
+    parser.add_argument(
+        "--ism-window", type=int, default=31, help="Window size for ISM around center"
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=512,
+        help="GPU batch size for forward passes (default: 512)",
+    )
+    parser.add_argument(
+        "--background",
+        action="store_true",
+        default=True,
+        help="Sample background sequences outside peaks (default)",
+    )
+    parser.add_argument(
+        "--no-background",
+        dest="background",
+        action="store_false",
+        help="Sample sequences from peak centers instead of background",
+    )
+    parser.add_argument(
+        "--detail-pair",
+        type=int,
+        nargs=2,
+        default=[11, 19],
+        metavar=("POS_I", "POS_J"),
+        help="Position pair for 4x4 epistasis detail panel (default: 11 19)",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="Device (e.g., 'cuda', 'cpu'). Auto-detects if not set.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -581,7 +687,9 @@ def main():
 
     # Resolve fasta and peaks from config if not provided
     fasta_path = args.fasta or config["genome_config"]["fasta_path"]
-    peaks_path = args.peaks or config["sampler_config"]["sampler_args"]["intervals_path"]
+    peaks_path = (
+        args.peaks or config["sampler_config"]["sampler_args"]["intervals_path"]
+    )
 
     if args.output_dir is not None:
         out_dir = Path(args.output_dir)
@@ -601,14 +709,16 @@ def main():
         chrom_sizes = config["genome_config"]["chrom_sizes"]
         logger.info(f"Sampling background sequences outside peaks from {peaks_path}...")
         sequences = get_background_sequences(
-            fasta, Path(peaks_path), chrom_sizes, input_len,
+            fasta,
+            Path(peaks_path),
+            chrom_sizes,
+            input_len,
             n_seqs=args.n_seqs,
         )
     else:
         logger.info(f"Loading peak intervals from {peaks_path}...")
         intervals = load_peak_intervals(Path(peaks_path), n=args.n_seqs * 3)
-        sequences = get_real_sequences(fasta, intervals, input_len,
-                                       n_seqs=args.n_seqs)
+        sequences = get_real_sequences(fasta, intervals, input_len, n_seqs=args.n_seqs)
 
     # Compute pairwise ISM
     n_seqs = len(sequences)
@@ -620,7 +730,10 @@ def main():
         f"(window={window}, {n_pairs} pairs, {n_double} double mutants/seq)..."
     )
     ism_single, epistasis = compute_pairwise_ism(
-        model, sequences, window=window, batch_size=args.batch_size,
+        model,
+        sequences,
+        window=window,
+        batch_size=args.batch_size,
     )
 
     # Save CSV
@@ -642,10 +755,12 @@ def main():
 
     fig = plt.figure(figsize=(max(14, window * 0.45), 13))
     gs = fig.add_gridspec(
-        4, 2,
+        4,
+        2,
         height_ratios=[1, 2, 0.8, 1.5],
         width_ratios=[1, 0.03],
-        hspace=0.4, wspace=0.03,
+        hspace=0.4,
+        wspace=0.03,
     )
     ax_logo = fig.add_subplot(gs[0, 0])
     ax_heat = fig.add_subplot(gs[1, 0])
@@ -658,17 +773,28 @@ def main():
         ax_empty.set_visible(False)
 
     # Panel 1: IC logo from single ISM
-    plot_logo(ax_logo, ism_single,
-              f"BiasNet ISM IC — {n_seqs} {seq_type} seqs (center {window}bp)",
-              as_ic=True)
+    plot_logo(
+        ax_logo,
+        ism_single,
+        f"BiasNet ISM IC — {n_seqs} {seq_type} seqs (center {window}bp)",
+        as_ic=True,
+    )
     ax_logo.set_ylabel("IC (bits)", fontsize=8)
     plt.setp(ax_logo.get_xticklabels(), visible=False)
 
     # Panel 2: epistasis heatmap
-    vmax = np.percentile(eps_collapsed[eps_collapsed > 0], 99) if eps_collapsed.max() > 0 else 1e-3
+    vmax = (
+        np.percentile(eps_collapsed[eps_collapsed > 0], 99)
+        if eps_collapsed.max() > 0
+        else 1e-3
+    )
     im = ax_heat.imshow(
-        eps_collapsed, aspect="equal", cmap="inferno",
-        vmin=0, vmax=vmax, interpolation="nearest",
+        eps_collapsed,
+        aspect="equal",
+        cmap="inferno",
+        vmin=0,
+        vmax=vmax,
+        interpolation="nearest",
         extent=(-0.5, window - 0.5, window - 0.5, -0.5),
     )
     ax_heat.set_xlabel("Position", fontsize=8)
@@ -676,16 +802,36 @@ def main():
     ax_heat.set_title(f"Pairwise epistasis  max|ε|  ({n_pairs} pairs)", fontsize=9)
     # Mark detail pair on heatmap
     if dp_i is not None and dp_j is not None:
-        ax_heat.plot(dp_j, dp_i, "s", markersize=8, markeredgecolor="white",
-                     markerfacecolor="none", markeredgewidth=1.5)
-        ax_heat.plot(dp_i, dp_j, "s", markersize=8, markeredgecolor="white",
-                     markerfacecolor="none", markeredgewidth=1.5)
+        ax_heat.plot(
+            dp_j,
+            dp_i,
+            "s",
+            markersize=8,
+            markeredgecolor="white",
+            markerfacecolor="none",
+            markeredgewidth=1.5,
+        )
+        ax_heat.plot(
+            dp_i,
+            dp_j,
+            "s",
+            markersize=8,
+            markeredgecolor="white",
+            markerfacecolor="none",
+            markeredgewidth=1.5,
+        )
     fig.colorbar(im, cax=ax_cbar, label="max |ε|")
 
     # Panel 3: interaction profile
     interaction_profile = eps_collapsed.sum(axis=1)
-    ax_profile.bar(range(window), interaction_profile, width=0.8, color="#4C72B0",
-                   edgecolor="white", linewidth=0.3)
+    ax_profile.bar(
+        range(window),
+        interaction_profile,
+        width=0.8,
+        color="#4C72B0",
+        edgecolor="white",
+        linewidth=0.3,
+    )
     ax_profile.set_xlim(-0.5, window - 0.5)
     ax_profile.set_xlabel("Position (centered)", fontsize=8)
     ax_profile.set_ylabel("Σ max|ε|", fontsize=8)
@@ -697,11 +843,17 @@ def main():
     ax_detail = fig.add_subplot(gs[3, 0])
     if dp_i is not None:
         # epistasis[pos_i, nuc_a, pos_j, nuc_b] -> (4, 4) matrix
-        pair_eps = epistasis[dp_i, :, dp_j, :]  # (4, 4): rows=nuc at pos_i, cols=nuc at pos_j
+        pair_eps = epistasis[
+            dp_i, :, dp_j, :
+        ]  # (4, 4): rows=nuc at pos_i, cols=nuc at pos_j
         vabs = max(np.abs(pair_eps).max(), 1e-6)
         im4 = ax_detail.imshow(
-            pair_eps, aspect="equal", cmap="RdBu_r",
-            vmin=-vabs, vmax=vabs, interpolation="nearest",
+            pair_eps,
+            aspect="equal",
+            cmap="RdBu_r",
+            vmin=-vabs,
+            vmax=vabs,
+            interpolation="nearest",
         )
         ax_detail.set_xticks(range(4))
         ax_detail.set_xticklabels(NUCLEOTIDES, fontsize=10, fontweight="bold")
@@ -710,15 +862,23 @@ def main():
         ax_detail.set_xlabel(f"Nucleotide at position {dp_j}", fontsize=9)
         ax_detail.set_ylabel(f"Nucleotide at position {dp_i}", fontsize=9)
         ax_detail.set_title(
-            f"Epistasis ε(pos {dp_i}, pos {dp_j})", fontsize=9,
+            f"Epistasis ε(pos {dp_i}, pos {dp_j})",
+            fontsize=9,
         )
         # Annotate cells with values
         for ri in range(4):
             for ci in range(4):
                 val = pair_eps[ri, ci]
                 color = "white" if abs(val) > vabs * 0.5 else "black"
-                ax_detail.text(ci, ri, f"{val:.4f}", ha="center", va="center",
-                               fontsize=8, color=color)
+                ax_detail.text(
+                    ci,
+                    ri,
+                    f"{val:.4f}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color=color,
+                )
         fig.colorbar(im4, ax=ax_detail, fraction=0.046, pad=0.04, label="ε")
     else:
         ax_detail.set_visible(False)

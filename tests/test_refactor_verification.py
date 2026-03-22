@@ -14,6 +14,7 @@ from cerberus.utils import import_class
 
 # --- Config Tests ---
 
+
 def test_model_dump_json_paths(tmp_path):
     """Test that model_dump(mode='json') converts Path objects to strings."""
     cons = tmp_path / "cons.bw"
@@ -36,6 +37,7 @@ def test_model_dump_json_paths(tmp_path):
     assert isinstance(sanitized["inputs"]["cons"], str)
     assert sanitized["input_len"] == 100
 
+
 def test_model_dump_json_scalars():
     """Test that model_dump(mode='json') preserves scalars."""
     cfg = ModelConfig(
@@ -56,6 +58,7 @@ def test_model_dump_json_scalars():
     assert sanitized["name"] == "test_model"
     assert isinstance(sanitized["name"], str)
 
+
 def test_model_config_validation_valid():
     """Test construction of ModelConfig with valid string class names."""
     cfg = ModelConfig(
@@ -73,6 +76,7 @@ def test_model_config_validation_valid():
     )
     assert cfg.model_cls == "cerberus.models.bpnet.BPNet"
 
+
 def test_model_config_validation_extra_field_rejected():
     """Test that extra fields are rejected by Pydantic (extra='forbid')."""
     with pytest.raises(ValidationError):
@@ -88,6 +92,7 @@ def test_model_config_validation_extra_field_rejected():
             unexpected_field="bad",  # type: ignore[call-arg]
         )
 
+
 def test_import_class_success():
     """Test dynamic import of a known class."""
     cls = import_class("pathlib.Path")
@@ -95,6 +100,7 @@ def test_import_class_success():
 
     cls = import_class("cerberus.config.ModelConfig")
     assert cls is ModelConfig
+
 
 def test_import_class_failure():
     """Test dynamic import failure cases."""
@@ -105,9 +111,11 @@ def test_import_class_failure():
         import_class("cerberus.config.NonExistentClass")
 
     with pytest.raises(ImportError):
-        import_class(123) # type: ignore
+        import_class(123)  # type: ignore
+
 
 # --- Entrypoints Tests ---
+
 
 class DummyModel(torch.nn.Module):
     def __init__(self, input_len, output_len, output_bin_size, **kwargs):
@@ -116,6 +124,7 @@ class DummyModel(torch.nn.Module):
         self.output_len = output_len
         self.output_bin_size = output_bin_size
         self.kwargs = kwargs
+
 
 def test_instantiate_model_with_pydantic_configs():
     """Test instantiate_model using Pydantic config objects."""
@@ -156,7 +165,9 @@ def test_instantiate_model_with_pydantic_configs():
 
         mock_import.assert_called_with("dummy.DummyModel")
 
+
 # --- ModelEnsemble Tests ---
+
 
 @pytest.fixture
 def mock_checkpoint_dir(tmp_path):
@@ -181,12 +192,17 @@ def mock_checkpoint_dir(tmp_path):
     hparams = {
         "model_config": {"name": "test"},
         "data_config": {"output_len": 100, "output_bin_size": 1},
-        "genome_config": {"fold_type": "chrom_partition", "chrom_sizes": {}, "fold_args": {}}
+        "genome_config": {
+            "fold_type": "chrom_partition",
+            "chrom_sizes": {},
+            "fold_args": {},
+        },
     }
     with open(root / "fold_0" / "hparams.yaml", "w") as f:
         yaml.dump(hparams, f)
 
     return root
+
 
 def _mock_cerberus_config():
     """Return a MagicMock that behaves like a CerberusConfig for ensemble tests."""
@@ -207,21 +223,38 @@ def test_model_ensemble_init_missing_metadata(tmp_path):
     empty_dir.mkdir()
 
     with pytest.raises(FileNotFoundError, match="ensemble_metadata.yaml"):
-        with patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
-             patch("cerberus.model_ensemble.parse_hparams_config", return_value=_mock_cerberus_config()):
+        with (
+            patch(
+                "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+                return_value=Path("hparams.yaml"),
+            ),
+            patch(
+                "cerberus.model_ensemble.parse_hparams_config",
+                return_value=_mock_cerberus_config(),
+            ),
+        ):
             ModelEnsemble(
                 checkpoint_path=empty_dir,
-                model_config={}, # type: ignore
-                data_config={"output_len": 100, "output_bin_size": 1}, # type: ignore
-                genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}}, # type: ignore
+                model_config={},  # type: ignore
+                data_config={"output_len": 100, "output_bin_size": 1},  # type: ignore
+                genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}},  # type: ignore
             )
+
 
 def test_model_ensemble_init_success(mock_checkpoint_dir):
     """Test successful initialization with mocked models."""
 
-    with patch("cerberus.model_ensemble._ModelManager._load_model_ckpt") as mock_load, \
-         patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
-         patch("cerberus.model_ensemble.parse_hparams_config", return_value=_mock_cerberus_config()):
+    with (
+        patch("cerberus.model_ensemble._ModelManager._load_model_ckpt") as mock_load,
+        patch(
+            "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+            return_value=Path("hparams.yaml"),
+        ),
+        patch(
+            "cerberus.model_ensemble.parse_hparams_config",
+            return_value=_mock_cerberus_config(),
+        ),
+    ):
         mock_load.return_value = torch.nn.Linear(1, 1)
 
         with patch("cerberus.model_ensemble.create_genome_folds") as mock_folds:
@@ -229,29 +262,38 @@ def test_model_ensemble_init_success(mock_checkpoint_dir):
 
             ensemble = ModelEnsemble(
                 checkpoint_path=mock_checkpoint_dir,
-                model_config={}, # type: ignore
-                data_config={"output_len": 100, "output_bin_size": 1}, # type: ignore
-                genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}}, # type: ignore
+                model_config={},  # type: ignore
+                data_config={"output_len": 100, "output_bin_size": 1},  # type: ignore
+                genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}},  # type: ignore
             )
 
-            assert len(ensemble) == 2 # 2 folds
+            assert len(ensemble) == 2  # 2 folds
             assert "0" in ensemble
             assert "1" in ensemble
 
+
 def test_model_ensemble_predict_empty_intervals(mock_checkpoint_dir):
     """Test predict_intervals with empty input."""
-    with patch("cerberus.model_ensemble._ModelManager._load_model_ckpt") as mock_load, \
-         patch("cerberus.model_ensemble.create_genome_folds") as mock_folds, \
-         patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
-         patch("cerberus.model_ensemble.parse_hparams_config", return_value=_mock_cerberus_config()):
+    with (
+        patch("cerberus.model_ensemble._ModelManager._load_model_ckpt") as mock_load,
+        patch("cerberus.model_ensemble.create_genome_folds") as mock_folds,
+        patch(
+            "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+            return_value=Path("hparams.yaml"),
+        ),
+        patch(
+            "cerberus.model_ensemble.parse_hparams_config",
+            return_value=_mock_cerberus_config(),
+        ),
+    ):
         mock_load.return_value = torch.nn.Linear(1, 1)
         mock_folds.return_value = [{}, {}]
 
         ensemble = ModelEnsemble(
             checkpoint_path=mock_checkpoint_dir,
-            model_config={}, # type: ignore
-            data_config={"output_len": 100, "output_bin_size": 1}, # type: ignore
-            genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}}, # type: ignore
+            model_config={},  # type: ignore
+            data_config={"output_len": 100, "output_bin_size": 1},  # type: ignore
+            genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}},  # type: ignore
         )
 
         dataset = MagicMock()
@@ -264,20 +306,29 @@ def test_model_ensemble_predict_empty_intervals(mock_checkpoint_dir):
         with pytest.raises(RuntimeError, match="No results generated"):
             ensemble.predict_intervals([], dataset)
 
+
 def test_model_ensemble_predict_output_intervals_empty(mock_checkpoint_dir):
     """Test predict_output_intervals with empty input."""
-    with patch("cerberus.model_ensemble._ModelManager._load_model_ckpt") as mock_load, \
-         patch("cerberus.model_ensemble.create_genome_folds") as mock_folds, \
-         patch("cerberus.model_ensemble.ModelEnsemble._find_hparams", return_value=Path("hparams.yaml")), \
-         patch("cerberus.model_ensemble.parse_hparams_config", return_value=_mock_cerberus_config()):
+    with (
+        patch("cerberus.model_ensemble._ModelManager._load_model_ckpt") as mock_load,
+        patch("cerberus.model_ensemble.create_genome_folds") as mock_folds,
+        patch(
+            "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+            return_value=Path("hparams.yaml"),
+        ),
+        patch(
+            "cerberus.model_ensemble.parse_hparams_config",
+            return_value=_mock_cerberus_config(),
+        ),
+    ):
         mock_load.return_value = torch.nn.Linear(1, 1)
         mock_folds.return_value = [{}, {}]
 
         ensemble = ModelEnsemble(
             checkpoint_path=mock_checkpoint_dir,
-            model_config={}, # type: ignore
-            data_config={"output_len": 100, "output_bin_size": 1, "input_len": 1000}, # type: ignore
-            genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}}, # type: ignore
+            model_config={},  # type: ignore
+            data_config={"output_len": 100, "output_bin_size": 1, "input_len": 1000},  # type: ignore
+            genome_config={"fold_type": "x", "chrom_sizes": {}, "fold_args": {}},  # type: ignore
         )
 
         dataset = MagicMock()
@@ -290,43 +341,47 @@ def test_model_ensemble_predict_output_intervals_empty(mock_checkpoint_dir):
         results = ensemble.predict_output_intervals([], dataset)
         assert results == []
 
+
 # --- Internal Method Tests ---
+
 
 def test_model_manager_select_best_checkpoint():
     """Test _select_best_checkpoint logic."""
     with patch("cerberus.model_ensemble._ModelManager.__init__", return_value=None):
-        manager = cerberus.model_ensemble._ModelManager() # type: ignore
+        manager = cerberus.model_ensemble._ModelManager()  # type: ignore
 
         ckpts = [
             Path("ckpt-val_loss=0.5.ckpt"),
-            Path("ckpt-val_loss=0.1.ckpt"), # Best
+            Path("ckpt-val_loss=0.1.ckpt"),  # Best
             Path("ckpt-val_loss=0.3.ckpt"),
-            Path("ckpt-no_loss_info.ckpt")  # inf
+            Path("ckpt-no_loss_info.ckpt"),  # inf
         ]
 
         best = manager._select_best_checkpoint(ckpts)
         assert best.name == "ckpt-val_loss=0.1.ckpt"
 
+
 def test_model_manager_select_best_checkpoint_tiebreaker():
     """Test tie-breaking by name for deterministic selection."""
     with patch("cerberus.model_ensemble._ModelManager.__init__", return_value=None):
-        manager = cerberus.model_ensemble._ModelManager() # type: ignore
+        manager = cerberus.model_ensemble._ModelManager()  # type: ignore
 
         ckpts = [
             Path("b-val_loss=0.1.ckpt"),
-            Path("a-val_loss=0.1.ckpt"), # Should win by name
+            Path("a-val_loss=0.1.ckpt"),  # Should win by name
         ]
 
         best = manager._select_best_checkpoint(ckpts)
         assert best.name == "a-val_loss=0.1.ckpt"
 
+
 def test_load_model_strips_prefix():
     """Test that _load_model_ckpt strips 'model.' prefix from state_dict keys."""
     with patch("cerberus.model_ensemble._ModelManager.__init__", return_value=None):
-        manager = cerberus.model_ensemble._ModelManager() # type: ignore
+        manager = cerberus.model_ensemble._ModelManager()  # type: ignore
         manager.device = torch.device("cpu")
-        manager.model_config = {} # type: ignore
-        manager.data_config = {} # type: ignore
+        manager.model_config = {}  # type: ignore
+        manager.data_config = {}  # type: ignore
         manager.cache = {}
 
         mock_model = MagicMock()
@@ -334,12 +389,15 @@ def test_load_model_strips_prefix():
         state_dict = {
             "model.layer1.weight": torch.tensor([1.0]),
             "model.layer1.bias": torch.tensor([0.0]),
-            "other_param": torch.tensor([2.0]) # Dropped: only "model." prefixed keys are kept
+            "other_param": torch.tensor(
+                [2.0]
+            ),  # Dropped: only "model." prefixed keys are kept
         }
 
-        with patch("cerberus.model_ensemble.instantiate_model", return_value=mock_model), \
-             patch("torch.load", return_value={"state_dict": state_dict}):
-
+        with (
+            patch("cerberus.model_ensemble.instantiate_model", return_value=mock_model),
+            patch("torch.load", return_value={"state_dict": state_dict}),
+        ):
             manager._load_model_ckpt("fold_0", Path("dummy.ckpt"))
 
             # Verify load_state_dict call
@@ -351,6 +409,7 @@ def test_load_model_strips_prefix():
             assert "model.layer1.weight" not in loaded_dict
             assert "other_param" not in loaded_dict
 
+
 def test_find_hparams_newest(tmp_path):
     """Test _find_hparams selects the most recently modified file."""
     (tmp_path / "old").mkdir()
@@ -360,18 +419,20 @@ def test_find_hparams_newest(tmp_path):
     old_hparams.touch()
 
     import time
+
     time.sleep(0.01)
 
     new_hparams = tmp_path / "new" / "hparams.yaml"
     new_hparams.touch()
 
     with patch("cerberus.model_ensemble.ModelEnsemble.__init__", return_value=None):
-        ens = ModelEnsemble(None) # type: ignore
+        ens = ModelEnsemble(None)  # type: ignore
         found = ens._find_hparams(tmp_path)
         assert found.resolve() == new_hparams.resolve()
 
+
 def test_find_hparams_missing(tmp_path):
     with patch("cerberus.model_ensemble.ModelEnsemble.__init__", return_value=None):
-        ens = ModelEnsemble(None) # type: ignore
+        ens = ModelEnsemble(None)  # type: ignore
         with pytest.raises(FileNotFoundError, match="No hparams.yaml found"):
             ens._find_hparams(tmp_path)

@@ -10,6 +10,7 @@ def _make_genome_config(k: int = 3) -> MagicMock:
     gc.model_copy.return_value = gc
     return gc
 
+
 def test_train_multi_loop():
     # Mocks
     genome_config = _make_genome_config(k=3)
@@ -43,20 +44,20 @@ def test_train_multi_loop():
     )
 
     # Patches
-    with patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
-         patch("cerberus.train.instantiate") as mock_instantiate, \
-         patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
-         patch("pathlib.Path.mkdir"), \
-         patch("cerberus.train.update_ensemble_metadata"):
-
-
+    with (
+        patch("cerberus.train.CerberusDataModule") as mock_dm_cls,
+        patch("cerberus.train.instantiate") as mock_instantiate,
+        patch("pytorch_lightning.Trainer") as mock_trainer_cls,
+        patch("pathlib.Path.mkdir"),
+        patch("cerberus.train.update_ensemble_metadata"),
+    ):
         trainers = train_multi(
             genome_config,
             data_config,
             sampler_config,
             model_config,
             train_config,
-            root_dir="test_runs"
+            root_dir="test_runs",
         )
 
         # Verify k=3 iterations

@@ -95,11 +95,9 @@ def resolve_adaptive_loss_args(
         f"(median_counts={median_counts:.1f} / 10)"
     )
     resolved_loss_args = {
-        k: (weight if v == "adaptive" else v)
-        for k, v in loss_args.items()
+        k: (weight if v == "adaptive" else v) for k, v in loss_args.items()
     }
     return model_config.model_copy(update={"loss_args": resolved_loss_args})
-
 
 
 def _save_model_pt(trainer: pl.Trainer, root_dir: str | Path) -> None:
@@ -120,7 +118,10 @@ def _save_model_pt(trainer: pl.Trainer, root_dir: str | Path) -> None:
         root_dir: Directory in which to write ``model.pt``.
     """
     ckpt_callback = trainer.checkpoint_callback
-    if not isinstance(ckpt_callback, ModelCheckpoint) or not ckpt_callback.best_model_path:
+    if (
+        not isinstance(ckpt_callback, ModelCheckpoint)
+        or not ckpt_callback.best_model_path
+    ):
         logger.warning("No best checkpoint found; skipping model.pt export.")
         return
 
@@ -130,7 +131,7 @@ def _save_model_pt(trainer: pl.Trainer, root_dir: str | Path) -> None:
     # CerberusModule stores the backbone under self.model → keys are "model.*"
     prefix = "model."
     state_dict = {
-        k[len(prefix):]: v
+        k[len(prefix) :]: v
         for k, v in ckpt["state_dict"].items()
         if k.startswith(prefix)
     }
@@ -138,7 +139,7 @@ def _save_model_pt(trainer: pl.Trainer, root_dir: str | Path) -> None:
     # torch.compile wraps the module and adds an internal "_orig_mod." prefix
     compile_prefix = "_orig_mod."
     if state_dict and all(k.startswith(compile_prefix) for k in state_dict):
-        state_dict = {k[len(compile_prefix):]: v for k, v in state_dict.items()}
+        state_dict = {k[len(compile_prefix) :]: v for k, v in state_dict.items()}
 
     pt_path = Path(root_dir) / "model.pt"
     torch.save(state_dict, pt_path)
@@ -253,8 +254,6 @@ def _train(
         gradient_clip_val=train_config.gradient_clip_val,
         **trainer_kwargs,
     )
-
-
 
     # 1. Pre-compute and cache complexity metrics (rank 0 only in DDP).
     datamodule.prepare_data()
@@ -375,9 +374,11 @@ def train_single(
     # This ensures hparams.yaml logged by Lightning matches the directory structure
     fold_args = genome_config.fold_args
     if fold_args is not None:
-        genome_config = genome_config.model_copy(update={
-            "fold_args": {**fold_args, "test_fold": test_fold, "val_fold": val_fold}
-        })
+        genome_config = genome_config.model_copy(
+            update={
+                "fold_args": {**fold_args, "test_fold": test_fold, "val_fold": val_fold}
+            }
+        )
 
     # 2. Train (setup → adaptive resolution → instantiate → fit happen inside _train)
     trainer = _train(
@@ -405,7 +406,9 @@ def train_single(
     if run_test:
         ckpt_callback = trainer.checkpoint_callback
         if isinstance(ckpt_callback, ModelCheckpoint) and ckpt_callback.best_model_path:
-            logger.info(f"Running test evaluation for fold {test_fold} (best checkpoint)...")
+            logger.info(
+                f"Running test evaluation for fold {test_fold} (best checkpoint)..."
+            )
             trainer.test(datamodule=datamodule, ckpt_path="best")
         else:
             logger.warning(

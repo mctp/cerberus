@@ -40,8 +40,8 @@ def _resolve_extractor_cls(path: Path, in_memory: bool) -> type:
     """Look up the appropriate extractor class for a file path."""
     suffix = path.suffix.lower()
     # Handle compound extensions like .bed.gz
-    if path.name.lower().endswith('.bed.gz'):
-        suffix = '.bed.gz'
+    if path.name.lower().endswith(".bed.gz"):
+        suffix = ".bed.gz"
     entry = _EXTRACTOR_REGISTRY.get(suffix)
     if entry is None:
         raise ValueError(
@@ -55,10 +55,11 @@ def _resolve_extractor_cls(path: Path, in_memory: bool) -> type:
 class BaseSignalExtractor(Protocol):
     """
     Protocol for signal extractors.
-    
+
     Classes implementing this protocol must provide an `extract` method that returns
     a signal tensor (usually coverage or fold-change) for a given genomic interval.
     """
+
     def extract(self, interval: Interval) -> torch.Tensor: ...
 
 
@@ -68,9 +69,10 @@ class SignalExtractor(BaseSignalExtractor):
 
     This extractor handles multiple channels (one BigWig file per channel).
     It reads specific intervals as requested, padding with zeros if necessary.
-    
+
     No binning, logging or resizing is performed here; those are handled by transforms.
     """
+
     def __init__(self, bigwig_paths: dict[str, Path]):
         """
         Args:
@@ -135,7 +137,9 @@ class SignalExtractor(BaseSignalExtractor):
 
             except RuntimeError:
                 # Chromosome not found or other read error -> zeros
-                logger.debug(f"Chrom {interval.chrom} not found in BigWig '{name}', returning zeros")
+                logger.debug(
+                    f"Chrom {interval.chrom} not found in BigWig '{name}', returning zeros"
+                )
                 vals = np.zeros(length, dtype=np.float32)
             except Exception:
                 # Catch non-fatal read errors (e.g. malformed data, unsupported regions).
@@ -143,7 +147,9 @@ class SignalExtractor(BaseSignalExtractor):
                 # was reclassified to Exception in newer versions; Rust panics that still
                 # inherit BaseException will propagate naturally (alongside KeyboardInterrupt,
                 # SystemExit, GeneratorExit) which is the correct behavior.
-                logger.debug(f"Error reading BigWig '{name}' at {interval}, returning zeros")
+                logger.debug(
+                    f"Error reading BigWig '{name}' at {interval}, returning zeros"
+                )
                 vals = np.zeros(length, dtype=np.float32)
 
             extracted_values.append(vals)
@@ -164,6 +170,7 @@ class UniversalExtractor(BaseSignalExtractor):
     New formats can be added via ``register_extractor()`` without modifying
     this class.
     """
+
     def __init__(self, paths: dict[str, Path], in_memory: bool = False):
         self.paths = paths
         self.channels = sorted(paths.keys())
@@ -206,6 +213,7 @@ class InMemorySignalExtractor(BaseSignalExtractor):
     Pre-loads entire chromosomes into shared memory tensors for fast access.
     Best for smaller genomes or when sufficient RAM is available.
     """
+
     def __init__(self, bigwig_paths: dict[str, Path], chroms: list[str] | None = None):
         """
         Args:
@@ -228,12 +236,18 @@ class InMemorySignalExtractor(BaseSignalExtractor):
 
                 # Get chrom sizes
                 all_chroms = bw.chroms()
-                to_load = {c: s for c, s in all_chroms.items() if chroms is None or c in chroms}
+                to_load = {
+                    c: s for c, s in all_chroms.items() if chroms is None or c in chroms
+                }
                 if chroms is not None:
                     skipped = set(chroms) - set(all_chroms)
                     for c in skipped:
-                        logger.debug(f"Requested chrom '{c}' not found in BigWig '{name}', skipping")
-                logger.info(f"Loading {len(to_load)} of {len(all_chroms)} chrom(s) for '{name}'")
+                        logger.debug(
+                            f"Requested chrom '{c}' not found in BigWig '{name}', skipping"
+                        )
+                logger.info(
+                    f"Loading {len(to_load)} of {len(all_chroms)} chrom(s) for '{name}'"
+                )
 
                 for chrom, size in to_load.items():
                     vals = bw.values(chrom, 0, size)
@@ -279,9 +293,9 @@ class InMemorySignalExtractor(BaseSignalExtractor):
 
 # --- Built-in format registrations ---
 
-register_extractor('.bw', SignalExtractor, InMemorySignalExtractor)
-register_extractor('.bigwig', SignalExtractor, InMemorySignalExtractor)
-register_extractor('.bb', BigBedMaskExtractor, InMemoryBigBedMaskExtractor)
-register_extractor('.bigbed', BigBedMaskExtractor, InMemoryBigBedMaskExtractor)
-register_extractor('.bed', BedMaskExtractor)
-register_extractor('.bed.gz', BedMaskExtractor)
+register_extractor(".bw", SignalExtractor, InMemorySignalExtractor)
+register_extractor(".bigwig", SignalExtractor, InMemorySignalExtractor)
+register_extractor(".bb", BigBedMaskExtractor, InMemoryBigBedMaskExtractor)
+register_extractor(".bigbed", BigBedMaskExtractor, InMemoryBigBedMaskExtractor)
+register_extractor(".bed", BedMaskExtractor)
+register_extractor(".bed.gz", BedMaskExtractor)

@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.layers — untested code paths."""
+
 import torch
 
 from cerberus.layers import (
@@ -12,8 +13,8 @@ from cerberus.layers import (
 # GRN1d
 # ---------------------------------------------------------------------------
 
-class TestGRN1d:
 
+class TestGRN1d:
     def test_forward_shape(self):
         torch.manual_seed(80)
         grn = GRN1d(dim=32)
@@ -34,8 +35,8 @@ class TestGRN1d:
 # ConvNeXtV2Block
 # ---------------------------------------------------------------------------
 
-class TestConvNeXtV2Block:
 
+class TestConvNeXtV2Block:
     def test_same_channels_residual(self):
         """channels_in == channels_out uses res_early=True."""
         torch.manual_seed(81)
@@ -55,14 +56,18 @@ class TestConvNeXtV2Block:
     def test_grn_false(self):
         """grn=False replaces GRN with Identity."""
         torch.manual_seed(83)
-        block = ConvNeXtV2Block(channels_in=32, channels_out=32, kernel_size=7, grn=False)
+        block = ConvNeXtV2Block(
+            channels_in=32, channels_out=32, kernel_size=7, grn=False
+        )
         assert isinstance(block.grn, torch.nn.Identity)
         x = torch.randn(2, 32, 64)
         out = block(x)
         assert out.shape == (2, 32, 64)
 
     def test_with_dilation(self):
-        block = ConvNeXtV2Block(channels_in=32, channels_out=32, kernel_size=7, dilation_rate=2)
+        block = ConvNeXtV2Block(
+            channels_in=32, channels_out=32, kernel_size=7, dilation_rate=2
+        )
         x = torch.randn(2, 32, 64)
         out = block(x)
         assert out.shape == (2, 32, 64)
@@ -72,8 +77,8 @@ class TestConvNeXtV2Block:
 # PGCBlock
 # ---------------------------------------------------------------------------
 
-class TestPGCBlock:
 
+class TestPGCBlock:
     def test_forward_shape(self):
         torch.manual_seed(84)
         block = PGCBlock(dim=32, kernel_size=7, dilation=1)
@@ -100,8 +105,8 @@ class TestPGCBlock:
 # DilatedResidualBlock
 # ---------------------------------------------------------------------------
 
-class TestDilatedResidualBlock:
 
+class TestDilatedResidualBlock:
     def test_forward_shape_and_residual_cropping(self):
         """Valid padding shrinks output; residual is center-cropped to match."""
         torch.manual_seed(85)

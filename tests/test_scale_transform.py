@@ -15,6 +15,7 @@ def dummy_interval():
 # Scale transform
 # ---------------------------------------------------------------------------
 
+
 class TestScale:
     def test_scale_targets(self, dummy_interval):
         inputs = torch.ones(1, 10)
@@ -59,6 +60,7 @@ class TestScale:
 # ---------------------------------------------------------------------------
 # create_default_transforms with target_scale
 # ---------------------------------------------------------------------------
+
 
 def _make_data_config(**overrides) -> DataConfig:
     base = {

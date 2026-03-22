@@ -23,7 +23,7 @@ def get_exclude_intervals(
     Returns:
         dict[str, InterLap]: A dictionary mapping chromosome names to InterLap objects.
                              Each InterLap object contains the union of all excluded intervals for that chromosome.
-    
+
     Raises:
         FileNotFoundError: If any of the specified files do not exist.
     """
@@ -61,7 +61,9 @@ def get_exclude_intervals(
                 intervals[chrom].add((start, end - 1))
 
     total = sum(len(list(il)) for il in intervals.values())
-    logger.debug(f"Loaded {total} exclude intervals across {len(intervals)} chromosome(s)")
+    logger.debug(
+        f"Loaded {total} exclude intervals across {len(intervals)} chromosome(s)"
+    )
     return intervals
 
 

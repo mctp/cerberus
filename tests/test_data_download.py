@@ -91,5 +91,6 @@ def test_k562_chrombpnet_skips_existing(mock_download, tmp_path):
 def test_download_dataset_unknown_name(tmp_path):
     """Test that unknown dataset names raise ValueError."""
     import pytest
+
     with pytest.raises(ValueError, match="Unknown dataset.*k562_chrombpnet"):
         download_dataset(tmp_path, name="nonexistent")

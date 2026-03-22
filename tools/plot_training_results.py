@@ -25,9 +25,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Plot training results from PyTorch Lightning logs")
-    parser.add_argument("run_dir", type=str, nargs="?", default="tests/data/models/chip_ar_mdapca2b_bpnet/single-fold", help="Path to the output directory or specific log version")
+    parser = argparse.ArgumentParser(
+        description="Plot training results from PyTorch Lightning logs"
+    )
+    parser.add_argument(
+        "run_dir",
+        type=str,
+        nargs="?",
+        default="tests/data/models/chip_ar_mdapca2b_bpnet/single-fold",
+        help="Path to the output directory or specific log version",
+    )
     return parser.parse_args()
+
 
 def plot_metrics(metrics_path, output_dir):
     try:
@@ -59,21 +68,47 @@ def plot_metrics(metrics_path, output_dir):
     if "train_loss" in df.columns:
         plt.figure(figsize=(10, 6))
         # Filter rows where train_loss is not NaN
-        train_df = df.filter(pl.col("train_loss").is_not_null() & pl.col("train_loss").is_not_nan())
+        train_df = df.filter(
+            pl.col("train_loss").is_not_null() & pl.col("train_loss").is_not_nan()
+        )
         if train_df.height > 0:
-            sns.lineplot(data=train_df.to_pandas(), x="step", y="train_loss", label="Train Loss", alpha=0.6)
+            sns.lineplot(
+                data=train_df.to_pandas(),
+                x="step",
+                y="train_loss",
+                label="Train Loss",
+                alpha=0.6,
+            )
             # Add a smoothed version
             if train_df.height > 20:
                 train_df = train_df.with_columns(
-                    pl.col("train_loss").rolling_mean(window_size=10).alias("train_loss_smooth")
+                    pl.col("train_loss")
+                    .rolling_mean(window_size=10)
+                    .alias("train_loss_smooth")
                 )
-                sns.lineplot(data=train_df.to_pandas(), x="step", y="train_loss_smooth", label="Train Loss (Smoothed)", linewidth=2)
+                sns.lineplot(
+                    data=train_df.to_pandas(),
+                    x="step",
+                    y="train_loss_smooth",
+                    label="Train Loss (Smoothed)",
+                    linewidth=2,
+                )
 
         # Add validation loss if available
         if "val_loss" in df.columns:
-            val_df = df.filter(pl.col("val_loss").is_not_null() & pl.col("val_loss").is_not_nan())
+            val_df = df.filter(
+                pl.col("val_loss").is_not_null() & pl.col("val_loss").is_not_nan()
+            )
             if val_df.height > 0:
-                sns.lineplot(data=val_df.to_pandas(), x="step", y="val_loss", label="Validation Loss", marker="o", markersize=6, linewidth=2)
+                sns.lineplot(
+                    data=val_df.to_pandas(),
+                    x="step",
+                    y="val_loss",
+                    label="Validation Loss",
+                    marker="o",
+                    markersize=6,
+                    linewidth=2,
+                )
 
         plt.title("Training and Validation Loss")
         plt.xlabel("Step")
@@ -94,10 +129,22 @@ def plot_metrics(metrics_path, output_dir):
     if pearson_metrics:
         plt.figure(figsize=(10, 6))
         for metric in pearson_metrics:
-            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            metric_df = df.filter(
+                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
+            )
             if metric_df.height > 0:
-                label = "Train Pearson (Profile)" if "train" in metric else "Validation Pearson (Profile)"
-                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
+                label = (
+                    "Train Pearson (Profile)"
+                    if "train" in metric
+                    else "Validation Pearson (Profile)"
+                )
+                sns.lineplot(
+                    data=metric_df.to_pandas(),
+                    x="step",
+                    y=metric,
+                    label=label,
+                    marker="o",
+                )
 
         plt.title("Profile Pearson Correlation")
         plt.xlabel("Step")
@@ -125,10 +172,22 @@ def plot_metrics(metrics_path, output_dir):
     if mse_profile_metrics:
         plt.figure(figsize=(10, 6))
         for metric in mse_profile_metrics:
-            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            metric_df = df.filter(
+                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
+            )
             if metric_df.height > 0:
-                label = "Train MSE (Profile)" if "train" in metric else "Validation MSE (Profile)"
-                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
+                label = (
+                    "Train MSE (Profile)"
+                    if "train" in metric
+                    else "Validation MSE (Profile)"
+                )
+                sns.lineplot(
+                    data=metric_df.to_pandas(),
+                    x="step",
+                    y=metric,
+                    label=label,
+                    marker="o",
+                )
 
         plt.title("Profile Mean Squared Error")
         plt.xlabel("Step")
@@ -149,10 +208,22 @@ def plot_metrics(metrics_path, output_dir):
     if mse_counts_metrics:
         plt.figure(figsize=(10, 6))
         for metric in mse_counts_metrics:
-            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            metric_df = df.filter(
+                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
+            )
             if metric_df.height > 0:
-                label = "Train MSE (Log Counts)" if "train" in metric else "Validation MSE (Log Counts)"
-                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
+                label = (
+                    "Train MSE (Log Counts)"
+                    if "train" in metric
+                    else "Validation MSE (Log Counts)"
+                )
+                sns.lineplot(
+                    data=metric_df.to_pandas(),
+                    x="step",
+                    y=metric,
+                    label=label,
+                    marker="o",
+                )
 
         plt.title("Log Counts Mean Squared Error")
         plt.xlabel("Step")
@@ -173,10 +244,22 @@ def plot_metrics(metrics_path, output_dir):
     if pearson_counts_metrics:
         plt.figure(figsize=(10, 6))
         for metric in pearson_counts_metrics:
-            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            metric_df = df.filter(
+                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
+            )
             if metric_df.height > 0:
-                label = "Train Pearson (Log Counts)" if "train" in metric else "Validation Pearson (Log Counts)"
-                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker="o")
+                label = (
+                    "Train Pearson (Log Counts)"
+                    if "train" in metric
+                    else "Validation Pearson (Log Counts)"
+                )
+                sns.lineplot(
+                    data=metric_df.to_pandas(),
+                    x="step",
+                    y=metric,
+                    label=label,
+                    marker="o",
+                )
 
         plt.title("Log Counts Pearson Correlation")
         plt.xlabel("Step")
@@ -197,11 +280,24 @@ def plot_metrics(metrics_path, output_dir):
     if profile_loss_metrics:
         plt.figure(figsize=(10, 6))
         for metric in profile_loss_metrics:
-            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            metric_df = df.filter(
+                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
+            )
             if metric_df.height > 0:
-                label = "Train Profile Loss" if "train" in metric else "Validation Profile Loss"
+                label = (
+                    "Train Profile Loss"
+                    if "train" in metric
+                    else "Validation Profile Loss"
+                )
                 marker = None if "train" in metric else "o"
-                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker=marker, markersize=6)
+                sns.lineplot(
+                    data=metric_df.to_pandas(),
+                    x="step",
+                    y=metric,
+                    label=label,
+                    marker=marker,
+                    markersize=6,
+                )
 
         plt.title("Profile Loss")
         plt.xlabel("Step")
@@ -222,11 +318,22 @@ def plot_metrics(metrics_path, output_dir):
     if count_loss_metrics:
         plt.figure(figsize=(10, 6))
         for metric in count_loss_metrics:
-            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            metric_df = df.filter(
+                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
+            )
             if metric_df.height > 0:
-                label = "Train Count Loss" if "train" in metric else "Validation Count Loss"
+                label = (
+                    "Train Count Loss" if "train" in metric else "Validation Count Loss"
+                )
                 marker = None if "train" in metric else "o"
-                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker=marker, markersize=6)
+                sns.lineplot(
+                    data=metric_df.to_pandas(),
+                    x="step",
+                    y=metric,
+                    label=label,
+                    marker=marker,
+                    markersize=6,
+                )
 
         plt.title("Count Loss")
         plt.xlabel("Step")
@@ -247,11 +354,22 @@ def plot_metrics(metrics_path, output_dir):
     if recon_loss_metrics:
         plt.figure(figsize=(10, 6))
         for metric in recon_loss_metrics:
-            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            metric_df = df.filter(
+                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
+            )
             if metric_df.height > 0:
-                label = "Train Recon Loss" if "train" in metric else "Validation Recon Loss"
+                label = (
+                    "Train Recon Loss" if "train" in metric else "Validation Recon Loss"
+                )
                 marker = None if "train" in metric else "o"
-                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker=marker, markersize=6)
+                sns.lineplot(
+                    data=metric_df.to_pandas(),
+                    x="step",
+                    y=metric,
+                    label=label,
+                    marker=marker,
+                    markersize=6,
+                )
 
         plt.title("Reconstruction Loss (Dalmatian)")
         plt.xlabel("Step")
@@ -272,11 +390,22 @@ def plot_metrics(metrics_path, output_dir):
     if bias_loss_metrics:
         plt.figure(figsize=(10, 6))
         for metric in bias_loss_metrics:
-            metric_df = df.filter(pl.col(metric).is_not_null() & pl.col(metric).is_not_nan())
+            metric_df = df.filter(
+                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
+            )
             if metric_df.height > 0:
-                label = "Train Bias Loss" if "train" in metric else "Validation Bias Loss"
+                label = (
+                    "Train Bias Loss" if "train" in metric else "Validation Bias Loss"
+                )
                 marker = None if "train" in metric else "o"
-                sns.lineplot(data=metric_df.to_pandas(), x="step", y=metric, label=label, marker=marker, markersize=6)
+                sns.lineplot(
+                    data=metric_df.to_pandas(),
+                    x="step",
+                    y=metric,
+                    label=label,
+                    marker=marker,
+                    markersize=6,
+                )
 
         plt.title("Bias Loss (Dalmatian)")
         plt.xlabel("Step")
@@ -288,6 +417,7 @@ def plot_metrics(metrics_path, output_dir):
         plt.close()
 
     logger.info(f"Plots saved to {plots_dir}")
+
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -319,6 +449,7 @@ def main():
         parent_name = metrics_file.parent.parent.name
         logger.info(f"Processing {parent_name}/{version_name}...")
         plot_metrics(metrics_file, metrics_file.parent)
+
 
 if __name__ == "__main__":
     main()

@@ -8,70 +8,72 @@ from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
 def test_log_counts_mse_basic():
     """Test LogCountsMeanSquaredError with simple inputs."""
     metric = LogCountsMeanSquaredError(count_per_channel=False)
-    
+
     # Target: 10 counts globally
     targets = torch.zeros(1, 1, 10)
     targets[0, 0, 0] = 10.0
     true_log_total = torch.log1p(torch.tensor([10.0]))
-    
+
     # Pred: Matches target
     pred_log_counts = true_log_total.clone().reshape(1, 1)
-    
+
     # Use ProfileCountOutput
     out = ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=pred_log_counts)
-    
+
     metric.update(out, targets)
     val = metric.compute()
-    
+
     assert torch.isclose(val, torch.tensor(0.0), atol=1e-6)
+
 
 def test_log_counts_mse_per_channel():
     """Test per-channel count MSE."""
     metric = LogCountsMeanSquaredError(count_per_channel=True)
-    
+
     # Targets: Ch0=10, Ch1=100
     targets = torch.zeros(1, 2, 10)
     targets[0, 0, 0] = 10.0
     targets[0, 1, 0] = 100.0
-    
-    target_log_counts = torch.log1p(torch.tensor([[10.0, 100.0]])) # (1, 2)
-    
+
+    target_log_counts = torch.log1p(torch.tensor([[10.0, 100.0]]))  # (1, 2)
+
     # Preds
     pred_log_counts = target_log_counts.clone()
-    
+
     out = ProfileCountOutput(logits=torch.zeros(1, 2, 10), log_counts=pred_log_counts)
-    
+
     metric.update(out, targets)
     val = metric.compute()
-    
+
     assert torch.isclose(val, torch.tensor(0.0), atol=1e-6)
-    
+
     # Perturb one channel
     pred_bad = pred_log_counts.clone()
-    pred_bad[0, 0] += 1.0 # Error of 1.0 in log space
-    
+    pred_bad[0, 0] += 1.0  # Error of 1.0 in log space
+
     out_bad = ProfileCountOutput(logits=torch.zeros(1, 2, 10), log_counts=pred_bad)
     metric.reset()
     metric.update(out_bad, targets)
     val_bad = metric.compute()
-    
+
     # MSE: (1^2 + 0^2) / 2 = 0.5
     assert torch.isclose(val_bad, torch.tensor(0.5), atol=1e-6)
+
 
 def test_log_counts_mse_from_log_rates():
     """Test derivation of log counts from ProfileLogRates."""
     metric = LogCountsMeanSquaredError(count_per_channel=False)
-    
+
     # Rates: [10, 20] -> Sum 30. log(30).
-    rates = torch.log(torch.tensor([[[10.0, 20.0]]])) # (1, 1, 2)
+    rates = torch.log(torch.tensor([[[10.0, 20.0]]]))  # (1, 1, 2)
     out = ProfileLogRates(log_rates=rates)
-    
+
     # Target: Sum 30.
     targets = torch.tensor([[[10.0, 20.0]]])
-    
+
     metric.update(out, targets)
     val = metric.compute()
-    
+
     # Should be close to 0 as logsumexp(rates) == log(30)
     # and log1p(sum(targets)) == log(31).
     # Wait, log1p vs log.
@@ -81,54 +83,63 @@ def test_log_counts_mse_from_log_rates():
     # So pred is log(30). Target is log(31).
     # Difference: log(31) - log(30) = log(31/30) approx log(1.033) approx 0.032.
     # MSE approx 0.001.
-    
-    expected_diff = (torch.log1p(torch.tensor(30.0)) - torch.log(torch.tensor(30.0))) ** 2
+
+    expected_diff = (
+        torch.log1p(torch.tensor(30.0)) - torch.log(torch.tensor(30.0))
+    ) ** 2
     assert torch.isclose(val, expected_diff, atol=1e-6)
+
 
 def test_log_counts_log1p_targets():
     """Test with log1p_targets=True."""
     metric = LogCountsMeanSquaredError(log1p_targets=True)
-    
+
     # Raw target total = 10.
     # Input target is log1p(raw)
     raw_target = torch.tensor([[[10.0]]])
     input_target = torch.log1p(raw_target)
-    
+
     # Pred: log(11).
     # If log1p_targets is True, metric un-logs input_target -> 10.
     # Then sums -> 10. Then takes log1p -> log(11).
     # So if pred is log(11), MSE is 0.
-    
+
     pred_log_counts = torch.log(torch.tensor([[11.0]]))
-    out = ProfileCountOutput(logits=torch.zeros(1,1,1), log_counts=pred_log_counts)
-    
+    out = ProfileCountOutput(logits=torch.zeros(1, 1, 1), log_counts=pred_log_counts)
+
     metric.update(out, input_target)
     val = metric.compute()
-    
+
     assert torch.isclose(val, torch.tensor(0.0), atol=1e-5)
+
 
 def test_log_counts_global_aggregation():
     """Test aggregation of per-channel counts to global count."""
     metric = LogCountsMeanSquaredError(count_per_channel=False)
-    
+
     # Pred: Per-channel log counts [log(10), log(20)]
     # Global count should be 10+20=30. log(30).
-    pred_log_counts = torch.log(torch.tensor([[10.0, 20.0]])) # (1, 2)
-    out = ProfileCountOutput(logits=torch.zeros(1,2,1), log_counts=pred_log_counts)
-    
+    pred_log_counts = torch.log(torch.tensor([[10.0, 20.0]]))  # (1, 2)
+    out = ProfileCountOutput(logits=torch.zeros(1, 2, 1), log_counts=pred_log_counts)
+
     # Target: [10, 20]. Sum=30. log1p(30).
-    targets = torch.tensor([[[10.0], [20.0]]]).permute(0, 1, 2) # (1, 2, 1)
-    
+    targets = torch.tensor([[[10.0], [20.0]]]).permute(0, 1, 2)  # (1, 2, 1)
+
     metric.update(out, targets)
     val = metric.compute()
-    
-    expected_diff = (torch.log1p(torch.tensor(30.0)) - torch.log(torch.tensor(30.0))) ** 2
+
+    expected_diff = (
+        torch.log1p(torch.tensor(30.0)) - torch.log(torch.tensor(30.0))
+    ) ** 2
     assert torch.isclose(val, expected_diff, atol=1e-5)
+
 
 def test_invalid_input_type():
     metric = LogCountsMeanSquaredError()
-    with pytest.raises(TypeError, match="requires ProfileCountOutput or ProfileLogRates"):
-        metric.update(ProfileLogits(logits=torch.randn(1,1,1)), torch.randn(1,1,1)) # type: ignore
+    with pytest.raises(
+        TypeError, match="requires ProfileCountOutput or ProfileLogRates"
+    ):
+        metric.update(ProfileLogits(logits=torch.randn(1, 1, 1)), torch.randn(1, 1, 1))  # type: ignore
 
 
 def test_log_counts_mse_pseudocount_default_equals_log1p():
@@ -152,7 +163,9 @@ def test_log_counts_mse_pseudocount_100():
 
     # Perfect prediction under pseudocount=100: log(600)
     pred_perfect = torch.log(torch.tensor([[600.0]]))
-    out_perfect = ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=pred_perfect)
+    out_perfect = ProfileCountOutput(
+        logits=torch.zeros(1, 1, 10), log_counts=pred_perfect
+    )
 
     metric = LogCountsMeanSquaredError(count_pseudocount=100.0)
     metric.update(out_perfect, targets)
@@ -198,7 +211,8 @@ def test_log_counts_mse_multichannel_offset_log():
 
     # --- With the fix (log_counts_include_pseudocount=True): MSE should be 0 ---
     metric_fixed = LogCountsMeanSquaredError(
-        count_pseudocount=p, log_counts_include_pseudocount=True,
+        count_pseudocount=p,
+        log_counts_include_pseudocount=True,
     )
     metric_fixed.update(out, targets)
     val_fixed = metric_fixed.compute()
@@ -208,13 +222,16 @@ def test_log_counts_mse_multichannel_offset_log():
 
     # --- Without the fix (log_counts_include_pseudocount=False): MSE > 0 ---
     metric_broken = LogCountsMeanSquaredError(
-        count_pseudocount=p, log_counts_include_pseudocount=False,
+        count_pseudocount=p,
+        log_counts_include_pseudocount=False,
     )
     metric_broken.update(out, targets)
     val_broken = metric_broken.compute()
     # logsumexp gives log(c0+p + c1+p) = log(total + 2p) = log(3300)
     # target is log(total + p) = log(3150)
-    expected_broken = (torch.log(torch.tensor(total + 2 * p)) - torch.log(torch.tensor(total + p))) ** 2
+    expected_broken = (
+        torch.log(torch.tensor(total + 2 * p)) - torch.log(torch.tensor(total + p))
+    ) ** 2
     assert torch.isclose(val_broken, expected_broken, atol=1e-5), (
         f"Plain logsumexp should give non-zero MSE, got {val_broken.item()}"
     )
@@ -222,7 +239,8 @@ def test_log_counts_mse_multichannel_offset_log():
 
     # --- Same test for LogCountsPearsonCorrCoef: verify it doesn't crash ---
     pearson = LogCountsPearsonCorrCoef(
-        count_pseudocount=p, log_counts_include_pseudocount=True,
+        count_pseudocount=p,
+        log_counts_include_pseudocount=True,
     )
     # Need >1 example for correlation
     targets2 = torch.zeros(2, 2, 10)

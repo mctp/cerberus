@@ -10,10 +10,11 @@ from .interval import Interval
 class DataTransform(Protocol):
     """
     Protocol for data transformations.
-    
+
     Transforms operate on the input/target tensors and the interval metadata.
     They must return the modified inputs, targets, and interval.
     """
+
     def __call__(
         self, inputs: torch.Tensor, targets: torch.Tensor, interval: Interval
     ) -> tuple[torch.Tensor, torch.Tensor, Interval]: ...
@@ -22,9 +23,10 @@ class DataTransform(Protocol):
 class Compose:
     """
     Composes multiple transforms together.
-    
+
     Sequentially applies a list of transforms to the data.
     """
+
     def __init__(self, transforms: list[DataTransform]):
         """
         Args:
@@ -43,10 +45,10 @@ class Compose:
 class Jitter:
     """
     Randomly crops input/target tensors to input_len.
-    
+
     This augmentation simulates random shifting of the genomic window.
-    
-    IMPORTANT: This transform updates the `interval.start` and `interval.end` 
+
+    IMPORTANT: This transform updates the `interval.start` and `interval.end`
     attributes of the passed Interval object to reflect the new cropped region.
     Downstream components should use these updated coordinates.
     """
@@ -65,13 +67,13 @@ class Jitter:
     ) -> tuple[torch.Tensor, torch.Tensor, Interval]:
         """
         Applies jitter crop.
-        
+
         Args:
             inputs: Tensor of shape (Channels, Current_Length).
             targets: Tensor of shape (Target_Channels, Current_Length) or different.
                      If targets length matches inputs, it is also cropped.
             interval: Genomic interval.
-            
+
         Returns:
             Tuple of (cropped_inputs, cropped_targets, updated_interval).
         """
@@ -93,11 +95,11 @@ class Jitter:
 
         if targets.shape[-1] == current_len:
             targets = targets[..., start:end]
-            
+
         # Update Interval
         # The tensor corresponds to [interval.start, interval.end)
         # We cropped by 'start' from the left.
-        
+
         # New genomic start = old genomic start + crop offset
         interval.start = interval.start + start  # type: ignore
         # New genomic end = new genomic start + input_len
@@ -139,7 +141,7 @@ class ReverseComplement:
     """
     Randomly reverse complements the sequence and reverses the signal.
     Updates interval strand.
-    
+
     Assumes inputs are (Channels, Length) where first 4 channels are DNA (ACGT).
     """
 
@@ -170,7 +172,7 @@ class ReverseComplement:
         if isinstance(self.dna_channels, slice):
             dna = inputs[self.dna_channels]
             inputs[self.dna_channels] = torch.flip(dna, dims=[-2])
-            
+
         # Flip strand
         interval.strand = "-" if interval.strand == "+" else "+"
 
@@ -333,7 +335,7 @@ def create_default_transforms(
 ) -> list[DataTransform]:
     """
     Creates a list of default transforms based on DataConfig options.
-    
+
     Standard pipeline:
     1. Jitter
     2. Reverse Complement
@@ -344,7 +346,7 @@ def create_default_transforms(
     Args:
         data_config: Dictionary containing transform parameters.
         deterministic: If True, disables random augmentations (jitter=0, no RC).
-    
+
     Returns:
         list[DataTransform]: List of instantiated transforms.
     """

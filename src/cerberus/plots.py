@@ -26,13 +26,16 @@ def save_count_scatter(
     """
     try:
         import matplotlib.pyplot as plt
+
         plt.switch_backend("agg")
     except ImportError:
         logger.debug("matplotlib not available; skipping count scatter plot.")
         return
 
     fig, ax = plt.subplots(figsize=(5, 5))
-    hb = ax.hexbin(target_log_counts, pred_log_counts, gridsize=50, mincnt=1, cmap="viridis")
+    hb = ax.hexbin(
+        target_log_counts, pred_log_counts, gridsize=50, mincnt=1, cmap="viridis"
+    )
     ax.set_xlabel("True log counts")
     ax.set_ylabel("Predicted log counts")
     ax.set_title(f"Val counts — epoch {epoch}")

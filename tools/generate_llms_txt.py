@@ -71,7 +71,9 @@ SRC_FILES = [
 def _first_docstring_line(node: ast.AST) -> str:
     """Return the first line of a docstring, or empty string."""
     if (
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module))
+        isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
+        )
         and node.body
         and isinstance(node.body[0], ast.Expr)
         and isinstance(node.body[0].value, ast.Constant)
@@ -97,18 +99,22 @@ def extract_api(filepath: Path) -> list[dict]:
                     bases.append(b.id)
                 elif isinstance(b, ast.Attribute) and isinstance(b.value, ast.Name):
                     bases.append(f"{b.value.id}.{b.attr}")
-            items.append({
-                "kind": "class",
-                "name": node.name,
-                "bases": f"({', '.join(bases)})" if bases else "",
-                "doc": _first_docstring_line(node),
-            })
+            items.append(
+                {
+                    "kind": "class",
+                    "name": node.name,
+                    "bases": f"({', '.join(bases)})" if bases else "",
+                    "doc": _first_docstring_line(node),
+                }
+            )
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            items.append({
-                "kind": "function",
-                "name": node.name,
-                "doc": _first_docstring_line(node),
-            })
+            items.append(
+                {
+                    "kind": "function",
+                    "name": node.name,
+                    "doc": _first_docstring_line(node),
+                }
+            )
 
     return [i for i in items if not i["name"].startswith("_")]
 
@@ -124,7 +130,9 @@ def generate_llms_txt() -> str:
 
     out.append("# Cerberus")
     out.append("")
-    out.append("> A PyTorch-based framework for genomic sequence-to-function (S2F) model training.")
+    out.append(
+        "> A PyTorch-based framework for genomic sequence-to-function (S2F) model training."
+    )
     out.append("")
     out.append(
         "Cerberus provides modular data loading for genomic intervals, DNA sequences (FASTA), "
@@ -212,7 +220,10 @@ def generate_llms_full_txt() -> str:
 
 
 def main() -> None:
-    for name, fn in [("llms.txt", generate_llms_txt), ("llms-full.txt", generate_llms_full_txt)]:
+    for name, fn in [
+        ("llms.txt", generate_llms_txt),
+        ("llms-full.txt", generate_llms_full_txt),
+    ]:
         print(f"Generating {name}...", end=" ", flush=True)
         content = fn()
         dest = DOCS_DIR / name

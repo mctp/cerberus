@@ -22,7 +22,7 @@ def _select_from_bins(
     target_hist: dict[tuple[int, ...], int],
     candidate_bins: dict[tuple[int, ...], list[int]],
     candidate_ratio: float,
-    rng: random.Random
+    rng: random.Random,
 ) -> list[int]:
     """
     Helper to select indices from candidate bins to match target histogram counts.
@@ -31,15 +31,15 @@ def _select_from_bins(
     for bin_idx, count in target_hist.items():
         needed = int(count * candidate_ratio)
         candidates = candidate_bins.get(bin_idx, [])
-        
+
         if not candidates:
             continue
-            
+
         if len(candidates) >= needed:
             selected = rng.sample(candidates, needed)
         else:
             selected = rng.choices(candidates, k=needed)
-            
+
         selected_indices.extend(selected)
     return selected_indices
 
@@ -57,12 +57,12 @@ def match_bin_counts(
     candidate_metrics: list[float] | np.ndarray,
     bins: int,
     candidate_ratio: float,
-    rng: random.Random
+    rng: random.Random,
 ) -> list[int]:
     """
     Selects indices from candidate_metrics to match the distribution of target_metrics.
-    
-    This function bins the metrics (1D or ND) and selects candidates to match 
+
+    This function bins the metrics (1D or ND) and selects candidates to match
     the count of targets in each bin, scaled by candidate_ratio.
 
     Args:
@@ -78,42 +78,44 @@ def match_bin_counts(
     # Ensure numpy arrays
     t_metrics = np.asarray(target_metrics)
     c_metrics = np.asarray(candidate_metrics)
-    
+
     # Handle 1D case by reshaping to (N, 1)
     if t_metrics.ndim == 1:
         t_metrics = t_metrics.reshape(-1, 1)
     if c_metrics.ndim == 1:
         c_metrics = c_metrics.reshape(-1, 1)
-        
+
     # 1. Bin targets
     target_hist = defaultdict(int)
     for row in t_metrics:
         bin_idx = get_bin_index(row, bins)
         if bin_idx is not None:
             target_hist[bin_idx] += 1
-            
+
     # 2. Bin candidates
     candidate_bins = defaultdict(list)
     for i, row in enumerate(c_metrics):
         bin_idx = get_bin_index(row, bins)
         if bin_idx is not None:
             candidate_bins[bin_idx].append(i)
-            
+
     # 3. Match
-    selected_indices = _select_from_bins(target_hist, candidate_bins, candidate_ratio, rng)
+    selected_indices = _select_from_bins(
+        target_hist, candidate_bins, candidate_ratio, rng
+    )
     rng.shuffle(selected_indices)
     return selected_indices
 
 
 def partition_intervals_by_fold(
-    intervals: Iterable[Interval], 
-    folds: list[dict[str, InterLap]], 
-    test_fold: int | None, 
-    val_fold: int | None
+    intervals: Iterable[Interval],
+    folds: list[dict[str, InterLap]],
+    test_fold: int | None,
+    val_fold: int | None,
 ) -> tuple[list[Interval], list[Interval], list[Interval]]:
     """
     Partitions intervals into train, validation, and test lists based on folds.
-    
+
     If test_fold and val_fold overlap (or are the same), intervals in the overlapping region
     will be included in BOTH test_intervals and val_intervals.
     train_intervals will contain intervals that are in neither test_fold nor val_fold.
@@ -123,7 +125,7 @@ def partition_intervals_by_fold(
         folds: List of fold definitions.
         test_fold: Index of the test fold.
         val_fold: Index of the validation fold.
-        
+
     Returns:
         Tuple of (train_intervals, val_intervals, test_intervals).
     """
@@ -134,7 +136,9 @@ def partition_intervals_by_fold(
     val_intervals = []
     test_intervals = []
 
-    def is_in_fold(fold_intervals: dict[str, InterLap], chrom: str, start: int, end: int) -> bool:
+    def is_in_fold(
+        fold_intervals: dict[str, InterLap], chrom: str, start: int, end: int
+    ) -> bool:
         if chrom not in fold_intervals:
             return False
         # Check overlap: InterLap stores closed intervals [start, end]
@@ -142,18 +146,22 @@ def partition_intervals_by_fold(
         return (start, end - 1) in fold_intervals[chrom]
 
     for interval in intervals:
-        in_test = is_in_fold(test_fold_intervals, interval.chrom, interval.start, interval.end)
-        in_val = is_in_fold(val_fold_intervals, interval.chrom, interval.start, interval.end)
+        in_test = is_in_fold(
+            test_fold_intervals, interval.chrom, interval.start, interval.end
+        )
+        in_val = is_in_fold(
+            val_fold_intervals, interval.chrom, interval.start, interval.end
+        )
 
         if in_test:
             test_intervals.append(interval)
-        
+
         if in_val:
             val_intervals.append(interval)
-            
+
         if not in_test and not in_val:
             train_intervals.append(interval)
-            
+
     return train_intervals, val_intervals, test_intervals
 
 
@@ -163,7 +171,7 @@ def partition_intervals_by_fold(
 class Sampler(Protocol):
     """
     Protocol for data samplers.
-    
+
     A sampler defines a set of genomic intervals (samples) and supports:
     - Iteration over intervals.
     - Indexed access.
@@ -171,12 +179,10 @@ class Sampler(Protocol):
     - K-fold splitting into train/val/test samplers.
     - Resampling (e.g., for epoch-based randomization).
     """
-    def __iter__(self) -> Iterator[Interval]:
-        ...
-    def __len__(self) -> int:
-        ...
-    def __getitem__(self, idx: int) -> Interval:
-        ...
+
+    def __iter__(self) -> Iterator[Interval]: ...
+    def __len__(self) -> int: ...
+    def __getitem__(self, idx: int) -> Interval: ...
     def resample(self, seed: int | None = None) -> None:
         """
         Resamples the intervals for the next epoch/iteration.
@@ -190,10 +196,10 @@ class Sampler(Protocol):
             seed: Optional random seed for reproducibility. If None, behavior depends on implementation.
         """
         ...
+
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
-    ) -> tuple["Sampler", "Sampler", "Sampler"]:
-        ...
+    ) -> tuple["Sampler", "Sampler", "Sampler"]: ...
 
     def get_interval_source(self, idx: int) -> str:
         """Return the class name of the sampler that produced interval ``idx``."""
@@ -206,6 +212,7 @@ class BaseSampler(Sampler):
 
     Do not instantiate directly; extend for specific sampler implementations.
     """
+
     def __init__(
         self,
         chrom_sizes: dict[str, int] | None = None,
@@ -214,7 +221,9 @@ class BaseSampler(Sampler):
     ):
         self.chrom_sizes = chrom_sizes if chrom_sizes is not None else {}
         self.folds = folds if folds is not None else []
-        self.exclude_intervals = exclude_intervals if exclude_intervals is not None else {}
+        self.exclude_intervals = (
+            exclude_intervals if exclude_intervals is not None else {}
+        )
 
     def is_excluded(self, chrom: str, start: int, end: int) -> bool:
         """Checks if a region overlaps with the exclusion intervals."""
@@ -223,7 +232,7 @@ class BaseSampler(Sampler):
     def _update_seed(self, seed: int | None) -> None:
         """
         Updates the seed and random number generator.
-        
+
         If seed is provided, uses it.
         If seed is None, generates a new seed from the existing RNG state.
         Assumes self.rng is initialized.
@@ -271,6 +280,7 @@ class ProxySampler(BaseSampler):
 
     Do not instantiate directly; extend for specific proxy sampler implementations.
     """
+
     def __init__(
         self,
         chrom_sizes: dict[str, int] | None = None,
@@ -278,9 +288,7 @@ class ProxySampler(BaseSampler):
         exclude_intervals: dict[str, InterLap] | None = None,
     ):
         super().__init__(
-            chrom_sizes=chrom_sizes,
-            folds=folds,
-            exclude_intervals=exclude_intervals
+            chrom_sizes=chrom_sizes, folds=folds, exclude_intervals=exclude_intervals
         )
         self._source_sampler: Sampler | None = None
         self._indices: list[int] = []
@@ -453,6 +461,7 @@ class ListSampler(BaseSampler):
     """
     Base class for samplers that store a concrete list of intervals.
     """
+
     def __init__(
         self,
         intervals: list[Interval] | None = None,
@@ -461,9 +470,7 @@ class ListSampler(BaseSampler):
         exclude_intervals: dict[str, InterLap] | None = None,
     ):
         super().__init__(
-            chrom_sizes=chrom_sizes,
-            folds=folds,
-            exclude_intervals=exclude_intervals
+            chrom_sizes=chrom_sizes, folds=folds, exclude_intervals=exclude_intervals
         )
         self._intervals = intervals if intervals is not None else []
 
@@ -494,7 +501,7 @@ class ListSampler(BaseSampler):
         train, val, test = partition_intervals_by_fold(
             self._intervals, self.folds, test_fold, val_fold
         )
-        
+
         return (
             ListSampler(train, self.chrom_sizes, self.folds, self.exclude_intervals),
             ListSampler(val, self.chrom_sizes, self.folds, self.exclude_intervals),
@@ -506,6 +513,7 @@ class RandomSampler(BaseSampler):
     """
     Samples random intervals from the genome, respecting exclusions.
     """
+
     MAX_ATTEMPT_MULTIPLIER = 100
 
     def __init__(
@@ -558,7 +566,7 @@ class RandomSampler(BaseSampler):
 
     def _generate_intervals(self) -> None:
         regions_to_use = self.regions
-        
+
         # If no regions specified, use full chromosomes
         if regions_to_use is None:
             regions_to_use = self._chrom_sizes_to_regions()
@@ -566,7 +574,7 @@ class RandomSampler(BaseSampler):
         # Flatten regions into list of valid intervals (chrom, start, end)
         flat_regions = []
         weights = []
-        
+
         for chrom, tree in regions_to_use.items():
             if chrom not in self.chrom_sizes:
                 continue
@@ -589,12 +597,14 @@ class RandomSampler(BaseSampler):
         while count < self.num_intervals and attempts < max_attempts:
             attempts += 1
             # Pick a region weighted by size
-            region_idx = self.rng.choices(range(len(flat_regions)), weights=weights, k=1)[0]
+            region_idx = self.rng.choices(
+                range(len(flat_regions)), weights=weights, k=1
+            )[0]
             chrom, r_start, r_end = flat_regions[region_idx]
 
             # Sample within region
             max_start = r_end - self.padded_size
-            
+
             # Since we filtered flat_regions by size, max_start >= r_start should hold.
             start = self.rng.randint(r_start, max_start)
             end = start + self.padded_size
@@ -621,7 +631,7 @@ class RandomSampler(BaseSampler):
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
     ) -> tuple["RandomSampler", "RandomSampler", "RandomSampler"]:
-        
+
         if not self.folds:
             raise ValueError("Cannot split folds without fold definitions.")
 
@@ -636,7 +646,7 @@ class RandomSampler(BaseSampler):
         # Define regions for each split
         test_regions = self.folds[test_fold] if test_fold is not None else {}
         val_regions = self.folds[val_fold] if val_fold is not None else {}
-        
+
         train_regions = defaultdict(InterLap)
         for i, fold in enumerate(self.folds):
             if i == test_fold or i == val_fold:
@@ -660,7 +670,7 @@ class RandomSampler(BaseSampler):
                 folds=self.folds,
                 exclude_intervals=self.exclude_intervals,
                 regions=regions,
-                seed=seed
+                seed=seed,
             )
 
         return (
@@ -673,9 +683,10 @@ class RandomSampler(BaseSampler):
 class IntervalSampler(ListSampler):
     """
     Samples from a list of genomic intervals provided in a file.
-    
+
     Supports BED and narrowPeak formats.
     """
+
     def __init__(
         self,
         file_path: Path,
@@ -827,9 +838,10 @@ class IntervalSampler(ListSampler):
 class SlidingWindowSampler(ListSampler):
     """
     Generates samples by sliding a window across the genome.
-    
+
     Useful for genome-wide prediction tasks.
     """
+
     def __init__(
         self,
         chrom_sizes: dict[str, int],
@@ -872,6 +884,7 @@ class ScaledSampler(ProxySampler):
     """
     Wraps a sampler to resize it (subsample or oversample).
     """
+
     def __init__(
         self,
         sampler: Sampler,
@@ -901,13 +914,13 @@ class ScaledSampler(ProxySampler):
 
     def resample(self, seed: int | None = None) -> None:
         self._update_seed(seed)
-            
+
         # Propagate derived seed to child to decouple RNG streams
         child_seed = self.rng.getrandbits(32)
         self.sampler.resample(child_seed)
-        
+
         n_total = len(self.sampler)
-        
+
         if n_total == 0:
             self._indices = []
             return
@@ -918,34 +931,34 @@ class ScaledSampler(ProxySampler):
         else:
             # Subsample without replacement (if possible)
             self._indices = self.rng.sample(range(n_total), k=self.num_samples)
-    
+
     def __iter__(self) -> Iterator[Interval]:
         for idx in self._indices:
             yield self.sampler[idx]
-            
+
     def __len__(self) -> int:
         return len(self._indices)
-        
+
     def __getitem__(self, idx: int) -> Interval:
         real_idx = self._indices[idx]
         return self.sampler[real_idx]
-        
+
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
     ) -> tuple["ScaledSampler", "ScaledSampler", "ScaledSampler"]:
-        
+
         train, val, test = self.sampler.split_folds(test_fold, val_fold)
-        
+
         total_len = len(self.sampler)
         if total_len == 0:
             ratio = 1.0
         else:
             ratio = self.num_samples / total_len
-            
+
         train_size = int(len(train) * ratio)
         val_size = int(len(val) * ratio)
         test_size = int(len(test) * ratio)
-        
+
         s1, s2, s3 = generate_sub_seeds(self.seed, 3)
 
         return (
@@ -1027,7 +1040,9 @@ class ComplexityMatchedSampler(ProxySampler):
         self.metrics_cache = metrics_cache if metrics_cache is not None else {}
 
         # Lazy initialization
-        self.target_metrics: np.ndarray = np.empty((0, len(self.metrics)), dtype=np.float32)
+        self.target_metrics: np.ndarray = np.empty(
+            (0, len(self.metrics)), dtype=np.float32
+        )
         self.target_hist: dict[tuple[int, ...], int] = {}
         self.candidate_bins: dict[tuple[int, ...], list[int]] = {}
         self._initialized = False
@@ -1052,7 +1067,9 @@ class ComplexityMatchedSampler(ProxySampler):
                 missing.append(iv)
 
         if missing:
-            logger.info(f"ComplexityMatchedSampler: Computing {len(missing)} missing metrics for {name} intervals...")
+            logger.info(
+                f"ComplexityMatchedSampler: Computing {len(missing)} missing metrics for {name} intervals..."
+            )
             new_metrics = compute_intervals_complexity(
                 missing, self.fasta_path, self.metrics, center_size=self.center_size
             )
@@ -1062,13 +1079,18 @@ class ComplexityMatchedSampler(ProxySampler):
         if not intervals:
             return np.empty((0, len(self.metrics)), dtype=np.float32)
 
-        return np.array([self.metrics_cache[self._cache_key(iv)] for iv in intervals], dtype=np.float32)
+        return np.array(
+            [self.metrics_cache[self._cache_key(iv)] for iv in intervals],
+            dtype=np.float32,
+        )
 
     def _initialize(self) -> None:
         logger.info("ComplexityMatchedSampler: Initializing complexity matching...")
-        
+
         # Compute target metrics
-        logger.info(f"ComplexityMatchedSampler: Retrieving complexity metrics for {len(self.target_sampler)} target intervals...")
+        logger.info(
+            f"ComplexityMatchedSampler: Retrieving complexity metrics for {len(self.target_sampler)} target intervals..."
+        )
         self.target_metrics = self._get_metrics(self.target_sampler, "target")
         self.target_hist = compute_hist(self.target_metrics, self.bins)
         logger.info("ComplexityMatchedSampler: Target metrics ready and binned.")
@@ -1077,15 +1099,17 @@ class ComplexityMatchedSampler(ProxySampler):
         # Provide a new seed based on current RNG state
         cand_seed = self.rng.getrandbits(32)
         self.candidate_sampler.resample(cand_seed)
-        
-        logger.info(f"ComplexityMatchedSampler: Retrieving complexity metrics for {len(self.candidate_sampler)} candidate intervals...")
+
+        logger.info(
+            f"ComplexityMatchedSampler: Retrieving complexity metrics for {len(self.candidate_sampler)} candidate intervals..."
+        )
         self.candidate_metrics = self._get_metrics(self.candidate_sampler, "candidate")
         logger.info("ComplexityMatchedSampler: Candidate metrics ready.")
-        
+
         # Bin candidates
         logger.info("ComplexityMatchedSampler: Binning candidate intervals...")
         self.candidate_bins = defaultdict(list)
-        
+
         for i, row in enumerate(self.candidate_metrics):
             interval = self.candidate_sampler[i]
             if self.is_excluded(interval.chrom, interval.start, interval.end):
@@ -1094,7 +1118,7 @@ class ComplexityMatchedSampler(ProxySampler):
             bin_idx = get_bin_index(row, self.bins)
             if bin_idx is not None:
                 self.candidate_bins[bin_idx].append(i)
-        
+
         self._initialized = True
         logger.info("ComplexityMatchedSampler: Initialization complete.")
 
@@ -1104,13 +1128,15 @@ class ComplexityMatchedSampler(ProxySampler):
         # Ensure pool is initialized (lazy initialization if generate_on_init was False)
         if not self._initialized:
             self._initialize()
-        
-        # NOTE: We do NOT resample candidate_sampler here. 
+
+        # NOTE: We do NOT resample candidate_sampler here.
         # We reuse the pool generated in _initialize.
-        self._indices = _select_from_bins(self.target_hist, self.candidate_bins, self.candidate_ratio, self.rng)
+        self._indices = _select_from_bins(
+            self.target_hist, self.candidate_bins, self.candidate_ratio, self.rng
+        )
 
         # Ensure exact count by filling gaps if necessary
-        # (e.g. if some bins had no candidates), also the 
+        # (e.g. if some bins had no candidates), also the
         # also: int(count * self.candidate_ratio) rounds down so we may be short.
         target_count = len(self.target_sampler)
         expected_count = int(target_count * self.candidate_ratio)
@@ -1123,7 +1149,7 @@ class ComplexityMatchedSampler(ProxySampler):
                 # Fallback: sample randomly from all candidates
                 fallback_indices = self.rng.choices(range(n_candidates), k=missing)
                 self._indices.extend(fallback_indices)
-        
+
         # We must shuffle because the loop over target_hist produces grouped indices
         self.rng.shuffle(self._indices)
 
@@ -1140,22 +1166,37 @@ class ComplexityMatchedSampler(ProxySampler):
 
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
-    ) -> tuple["ComplexityMatchedSampler", "ComplexityMatchedSampler", "ComplexityMatchedSampler"]:
-        
+    ) -> tuple[
+        "ComplexityMatchedSampler",
+        "ComplexityMatchedSampler",
+        "ComplexityMatchedSampler",
+    ]:
+
         target_splits = self.target_sampler.split_folds(test_fold, val_fold)
 
         # If initialized, partition the existing candidate pool to preserve cache hits.
         # If we rely on RandomSampler.split_folds(), it regenerates new random intervals (cache miss).
         if self._initialized:
             # We iterate the candidate sampler and bucket intervals into train/val/test
-            train_intervals, val_intervals, test_intervals = partition_intervals_by_fold(
-                self.candidate_sampler, self.folds, test_fold, val_fold
+            train_intervals, val_intervals, test_intervals = (
+                partition_intervals_by_fold(
+                    self.candidate_sampler, self.folds, test_fold, val_fold
+                )
             )
 
             candidate_splits = (
-                ListSampler(train_intervals, self.chrom_sizes, self.folds, self.exclude_intervals),
-                ListSampler(val_intervals, self.chrom_sizes, self.folds, self.exclude_intervals),
-                ListSampler(test_intervals, self.chrom_sizes, self.folds, self.exclude_intervals),
+                ListSampler(
+                    train_intervals,
+                    self.chrom_sizes,
+                    self.folds,
+                    self.exclude_intervals,
+                ),
+                ListSampler(
+                    val_intervals, self.chrom_sizes, self.folds, self.exclude_intervals
+                ),
+                ListSampler(
+                    test_intervals, self.chrom_sizes, self.folds, self.exclude_intervals
+                ),
             )
         else:
             # Fallback if not initialized (though cache will miss on first run)
@@ -1216,13 +1257,14 @@ class PeakSampler(MultiSampler):
     """
     A specialized MultiSampler that combines a set of positive intervals (peaks)
     with a complexity-matched negative set.
-    
+
     This class simplifies the creation of a balanced training set by:
     1. Loading the peaks once.
     2. Automatically excluding peaks from the background candidates.
     3. Generating a complexity-matched negative set with a specified ratio.
     4. Mixing the positives and negatives with given ratio.
     """
+
     def __init__(
         self,
         intervals_path: Path | str,
@@ -1257,8 +1299,10 @@ class PeakSampler(MultiSampler):
         """
         self.intervals_path = Path(intervals_path)
         self.background_ratio = background_ratio
-        
-        logger.info(f"PeakSampler: Loading positive intervals from {self.intervals_path}...")
+
+        logger.info(
+            f"PeakSampler: Loading positive intervals from {self.intervals_path}..."
+        )
         # 1. Positives (Peaks)
         self.positives = IntervalSampler(
             file_path=self.intervals_path,
@@ -1272,8 +1316,10 @@ class PeakSampler(MultiSampler):
         samplers: list[Sampler] = [self.positives]
 
         if background_ratio > 0:
-            logger.info(f"PeakSampler: Generating background candidates (ratio={background_ratio})...")
-            
+            logger.info(
+                f"PeakSampler: Generating background candidates (ratio={background_ratio})..."
+            )
+
             if exclude_intervals is None:
                 exclude_intervals = {}
 
@@ -1287,13 +1333,13 @@ class PeakSampler(MultiSampler):
                 neg_excludes[interval.chrom].add((interval.start, interval.end))
 
             # 3. Candidates (Random background, excluding peaks)
-            # Auto-calculate candidate pool size. 
+            # Auto-calculate candidate pool size.
             # We need enough candidates to find matches. 10x is usually safe.
             # But ensure a minimum floor (e.g. 10,000) if peaks are few.
             n_peaks = len(self.positives)
             n_candidates = max(
-                min_candidates, 
-                int(n_peaks * background_ratio * candidate_oversample_factor)
+                min_candidates,
+                int(n_peaks * background_ratio * candidate_oversample_factor),
             )
             self.candidates = RandomSampler(
                 chrom_sizes=chrom_sizes,
@@ -1312,7 +1358,7 @@ class PeakSampler(MultiSampler):
                 fasta_path=fasta_path,
                 chrom_sizes=chrom_sizes,
                 folds=folds,
-                exclude_intervals=neg_excludes, # Use the augmented excludes
+                exclude_intervals=neg_excludes,  # Use the augmented excludes
                 candidate_ratio=background_ratio,
                 seed=seed,
                 generate_on_init=False,
@@ -1329,7 +1375,7 @@ class PeakSampler(MultiSampler):
         super().__init__(
             samplers=samplers,
             chrom_sizes=chrom_sizes,
-            exclude_intervals=exclude_intervals, # Base exclusions for validity
+            exclude_intervals=exclude_intervals,  # Base exclusions for validity
             seed=seed,
         )
 
@@ -1378,7 +1424,9 @@ class NegativePeakSampler(MultiSampler):
         self.intervals_path = Path(intervals_path)
         self.background_ratio = background_ratio
 
-        logger.info(f"NegativePeakSampler: Loading peak intervals from {self.intervals_path} (for exclusion/complexity reference)...")
+        logger.info(
+            f"NegativePeakSampler: Loading peak intervals from {self.intervals_path} (for exclusion/complexity reference)..."
+        )
         # 1. Load peaks (for exclusion and complexity reference only — not included in training)
         self.positives = IntervalSampler(
             file_path=self.intervals_path,
@@ -1387,7 +1435,9 @@ class NegativePeakSampler(MultiSampler):
             folds=folds,
             exclude_intervals=exclude_intervals,
         )
-        logger.info(f"NegativePeakSampler: Loaded {len(self.positives)} peak intervals (reference only).")
+        logger.info(
+            f"NegativePeakSampler: Loaded {len(self.positives)} peak intervals (reference only)."
+        )
 
         if exclude_intervals is None:
             exclude_intervals = {}
@@ -1438,6 +1488,7 @@ class NegativePeakSampler(MultiSampler):
             exclude_intervals=exclude_intervals,
             seed=seed,
         )
+
 
 def create_sampler(
     config: SamplerConfig,
@@ -1500,17 +1551,29 @@ def create_sampler(
 
     elif sampler_type == "complexity_matched":
         if fasta_path is None:
-            raise ValueError("ComplexityMatchedSampler requires 'fasta_path' to be provided.")
+            raise ValueError(
+                "ComplexityMatchedSampler requires 'fasta_path' to be provided."
+            )
 
         target_conf = sampler_args["target_sampler"]
         candidate_conf = sampler_args["candidate_sampler"]
 
         # Recursive creation: sub-samplers are SamplerConfig models
         target_sampler = create_sampler(
-            target_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=generate_sub_seeds(seed, 2)[0]
+            target_conf,
+            chrom_sizes,
+            folds,
+            exclude_intervals,
+            fasta_path,
+            seed=generate_sub_seeds(seed, 2)[0],
         )
         candidate_sampler = create_sampler(
-            candidate_conf, chrom_sizes, folds, exclude_intervals, fasta_path, seed=generate_sub_seeds(seed, 2)[1]
+            candidate_conf,
+            chrom_sizes,
+            folds,
+            exclude_intervals,
+            fasta_path,
+            seed=generate_sub_seeds(seed, 2)[1],
         )
 
         return ComplexityMatchedSampler(
@@ -1546,7 +1609,9 @@ def create_sampler(
 
     elif sampler_type == "negative_peak":
         if fasta_path is None:
-            raise ValueError("NegativePeakSampler requires 'fasta_path' to be provided.")
+            raise ValueError(
+                "NegativePeakSampler requires 'fasta_path' to be provided."
+            )
 
         return NegativePeakSampler(
             intervals_path=sampler_args["intervals_path"],

@@ -1,4 +1,3 @@
-
 import unittest
 
 from cerberus.samplers import MultiSampler, RandomSampler
@@ -29,7 +28,12 @@ class TestMultiSamplerCorrelation(unittest.TestCase):
         intervals1 = list(rs1)
         intervals2 = list(rs2)
 
-        self.assertNotEqual(intervals1, intervals2, "Sub-samplers should be de-correlated by MultiSampler")
+        self.assertNotEqual(
+            intervals1,
+            intervals2,
+            "Sub-samplers should be de-correlated by MultiSampler",
+        )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,7 @@ def genome_setup(tmp_path):
 
     return genome_path, peaks, inputs
 
+
 def test_dataset_no_sequence_init(genome_setup):
     genome_path, peaks, input_path = genome_setup
 
@@ -34,10 +35,7 @@ def test_dataset_no_sequence_init(genome_setup):
             return torch.ones(1, interval.end - interval.start)
 
     genome_config = create_genome_config(
-        name="test",
-        fasta_path=genome_path,
-        species="human",
-        allowed_chroms=["chr1"]
+        name="test", fasta_path=genome_path, species="human", allowed_chroms=["chr1"]
     )
 
     data_config = DataConfig.model_construct(
@@ -66,7 +64,7 @@ def test_dataset_no_sequence_init(genome_setup):
         data_config,
         sampler_config,
         input_signal_extractor=MockSignalExtractor(),
-        sequence_extractor=None
+        sequence_extractor=None,
     )
 
     assert ds.sequence_extractor is None
@@ -77,14 +75,12 @@ def test_dataset_no_sequence_init(genome_setup):
     assert sample["inputs"].shape == (1, 4)
     assert torch.all(sample["inputs"] == 1.0)
 
+
 def test_dataset_no_sequence_default_extractor(genome_setup):
     genome_path, peaks, input_path = genome_setup
 
     genome_config = create_genome_config(
-        name="test",
-        fasta_path=genome_path,
-        species="human",
-        allowed_chroms=["chr1"]
+        name="test", fasta_path=genome_path, species="human", allowed_chroms=["chr1"]
     )
 
     # Case: No sequence, No signals -> Error
@@ -109,11 +105,8 @@ def test_dataset_no_sequence_default_extractor(genome_setup):
     )
 
     with pytest.raises(ValueError, match="No input sources provided"):
-        CerberusDataset(
-            genome_config,
-            data_config_no_inputs,
-            sampler_config
-        )
+        CerberusDataset(genome_config, data_config_no_inputs, sampler_config)
+
 
 def test_dataset_split_preserves_no_sequence(genome_setup):
     genome_path, peaks, input_path = genome_setup
@@ -123,10 +116,7 @@ def test_dataset_split_preserves_no_sequence(genome_setup):
             return torch.ones(1, interval.end - interval.start)
 
     genome_config = create_genome_config(
-        name="test",
-        fasta_path=genome_path,
-        species="human",
-        allowed_chroms=["chr1"]
+        name="test", fasta_path=genome_path, species="human", allowed_chroms=["chr1"]
     )
 
     data_config = DataConfig.model_construct(
@@ -153,7 +143,7 @@ def test_dataset_split_preserves_no_sequence(genome_setup):
         genome_config,
         data_config,
         sampler_config,
-        input_signal_extractor=MockSignalExtractor()
+        input_signal_extractor=MockSignalExtractor(),
     )
 
     assert ds.sequence_extractor is None
@@ -167,14 +157,12 @@ def test_dataset_split_preserves_no_sequence(genome_setup):
 
     assert train.data_config.use_sequence is False
 
+
 def test_dataset_use_sequence_true(genome_setup):
     genome_path, peaks, input_path = genome_setup
 
     genome_config = create_genome_config(
-        name="test",
-        fasta_path=genome_path,
-        species="human",
-        allowed_chroms=["chr1"]
+        name="test", fasta_path=genome_path, species="human", allowed_chroms=["chr1"]
     )
 
     # use_sequence defaults to True or explicit True

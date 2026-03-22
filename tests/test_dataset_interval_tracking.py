@@ -13,6 +13,7 @@ class MockSequenceExtractor:
         length = interval.end - interval.start
         return torch.zeros(4, length)
 
+
 @pytest.fixture
 def mock_dataset(tmp_path):
     # Minimal config to instantiate Dataset
@@ -53,14 +54,18 @@ def mock_dataset(tmp_path):
         sampler_args={"intervals_path": tmp_path / "dummy.bed"},
     )
 
-    ds = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=MockSequenceExtractor())
+    ds = CerberusDataset(
+        genome_config,
+        data_config,
+        sampler_config,
+        sequence_extractor=MockSequenceExtractor(),
+    )
     return ds
+
 
 def test_interval_string_jitter(mock_dataset):
     # Manually set transforms
-    mock_dataset.transforms.transforms = [
-        Jitter(input_len=50, max_jitter=0)
-    ]
+    mock_dataset.transforms.transforms = [Jitter(input_len=50, max_jitter=0)]
 
     assert len(mock_dataset) == 1
 
@@ -70,11 +75,10 @@ def test_interval_string_jitter(mock_dataset):
     # Expected: chr1:125-175(+)
     assert interval_str == "chr1:125-175(+)"
 
+
 def test_interval_string_rc(mock_dataset):
     # Config: RC probability 1.0
-    mock_dataset.transforms.transforms = [
-        ReverseComplement(probability=1.0)
-    ]
+    mock_dataset.transforms.transforms = [ReverseComplement(probability=1.0)]
 
     item = mock_dataset[0]
     interval_str = item["intervals"]
@@ -82,11 +86,12 @@ def test_interval_string_rc(mock_dataset):
     # Expected: chr1:100-200(-)
     assert interval_str == "chr1:100-200(-)"
 
+
 def test_interval_string_jitter_and_rc(mock_dataset):
     # Chain: Jitter -> RC
     mock_dataset.transforms.transforms = [
-        Jitter(input_len=50, max_jitter=0), # -> 125-175(+)
-        ReverseComplement(probability=1.0)  # -> 125-175(-)
+        Jitter(input_len=50, max_jitter=0),  # -> 125-175(+)
+        ReverseComplement(probability=1.0),  # -> 125-175(-)
     ]
 
     item = mock_dataset[0]

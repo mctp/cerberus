@@ -11,15 +11,17 @@ def pytest_sessionfinish(session, exitstatus):
     if os.environ.get("CERBERUS_PRUNE_DOWNLOADS"):
         base_dir = get_base_dir()
         print(f"\nPruning downloads from {base_dir}...")
-        
+
         for subdir in ["genome", "dataset"]:
             d = base_dir / subdir
             if d.exists():
                 print(f"Removing {d}")
                 shutil.rmtree(d)
 
+
 def get_base_dir():
     return Path(os.environ.get("CERBERUS_DATA_DIR", "tests/data"))
+
 
 @pytest.fixture(scope="session")
 def human_genome():
@@ -34,6 +36,7 @@ def human_genome():
     genome_dir = base_dir / "genome"
     return download_reference_genome(genome_dir, genome="hg38")
 
+
 @pytest.fixture(scope="session")
 def mouse_genome():
     """
@@ -46,6 +49,7 @@ def mouse_genome():
     base_dir = get_base_dir()
     genome_dir = base_dir / "genome"
     return download_reference_genome(genome_dir, genome="mm10")
+
 
 @pytest.fixture(scope="session")
 def mdapca2b_ar_dataset():
@@ -60,24 +64,20 @@ def mdapca2b_ar_dataset():
     data_dir = base_dir / "dataset"
     return download_dataset(data_dir, name="mdapca2b_ar")
 
+
 @pytest.fixture
 def mock_files(tmp_path):
     """Creates dummy files required for config validation."""
     fasta = tmp_path / "genome.fa"
     fasta.touch()
-    
+
     exclude = tmp_path / "exclude.bed"
     exclude.touch()
-    
+
     input_bw = tmp_path / "input.bw"
     input_bw.touch()
-    
+
     target_bw = tmp_path / "target.bw"
     target_bw.touch()
-    
-    return {
-        "fasta": fasta,
-        "exclude": exclude,
-        "input": input_bw,
-        "target": target_bw
-    }
+
+    return {"fasta": fasta, "exclude": exclude, "input": input_bw, "target": target_bw}

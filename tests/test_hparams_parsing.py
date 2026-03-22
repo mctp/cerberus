@@ -24,14 +24,16 @@ def test_parse_hparams_config_success():
     # Check class string
     assert config.model_config_.model_cls == "cerberus.models.bpnet.BPNet"
 
+
 def test_parse_hparams_config_not_found():
     with pytest.raises(FileNotFoundError):
         parse_hparams_config("non_existent_hparams.yaml")
 
+
 def test_parse_hparams_config_missing_sections(tmp_path):
     p = tmp_path / "missing_sections.yaml"
     data = {"train_config": {}}
-    with open(p, 'w') as f:
+    with open(p, "w") as f:
         yaml.dump(data, f)
 
     with pytest.raises(ValidationError):

@@ -16,21 +16,23 @@ logger = logging.getLogger(__name__)
 class BaseMaskExtractor(Protocol):
     """
     Protocol for mask extractors.
-    
+
     Classes implementing this protocol must provide an `extract` method that returns
     a binary mask tensor for a given genomic interval.
     """
+
     def extract(self, interval: Interval) -> torch.Tensor: ...
 
 
 class BigBedMaskExtractor(BaseMaskExtractor):
     """
     Extracts binary masks from BigBed files on-the-fly.
-    
+
     This extractor handles multiple channels (one BigBed file per channel).
     It reads entries overlapping the requested interval and constructs a binary mask
     (1.0 where a BigBed entry exists, 0.0 otherwise).
     """
+
     def __init__(self, bigbed_paths: dict[str, Path]):
         """
         Extracts binary mask from BigBed files for the given interval.
@@ -99,9 +101,13 @@ class BigBedMaskExtractor(BaseMaskExtractor):
                             vals[s:e] = 1.0
 
             except RuntimeError:
-                logger.debug(f"Chrom {interval.chrom} not found in BigBed '{name}', returning zeros")
+                logger.debug(
+                    f"Chrom {interval.chrom} not found in BigBed '{name}', returning zeros"
+                )
             except Exception:
-                logger.debug(f"Error reading BigBed '{name}' at {interval}, returning zeros")
+                logger.debug(
+                    f"Error reading BigBed '{name}' at {interval}, returning zeros"
+                )
 
             extracted_values.append(vals)
 
@@ -111,10 +117,11 @@ class BigBedMaskExtractor(BaseMaskExtractor):
 class InMemoryBigBedMaskExtractor(BaseMaskExtractor):
     """
     Extracts binary masks from BigBed files loaded into memory.
-    
+
     Pre-converts BigBed entries into dense boolean arrays (stored as float32 tensors)
     for the entire genome. This allows for very fast random access.
     """
+
     def __init__(self, bigbed_paths: dict[str, Path]):
         """
         In-memory version of BigBedMaskExtractor. Pre-loads entire chromosomes.
@@ -179,10 +186,11 @@ class InMemoryBigBedMaskExtractor(BaseMaskExtractor):
 class BedMaskExtractor(BaseMaskExtractor):
     """
     Extracts binary masks from text-based BED files.
-    
+
     Loads the entire BED file into memory using InterLap for efficient range queries.
     Suitable for sparse interval data like peaks.
     """
+
     def __init__(self, bed_paths: dict[str, Path]):
         """
         Args:
@@ -190,7 +198,7 @@ class BedMaskExtractor(BaseMaskExtractor):
         """
         self.bed_paths = bed_paths
         self.channels = sorted(bed_paths.keys())
-        self._interlaps = {} # channel -> chrom -> InterLap
+        self._interlaps = {}  # channel -> chrom -> InterLap
 
         logger.debug(f"Loading {len(self.channels)} BED file(s) into InterLap...")
         for name in self.channels:
@@ -200,44 +208,44 @@ class BedMaskExtractor(BaseMaskExtractor):
     def _load_bed(self, path: Path) -> dict[str, InterLap]:
         """Loads BED file into a dictionary of InterLaps (one per chromosome)."""
         intervals_by_chrom = {}
-        
+
         try:
             if path.suffix == ".gz":
                 f = gzip.open(path, "rt")
             else:
                 f = open(path)
-                
+
             with f:
                 for line in f:
                     line = line.strip()
                     if not line or line.startswith(("#", "track", "browser")):
                         continue
-                    
+
                     parts = line.split()
                     if len(parts) < 3:
                         continue
-                        
+
                     chrom = parts[0]
                     start = int(parts[1])
                     end = int(parts[2])
-                    
+
                     if chrom not in intervals_by_chrom:
                         intervals_by_chrom[chrom] = []
-                    
+
                     # InterLap expects closed intervals. BED is [start, end).
                     # Store as [start, end-1].
                     if end > start:
                         intervals_by_chrom[chrom].append((start, end - 1))
-                    
+
         except Exception as e:
             raise RuntimeError(f"Failed to load BED file {path}: {e}") from e
-            
+
         # Build InterLap objects
         interlaps = {}
         for chrom, intervals in intervals_by_chrom.items():
             interlaps[chrom] = InterLap()
             interlaps[chrom].update(intervals)
-            
+
         return interlaps
 
     def extract(self, interval: Interval) -> torch.Tensor:
@@ -253,30 +261,30 @@ class BedMaskExtractor(BaseMaskExtractor):
         start = interval.start
         end = interval.end
         length = end - start
-        
+
         extracted_values = []
         for name in self.channels:
             vals = np.zeros(length, dtype=np.float32)
-            
+
             chrom_interlap = self._interlaps[name].get(interval.chrom)
-            
+
             if chrom_interlap is not None:
                 # Query with closed interval [start, end-1]
                 # If interval is empty (start >= end), skip
                 if end > start:
                     overlaps = chrom_interlap.find((start, end - 1))
-                    
+
                     for o in overlaps:
                         h_start, h_end_inclusive = o[0], o[1]
                         h_end = h_end_inclusive + 1
-                        
+
                         # Clip to query interval
                         s = max(0, h_start - start)
                         e = min(length, h_end - start)
-                        
+
                         if s < e:
                             vals[s:e] = 1.0
-            
+
             extracted_values.append(vals)
-            
+
         return torch.from_numpy(np.stack(extracted_values))

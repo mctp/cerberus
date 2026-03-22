@@ -46,28 +46,24 @@ def test_mock_dataset_end_to_end(mock_files):
 
     # 2. Components
     sampler = MockSampler(
-        num_samples=100,
-        chroms=["chr1"],
-        chrom_size=10000,
-        interval_length=200,
-        seed=42
+        num_samples=100, chroms=["chr1"], chrom_size=10000, interval_length=200, seed=42
     )
 
     seq_extractor = MockSequenceExtractor(
-        fasta_path=None, # Use synthetic
-        motif_inserters=[insert_ggaa_motifs]
+        fasta_path=None,  # Use synthetic
+        motif_inserters=[insert_ggaa_motifs],
     )
 
     # Target extractor generates Gaussian peaks
     target_extractor = MockSignalExtractor(
         sequence_extractor=seq_extractor,
-        signal_generator=GaussianSignalGenerator(sigma=2.0, base_height=10.0)
+        signal_generator=GaussianSignalGenerator(sigma=2.0, base_height=10.0),
     )
 
     # Input extractor just zeros (or some noise)
     input_extractor = MockSignalExtractor(
         sequence_extractor=seq_extractor,
-        signal_generator=None # Defaults to zeros
+        signal_generator=None,  # Defaults to zeros
     )
 
     # 3. Dataset
@@ -79,14 +75,14 @@ def test_mock_dataset_end_to_end(mock_files):
         sequence_extractor=seq_extractor,
         input_signal_extractor=input_extractor,
         target_signal_extractor=target_extractor,
-        in_memory=False
+        in_memory=False,
     )
 
     # 4. Verification
     # Fetch a sample
     sample = ds[0]
-    inputs = sample["inputs"] # (4+C, L) -> (4+1, 200) = (5, 200)
-    targets = sample["targets"] # (1, 200)
+    inputs = sample["inputs"]  # (4+C, L) -> (4+1, 200) = (5, 200)
+    targets = sample["targets"]  # (1, 200)
 
     assert inputs.shape == (5, 200)
     assert targets.shape == (1, 200)
@@ -99,10 +95,14 @@ def test_mock_dataset_end_to_end(mock_files):
 
     # Simple scan
     for i in range(200 - 4):
-        if (seq[2, i] == 1 and seq[2, i+1] == 1 and
-            seq[0, i+2] == 1 and seq[0, i+3] == 1):
+        if (
+            seq[2, i] == 1
+            and seq[2, i + 1] == 1
+            and seq[0, i + 2] == 1
+            and seq[0, i + 3] == 1
+        ):
             center_idx = i + 1
-            peak_val = signal[center_idx:center_idx+2].mean()
+            peak_val = signal[center_idx : center_idx + 2].mean()
             assert peak_val > 1.0, f"Expected peak at {center_idx} for GGAA"
 
     # With 100 samples and prob 0.5, we should see some peaks eventually
@@ -114,6 +114,7 @@ def test_mock_dataset_end_to_end(mock_files):
             total_peaks += 1
 
     assert total_peaks > 0, "No peaks generated across samples"
+
 
 def test_mock_sampler_splitting():
     sampler = MockSampler(num_samples=100)
@@ -131,6 +132,7 @@ def test_mock_sampler_splitting():
     assert train_indices.isdisjoint(val_indices)
     assert train_indices.isdisjoint(test_indices)
     assert val_indices.isdisjoint(test_indices)
+
 
 def create_mock_dataset(mock_files, num_samples=100) -> CerberusDataset:
     genome_config = GenomeConfig.model_construct(
@@ -163,21 +165,20 @@ def create_mock_dataset(mock_files, num_samples=100) -> CerberusDataset:
         sampler_args={"intervals_path": mock_files["exclude"]},
     )
 
-    sampler = MockSampler(num_samples=num_samples, chrom_size=10000, interval_length=200)
+    sampler = MockSampler(
+        num_samples=num_samples, chrom_size=10000, interval_length=200
+    )
 
     seq_extractor = MockSequenceExtractor(
-        fasta_path=None,
-        motif_inserters=[insert_ggaa_motifs]
+        fasta_path=None, motif_inserters=[insert_ggaa_motifs]
     )
 
     target_extractor = MockSignalExtractor(
-        sequence_extractor=seq_extractor,
-        signal_generator=GaussianSignalGenerator()
+        sequence_extractor=seq_extractor, signal_generator=GaussianSignalGenerator()
     )
 
     input_extractor = MockSignalExtractor(
-        sequence_extractor=seq_extractor,
-        signal_generator=None
+        sequence_extractor=seq_extractor, signal_generator=None
     )
 
     ds = CerberusDataset(
@@ -188,9 +189,10 @@ def create_mock_dataset(mock_files, num_samples=100) -> CerberusDataset:
         sequence_extractor=seq_extractor,
         input_signal_extractor=input_extractor,
         target_signal_extractor=target_extractor,
-        in_memory=False
+        in_memory=False,
     )
     return ds
+
 
 def test_dataset_api_conformance(mock_files):
     ds = create_mock_dataset(mock_files, num_samples=50)
@@ -221,6 +223,7 @@ def test_dataset_api_conformance(mock_files):
 
     # 4. Resample
     ds.resample(seed=123)
+
 
 def test_dataset_dataloader_compatibility(mock_files):
     ds = create_mock_dataset(mock_files, num_samples=20)

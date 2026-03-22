@@ -20,6 +20,7 @@ def basic_files(tmp_path):
 
     return genome, peaks
 
+
 def test_deterministic_transforms_auto_generation(basic_files):
     """Test that deterministic transforms are auto-generated from config."""
     genome_path, peaks_path = basic_files
@@ -52,7 +53,7 @@ def test_deterministic_transforms_auto_generation(basic_files):
     dataset = CerberusDataset(
         genome_config=genome_config,
         data_config=data_config,
-        sampler_config=sampler_config
+        sampler_config=sampler_config,
     )
 
     # Check main transforms (should have augmentation)
@@ -66,6 +67,7 @@ def test_deterministic_transforms_auto_generation(basic_files):
     jitter_det = next(t for t in det_transforms if isinstance(t, Jitter))
     assert jitter_det.max_jitter == 0
     assert not any(isinstance(t, ReverseComplement) for t in det_transforms)
+
 
 def test_split_folds_deterministic_behavior(basic_files):
     """Test that split_folds returns deterministic datasets for val/test."""
@@ -98,7 +100,7 @@ def test_split_folds_deterministic_behavior(basic_files):
     dataset = CerberusDataset(
         genome_config=genome_config,
         data_config=data_config,
-        sampler_config=sampler_config
+        sampler_config=sampler_config,
     )
 
     train_ds, val_ds, test_ds = dataset.split_folds()
@@ -115,6 +117,7 @@ def test_split_folds_deterministic_behavior(basic_files):
     det_transforms = val_ds.deterministic_transforms.transforms
     jitter_det = next(t for t in det_transforms if isinstance(t, Jitter))
     assert jitter_det.max_jitter == 0
+
 
 def test_manual_transforms_validation(basic_files):
     """Test validation of transform arguments."""
@@ -147,12 +150,15 @@ def test_manual_transforms_validation(basic_files):
     custom_transforms: list[DataTransform] = [Jitter(input_len=100, max_jitter=50)]
 
     # 1. Provide only transforms -> Should raise ValueError
-    with pytest.raises(ValueError, match="Both 'transforms' and 'deterministic_transforms' must be provided"):
+    with pytest.raises(
+        ValueError,
+        match="Both 'transforms' and 'deterministic_transforms' must be provided",
+    ):
         CerberusDataset(
             genome_config=genome_config,
             data_config=data_config,
             sampler_config=sampler_config,
-            transforms=custom_transforms
+            transforms=custom_transforms,
         )
 
     # 2. Provide both -> Should pass
@@ -161,5 +167,5 @@ def test_manual_transforms_validation(basic_files):
         data_config=data_config,
         sampler_config=sampler_config,
         transforms=custom_transforms,
-        deterministic_transforms=custom_transforms # Just for testing
+        deterministic_transforms=custom_transforms,  # Just for testing
     )

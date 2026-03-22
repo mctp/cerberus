@@ -11,49 +11,69 @@ class _ConvBlock(nn.Module):
     """
     Standard Conv1d block: GELU -> Conv1d -> BatchNorm.
     """
-    def __init__(self, channels_in: int, channels_out: int = 1, kernel_size: int = 1, dilation_rate: int = 1, bn_gamma: str | None = None) -> None:
+
+    def __init__(
+        self,
+        channels_in: int,
+        channels_out: int = 1,
+        kernel_size: int = 1,
+        dilation_rate: int = 1,
+        bn_gamma: str | None = None,
+    ) -> None:
         super().__init__()
         self.activation = nn.GELU()
         self.conv = nn.Conv1d(
             channels_in,
             channels_out,
             kernel_size,
-            bias=False, # no need if batchnorm after conv layer
+            bias=False,  # no need if batchnorm after conv layer
             dilation=dilation_rate,
-            padding='same'
+            padding="same",
         )
         self.bn = nn.BatchNorm1d(channels_out, momentum=0.1)
         if bn_gamma is not None:
-            if bn_gamma == 'zeros':
+            if bn_gamma == "zeros":
                 self.bn.weight = nn.Parameter(torch.zeros_like(self.bn.weight))
-            elif bn_gamma == 'ones':
+            elif bn_gamma == "ones":
                 # default of BatchNorm1d
                 # but let's be explicit
                 self.bn.weight = nn.Parameter(torch.ones_like(self.bn.weight))
 
-    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.activation(x)
         x = self.conv(x)
         x = self.bn(x)
         return x
 
+
 class _BasenjiCoreBlock(nn.Module):
     """
     Basenji/BBPnet-style Dilated Residual Tower.
-    
+
     Consists of multiple blocks, each with:
     - Dilated Conv (increasing dilation)
     - Pointwise Conv
     - Dropout
     - Residual Connection
-    
+
     Followed by a final projection and optional pooling.
     """
-    def __init__(self, nr_tracks: int, window: int, filters_in: int,
-                  nr_res_blocks: int = 11, rate_mult: float = 1.5, bin_size: int = 100, filters1: int = 128,
-                  filters3: int | None = None, kernel1: int = 3, kernel2: int = 1, dropout: float = 0.3,
-                  final_dropout: float = 0.05):
+
+    def __init__(
+        self,
+        nr_tracks: int,
+        window: int,
+        filters_in: int,
+        nr_res_blocks: int = 11,
+        rate_mult: float = 1.5,
+        bin_size: int = 100,
+        filters1: int = 128,
+        filters3: int | None = None,
+        kernel1: int = 3,
+        kernel2: int = 1,
+        dropout: float = 0.3,
+        final_dropout: float = 0.05,
+    ):
         super().__init__()
         if not filters3:
             filters3 = window
@@ -63,9 +83,16 @@ class _BasenjiCoreBlock(nn.Module):
         self.nr_res_blocks = nr_res_blocks
         self.dropout = nn.Dropout(p=dropout)
         for _ in range(self.nr_res_blocks):
-            d_conv_block = _ConvBlock(filters_in, filters1, kernel_size=kernel1, dilation_rate=int(np.round(dilation_rate)))
+            d_conv_block = _ConvBlock(
+                filters_in,
+                filters1,
+                kernel_size=kernel1,
+                dilation_rate=int(np.round(dilation_rate)),
+            )
             dconv_blocks.append(d_conv_block)
-            conv_block = _ConvBlock(filters1, filters_in,  kernel_size=kernel2, bn_gamma='zeros')
+            conv_block = _ConvBlock(
+                filters1, filters_in, kernel_size=kernel2, bn_gamma="zeros"
+            )
             conv_blocks.append(conv_block)
             dilation_rate *= rate_mult
 
@@ -77,13 +104,11 @@ class _BasenjiCoreBlock(nn.Module):
         self.pool = nn.AvgPool1d(kernel_size=pool_size, stride=pool_size)
 
         self.linear_out = nn.Conv1d(
-            in_channels=filters3,
-            out_channels=nr_tracks,
-            kernel_size=1
+            in_channels=filters3, out_channels=nr_tracks, kernel_size=1
         )
         # self.activation = nn.Softplus() # Removed to output logits
-    
-    def forward(self, x:torch.Tensor) -> torch.Tensor:
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         for i in range(self.nr_res_blocks):
             last_block_x = x
             # dilated conv
@@ -103,6 +128,7 @@ class _BasenjiCoreBlock(nn.Module):
         # x = self.activation(x)
         return x
 
+
 class ConvNeXtDCNN(nn.Module):
     def __init__(
         self,
@@ -111,7 +137,7 @@ class ConvNeXtDCNN(nn.Module):
         output_bin_size: int = 4,
         input_channels: list[str] | None = None,
         output_channels: list[str] | None = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
         if input_channels is None:
@@ -123,18 +149,18 @@ class ConvNeXtDCNN(nn.Module):
         self.input_len = input_len
 
         config = {
-            'window_size': input_len,
-            'bin_size': output_bin_size,
-            'residual_blocks': 11,
-            'dilation_mult': 1.5,
-            'filters0': 256,
-            'filters1': 128,
-            'filters3': 2048,
-            'kernel0': 15,
-            'kernel1': 3,
-            'kernel2': 1,
-            'dropout': 0.3,
-            'final_dropout': 0.05,
+            "window_size": input_len,
+            "bin_size": output_bin_size,
+            "residual_blocks": 11,
+            "dilation_mult": 1.5,
+            "filters0": 256,
+            "filters1": 128,
+            "filters3": 2048,
+            "kernel0": 15,
+            "kernel1": 3,
+            "kernel2": 1,
+            "dropout": 0.3,
+            "final_dropout": 0.05,
         }
         unknown = set(kwargs) - set(config)
         if unknown:
@@ -143,33 +169,33 @@ class ConvNeXtDCNN(nn.Module):
                 f"Valid arguments: {sorted(config)}"
             )
         config.update(kwargs)
-        
+
         # Determine number of input channels
         num_input_channels = len(input_channels)
         num_output_channels = len(output_channels)
-        
+
         self.init_conv = ConvNeXtV2Block(
-            channels_in=num_input_channels, 
-            channels_out=config['filters0'],
-            kernel_size=config['kernel0']
+            channels_in=num_input_channels,
+            channels_out=config["filters0"],
+            kernel_size=config["kernel0"],
         )
         self.init_pool = nn.MaxPool1d(kernel_size=2)
 
         self.core = _BasenjiCoreBlock(
-            nr_tracks=num_output_channels, 
-            window=config['window_size'], 
-            filters_in=config['filters0'],
-            nr_res_blocks=config['residual_blocks'],
-            rate_mult=config['dilation_mult'],
-            bin_size=config['bin_size'],
-            filters1=config['filters1'],
-            filters3=config['filters3'],
-            kernel1=config['kernel1'],
-            kernel2=config['kernel2'],
-            dropout=config['dropout'],
-            final_dropout=config['final_dropout']
+            nr_tracks=num_output_channels,
+            window=config["window_size"],
+            filters_in=config["filters0"],
+            nr_res_blocks=config["residual_blocks"],
+            rate_mult=config["dilation_mult"],
+            bin_size=config["bin_size"],
+            filters1=config["filters1"],
+            filters3=config["filters3"],
+            kernel1=config["kernel1"],
+            kernel2=config["kernel2"],
+            dropout=config["dropout"],
+            final_dropout=config["final_dropout"],
         )
-    
+
     def forward(self, x: torch.Tensor) -> ProfileLogRates:
         # Center-crop or reject input based on expected input_len
         if x.shape[-1] > self.input_len:
@@ -183,10 +209,10 @@ class ConvNeXtDCNN(nn.Module):
         x = self.init_conv(x)
         x = F.pad(x, (1, 0))
         x = self.init_pool(x)
-        
+
         x = self.core(x)
-        
+
         # _BasenjiCoreBlock now returns (Batch, Tracks, Length)
         # No transpose needed
-        
+
         return ProfileLogRates(log_rates=x)

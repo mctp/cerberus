@@ -1,4 +1,5 @@
 """Tests that all loss classes conform to the CerberusLoss protocol."""
+
 import pytest
 import torch
 import torch.nn as nn
@@ -23,12 +24,15 @@ from cerberus.output import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_targets(batch: int = 4, channels: int = 2, length: int = 16) -> torch.Tensor:
     """Non-negative integer-valued targets (required by NB loss)."""
     return torch.poisson(torch.ones(batch, channels, length) * 5.0)
 
 
-def _make_profile_count_output(batch: int = 4, channels: int = 2, length: int = 16) -> ProfileCountOutput:
+def _make_profile_count_output(
+    batch: int = 4, channels: int = 2, length: int = 16
+) -> ProfileCountOutput:
     # log_counts shape (B, 1) for global count mode (count_per_channel=False default)
     return ProfileCountOutput(
         logits=torch.randn(batch, channels, length),
@@ -36,7 +40,9 @@ def _make_profile_count_output(batch: int = 4, channels: int = 2, length: int = 
     )
 
 
-def _make_profile_log_rates(batch: int = 4, channels: int = 2, length: int = 16) -> ProfileLogRates:
+def _make_profile_log_rates(
+    batch: int = 4, channels: int = 2, length: int = 16
+) -> ProfileLogRates:
     return ProfileLogRates(log_rates=torch.randn(batch, channels, length))
 
 
@@ -59,9 +65,7 @@ ALL_LOSS_CLASSES: list[type[nn.Module]] = [
 @pytest.mark.parametrize("cls", ALL_LOSS_CLASSES, ids=lambda c: c.__name__)
 def test_has_loss_components(cls):
     """Every loss class must have a loss_components method."""
-    assert hasattr(cls, "loss_components"), (
-        f"{cls.__name__} is missing loss_components"
-    )
+    assert hasattr(cls, "loss_components"), f"{cls.__name__} is missing loss_components"
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +150,7 @@ def test_coupled_forward_scalar(cls):
 # ProfilePoissonNLLLoss
 # ---------------------------------------------------------------------------
 
+
 def test_poisson_nll_loss_components():
     """ProfilePoissonNLLLoss returns dict with poisson_nll_loss key."""
     loss_fn = ProfilePoissonNLLLoss(log_input=True, full=False)
@@ -173,7 +178,10 @@ def test_poisson_nll_forward_matches_components():
 # DalmatianLoss
 # ---------------------------------------------------------------------------
 
-def _make_dalmatian_output(B: int = 4, C: int = 2, L: int = 16) -> FactorizedProfileCountOutput:
+
+def _make_dalmatian_output(
+    B: int = 4, C: int = 2, L: int = 16
+) -> FactorizedProfileCountOutput:
     return FactorizedProfileCountOutput(
         logits=torch.randn(B, C, L),
         log_counts=torch.randn(B, 1),
@@ -193,9 +201,16 @@ def test_dalmatian_loss_components():
     B, C, L = 4, 2, 16
     output = _make_dalmatian_output(B, C, L)
     targets = _make_targets(B, C, L)
-    interval_source = ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler", "ComplexityMatchedSampler"]
+    interval_source = [
+        "IntervalSampler",
+        "ComplexityMatchedSampler",
+        "IntervalSampler",
+        "ComplexityMatchedSampler",
+    ]
 
-    components = loss_fn.loss_components(output, targets, interval_source=interval_source)
+    components = loss_fn.loss_components(
+        output, targets, interval_source=interval_source
+    )
     assert isinstance(components, dict)
     assert "recon_loss" in components
     assert "bias_loss" in components
@@ -214,10 +229,17 @@ def test_dalmatian_forward_uses_components():
     B, C, L = 4, 2, 16
     output = _make_dalmatian_output(B, C, L)
     targets = _make_targets(B, C, L)
-    interval_source = ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler", "ComplexityMatchedSampler"]
+    interval_source = [
+        "IntervalSampler",
+        "ComplexityMatchedSampler",
+        "IntervalSampler",
+        "ComplexityMatchedSampler",
+    ]
 
     loss = loss_fn(output, targets, interval_source=interval_source)
-    components = loss_fn.loss_components(output, targets, interval_source=interval_source)
+    components = loss_fn.loss_components(
+        output, targets, interval_source=interval_source
+    )
     expected = components["recon_loss"] + 0.5 * components["bias_loss"]
     torch.testing.assert_close(loss, expected)
 
@@ -225,6 +247,7 @@ def test_dalmatian_forward_uses_components():
 # ---------------------------------------------------------------------------
 # Consistency: forward() matches weighted loss_components for all dual losses
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("cls", PROFILE_COUNT_LOSSES, ids=lambda c: c.__name__)
 def test_forward_matches_weighted_components_profile_count(cls):

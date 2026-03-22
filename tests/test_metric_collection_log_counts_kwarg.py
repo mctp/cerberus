@@ -1,6 +1,7 @@
 """
 Regression tests for log_counts_include_pseudocount propagation through MetricCollections.
 """
+
 from typing import Any
 
 import pytest
@@ -56,6 +57,7 @@ def _make_model_config(**overrides: Any) -> ModelConfig:
 # 1. Construction: all MetricCollections accept log_counts_include_pseudocount
 # ===========================================================================
 
+
 class TestMetricCollectionAcceptsLogCountsIncludePseudocount:
     """Every MetricCollection must accept log_counts_include_pseudocount without error."""
 
@@ -84,6 +86,7 @@ class TestMetricCollectionAcceptsLogCountsIncludePseudocount:
 # 2. Propagation: flag reaches inner LogCounts* sub-metrics
 # ===========================================================================
 
+
 class TestLogCountsIncludePseudocountPropagation:
     """log_counts_include_pseudocount must propagate to every LogCounts* sub-metric."""
 
@@ -110,23 +113,31 @@ class TestLogCountsIncludePseudocountPropagation:
         mc = cls(log_counts_include_pseudocount=True)
         for name, metric in mc.items():
             if name not in LOG_COUNTS_METRIC_NAMES:
-                assert not isinstance(metric, (LogCountsMeanSquaredError, LogCountsPearsonCorrCoef))
+                assert not isinstance(
+                    metric, (LogCountsMeanSquaredError, LogCountsPearsonCorrCoef)
+                )
 
 
 # ===========================================================================
 # 3. End-to-end: instantiate_metrics_and_loss with log_counts_include_pseudocount
 # ===========================================================================
 
+
 class TestInstantiateWithLogCountsIncludePseudocount:
     """instantiate_metrics_and_loss must work when metrics_args contains the flag."""
 
-    @pytest.mark.parametrize("metrics_cls_path", [
-        "cerberus.metrics.DefaultMetricCollection",
-        "cerberus.models.bpnet.BPNetMetricCollection",
-        "cerberus.models.pomeranian.PomeranianMetricCollection",
-    ])
+    @pytest.mark.parametrize(
+        "metrics_cls_path",
+        [
+            "cerberus.metrics.DefaultMetricCollection",
+            "cerberus.models.bpnet.BPNetMetricCollection",
+            "cerberus.models.pomeranian.PomeranianMetricCollection",
+        ],
+    )
     @pytest.mark.parametrize("flag_value", [True, False])
-    def test_instantiation_succeeds(self, metrics_cls_path: str, flag_value: bool) -> None:
+    def test_instantiation_succeeds(
+        self, metrics_cls_path: str, flag_value: bool
+    ) -> None:
         config = _make_model_config(
             metrics_cls=metrics_cls_path,
             metrics_args={
@@ -140,11 +151,14 @@ class TestInstantiateWithLogCountsIncludePseudocount:
         metrics, criterion = instantiate_metrics_and_loss(config)
         assert isinstance(metrics, MetricCollection)
 
-    @pytest.mark.parametrize("metrics_cls_path", [
-        "cerberus.metrics.DefaultMetricCollection",
-        "cerberus.models.bpnet.BPNetMetricCollection",
-        "cerberus.models.pomeranian.PomeranianMetricCollection",
-    ])
+    @pytest.mark.parametrize(
+        "metrics_cls_path",
+        [
+            "cerberus.metrics.DefaultMetricCollection",
+            "cerberus.models.bpnet.BPNetMetricCollection",
+            "cerberus.models.pomeranian.PomeranianMetricCollection",
+        ],
+    )
     def test_flag_propagated_through_instantiate(self, metrics_cls_path: str) -> None:
         """The flag value from config reaches inner sub-metrics."""
         config = _make_model_config(
@@ -166,10 +180,13 @@ class TestInstantiateWithLogCountsIncludePseudocount:
 # 4. Functional: flag affects multi-channel log_counts computation
 # ===========================================================================
 
+
 class TestLogCountsIncludePseudocountFunctional:
     """Verify the flag actually changes metric behavior for multi-channel outputs."""
 
-    def _make_multi_channel_data(self, pseudocount: float = 1.0) -> tuple[ProfileCountOutput, torch.Tensor]:
+    def _make_multi_channel_data(
+        self, pseudocount: float = 1.0
+    ) -> tuple[ProfileCountOutput, torch.Tensor]:
         """Create pred (ProfileCountOutput) and target (raw counts tensor) for multi-channel."""
         # 2 channels, batch=4, length=64
         B, C, L = 4, 2, 64
@@ -187,8 +204,12 @@ class TestLogCountsIncludePseudocountFunctional:
         pseudocount = 50.0
         pred, target = self._make_multi_channel_data(pseudocount=pseudocount)
 
-        mc_false = cls(count_pseudocount=pseudocount, log_counts_include_pseudocount=False)
-        mc_true = cls(count_pseudocount=pseudocount, log_counts_include_pseudocount=True)
+        mc_false = cls(
+            count_pseudocount=pseudocount, log_counts_include_pseudocount=False
+        )
+        mc_true = cls(
+            count_pseudocount=pseudocount, log_counts_include_pseudocount=True
+        )
 
         mc_false.update(pred, target)
         mc_true.update(pred, target)

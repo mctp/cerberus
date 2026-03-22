@@ -6,6 +6,7 @@ Covers:
   2. obs_log_count_fn selection by loss type — log vs log1p per training objective.
   3. target_scale applied to raw observed counts before the log transform.
 """
+
 import math
 
 import pytest
@@ -29,6 +30,7 @@ from cerberus.output import (
 # Helper — replicates the obs_log_count_fn selection from export_predictions.py
 # ---------------------------------------------------------------------------
 
+
 def _obs_log_fn(criterion):
     if criterion.uses_count_pseudocount:
         p = criterion.count_pseudocount
@@ -41,8 +43,8 @@ def _obs_log_fn(criterion):
 # 1. compute_total_log_counts — log_counts_include_pseudocount=False (default, Poisson/NB space)
 # ---------------------------------------------------------------------------
 
-class TestComputeTotalLogCountsDefault:
 
+class TestComputeTotalLogCountsDefault:
     def test_single_channel_returns_log_counts_flat(self):
         """Single channel: returns log_counts.flatten() unchanged."""
         lc = torch.tensor([[2.5]])
@@ -69,16 +71,21 @@ class TestComputeTotalLogCountsDefault:
     def test_profile_log_rates_multi_channel(self):
         """ProfileLogRates multi-channel: logsumexp across all channels and positions."""
         # Ch0: [log5, log5] → 10. Ch1: [log10, log10] → 20. Total=30.
-        log_rates = torch.tensor([[[math.log(5), math.log(5)],
-                                   [math.log(10), math.log(10)]]])  # (1, 2, 2)
+        log_rates = torch.tensor(
+            [[[math.log(5), math.log(5)], [math.log(10), math.log(10)]]]
+        )  # (1, 2, 2)
         out = ProfileLogRates(log_rates=log_rates)
         result = compute_total_log_counts(out, log_counts_include_pseudocount=False)
         assert torch.isclose(result, torch.log(torch.tensor(30.0)), atol=1e-5)
 
     def test_batched_multi_channel(self):
         """Batch of two intervals, multi-channel."""
-        lc = torch.tensor([[math.log(10), math.log(20)],   # total 30
-                           [math.log(1),  math.log(99)]])  # total 100
+        lc = torch.tensor(
+            [
+                [math.log(10), math.log(20)],  # total 30
+                [math.log(1), math.log(99)],
+            ]
+        )  # total 100
         out = ProfileCountOutput(logits=torch.zeros(2, 2, 4), log_counts=lc)
         result = compute_total_log_counts(out, log_counts_include_pseudocount=False)
         expected = torch.tensor([math.log(30.0), math.log(100.0)])
@@ -90,8 +97,8 @@ class TestComputeTotalLogCountsDefault:
 # 2. compute_total_log_counts — log_counts_include_pseudocount=True (MSE / log1p space)
 # ---------------------------------------------------------------------------
 
-class TestComputeTotalLogCountsImplicitLog:
 
+class TestComputeTotalLogCountsImplicitLog:
     def test_single_channel_unchanged(self):
         """Single channel: log_counts_include_pseudocount has no effect (path returns flatten() directly)."""
         lc = torch.tensor([[math.log1p(42)]])
@@ -114,13 +121,15 @@ class TestComputeTotalLogCountsImplicitLog:
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 4), log_counts=lc)
 
         result = compute_total_log_counts(out, log_counts_include_pseudocount=True)
-        correct = torch.tensor([math.log1p(c0 + c1)])       # log1p(30)
-        wrong   = torch.log(torch.tensor([2 + c0 + c1]))    # log(32)  ← old logsumexp
+        correct = torch.tensor([math.log1p(c0 + c1)])  # log1p(30)
+        wrong = torch.log(torch.tensor([2 + c0 + c1]))  # log(32)  ← old logsumexp
 
-        assert torch.isclose(result, correct, atol=1e-5), \
-            f"Expected log1p({c0+c1})={correct.item():.4f}, got {result.item():.4f}"
-        assert not torch.isclose(result, wrong, atol=1e-3), \
+        assert torch.isclose(result, correct, atol=1e-5), (
+            f"Expected log1p({c0 + c1})={correct.item():.4f}, got {result.item():.4f}"
+        )
+        assert not torch.isclose(result, wrong, atol=1e-3), (
             "Result incorrectly matches the logsumexp-based wrong answer"
+        )
 
     def test_multi_channel_batched(self):
         """Batch of two intervals, multi-channel, log_counts_include_pseudocount=True."""
@@ -145,7 +154,7 @@ class TestComputeTotalLogCountsImplicitLog:
         log_rates = torch.tensor([[[math.log(3), math.log(7)]]])
         out = ProfileLogRates(log_rates=log_rates)
         r_false = compute_total_log_counts(out, log_counts_include_pseudocount=False)
-        r_true  = compute_total_log_counts(out, log_counts_include_pseudocount=True)
+        r_true = compute_total_log_counts(out, log_counts_include_pseudocount=True)
         assert torch.isclose(r_false, r_true, atol=1e-6)
 
 
@@ -153,8 +162,8 @@ class TestComputeTotalLogCountsImplicitLog:
 # 3. obs_log_count_fn — log-space selection matches each loss's training target
 # ---------------------------------------------------------------------------
 
-class TestObsLogCountFnByLossType:
 
+class TestObsLogCountFnByLossType:
     def test_mse_uses_log1p(self):
         fn = _obs_log_fn(MSEMultinomialLoss())
         counts = torch.tensor([10.0, 100.0])
@@ -236,8 +245,8 @@ class TestObsLogCountFnByLossType:
     def test_mse_vs_poisson_log_space_differ_for_small_counts(self):
         """log1p and log diverge for small counts, confirming different scales."""
         counts = torch.tensor([1.0])
-        log1p_val = torch.log1p(counts)          # log(2) ≈ 0.693
-        log_val   = torch.log(counts.clamp_min(1.0))  # log(1) = 0.0
+        log1p_val = torch.log1p(counts)  # log(2) ≈ 0.693
+        log_val = torch.log(counts.clamp_min(1.0))  # log(1) = 0.0
         assert not torch.isclose(log1p_val, log_val, atol=0.1)
 
 
@@ -245,8 +254,8 @@ class TestObsLogCountFnByLossType:
 # 4. target_scale applied to raw observed counts
 # ---------------------------------------------------------------------------
 
-class TestTargetScale:
 
+class TestTargetScale:
     def test_scale_1_no_change(self):
         """target_scale=1.0 leaves the total unchanged."""
         raw = torch.tensor([[[1.0, 2.0, 3.0]]])  # sum=6
@@ -284,7 +293,7 @@ class TestTargetScale:
         target_scale = 2.0
 
         obs_log_correct = torch.log1p(torch.tensor([raw_total * target_scale]))
-        obs_log_old     = torch.log1p(torch.tensor([raw_total]))
+        obs_log_old = torch.log1p(torch.tensor([raw_total]))
 
         diff = (obs_log_correct - obs_log_old).item()
         assert diff > 0, "Scaled observed should be larger"
@@ -304,11 +313,13 @@ class TestTargetScale:
 # 4. --include-background: sampler config extraction and overriding logic
 # ---------------------------------------------------------------------------
 
+
 class TestIncludeBackgroundConfig:
     """Tests for the sampler config extraction logic used by --include-background."""
 
     def _make_sampler_config(self, sampler_type="peak", background_ratio=1.0):
         from pathlib import Path
+
         return {
             "sampler_type": sampler_type,
             "padded_size": 2624,
@@ -321,10 +332,14 @@ class TestIncludeBackgroundConfig:
     def test_peaks_path_override(self):
         """The user-provided peaks path replaces the stored one; other args are preserved."""
         from pathlib import Path
+
         sampler_config = self._make_sampler_config(background_ratio=2.0)
         new_peaks = Path("/new/peaks.bed")
 
-        bg_sampler_args = {**sampler_config["sampler_args"], "intervals_path": new_peaks}
+        bg_sampler_args = {
+            **sampler_config["sampler_args"],
+            "intervals_path": new_peaks,
+        }
         bg_sampler_config = {**sampler_config, "sampler_args": bg_sampler_args}
 
         assert bg_sampler_config["sampler_args"]["intervals_path"] == new_peaks
@@ -337,7 +352,10 @@ class TestIncludeBackgroundConfig:
         sampler_config = self._make_sampler_config(background_ratio=1.0)
         from pathlib import Path
 
-        bg_sampler_args = {**sampler_config["sampler_args"], "intervals_path": Path("/new/peaks.bed")}
+        bg_sampler_args = {
+            **sampler_config["sampler_args"],
+            "intervals_path": Path("/new/peaks.bed"),
+        }
         bg_sampler_args["background_ratio"] = 0.5
         assert bg_sampler_args["background_ratio"] == 0.5
 
@@ -355,12 +373,18 @@ class TestIncludeBackgroundConfig:
     def test_original_config_not_mutated(self):
         """The stored sampler_config dict must not be modified in-place."""
         from pathlib import Path
+
         sampler_config = self._make_sampler_config()
         original_path = sampler_config["sampler_args"]["intervals_path"]
 
-        bg_sampler_args = {**sampler_config["sampler_args"], "intervals_path": Path("/new/peaks.bed")}
+        bg_sampler_args = {
+            **sampler_config["sampler_args"],
+            "intervals_path": Path("/new/peaks.bed"),
+        }
         bg_sampler_config = {**sampler_config, "sampler_args": bg_sampler_args}
 
         # Original must be unchanged
         assert sampler_config["sampler_args"]["intervals_path"] == original_path
-        assert bg_sampler_config["sampler_args"]["intervals_path"] == Path("/new/peaks.bed")
+        assert bg_sampler_config["sampler_args"]["intervals_path"] == Path(
+            "/new/peaks.bed"
+        )

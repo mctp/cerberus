@@ -1,4 +1,3 @@
-
 import os
 import random
 import sys
@@ -19,10 +18,10 @@ def generate_random_intervals(chrom_sizes, num_intervals, width=2048, seed=42):
     intervals = []
     chroms = list(chrom_sizes.keys())
     weights = [chrom_sizes[c] for c in chroms]
-    
+
     # Pre-select chroms
     selected_chroms = rng.choices(chroms, weights=weights, k=num_intervals)
-    
+
     for chrom in selected_chroms:
         size = chrom_sizes[chrom]
         if size < width:
@@ -30,8 +29,9 @@ def generate_random_intervals(chrom_sizes, num_intervals, width=2048, seed=42):
         start = rng.randint(0, size - width)
         end = start + width
         intervals.append(Interval(chrom, start, end))
-        
+
     return intervals
+
 
 def main():
     fasta_path = Path("tests/data/genome/hg38/hg38.fa")
@@ -42,42 +42,43 @@ def main():
     print(f"Loading genome index from {fasta_path}...")
     fasta = pyfaidx.Fasta(str(fasta_path))
     chrom_sizes = {k: len(fasta[k]) for k in fasta.keys()}
-    
+
     # Filter for standard chroms to avoid tiny scaffolds if any
     chrom_sizes = {k: v for k, v in chrom_sizes.items() if "chr" in k and "_" not in k}
-    
+
     N = 1_000_000
-    
+
     print(f"Generating {N} random intervals...")
     intervals = generate_random_intervals(chrom_sizes, N, width=2048)
-    
+
     # Baseline: Unsorted (Random)
     random.shuffle(intervals)
-    intervals_unsorted = list(intervals) # Copy
+    intervals_unsorted = list(intervals)  # Copy
     intervals_sorted = sorted(intervals, key=lambda x: (x.chrom, x.start))
-    
+
     iterations = 3
     print(f"Running {iterations} iterations to account for warmup...")
-    
+
     for i in range(iterations):
-        print(f"\n--- Iteration {i+1}/{iterations} ---")
-        
+        print(f"\n--- Iteration {i + 1}/{iterations} ---")
+
         # Unsorted
         print("Benchmarking Unsorted (Random Access)...")
         start_time = time.time()
         _ = compute_intervals_gc(intervals_unsorted, fasta_path)
         unsorted_time = time.time() - start_time
         print(f"Unsorted time: {unsorted_time:.2f} s")
-        
+
         # Sorted
         print("Benchmarking Sorted (Sequential Access)...")
         start_time = time.time()
         _ = compute_intervals_gc(intervals_sorted, fasta_path)
         sorted_time = time.time() - start_time
         print(f"Sorted time: {sorted_time:.2f} s")
-        
+
         improvement = unsorted_time / sorted_time if sorted_time > 0 else 0
         print(f"Speedup: {improvement:.2f}x")
+
 
 if __name__ == "__main__":
     main()

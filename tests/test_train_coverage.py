@@ -1,4 +1,5 @@
 """Coverage tests for cerberus.train — untested code paths."""
+
 from unittest.mock import MagicMock
 
 import torch
@@ -68,13 +69,12 @@ def _make_sampler_config_mock() -> MagicMock:
     return sc
 
 
-
 # ---------------------------------------------------------------------------
 # _save_model_pt
 # ---------------------------------------------------------------------------
 
-class TestSaveModelPt:
 
+class TestSaveModelPt:
     def test_no_best_checkpoint_skips(self, tmp_path):
         """If no best checkpoint, skip export without error."""
         trainer = MagicMock()

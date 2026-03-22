@@ -1,4 +1,3 @@
-
 import logging
 from unittest.mock import MagicMock, patch
 
@@ -18,14 +17,16 @@ def _make_genome_config(k: int = 5) -> MagicMock:
     gc.model_copy.return_value = gc
     return gc
 
+
 def test_train_single_updates_metadata(tmp_path):
     """Test that train_single updates ensemble_metadata.yaml correctly."""
 
     # Mock dependencies to avoid actual training
-    with patch("cerberus.train.CerberusDataModule"), \
-         patch("cerberus.train.instantiate"), \
-         patch("cerberus.train._train"):
-
+    with (
+        patch("cerberus.train.CerberusDataModule"),
+        patch("cerberus.train.instantiate"),
+        patch("cerberus.train._train"),
+    ):
         root_dir = tmp_path / "exp"
         gc = _make_genome_config(k=5)
 
@@ -37,7 +38,7 @@ def test_train_single_updates_metadata(tmp_path):
             model_config=MagicMock(),
             train_config=MagicMock(),
             test_fold=0,
-            root_dir=root_dir
+            root_dir=root_dir,
         )
 
         # Check metadata
@@ -55,12 +56,13 @@ def test_train_single_updates_metadata(tmp_path):
             model_config=MagicMock(),
             train_config=MagicMock(),
             test_fold=1,
-            root_dir=root_dir
+            root_dir=root_dir,
         )
 
         with open(meta_path) as f:
             meta = yaml.safe_load(f)
         assert meta["folds"] == [0, 1]
+
 
 def test_corrupt_metadata_warns_and_recovers(tmp_path, caplog):
     """Regression: corrupt metadata must warn (not silently pass) and still write new fold."""
@@ -75,6 +77,7 @@ def test_corrupt_metadata_warns_and_recovers(tmp_path, caplog):
     with open(meta_path) as f:
         meta = yaml.safe_load(f)
     assert meta["folds"] == [3]
+
 
 def test_corrupt_metadata_preserves_nothing_from_corrupt_file(tmp_path, caplog):
     """After corrupt metadata, only the new fold should be present (old data is lost)."""

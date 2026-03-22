@@ -46,6 +46,7 @@ from cerberus.output import (
 # 1. Forward/inverse round-trip: log(count + p) → exp(...) - p == count
 # ---------------------------------------------------------------------------
 
+
 class TestRoundTrip:
     """Verify log(x + p) → exp(.) - p is exact for various pseudocounts."""
 
@@ -72,6 +73,7 @@ class TestRoundTrip:
 # 2. MSEMultinomialLoss target transform uses pseudocount correctly
 # ---------------------------------------------------------------------------
 
+
 class TestLossPseudocount:
     """MSEMultinomialLoss count target must be log(count + pseudocount)."""
 
@@ -85,8 +87,9 @@ class TestLossPseudocount:
         expected_log_target = torch.log(total + pseudocount)
 
         # Build a loss, extract the count target it would compute
-        loss_fn = MSEMultinomialLoss(count_weight=1.0, profile_weight=0.0,
-                                     count_pseudocount=pseudocount)
+        loss_fn = MSEMultinomialLoss(
+            count_weight=1.0, profile_weight=0.0, count_pseudocount=pseudocount
+        )
 
         # Create dummy prediction matching the expected target
         pred_log_counts = expected_log_target.reshape(B, 1)
@@ -95,8 +98,9 @@ class TestLossPseudocount:
 
         # If targets match perfectly, count loss should be 0
         loss_val = loss_fn(out, targets)
-        assert torch.isclose(loss_val, torch.tensor(0.0), atol=1e-5), \
+        assert torch.isclose(loss_val, torch.tensor(0.0), atol=1e-5), (
             f"Loss should be 0 for perfect prediction, got {loss_val.item()}"
+        )
 
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 100.0])
     def test_coupled_count_target_matches_pseudocount(self, pseudocount):
@@ -107,8 +111,9 @@ class TestLossPseudocount:
         total = targets.sum(dim=(1, 2))
         expected_log_target = torch.log(total + pseudocount)
 
-        loss_fn = CoupledMSEMultinomialLoss(count_weight=1.0, profile_weight=0.0,
-                                            count_pseudocount=pseudocount)
+        loss_fn = CoupledMSEMultinomialLoss(
+            count_weight=1.0, profile_weight=0.0, count_pseudocount=pseudocount
+        )
 
         # For coupled loss, log_rates determine the predicted count via logsumexp.
         # Create log_rates such that logsumexp = expected_log_target.
@@ -125,15 +130,18 @@ class TestLossPseudocount:
         targets = torch.ones(B, C, L) * 10  # total = 80
 
         # Loss uses pseudocount=100
-        loss_fn = MSEMultinomialLoss(count_weight=1.0, profile_weight=0.0,
-                                     count_pseudocount=100.0)
+        loss_fn = MSEMultinomialLoss(
+            count_weight=1.0, profile_weight=0.0, count_pseudocount=100.0
+        )
 
         # Prediction uses pseudocount=1 (wrong) → log(80 + 1) = log(81)
         wrong_pred = torch.log(torch.tensor([[81.0]]))
         out = ProfileCountOutput(logits=torch.zeros(B, C, L), log_counts=wrong_pred)
 
         loss_val = loss_fn(out, targets)
-        expected_diff = (torch.log(torch.tensor(81.0)) - torch.log(torch.tensor(180.0))) ** 2
+        expected_diff = (
+            torch.log(torch.tensor(81.0)) - torch.log(torch.tensor(180.0))
+        ) ** 2
         assert torch.isclose(loss_val, expected_diff, atol=1e-5)
         assert loss_val > 0.1, "Wrong pseudocount should give substantial loss"
 
@@ -141,6 +149,7 @@ class TestLossPseudocount:
 # ---------------------------------------------------------------------------
 # 3. LogCountsMeanSquaredError / LogCountsPearsonCorrCoef use pseudocount
 # ---------------------------------------------------------------------------
+
 
 class TestLogCountsMetricsPseudocount:
     """Log-counts metrics must use count_pseudocount for the target transform."""
@@ -192,7 +201,9 @@ class TestLogCountsMetricsPseudocount:
         metric.update(out, targets)
         val = metric.compute()
 
-        expected = (torch.log(torch.tensor(501.0)) - torch.log(torch.tensor(600.0))) ** 2
+        expected = (
+            torch.log(torch.tensor(501.0)) - torch.log(torch.tensor(600.0))
+        ) ** 2
         assert torch.isclose(val, expected, atol=1e-5)
         assert val > 0.01
 
@@ -200,6 +211,7 @@ class TestLogCountsMetricsPseudocount:
 # ---------------------------------------------------------------------------
 # 4. Count-reconstruction metrics invert log_counts with correct pseudocount
 # ---------------------------------------------------------------------------
+
 
 class TestCountReconstructionPseudocount:
     """
@@ -224,8 +236,9 @@ class TestCountReconstructionPseudocount:
         metric = CountProfilePearsonCorrCoef(count_pseudocount=pseudocount)
         metric.update(preds, target)
         val = metric.compute()
-        assert torch.isclose(val, torch.tensor(1.0), atol=1e-3), \
+        assert torch.isclose(val, torch.tensor(1.0), atol=1e-3), (
             f"Expected ~1.0 for pseudocount={pseudocount}, got {val.item()}"
+        )
 
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 50.0])
     def test_count_profile_mse_perfect(self, pseudocount):
@@ -242,8 +255,9 @@ class TestCountReconstructionPseudocount:
         metric = CountProfileMeanSquaredError(count_pseudocount=pseudocount)
         metric.update(preds, target)
         val = metric.compute()
-        assert torch.isclose(val, torch.tensor(0.0), atol=1e-2), \
+        assert torch.isclose(val, torch.tensor(0.0), atol=1e-2), (
             f"Expected ~0.0 for pseudocount={pseudocount}, got {val.item()}"
+        )
 
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 50.0])
     def test_per_example_count_profile_pearson_perfect(self, pseudocount):
@@ -257,9 +271,7 @@ class TestCountReconstructionPseudocount:
         log_counts = torch.log(total + pseudocount).reshape(1, 1)
 
         preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
-        metric = CountProfilePearsonCorrCoef(
-            count_pseudocount=pseudocount
-        )
+        metric = CountProfilePearsonCorrCoef(count_pseudocount=pseudocount)
         metric.update(preds, target)
         val = metric.compute()
         assert torch.isclose(val, torch.tensor(1.0), atol=1e-3)
@@ -285,14 +297,16 @@ class TestCountReconstructionPseudocount:
         metric_wrong.update(preds, target)
         mse_wrong = metric_wrong.compute()
 
-        assert mse_correct < mse_wrong, \
+        assert mse_correct < mse_wrong, (
             f"Correct pseudocount should give lower MSE: {mse_correct.item()} vs {mse_wrong.item()}"
+        )
         assert torch.isclose(mse_correct, torch.tensor(0.0), atol=1e-2)
 
 
 # ---------------------------------------------------------------------------
 # 5. compute_total_log_counts with non-default pseudocount
 # ---------------------------------------------------------------------------
+
 
 class TestComputeTotalLogCountsPseudocount:
     """Verify multi-channel aggregation with log_counts_include_pseudocount uses the pseudocount."""
@@ -307,18 +321,23 @@ class TestComputeTotalLogCountsPseudocount:
         lc = torch.log(torch.tensor([[c0 + pseudocount, c1 + pseudocount]]))
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 4), log_counts=lc)
 
-        result = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=pseudocount)
+        result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=pseudocount
+        )
         expected = torch.log(torch.tensor([c0 + c1 + pseudocount]))
 
-        assert torch.isclose(result, expected, atol=1e-4), \
-            f"Expected log({c0+c1}+{pseudocount})={expected.item():.4f}, got {result.item():.4f}"
+        assert torch.isclose(result, expected, atol=1e-4), (
+            f"Expected log({c0 + c1}+{pseudocount})={expected.item():.4f}, got {result.item():.4f}"
+        )
 
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 100.0])
     def test_single_channel_unaffected(self, pseudocount):
         """Single channel: log_counts_include_pseudocount has no effect, returns log_counts as-is."""
         lc = torch.tensor([[5.0]])
         out = ProfileCountOutput(logits=torch.zeros(1, 1, 4), log_counts=lc)
-        result = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=pseudocount)
+        result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=pseudocount
+        )
         assert torch.isclose(result, torch.tensor([5.0]), atol=1e-6)
 
     def test_pseudocount_1_equals_log1p(self):
@@ -327,7 +346,9 @@ class TestComputeTotalLogCountsPseudocount:
         lc = torch.log1p(torch.tensor([[c0, c1]]))
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 4), log_counts=lc)
 
-        result = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=1.0)
+        result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=1.0
+        )
         expected = torch.log1p(torch.tensor([c0 + c1]))
         assert torch.isclose(result, expected, atol=1e-5)
 
@@ -339,19 +360,25 @@ class TestComputeTotalLogCountsPseudocount:
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 4), log_counts=lc)
 
         # Correct
-        result_correct = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=100.0)
+        result_correct = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=100.0
+        )
         expected = torch.log(torch.tensor([c0 + c1 + 100.0]))
         assert torch.isclose(result_correct, expected, atol=1e-4)
 
         # Wrong — using pseudocount=1.0 on data with pseudocount=100
-        result_wrong = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=1.0)
-        assert not torch.isclose(result_wrong, expected, atol=0.1), \
+        result_wrong = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=1.0
+        )
+        assert not torch.isclose(result_wrong, expected, atol=0.1), (
             "Wrong pseudocount should give different result"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 6. Loss ↔ metric consistency: same pseudocount, same targets
 # ---------------------------------------------------------------------------
+
 
 class TestLossMetricConsistency:
     """The target log-counts computed by the loss and the metric must match."""
@@ -375,8 +402,9 @@ class TestLossMetricConsistency:
         metric.update(out, targets)
         mse = metric.compute()
 
-        assert torch.isclose(mse, torch.tensor(0.0), atol=1e-5), \
+        assert torch.isclose(mse, torch.tensor(0.0), atol=1e-5), (
             f"Loss and metric targets should agree for pseudocount={pseudocount}, MSE={mse.item()}"
+        )
 
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 100.0])
     def test_loss_and_metric_per_channel_agree(self, pseudocount):
@@ -401,6 +429,7 @@ class TestLossMetricConsistency:
 # ---------------------------------------------------------------------------
 # 7. Default pseudocount=1.0 backward compatibility
 # ---------------------------------------------------------------------------
+
 
 class TestBackwardCompatibility:
     """All metrics with default pseudocount=1.0 reproduce old log1p behaviour."""
@@ -449,7 +478,9 @@ class TestBackwardCompatibility:
         c0, c1 = 10.0, 20.0
         lc = torch.log1p(torch.tensor([[c0, c1]]))
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 4), log_counts=lc)
-        result = compute_total_log_counts(out, log_counts_include_pseudocount=True)  # default pseudocount=1.0
+        result = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True
+        )  # default pseudocount=1.0
         expected = torch.log1p(torch.tensor([c0 + c1]))
         assert torch.isclose(result, expected, atol=1e-5)
 
@@ -457,6 +488,7 @@ class TestBackwardCompatibility:
 # ---------------------------------------------------------------------------
 # 8. Zero-count edge cases with pseudocount
 # ---------------------------------------------------------------------------
+
 
 class TestZeroCountEdgeCases:
     """Verify pseudocount prevents log(0) and handles zero-count regions."""
@@ -483,8 +515,9 @@ class TestZeroCountEdgeCases:
         pred = expected_log.reshape(1, 1)
         out = ProfileCountOutput(logits=torch.zeros(1, 1, 8), log_counts=pred)
 
-        loss_fn = MSEMultinomialLoss(count_weight=1.0, profile_weight=0.0,
-                                     count_pseudocount=pseudocount)
+        loss_fn = MSEMultinomialLoss(
+            count_weight=1.0, profile_weight=0.0, count_pseudocount=pseudocount
+        )
         loss_val = loss_fn(out, targets)
         assert torch.isfinite(loss_val)
         assert torch.isclose(loss_val, torch.tensor(0.0), atol=1e-5)
@@ -493,6 +526,7 @@ class TestZeroCountEdgeCases:
 # ---------------------------------------------------------------------------
 # 9. Per-channel loss path with pseudocount
 # ---------------------------------------------------------------------------
+
 
 class TestPerChannelLossPseudocount:
     """MSEMultinomialLoss count_per_channel=True uses pseudocount per channel."""
@@ -507,10 +541,14 @@ class TestPerChannelLossPseudocount:
         pred_log_counts = torch.log(per_ch + pseudocount)
 
         loss_fn = MSEMultinomialLoss(
-            count_weight=1.0, profile_weight=0.0,
-            count_per_channel=True, count_pseudocount=pseudocount,
+            count_weight=1.0,
+            profile_weight=0.0,
+            count_per_channel=True,
+            count_pseudocount=pseudocount,
         )
-        out = ProfileCountOutput(logits=torch.zeros(B, C, L), log_counts=pred_log_counts)
+        out = ProfileCountOutput(
+            logits=torch.zeros(B, C, L), log_counts=pred_log_counts
+        )
         loss_val = loss_fn(out, targets)
         assert torch.isclose(loss_val, torch.tensor(0.0), atol=1e-5)
 
@@ -525,8 +563,10 @@ class TestPerChannelLossPseudocount:
 
         # Loss uses pseudocount=50 → expects log(80 + 50) = log(130)
         loss_fn = MSEMultinomialLoss(
-            count_weight=1.0, profile_weight=0.0,
-            count_per_channel=True, count_pseudocount=50.0,
+            count_weight=1.0,
+            profile_weight=0.0,
+            count_per_channel=True,
+            count_pseudocount=50.0,
         )
         loss_val = loss_fn(out, targets)
         expected = (torch.log(torch.tensor(81.0)) - torch.log(torch.tensor(130.0))) ** 2
@@ -547,8 +587,10 @@ class TestPerChannelLossPseudocount:
         out = ProfileLogRates(log_rates=log_rates)
 
         loss_fn = CoupledMSEMultinomialLoss(
-            count_weight=1.0, profile_weight=0.0,
-            count_per_channel=True, count_pseudocount=pseudocount,
+            count_weight=1.0,
+            profile_weight=0.0,
+            count_per_channel=True,
+            count_pseudocount=pseudocount,
         )
         loss_val = loss_fn(out, targets)
         assert torch.isclose(loss_val, torch.tensor(0.0), atol=1e-5)
@@ -558,17 +600,22 @@ class TestPerChannelLossPseudocount:
 # 10. MetricCollection pseudocount propagation
 # ---------------------------------------------------------------------------
 
+
 class TestMetricCollectionPropagation:
     """All model MetricCollections must wire count_pseudocount to every sub-metric."""
 
-    @pytest.mark.parametrize("collection_cls_path", [
-        "cerberus.models.bpnet.BPNetMetricCollection",
-        "cerberus.models.pomeranian.PomeranianMetricCollection",
-    ])
+    @pytest.mark.parametrize(
+        "collection_cls_path",
+        [
+            "cerberus.models.bpnet.BPNetMetricCollection",
+            "cerberus.models.pomeranian.PomeranianMetricCollection",
+        ],
+    )
     def test_pseudocount_reaches_all_submetrics(self, collection_cls_path):
         """Every sub-metric with count_pseudocount must receive the configured value."""
         module_path, cls_name = collection_cls_path.rsplit(".", 1)
         import importlib
+
         mod = importlib.import_module(module_path)
         cls = getattr(mod, cls_name)
 
@@ -577,23 +624,27 @@ class TestMetricCollectionPropagation:
 
         for name, metric in collection.items():
             if hasattr(metric, "count_pseudocount"):
-                assert metric.count_pseudocount == pseudocount, \
-                    f"{collection_cls_path}['{name}'] has count_pseudocount=" \
+                assert metric.count_pseudocount == pseudocount, (
+                    f"{collection_cls_path}['{name}'] has count_pseudocount="
                     f"{metric.count_pseudocount}, expected {pseudocount}"
+                )
 
     def test_default_metric_collection_propagation(self):
         """DefaultMetricCollection propagates pseudocount to log-count metrics."""
         from cerberus.metrics import DefaultMetricCollection
+
         collection = DefaultMetricCollection(count_pseudocount=77.0)
         for name, metric in collection.items():
             if hasattr(metric, "count_pseudocount"):
-                assert metric.count_pseudocount == 77.0, \
+                assert metric.count_pseudocount == 77.0, (
                     f"DefaultMetricCollection['{name}'] got wrong pseudocount"
+                )
 
 
 # ---------------------------------------------------------------------------
 # 11. log1p_targets and pseudocount are independent
 # ---------------------------------------------------------------------------
+
 
 class TestLog1pTargetsIndependence:
     """log1p_targets inverts per-position log1p; pseudocount applies to count totals.
@@ -610,13 +661,16 @@ class TestLog1pTargetsIndependence:
         pred_log = torch.log(total + pseudocount).reshape(B, 1)
 
         loss_fn = MSEMultinomialLoss(
-            count_weight=1.0, profile_weight=0.0,
-            log1p_targets=True, count_pseudocount=pseudocount,
+            count_weight=1.0,
+            profile_weight=0.0,
+            log1p_targets=True,
+            count_pseudocount=pseudocount,
         )
         out = ProfileCountOutput(logits=torch.zeros(B, C, L), log_counts=pred_log)
         loss_val = loss_fn(out, log1p_targets)
-        assert torch.isclose(loss_val, torch.tensor(0.0), atol=1e-4), \
+        assert torch.isclose(loss_val, torch.tensor(0.0), atol=1e-4), (
             f"Combined log1p_targets + pseudocount={pseudocount} should give 0 loss"
+        )
 
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 50.0])
     def test_metric_log1p_targets_with_pseudocount(self, pseudocount):
@@ -629,7 +683,8 @@ class TestLog1pTargetsIndependence:
         pred_log = torch.log(total + pseudocount).reshape(B, 1)
 
         metric = LogCountsMeanSquaredError(
-            log1p_targets=True, count_pseudocount=pseudocount,
+            log1p_targets=True,
+            count_pseudocount=pseudocount,
         )
         out = ProfileCountOutput(logits=torch.zeros(B, C, L), log_counts=pred_log)
         metric.update(out, log1p_targets)
@@ -648,8 +703,10 @@ class TestLog1pTargetsIndependence:
 
         # Even with pseudocount=100, per-position should use expm1
         loss_fn = MSEMultinomialLoss(
-            count_weight=0.0, profile_weight=1.0,
-            log1p_targets=True, count_pseudocount=100.0,
+            count_weight=0.0,
+            profile_weight=1.0,
+            log1p_targets=True,
+            count_pseudocount=100.0,
         )
         # Profile loss with log1p_targets: the loss internally inverts with expm1.
         # If it wrongly used exp(x)-100 instead, the profile would be garbage.
@@ -657,7 +714,8 @@ class TestLog1pTargetsIndependence:
         probs = raw / raw.sum()
         logits = torch.log(probs + 1e-10)
         out = ProfileCountOutput(
-            logits=logits, log_counts=torch.zeros(1, 1),
+            logits=logits,
+            log_counts=torch.zeros(1, 1),
         )
         loss_val = loss_fn(out, log1p_raw)
         assert torch.isfinite(loss_val)
@@ -666,6 +724,7 @@ class TestLog1pTargetsIndependence:
 # ---------------------------------------------------------------------------
 # 12. Multi-channel count-reconstruction with pseudocount
 # ---------------------------------------------------------------------------
+
 
 class TestMultiChannelReconstruction:
     """Count-reconstruction metrics with multi-channel log_counts and pseudocount."""
@@ -685,8 +744,9 @@ class TestMultiChannelReconstruction:
         metric = CountProfileMeanSquaredError(count_pseudocount=pseudocount)
         metric.update(preds, target)
         val = metric.compute()
-        assert torch.isclose(val, torch.tensor(0.0), atol=1e-1), \
+        assert torch.isclose(val, torch.tensor(0.0), atol=1e-1), (
             f"Multi-channel MSE should be ~0 for pseudocount={pseudocount}, got {val.item()}"
+        )
 
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 50.0])
     def test_multi_channel_count_profile_pearson(self, pseudocount):
@@ -703,13 +763,15 @@ class TestMultiChannelReconstruction:
         metric = CountProfilePearsonCorrCoef(count_pseudocount=pseudocount)
         metric.update(preds, target)
         val = metric.compute()
-        assert torch.isclose(val, torch.tensor(1.0), atol=1e-2), \
+        assert torch.isclose(val, torch.tensor(1.0), atol=1e-2), (
             f"Multi-channel Pearson should be ~1 for pseudocount={pseudocount}, got {val.item()}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 13. Gradient flow through pseudocount-adjusted targets
 # ---------------------------------------------------------------------------
+
 
 class TestGradientFlow:
     """Verify gradients flow through log_counts to model parameters."""
@@ -725,7 +787,8 @@ class TestGradientFlow:
         out = ProfileCountOutput(logits=logits, log_counts=log_counts)
 
         loss_fn = MSEMultinomialLoss(
-            count_weight=1.0, profile_weight=0.0,
+            count_weight=1.0,
+            profile_weight=0.0,
             count_pseudocount=pseudocount,
         )
         loss = loss_fn(out, targets)
@@ -745,7 +808,8 @@ class TestGradientFlow:
         out = ProfileLogRates(log_rates=log_rates)
 
         loss_fn = CoupledMSEMultinomialLoss(
-            count_weight=1.0, profile_weight=0.0,
+            count_weight=1.0,
+            profile_weight=0.0,
             count_pseudocount=pseudocount,
         )
         loss = loss_fn(out, targets)
@@ -760,6 +824,7 @@ class TestGradientFlow:
 # 14. Pure-log multi-channel path ignores pseudocount parameter
 # ---------------------------------------------------------------------------
 
+
 class TestPureLogIgnoresPseudocount:
     """When log_counts_include_pseudocount=False, the pseudocount parameter is unused."""
 
@@ -769,9 +834,15 @@ class TestPureLogIgnoresPseudocount:
         lc = torch.log(torch.tensor([[c0, c1]]))
         out = ProfileCountOutput(logits=torch.zeros(1, 2, 4), log_counts=lc)
 
-        r1 = compute_total_log_counts(out, log_counts_include_pseudocount=False, pseudocount=1.0)
-        r100 = compute_total_log_counts(out, log_counts_include_pseudocount=False, pseudocount=100.0)
-        r999 = compute_total_log_counts(out, log_counts_include_pseudocount=False, pseudocount=999.0)
+        r1 = compute_total_log_counts(
+            out, log_counts_include_pseudocount=False, pseudocount=1.0
+        )
+        r100 = compute_total_log_counts(
+            out, log_counts_include_pseudocount=False, pseudocount=100.0
+        )
+        r999 = compute_total_log_counts(
+            out, log_counts_include_pseudocount=False, pseudocount=999.0
+        )
 
         assert torch.isclose(r1, r100, atol=1e-6)
         assert torch.isclose(r1, r999, atol=1e-6)
@@ -782,8 +853,12 @@ class TestPureLogIgnoresPseudocount:
         log_rates = torch.tensor([[[math.log(3), math.log(7)]]])
         out = ProfileLogRates(log_rates=log_rates)
 
-        r_off = compute_total_log_counts(out, log_counts_include_pseudocount=False, pseudocount=1.0)
-        r_on = compute_total_log_counts(out, log_counts_include_pseudocount=True, pseudocount=999.0)
+        r_off = compute_total_log_counts(
+            out, log_counts_include_pseudocount=False, pseudocount=1.0
+        )
+        r_on = compute_total_log_counts(
+            out, log_counts_include_pseudocount=True, pseudocount=999.0
+        )
 
         # Both should give log(3+7) = log(10)
         expected = torch.log(torch.tensor([10.0]))
@@ -794,6 +869,7 @@ class TestPureLogIgnoresPseudocount:
 # ---------------------------------------------------------------------------
 # 15. obs_log_count_fn pseudocount propagation (export_predictions)
 # ---------------------------------------------------------------------------
+
 
 class TestObsLogCountFnPseudocount:
     """The obs_log_count_fn lambda must use the criterion's pseudocount."""
@@ -826,7 +902,8 @@ class TestObsLogCountFnPseudocount:
     def test_obs_fn_matches_loss_target(self, pseudocount):
         """obs_fn(total_count) must equal the loss's internal count target."""
         criterion = MSEMultinomialLoss(
-            count_weight=1.0, profile_weight=0.0,
+            count_weight=1.0,
+            profile_weight=0.0,
             count_pseudocount=pseudocount,
         )
         fn = self._make_obs_fn(criterion)
@@ -843,13 +920,15 @@ class TestObsLogCountFnPseudocount:
             log_counts=obs_log.reshape(B, 1),
         )
         loss_val = criterion(out, targets)
-        assert torch.isclose(loss_val, torch.tensor(0.0), atol=1e-5), \
+        assert torch.isclose(loss_val, torch.tensor(0.0), atol=1e-5), (
             f"obs_fn should produce the same target as the loss, got loss={loss_val.item()}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 16. Three-way consistency: loss = metric = accumulator
 # ---------------------------------------------------------------------------
+
 
 class TestThreeWayConsistency:
     """The count target log(total + p) must be identical across:
@@ -883,7 +962,8 @@ class TestThreeWayConsistency:
         out = ProfileCountOutput(logits=torch.zeros(B, C, L), log_counts=pred)
 
         loss_fn = MSEMultinomialLoss(
-            count_weight=1.0, profile_weight=0.0,
+            count_weight=1.0,
+            profile_weight=0.0,
             count_pseudocount=pseudocount,
         )
         assert torch.isclose(loss_fn(out, targets), torch.tensor(0.0), atol=1e-5)
@@ -905,11 +985,14 @@ class TestThreeWayConsistency:
 
         # Aggregate to total using the multi-channel offset-log path
         pred_total = compute_total_log_counts(
-            out, log_counts_include_pseudocount=True, pseudocount=pseudocount,
+            out,
+            log_counts_include_pseudocount=True,
+            pseudocount=pseudocount,
         )
         # Expected: log(sum_of_all_channels + pseudocount)
         total = targets.sum(dim=(1, 2))
         expected = torch.log(total + pseudocount)
 
-        assert torch.allclose(pred_total, expected, atol=1e-4), \
+        assert torch.allclose(pred_total, expected, atol=1e-4), (
             f"Aggregated pred {pred_total} != expected {expected}"
+        )

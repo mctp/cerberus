@@ -10,6 +10,7 @@ Usage:
     python tests/benchmark/bench_encode_dna.py
     python tests/benchmark/bench_encode_dna.py --num-iters 500
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,6 +52,7 @@ LENGTHS = [1_024 * (2**i) for i in range(8)]  # 1k to 128k
 # Implementation 0: current baseline (imported from cerberus.sequence)
 # ---------------------------------------------------------------------------
 
+
 def impl_baseline(sequence: str) -> torch.Tensor:
     return baseline_encode_dna(sequence, encoding="ACGT")
 
@@ -58,6 +60,7 @@ def impl_baseline(sequence: str) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # Implementation 1: numpy scatter (same as baseline, inlined to remove overhead)
 # ---------------------------------------------------------------------------
+
 
 def impl_np_scatter(sequence: str) -> torch.Tensor:
     seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
@@ -72,6 +75,7 @@ def impl_np_scatter(sequence: str) -> torch.Tensor:
 # Implementation 2: numpy LUT gather — index into a (256, 4) table, transpose
 # ---------------------------------------------------------------------------
 
+
 def impl_np_lut_gather(sequence: str) -> torch.Tensor:
     seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
     # (L, 4) float32 via fancy indexing into pre-built LUT
@@ -82,6 +86,7 @@ def impl_np_lut_gather(sequence: str) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # Implementation 3: numpy LUT gather, uint8 → late float cast
 # ---------------------------------------------------------------------------
+
 
 def impl_np_lut_u8(sequence: str) -> torch.Tensor:
     seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
@@ -96,6 +101,7 @@ def impl_np_lut_u8(sequence: str) -> torch.Tensor:
 
 _ACGT_BYTES = np.array([ord(c) for c in "ACGT"], dtype=np.uint8).reshape(4, 1)
 
+
 def impl_np_broadcast(sequence: str) -> torch.Tensor:
     seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
     # (4, 1) == (L,) -> (4, L) bool -> float32
@@ -107,7 +113,10 @@ def impl_np_broadcast(sequence: str) -> torch.Tensor:
 # Implementation 5: torch comparison broadcast — all in torch
 # ---------------------------------------------------------------------------
 
-_ACGT_BYTES_TORCH = torch.tensor([ord(c) for c in "ACGT"], dtype=torch.uint8).unsqueeze(1)
+_ACGT_BYTES_TORCH = torch.tensor([ord(c) for c in "ACGT"], dtype=torch.uint8).unsqueeze(
+    1
+)
+
 
 def impl_torch_broadcast(sequence: str) -> torch.Tensor:
     seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
@@ -119,6 +128,7 @@ def impl_torch_broadcast(sequence: str) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # Implementation 6: torch scatter_ — LUT index + scatter into zeros
 # ---------------------------------------------------------------------------
+
 
 def impl_torch_scatter(sequence: str) -> torch.Tensor:
     seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
@@ -141,6 +151,7 @@ def impl_torch_scatter(sequence: str) -> torch.Tensor:
 # Implementation 7: torch LUT gather via embedding-style indexing
 # ---------------------------------------------------------------------------
 
+
 def impl_torch_lut(sequence: str) -> torch.Tensor:
     seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
     seq_t = torch.from_numpy(seq_bytes.astype(np.int64))
@@ -153,20 +164,26 @@ def impl_torch_lut(sequence: str) -> torch.Tensor:
 #   Uses memoryview to avoid the .encode("ascii") copy
 # ---------------------------------------------------------------------------
 
+
 def impl_np_broadcast_mv(sequence: str) -> torch.Tensor:
     seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
     one_hot = np.empty((4, len(sequence)), dtype=np.float32)
     for i, byte_val in enumerate(_ACGT_BYTES.ravel()):
-        np.equal(seq_bytes, byte_val, out=one_hot[i:i+1].reshape(-1).view(np.uint8)[:len(sequence)])
+        np.equal(
+            seq_bytes,
+            byte_val,
+            out=one_hot[i : i + 1].reshape(-1).view(np.uint8)[: len(sequence)],
+        )
     # Redo properly — the trick above is fragile; use straightforward loop
     for i, byte_val in enumerate(_ACGT_BYTES.ravel()):
-        one_hot[i] = (seq_bytes == byte_val)
+        one_hot[i] = seq_bytes == byte_val
     return torch.from_numpy(one_hot)
 
 
 # ---------------------------------------------------------------------------
 # Implementation 9: numpy put_along_axis (vectorized scatter without mask)
 # ---------------------------------------------------------------------------
+
 
 def impl_np_put_along(sequence: str) -> torch.Tensor:
     seq_bytes = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
@@ -187,22 +204,23 @@ def impl_np_put_along(sequence: str) -> torch.Tensor:
 from collections.abc import Callable
 
 IMPLEMENTATIONS: dict[str, Callable[[str], torch.Tensor]] = {
-    "baseline":         impl_baseline,
-    "np_scatter":       impl_np_scatter,
-    "np_lut_gather":    impl_np_lut_gather,
-    "np_lut_u8":        impl_np_lut_u8,
-    "np_broadcast":     impl_np_broadcast,
-    "torch_broadcast":  impl_torch_broadcast,
-    "torch_scatter":    impl_torch_scatter,
-    "torch_lut":        impl_torch_lut,
+    "baseline": impl_baseline,
+    "np_scatter": impl_np_scatter,
+    "np_lut_gather": impl_np_lut_gather,
+    "np_lut_u8": impl_np_lut_u8,
+    "np_broadcast": impl_np_broadcast,
+    "torch_broadcast": impl_torch_broadcast,
+    "torch_scatter": impl_torch_scatter,
+    "torch_lut": impl_torch_lut,
     "np_broadcast_loop": impl_np_broadcast_mv,
-    "np_put_along":     impl_np_put_along,
+    "np_put_along": impl_np_put_along,
 }
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def generate_sequence(length: int, seed: int = 42) -> str:
     """Generate a random DNA sequence with ~1% N bases."""
@@ -221,6 +239,7 @@ def format_length(bp: int) -> str:
 # Correctness check
 # ---------------------------------------------------------------------------
 
+
 def verify_correctness(sequences: dict[int, str]) -> bool:
     """Verify all implementations match baseline for every sequence length."""
     print("Verifying correctness...")
@@ -234,14 +253,17 @@ def verify_correctness(sequences: dict[int, str]) -> bool:
                 continue
             result = fn(seq)
             if result.shape != reference.shape:
-                print(f"  FAIL {name} @ {format_length(length)}: "
-                      f"shape {result.shape} != {reference.shape}")
+                print(
+                    f"  FAIL {name} @ {format_length(length)}: "
+                    f"shape {result.shape} != {reference.shape}"
+                )
                 all_ok = False
                 continue
             if not torch.equal(result, reference):
                 diff = (result != reference).sum().item()
-                print(f"  FAIL {name} @ {format_length(length)}: "
-                      f"{diff} elements differ")
+                print(
+                    f"  FAIL {name} @ {format_length(length)}: {diff} elements differ"
+                )
                 all_ok = False
                 continue
 
@@ -253,6 +275,7 @@ def verify_correctness(sequences: dict[int, str]) -> bool:
 # ---------------------------------------------------------------------------
 # Benchmark
 # ---------------------------------------------------------------------------
+
 
 def bench_one(fn: Callable[[str], torch.Tensor], seq: str, num_iters: int) -> float:
     """Time num_iters calls, return median seconds per call."""
@@ -315,7 +338,9 @@ def run_benchmark(num_iters: int) -> None:
         base_ms = results[length]["baseline"]
         parts = [f"{format_length(length):>10s}"]
         for name in names:
-            speedup = base_ms / results[length][name] if results[length][name] > 0 else 0
+            speedup = (
+                base_ms / results[length][name] if results[length][name] > 0 else 0
+            )
             parts.append(f"{speedup:{col_w}.2f}")
         print("".join(parts))
 
@@ -327,7 +352,9 @@ def run_benchmark(num_iters: int) -> None:
         base_ms = row["baseline"]
         best_ms = row[best_name]
         speedup = base_ms / best_ms if best_ms > 0 else 0
-        print(f"  {format_length(length):>6s}: {best_name} ({best_ms:.3f} ms, {speedup:.2f}x vs baseline)")
+        print(
+            f"  {format_length(length):>6s}: {best_name} ({best_ms:.3f} ms, {speedup:.2f}x vs baseline)"
+        )
 
 
 def main() -> None:
@@ -335,7 +362,9 @@ def main() -> None:
         description="Benchmark alternative encode_dna implementations"
     )
     parser.add_argument(
-        "--num-iters", type=int, default=100,
+        "--num-iters",
+        type=int,
+        default=100,
         help="Iterations per (implementation, length) pair (default: 100)",
     )
     args = parser.parse_args()

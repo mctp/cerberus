@@ -32,6 +32,7 @@ def test_random_sampler_seeding():
     intervals3 = list(s3)
     assert intervals1 != intervals3
 
+
 def test_multi_sampler_seeding(tmp_path):
     # Manual instantiation of MultiSampler
     from cerberus.samplers import IntervalSampler, RandomSampler, ScaledSampler
@@ -44,8 +45,17 @@ def test_multi_sampler_seeding(tmp_path):
     def create_ms(seed: int):
         s1 = IntervalSampler(p, chrom_sizes, 100, [], {})
         s1_scaled = ScaledSampler(s1, num_samples=1, seed=seed + 1)
-        s2 = RandomSampler(chrom_sizes, 100, num_intervals=10, exclude_intervals={}, folds=[], seed=seed + 2)
-        return MultiSampler([s1_scaled, s2], chrom_sizes, folds=[], exclude_intervals={}, seed=seed)
+        s2 = RandomSampler(
+            chrom_sizes,
+            100,
+            num_intervals=10,
+            exclude_intervals={},
+            folds=[],
+            seed=seed + 2,
+        )
+        return MultiSampler(
+            [s1_scaled, s2], chrom_sizes, folds=[], exclude_intervals={}, seed=seed
+        )
 
     ms1 = create_ms(42)
     ms2 = create_ms(42)

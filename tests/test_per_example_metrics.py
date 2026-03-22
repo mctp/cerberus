@@ -14,6 +14,7 @@ from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
 # _per_example_pearson
 # ---------------------------------------------------------------------------
 
+
 class TestPerExamplePearson:
     def test_perfect_correlation(self):
         """Identical tensors should give correlation = 1.0."""
@@ -55,6 +56,7 @@ class TestPerExamplePearson:
 # ---------------------------------------------------------------------------
 # ProfilePearsonCorrCoef
 # ---------------------------------------------------------------------------
+
 
 class TestProfilePearsonCorrCoef:
     def test_perfect_profile_correlation(self):
@@ -123,7 +125,9 @@ class TestProfilePearsonCorrCoef:
     def test_zero_variance_examples_skipped(self):
         """Examples with zero-variance predictions should be skipped, not crash."""
         L = 16
-        logits = torch.zeros(2, 1, L)  # uniform softmax → near-zero variance after mean subtraction
+        logits = torch.zeros(
+            2, 1, L
+        )  # uniform softmax → near-zero variance after mean subtraction
         # but softmax of zeros is 1/L everywhere, which IS zero variance
         target = torch.randn(2, 1, L).abs()
 
@@ -137,6 +141,7 @@ class TestProfilePearsonCorrCoef:
 # ---------------------------------------------------------------------------
 # CountProfilePearsonCorrCoef
 # ---------------------------------------------------------------------------
+
 
 class TestCountProfilePearsonCorrCoef:
     def test_perfect_count_correlation(self):
@@ -210,6 +215,7 @@ class TestCountProfilePearsonCorrCoef:
 # ---------------------------------------------------------------------------
 # LogCountsPearsonCorrCoef
 # ---------------------------------------------------------------------------
+
 
 class TestLogCountsPearsonCorrCoef:
     def _make_batch(self, counts, L=10):
@@ -308,6 +314,7 @@ class TestLogCountsPearsonCorrCoef:
     def test_reset_clears_state(self):
         """After reset(), metric should start fresh."""
         import warnings
+
         preds, targets = self._make_batch([10, 20, 30, 40, 50])
         metric = LogCountsPearsonCorrCoef()
         metric.update(preds, targets)

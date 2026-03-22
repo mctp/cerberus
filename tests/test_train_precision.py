@@ -50,11 +50,15 @@ def test_train_wrapper_matmul_precision():
     train_config, model_config, data_config = _make_configs()
 
     # Test default (highest)
-    with patch("pytorch_lightning.Trainer"), \
-         patch("cerberus.train.instantiate", return_value=mock_module), \
-         patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc), \
-         patch("torch.set_float32_matmul_precision") as mock_set_precision:
-
+    with (
+        patch("pytorch_lightning.Trainer"),
+        patch("cerberus.train.instantiate", return_value=mock_module),
+        patch(
+            "cerberus.train.resolve_adaptive_loss_args",
+            side_effect=lambda mc, dm, **kw: mc,
+        ),
+        patch("torch.set_float32_matmul_precision") as mock_set_precision,
+    ):
         train(
             model_config=model_config,
             data_config=data_config,
@@ -68,11 +72,15 @@ def test_train_wrapper_matmul_precision():
         mock_set_precision.assert_called_once_with("highest")
 
     # Test medium
-    with patch("pytorch_lightning.Trainer"), \
-         patch("cerberus.train.instantiate", return_value=mock_module), \
-         patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc), \
-         patch("torch.set_float32_matmul_precision") as mock_set_precision:
-
+    with (
+        patch("pytorch_lightning.Trainer"),
+        patch("cerberus.train.instantiate", return_value=mock_module),
+        patch(
+            "cerberus.train.resolve_adaptive_loss_args",
+            side_effect=lambda mc, dm, **kw: mc,
+        ),
+        patch("torch.set_float32_matmul_precision") as mock_set_precision,
+    ):
         train(
             model_config=model_config,
             data_config=data_config,

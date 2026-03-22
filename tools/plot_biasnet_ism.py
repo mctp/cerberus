@@ -39,6 +39,7 @@ NUC_MAP = {"A": 0, "C": 1, "G": 2, "T": 3}
 # Model loading
 # ---------------------------------------------------------------------------
 
+
 def _resolve_fold_dir(path: Path) -> tuple[Path, Path]:
     """Resolve a model path to (fold_dir, model.pt)."""
     if path.is_file() and path.suffix == ".pt":
@@ -75,7 +76,7 @@ def _extract_bias_state_dict(sd: dict[str, torch.Tensor]) -> dict[str, torch.Ten
     prefix = "bias_model."
     bias_keys = [k for k in sd if k.startswith(prefix)]
     if bias_keys:
-        return {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
+        return {k[len(prefix) :]: v for k, v in sd.items() if k.startswith(prefix)}
     # Already a standalone BiasNet state dict
     return sd
 
@@ -137,8 +138,10 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
 
         # Compute correct input_len for the bias subnetwork
         bias_shrinkage = _compute_shrinkage(
-            bias_conv_kernel_size, bias_dilations,
-            bias_dil_kernel_size, bias_profile_kernel_size,
+            bias_conv_kernel_size,
+            bias_dilations,
+            bias_dil_kernel_size,
+            bias_profile_kernel_size,
         )
         bias_input_len = output_len + bias_shrinkage
 
@@ -161,8 +164,7 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
         )
     else:
         raise ValueError(
-            f"Unsupported model type '{model_name}'. "
-            f"Expected 'BiasNet' or 'Dalmatian'."
+            f"Unsupported model type '{model_name}'. Expected 'BiasNet' or 'Dalmatian'."
         )
 
     sd = torch.load(model_pt, map_location="cpu", weights_only=True)
@@ -181,6 +183,7 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
 # ---------------------------------------------------------------------------
 # Sequence extraction
 # ---------------------------------------------------------------------------
+
 
 def load_peak_intervals(peaks_path: Path, n: int = 5000, seed: int = 42):
     """Load peak intervals from a BED/narrowPeak file.
@@ -205,8 +208,9 @@ def load_peak_intervals(peaks_path: Path, n: int = 5000, seed: int = 42):
     return intervals
 
 
-def extract_onehot(fasta: pyfaidx.Fasta, chrom: str, center: int,
-                   length: int) -> np.ndarray | None:
+def extract_onehot(
+    fasta: pyfaidx.Fasta, chrom: str, center: int, length: int
+) -> np.ndarray | None:
     """Extract a one-hot encoded sequence centered on a position.
 
     Returns (4, length) float32 array, or None if sequence contains N's.
@@ -227,9 +231,13 @@ def extract_onehot(fasta: pyfaidx.Fasta, chrom: str, center: int,
     return onehot
 
 
-def get_real_sequences(fasta: pyfaidx.Fasta, intervals: list,
-                       input_len: int, n_seqs: int = 1000,
-                       seed: int = 42) -> list[np.ndarray]:
+def get_real_sequences(
+    fasta: pyfaidx.Fasta,
+    intervals: list,
+    input_len: int,
+    n_seqs: int = 1000,
+    seed: int = 42,
+) -> list[np.ndarray]:
     """Extract real genomic one-hot sequences centered on peak midpoints."""
     rng = np.random.RandomState(seed)
     sequences = []
@@ -314,8 +322,10 @@ def get_background_sequences(
 # ISM computation
 # ---------------------------------------------------------------------------
 
-def compute_ism_real(model: torch.nn.Module, sequences: list[np.ndarray],
-                     window: int = 31) -> np.ndarray:
+
+def compute_ism_real(
+    model: torch.nn.Module, sequences: list[np.ndarray], window: int = 31
+) -> np.ndarray:
     """ISM averaged over real genomic sequences.
 
     For each sequence, mutate each position in the center window to each
@@ -362,6 +372,7 @@ def compute_ism_real(model: torch.nn.Module, sequences: list[np.ndarray],
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_logo(ax, weights: np.ndarray, title: str, as_ic: bool = True):
     """Plot a weight matrix as a sequence logo."""
     _, L = weights.shape
@@ -386,16 +397,32 @@ def plot_logo(ax, weights: np.ndarray, title: str, as_ic: bool = True):
                     continue
                 letter = NUCLEOTIDES[nuc_idx]
                 color = NUC_COLORS[letter]
-                ax.bar(pos, h, bottom=bottom, width=0.9, color=color,
-                       edgecolor="white", linewidth=0.2)
+                ax.bar(
+                    pos,
+                    h,
+                    bottom=bottom,
+                    width=0.9,
+                    color=color,
+                    edgecolor="white",
+                    linewidth=0.2,
+                )
                 col_total = col.sum()
                 if col_total > 0 and h / col_total > 0.15 and h > 0.05:
-                    ax.text(pos, bottom + h / 2, letter, ha="center", va="center",
-                            fontsize=6, fontweight="bold", color="white",
-                            fontfamily="monospace",
-                            path_effects=[path_effects.Stroke(linewidth=0.4,
-                                                               foreground="black"),
-                                          path_effects.Normal()])
+                    ax.text(
+                        pos,
+                        bottom + h / 2,
+                        letter,
+                        ha="center",
+                        va="center",
+                        fontsize=6,
+                        fontweight="bold",
+                        color="white",
+                        fontfamily="monospace",
+                        path_effects=[
+                            path_effects.Stroke(linewidth=0.4, foreground="black"),
+                            path_effects.Normal(),
+                        ],
+                    )
                 bottom += h
         else:
             pos_bottom = 0.0
@@ -405,19 +432,42 @@ def plot_logo(ax, weights: np.ndarray, title: str, as_ic: bool = True):
                 letter = NUCLEOTIDES[nuc_idx]
                 color = NUC_COLORS[letter]
                 if h >= 0:
-                    ax.bar(pos, h, bottom=pos_bottom, width=0.9, color=color,
-                           edgecolor="white", linewidth=0.2)
+                    ax.bar(
+                        pos,
+                        h,
+                        bottom=pos_bottom,
+                        width=0.9,
+                        color=color,
+                        edgecolor="white",
+                        linewidth=0.2,
+                    )
                     if abs(h) > 0.005:
-                        ax.text(pos, pos_bottom + h / 2, letter, ha="center",
-                                va="center", fontsize=5, fontweight="bold",
-                                color="white", fontfamily="monospace",
-                                path_effects=[path_effects.Stroke(linewidth=0.4,
-                                                                   foreground="black"),
-                                              path_effects.Normal()])
+                        ax.text(
+                            pos,
+                            pos_bottom + h / 2,
+                            letter,
+                            ha="center",
+                            va="center",
+                            fontsize=5,
+                            fontweight="bold",
+                            color="white",
+                            fontfamily="monospace",
+                            path_effects=[
+                                path_effects.Stroke(linewidth=0.4, foreground="black"),
+                                path_effects.Normal(),
+                            ],
+                        )
                     pos_bottom += h
                 else:
-                    ax.bar(pos, h, bottom=neg_bottom, width=0.9, color=color,
-                           edgecolor="white", linewidth=0.2)
+                    ax.bar(
+                        pos,
+                        h,
+                        bottom=neg_bottom,
+                        width=0.9,
+                        color=color,
+                        edgecolor="white",
+                        linewidth=0.2,
+                    )
                     neg_bottom += h
 
     ax.set_xlim(-0.5, L - 0.5)
@@ -431,6 +481,7 @@ def plot_logo(ax, weights: np.ndarray, title: str, as_ic: bool = True):
 # CSV export
 # ---------------------------------------------------------------------------
 
+
 def save_ism_csv(ism: np.ndarray, window: int, n_seqs: int, out_path: Path):
     """Save ISM matrix as a CSV file.
 
@@ -443,8 +494,9 @@ def save_ism_csv(ism: np.ndarray, window: int, n_seqs: int, out_path: Path):
         writer.writerow(["# window", window])
         writer.writerow(["position", "A", "C", "G", "T"])
         for pos_i in range(window):
-            writer.writerow([pos_i, ism[0, pos_i], ism[1, pos_i],
-                             ism[2, pos_i], ism[3, pos_i]])
+            writer.writerow(
+                [pos_i, ism[0, pos_i], ism[1, pos_i], ism[2, pos_i], ism[3, pos_i]]
+            )
     logger.info(f"Saved: {out_path}")
 
 
@@ -452,29 +504,62 @@ def save_ism_csv(ism: np.ndarray, window: int, n_seqs: int, out_path: Path):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Plot BiasNet ISM motif as IC logo + heatmap")
-    parser.add_argument("model_path", type=str,
-                        help="Path to BiasNet run directory or model.pt file")
-    parser.add_argument("--fasta", type=str, default=None,
-                        help="Path to genome FASTA (auto-detected from hparams.yaml)")
-    parser.add_argument("--peaks", type=str, default=None,
-                        help="Path to peaks BED file (auto-detected from hparams.yaml)")
-    parser.add_argument("--output-dir", type=str, default=None,
-                        help="Output directory (default: same as model directory)")
-    parser.add_argument("--prefix", type=str, default="biasnet",
-                        help="Output filename prefix")
-    parser.add_argument("--n-seqs", type=int, default=1000,
-                        help="Number of real sequences for ISM averaging")
-    parser.add_argument("--ism-window", type=int, default=31,
-                        help="Window size for ISM around center")
-    parser.add_argument("--background", action="store_true", default=True,
-                        help="Sample background sequences outside peaks (default)")
-    parser.add_argument("--no-background", dest="background", action="store_false",
-                        help="Sample sequences from peak centers instead of background")
-    parser.add_argument("--device", type=str, default=None,
-                        help="Device (e.g., 'cuda', 'cpu'). Auto-detects if not set.")
+        description="Plot BiasNet ISM motif as IC logo + heatmap"
+    )
+    parser.add_argument(
+        "model_path", type=str, help="Path to BiasNet run directory or model.pt file"
+    )
+    parser.add_argument(
+        "--fasta",
+        type=str,
+        default=None,
+        help="Path to genome FASTA (auto-detected from hparams.yaml)",
+    )
+    parser.add_argument(
+        "--peaks",
+        type=str,
+        default=None,
+        help="Path to peaks BED file (auto-detected from hparams.yaml)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory (default: same as model directory)",
+    )
+    parser.add_argument(
+        "--prefix", type=str, default="biasnet", help="Output filename prefix"
+    )
+    parser.add_argument(
+        "--n-seqs",
+        type=int,
+        default=1000,
+        help="Number of real sequences for ISM averaging",
+    )
+    parser.add_argument(
+        "--ism-window", type=int, default=31, help="Window size for ISM around center"
+    )
+    parser.add_argument(
+        "--background",
+        action="store_true",
+        default=True,
+        help="Sample background sequences outside peaks (default)",
+    )
+    parser.add_argument(
+        "--no-background",
+        dest="background",
+        action="store_false",
+        help="Sample sequences from peak centers instead of background",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="Device (e.g., 'cuda', 'cpu'). Auto-detects if not set.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -493,7 +578,9 @@ def main():
 
     # Resolve fasta and peaks from config if not provided
     fasta_path = args.fasta or config["genome_config"]["fasta_path"]
-    peaks_path = args.peaks or config["sampler_config"]["sampler_args"]["intervals_path"]
+    peaks_path = (
+        args.peaks or config["sampler_config"]["sampler_args"]["intervals_path"]
+    )
 
     if args.output_dir is not None:
         out_dir = Path(args.output_dir)
@@ -513,15 +600,17 @@ def main():
         logger.info(f"Sampling background sequences outside peaks from {peaks_path}...")
         input_len: int = model.input_len  # type: ignore[assignment]
         sequences = get_background_sequences(
-            fasta, Path(peaks_path), chrom_sizes, input_len,
+            fasta,
+            Path(peaks_path),
+            chrom_sizes,
+            input_len,
             n_seqs=args.n_seqs,
         )
     else:
         logger.info(f"Loading peak intervals from {peaks_path}...")
         input_len: int = model.input_len  # type: ignore[assignment]
         intervals = load_peak_intervals(Path(peaks_path), n=args.n_seqs * 3)
-        sequences = get_real_sequences(fasta, intervals, input_len,
-                                       n_seqs=args.n_seqs)
+        sequences = get_real_sequences(fasta, intervals, input_len, n_seqs=args.n_seqs)
 
     # Compute ISM
     n_seqs = len(sequences)
@@ -535,8 +624,9 @@ def main():
 
     # Plot: IC logo (top) + ISM heatmap (bottom), X-aligned
     fig = plt.figure(figsize=(max(12, window * 0.4), 5))
-    gs = fig.add_gridspec(2, 2, height_ratios=[1.5, 1],
-                          width_ratios=[1, 0.02], hspace=0.3, wspace=0.03)
+    gs = fig.add_gridspec(
+        2, 2, height_ratios=[1.5, 1], width_ratios=[1, 0.02], hspace=0.3, wspace=0.03
+    )
     ax_logo = fig.add_subplot(gs[0, 0])
     ax_heat = fig.add_subplot(gs[1, 0], sharex=ax_logo)
     ax_cbar = fig.add_subplot(gs[1, 1])
@@ -544,16 +634,25 @@ def main():
     ax_empty = fig.add_subplot(gs[0, 1])
     ax_empty.set_visible(False)
 
-    plot_logo(ax_logo, ism,
-              f"BiasNet ISM IC — {n_seqs} {seq_type} seqs (center {window}bp)",
-              as_ic=True)
+    plot_logo(
+        ax_logo,
+        ism,
+        f"BiasNet ISM IC — {n_seqs} {seq_type} seqs (center {window}bp)",
+        as_ic=True,
+    )
     ax_logo.set_ylabel("IC (bits)", fontsize=8)
     plt.setp(ax_logo.get_xticklabels(), visible=False)
 
     vmax = np.abs(ism).max()
-    im = ax_heat.imshow(ism, aspect="auto", cmap="RdBu_r",
-                        vmin=-vmax, vmax=vmax, interpolation="nearest",
-                        extent=(-0.5, window - 0.5, 3.5, -0.5))
+    im = ax_heat.imshow(
+        ism,
+        aspect="auto",
+        cmap="RdBu_r",
+        vmin=-vmax,
+        vmax=vmax,
+        interpolation="nearest",
+        extent=(-0.5, window - 0.5, 3.5, -0.5),
+    )
     ax_heat.set_yticks(range(4))
     ax_heat.set_yticklabels(NUCLEOTIDES, fontsize=8)
     ax_heat.set_xlabel("Position (centered)", fontsize=8)

@@ -22,18 +22,15 @@ def test_reverse_complement_end_to_end():
     # Sequence: 5'-AAAC-3'
     # We use a non-palindromic sequence to clearly distinguish RC
     seq_str = "AAAC"
-    
+
     # Encode using the actual encoding function
     # Shape (4, 4)
-    inputs = encode_dna(seq_str, encoding="ACGT") 
-    
+    inputs = encode_dna(seq_str, encoding="ACGT")
+
     # 3. Setup Targets (Signal)
     # Signal: 2 Channels, length 4
     # We use increasing values to clearly verify reversal
-    targets = torch.tensor([
-        [1.0, 2.0, 3.0, 4.0],
-        [5.0, 6.0, 7.0, 8.0]
-    ])
+    targets = torch.tensor([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]])
 
     # 4. Apply Transform
     dummy_interval = Interval("chr1", 0, 4)
@@ -41,14 +38,14 @@ def test_reverse_complement_end_to_end():
 
     # 5. Verify Inputs (Sequence)
     # Expected RC of AAAC is GTTT
-    # Logic: 
+    # Logic:
     # Original: 5'-AAAC-3'
     # Reverse:  3'-CAAA-5'
     # Complement: 5'-GTTT-3'
-    
+
     expected_seq_str = "GTTT"
     expected_inputs = encode_dna(expected_seq_str, encoding="ACGT")
-    
+
     # Debug info if fails
     print(f"\nOriginal Seq: {seq_str}")
     print(f"Original Encoded:\n{inputs}")
@@ -56,25 +53,25 @@ def test_reverse_complement_end_to_end():
     print(f"Expected Encoded:\n{expected_inputs}")
     print(f"Actual Transformed:\n{inputs_rc}")
 
-    assert torch.equal(inputs_rc, expected_inputs), \
+    assert torch.equal(inputs_rc, expected_inputs), (
         f"Sequence mismatch. Expected {expected_seq_str} (encoded), got transformed tensor."
+    )
 
     # 6. Verify Targets (Signal)
     # Expected: Each channel reversed independently
-    expected_targets = torch.tensor([
-        [4.0, 3.0, 2.0, 1.0],
-        [8.0, 7.0, 6.0, 5.0]
-    ])
-    
+    expected_targets = torch.tensor([[4.0, 3.0, 2.0, 1.0], [8.0, 7.0, 6.0, 5.0]])
+
     print(f"Original Signal:\n{targets}")
     print(f"Expected Signal:\n{expected_targets}")
     print(f"Actual Signal:\n{targets_rc}")
-    
-    assert torch.equal(targets_rc, expected_targets), \
+
+    assert torch.equal(targets_rc, expected_targets), (
         "Signal mismatch. Expected reversed signals."
-    
+    )
+
     # Verify interval strand flip
     assert out_interval.strand == "-"
+
 
 def test_reverse_complement_identity():
     """

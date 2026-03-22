@@ -17,6 +17,7 @@ Usage:
     # Override data directory:
     CERBERUS_DATA_DIR=/path/to/data RUN_SLOW_TESTS=1 python tests/benchmark/bench_dataloader_context_length.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,7 +47,12 @@ logger = logging.getLogger(__name__)
 CONTEXT_LENGTHS = [1_024 * (2**i) for i in range(8)]
 
 SCENARIOS = ["fasta_only", "bigwig_only", "fasta_bigwig"]
-SCENARIO_LABELS = {"fasta_only": "fasta", "bigwig_only": "bigwig", "fasta_bigwig": "both"}
+SCENARIO_LABELS = {
+    "fasta_only": "fasta",
+    "bigwig_only": "bigwig",
+    "fasta_bigwig": "both",
+}
+
 
 def resolve_data_paths() -> tuple[Path, Path]:
     """Locate or download the GRCh38 FASTA and MDA-PCA-2B AR BigWig."""
@@ -61,6 +67,7 @@ def resolve_data_paths() -> tuple[Path, Path]:
     bigwig_path = dataset_files["bigwig"]
 
     return Path(fasta_path), Path(bigwig_path)
+
 
 def make_data_config(
     scenario: str,
@@ -98,7 +105,10 @@ def make_data_config(
         target_scale=1.0,
     )
 
-def make_sampler_config(input_len: int, max_jitter: int, num_intervals: int) -> SamplerConfig:
+
+def make_sampler_config(
+    input_len: int, max_jitter: int, num_intervals: int
+) -> SamplerConfig:
     """Build a SamplerConfig dict."""
     padded_size = input_len + 2 * max_jitter
     return SamplerConfig(
@@ -106,6 +116,7 @@ def make_sampler_config(input_len: int, max_jitter: int, num_intervals: int) -> 
         padded_size=padded_size,
         sampler_args={"num_intervals": num_intervals},
     )
+
 
 def bench_dataloader(
     genome_config: GenomeConfig,
@@ -160,11 +171,13 @@ def bench_dataloader(
         "it_per_s": batches_consumed / elapsed if elapsed > 0 else float("inf"),
     }
 
+
 def format_length(bp: int) -> str:
     """Format base pairs as human-readable string (e.g. 1kb, 128kb)."""
     if bp >= 1_024:
         return f"{bp // 1_024}kb"
     return f"{bp}bp"
+
 
 def bench_dataloader_inmemory(
     genome_config: GenomeConfig,
@@ -229,6 +242,7 @@ def bench_dataloader_inmemory(
         "it_per_s": batches_consumed / elapsed if elapsed > 0 else float("inf"),
     }
 
+
 def run_disk_pass(
     genome_config: GenomeConfig,
     bigwig_path: Path,
@@ -270,6 +284,7 @@ def run_disk_pass(
         all_results.append(row)
 
     return all_results
+
 
 def run_inmemory_pass(
     genome_config: GenomeConfig,
@@ -321,6 +336,7 @@ def run_inmemory_pass(
         all_results.append(row)
 
     return all_results
+
 
 def print_results_table(
     all_results: list[dict],
@@ -375,6 +391,7 @@ def print_results_table(
                 parts.append(f"{ratio:10.2f}")
             print("  ".join(parts))
 
+
 def print_comparison_table(
     disk_results: list[dict],
     mem_results: list[dict],
@@ -384,7 +401,9 @@ def print_comparison_table(
     header_parts = [f"{'length':>10s}"]
     for sc in SCENARIOS:
         sl = SCENARIO_LABELS[sc]
-        header_parts.extend([f"{sl + '_disk':>10s}", f"{sl + '_mem':>10s}", f"{sl + '_x':>8s}"])
+        header_parts.extend(
+            [f"{sl + '_disk':>10s}", f"{sl + '_mem':>10s}", f"{sl + '_x':>8s}"]
+        )
     header = "  ".join(header_parts)
     print(header)
     print("-" * len(header))
@@ -397,6 +416,7 @@ def print_comparison_table(
             speedup = m_its / d_its if d_its > 0 else float("inf")
             parts.extend([f"{d_its:10.1f}", f"{m_its:10.1f}", f"{speedup:8.2f}"])
         print("  ".join(parts))
+
 
 def run_benchmark(args: argparse.Namespace) -> None:
     """Run the full benchmark suite and print results."""
@@ -420,40 +440,56 @@ def run_benchmark(args: argparse.Namespace) -> None:
         print_results_table(mem_results, "in-memory", args, fasta_path, bigwig_path)
         print_comparison_table(disk_results, mem_results)
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Benchmark DataLoader throughput vs. context length"
     )
     parser.add_argument(
-        "--num-workers", type=int, default=4,
+        "--num-workers",
+        type=int,
+        default=4,
         help="DataLoader num_workers (default: 4)",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=64,
+        "--batch-size",
+        type=int,
+        default=64,
         help="Batch size (default: 64)",
     )
     parser.add_argument(
-        "--num-batches", type=int, default=20,
+        "--num-batches",
+        type=int,
+        default=20,
         help="Batches to time per configuration (default: 20)",
     )
     parser.add_argument(
-        "--warmup-batches", type=int, default=3,
+        "--warmup-batches",
+        type=int,
+        default=3,
         help="Warmup batches before timing (default: 3)",
     )
     parser.add_argument(
-        "--max-jitter", type=int, default=0,
+        "--max-jitter",
+        type=int,
+        default=0,
         help="Max jitter in bp (default: 0)",
     )
     parser.add_argument(
-        "--seed", type=int, default=42,
+        "--seed",
+        type=int,
+        default=42,
         help="Random seed (default: 42)",
     )
     parser.add_argument(
-        "--in-memory", action="store_true",
+        "--in-memory",
+        action="store_true",
         help="Also run in-memory benchmark and compare with disk",
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "--verbose",
+        "-v",
+        action="store_true",
         help="Enable verbose logging",
     )
     args = parser.parse_args()
@@ -465,13 +501,13 @@ def main() -> None:
 
     if os.environ.get("RUN_SLOW_TESTS") is None:
         print(
-            "This benchmark requires real genome data. "
-            "Set RUN_SLOW_TESTS=1 to run.",
+            "This benchmark requires real genome data. Set RUN_SLOW_TESTS=1 to run.",
             file=sys.stderr,
         )
         sys.exit(1)
 
     run_benchmark(args)
+
 
 if __name__ == "__main__":
     main()

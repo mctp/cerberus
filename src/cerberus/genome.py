@@ -120,7 +120,9 @@ def create_genome_config(
     else:
         fold_args_resolved = fold_args
 
-    logger.debug(f"Created genome config for {name} ({species}) with {len(sorted_chroms)} chromosomes.")
+    logger.debug(
+        f"Created genome config for {name} ({species}) with {len(sorted_chroms)} chromosomes."
+    )
 
     return GenomeConfig(
         name=name,
@@ -184,7 +186,7 @@ def _create_folds_chrom_partition(
 
     # Extract just the chromosome lists, sorted by fold index
     folds.sort(key=lambda x: x[1])
-    
+
     # Convert to interval maps
     result_folds = []
     for _, _, chrom_list in folds:
@@ -192,7 +194,7 @@ def _create_folds_chrom_partition(
         for chrom in chrom_list:
             if chrom not in chrom_sizes:
                 continue
-            
+
             # Create InterLap for the whole chromosome
             # Use closed coordinates [start, end-1]
             il = InterLap()
@@ -201,7 +203,6 @@ def _create_folds_chrom_partition(
         result_folds.append(fold_intervals)
 
     return result_folds
-
 
 
 def create_human_genome_config(

@@ -15,6 +15,7 @@ class MockTargetExtractor:
         # Return ascending values [1, 2, ..., length] so we can verify no transforms applied
         return torch.arange(1, length + 1, dtype=torch.float32).unsqueeze(0)  # (1, L)
 
+
 @pytest.fixture
 def dataset_with_targets(tmp_path):
     """Create a CerberusDataset with a mock target extractor and transforms that modify targets."""
@@ -27,8 +28,11 @@ def dataset_with_targets(tmp_path):
     peaks.write_text("chr1\t100\t200\n")
 
     genome_config = create_genome_config(
-        name="test", fasta_path=genome, species="human",
-        allowed_chroms=["chr1"], exclude_intervals={},
+        name="test",
+        fasta_path=genome,
+        species="human",
+        allowed_chroms=["chr1"],
+        exclude_intervals={},
     )
 
     # input_len > output_len to test cropping
@@ -54,11 +58,16 @@ def dataset_with_targets(tmp_path):
     )
 
     ds = CerberusDataset(
-        genome_config, data_config, sampler_config,
+        genome_config,
+        data_config,
+        sampler_config,
         target_signal_extractor=MockTargetExtractor(),
-        sequence_extractor=None, sampler=None, exclude_intervals={},
+        sequence_extractor=None,
+        sampler=None,
+        exclude_intervals={},
     )
     return ds
+
 
 class TestGetRawTargets:
     def test_bypasses_transforms(self, dataset_with_targets):
@@ -111,8 +120,11 @@ class TestGetRawTargets:
         peaks.write_text("chr1\t100\t200\n")
 
         genome_config = create_genome_config(
-            name="test", fasta_path=genome, species="human",
-            allowed_chroms=["chr1"], exclude_intervals={},
+            name="test",
+            fasta_path=genome,
+            species="human",
+            allowed_chroms=["chr1"],
+            exclude_intervals={},
         )
 
         data_config = DataConfig.model_construct(
@@ -136,13 +148,21 @@ class TestGetRawTargets:
         )
 
         ds = CerberusDataset(
-            genome_config, data_config, sampler_config,
+            genome_config,
+            data_config,
+            sampler_config,
             target_signal_extractor=MockTargetExtractor(),
-            sequence_extractor=None, sampler=None, exclude_intervals={},
+            sequence_extractor=None,
+            sampler=None,
+            exclude_intervals={},
         )
 
-        raw_cropped = ds.get_raw_targets(Interval("chr1", 100, 150), crop_to_output_len=True)
-        raw_full = ds.get_raw_targets(Interval("chr1", 100, 150), crop_to_output_len=False)
+        raw_cropped = ds.get_raw_targets(
+            Interval("chr1", 100, 150), crop_to_output_len=True
+        )
+        raw_full = ds.get_raw_targets(
+            Interval("chr1", 100, 150), crop_to_output_len=False
+        )
         assert torch.allclose(raw_cropped, raw_full)
 
     def test_no_target_extractor_raises(self, tmp_path):
@@ -156,8 +176,11 @@ class TestGetRawTargets:
         peaks.write_text("chr1\t100\t200\n")
 
         genome_config = create_genome_config(
-            name="test", fasta_path=genome, species="human",
-            allowed_chroms=["chr1"], exclude_intervals={},
+            name="test",
+            fasta_path=genome,
+            species="human",
+            allowed_chroms=["chr1"],
+            exclude_intervals={},
         )
 
         data_config = DataConfig.model_construct(
@@ -181,25 +204,37 @@ class TestGetRawTargets:
         )
 
         ds = CerberusDataset(
-            genome_config, data_config, sampler_config,
+            genome_config,
+            data_config,
+            sampler_config,
             target_signal_extractor=None,
-            sequence_extractor=None, sampler=None, exclude_intervals={},
+            sequence_extractor=None,
+            sampler=None,
+            exclude_intervals={},
         )
 
-        with pytest.raises(RuntimeError, match="Target signal extractor is not initialized"):
+        with pytest.raises(
+            RuntimeError, match="Target signal extractor is not initialized"
+        ):
             ds.get_raw_targets(Interval("chr1", 100, 150))
 
     def test_accepts_string_query(self, dataset_with_targets):
         """Should accept 'chr:start-end' string format."""
-        raw = dataset_with_targets.get_raw_targets("chr1:100-200", crop_to_output_len=True)
+        raw = dataset_with_targets.get_raw_targets(
+            "chr1:100-200", crop_to_output_len=True
+        )
         assert raw.shape == (1, 50)
 
     def test_accepts_tuple_query(self, dataset_with_targets):
         """Should accept (chrom, start, end) tuple format."""
-        raw = dataset_with_targets.get_raw_targets(("chr1", 100, 200), crop_to_output_len=True)
+        raw = dataset_with_targets.get_raw_targets(
+            ("chr1", 100, 200), crop_to_output_len=True
+        )
         assert raw.shape == (1, 50)
 
     def test_accepts_interval_query(self, dataset_with_targets):
         """Should accept Interval object."""
-        raw = dataset_with_targets.get_raw_targets(Interval("chr1", 100, 200), crop_to_output_len=True)
+        raw = dataset_with_targets.get_raw_targets(
+            Interval("chr1", 100, 200), crop_to_output_len=True
+        )
         assert raw.shape == (1, 50)

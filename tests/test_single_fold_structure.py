@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -23,6 +22,7 @@ def _make_genome_config(k: int = 2) -> MagicMock:
     gc.model_copy.return_value = gc
     return gc
 
+
 def _make_data_config() -> MagicMock:
     dc = MagicMock(spec=DataConfig)
     dc.input_len = 100
@@ -38,12 +38,14 @@ def _make_data_config() -> MagicMock:
     dc.targets = {}
     return dc
 
+
 def _make_sampler_config() -> MagicMock:
     sc = MagicMock(spec=SamplerConfig)
     sc.sampler_type = "random"
     sc.padded_size = 100
     sc.sampler_args = SimpleNamespace(num_samples=10)
     return sc
+
 
 def _make_model_config() -> ModelConfig:
     return ModelConfig(
@@ -56,6 +58,7 @@ def _make_model_config() -> ModelConfig:
         model_args={},
         pretrained=[],
     )
+
 
 def _make_train_config() -> TrainConfig:
     return TrainConfig(
@@ -73,6 +76,7 @@ def _make_train_config() -> TrainConfig:
         gradient_clip_val=None,
     )
 
+
 @pytest.fixture
 def minimal_configs():
     return (
@@ -83,21 +87,29 @@ def minimal_configs():
         _make_train_config(),
     )
 
+
 def test_train_single_creates_structure(tmp_path, minimal_configs):
-    genome_config, data_config, sampler_config, model_config, train_config = minimal_configs
+    genome_config, data_config, sampler_config, model_config, train_config = (
+        minimal_configs
+    )
 
     # Mock dependencies
-    with patch("cerberus.train.CerberusDataModule"), \
-         patch("cerberus.train.instantiate"), \
-         patch("cerberus.train._train") as mock_train:
-
+    with (
+        patch("cerberus.train.CerberusDataModule"),
+        patch("cerberus.train.instantiate"),
+        patch("cerberus.train._train") as mock_train,
+    ):
         root_dir = tmp_path / "output"
 
         # 1. Test explicit test_fold=0
         train_single(
-            genome_config, data_config, sampler_config, model_config, train_config,
+            genome_config,
+            data_config,
+            sampler_config,
+            model_config,
+            train_config,
             test_fold=0,
-            root_dir=root_dir
+            root_dir=root_dir,
         )
 
         # Verify metadata file
@@ -113,19 +125,27 @@ def test_train_single_creates_structure(tmp_path, minimal_configs):
         expected_dir = root_dir / "fold_0"
         assert Path(call_kwargs["root_dir"]) == expected_dir
 
+
 def test_train_single_default_behavior(tmp_path, minimal_configs):
-    genome_config, data_config, sampler_config, model_config, train_config = minimal_configs
+    genome_config, data_config, sampler_config, model_config, train_config = (
+        minimal_configs
+    )
 
-    with patch("cerberus.train.CerberusDataModule"), \
-         patch("cerberus.train.instantiate"), \
-         patch("cerberus.train._train") as mock_train:
-
+    with (
+        patch("cerberus.train.CerberusDataModule"),
+        patch("cerberus.train.instantiate"),
+        patch("cerberus.train._train") as mock_train,
+    ):
         root_dir = tmp_path / "output_default"
 
         # No test_fold passed, should default to 0
         train_single(
-            genome_config, data_config, sampler_config, model_config, train_config,
-            root_dir=root_dir
+            genome_config,
+            data_config,
+            sampler_config,
+            model_config,
+            train_config,
+            root_dir=root_dir,
         )
 
         # Verify metadata
@@ -139,8 +159,11 @@ def test_train_single_default_behavior(tmp_path, minimal_configs):
         expected_dir = root_dir / "fold_0"
         assert Path(mock_train.call_args[1]["root_dir"]) == expected_dir
 
+
 def test_train_single_updates_metadata(tmp_path, minimal_configs):
-    genome_config, data_config, sampler_config, model_config, train_config = minimal_configs
+    genome_config, data_config, sampler_config, model_config, train_config = (
+        minimal_configs
+    )
 
     root_dir = tmp_path / "output_incremental"
     root_dir.mkdir()
@@ -149,15 +172,20 @@ def test_train_single_updates_metadata(tmp_path, minimal_configs):
     with open(root_dir / "ensemble_metadata.yaml", "w") as f:
         yaml.dump({"folds": [0]}, f)
 
-    with patch("cerberus.train.CerberusDataModule"), \
-         patch("cerberus.train.instantiate"), \
-         patch("cerberus.train._train"):
-
+    with (
+        patch("cerberus.train.CerberusDataModule"),
+        patch("cerberus.train.instantiate"),
+        patch("cerberus.train._train"),
+    ):
         # Train fold 1
         train_single(
-            genome_config, data_config, sampler_config, model_config, train_config,
+            genome_config,
+            data_config,
+            sampler_config,
+            model_config,
+            train_config,
             test_fold=1,
-            root_dir=root_dir
+            root_dir=root_dir,
         )
 
         with open(root_dir / "ensemble_metadata.yaml") as f:
@@ -166,15 +194,22 @@ def test_train_single_updates_metadata(tmp_path, minimal_configs):
         # Should now have [0, 1] (order might vary but set should match)
         assert set(meta["folds"]) == {0, 1}
 
+
 def test_train_multi_delegation(tmp_path, minimal_configs):
-    genome_config, data_config, sampler_config, model_config, train_config = minimal_configs
+    genome_config, data_config, sampler_config, model_config, train_config = (
+        minimal_configs
+    )
 
     with patch("cerberus.train.train_single") as mock_train_single:
         root_dir = tmp_path / "multi_output"
 
         train_multi(
-            genome_config, data_config, sampler_config, model_config, train_config,
-            root_dir=root_dir
+            genome_config,
+            data_config,
+            sampler_config,
+            model_config,
+            train_config,
+            root_dir=root_dir,
         )
 
         assert mock_train_single.call_count == 2

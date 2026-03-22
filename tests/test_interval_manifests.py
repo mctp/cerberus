@@ -1,5 +1,6 @@
 """Tests for interval manifest I/O (write_intervals_bed, load_intervals_bed)
 and CerberusDataModule.save_interval_manifests."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,6 +24,7 @@ _IV3 = Interval("chrX", 500, 600, "+")
 # Interval.to_bed_row
 # ---------------------------------------------------------------------------
 
+
 def test_to_bed_row_default_strand() -> None:
     iv = Interval("chr1", 100, 200)
     assert iv.to_bed_row() == "chr1\t100\t200\t+"
@@ -36,6 +38,7 @@ def test_to_bed_row_minus_strand() -> None:
 # ---------------------------------------------------------------------------
 # write_intervals_bed / load_intervals_bed round-trip
 # ---------------------------------------------------------------------------
+
 
 def test_round_trip_basic(tmp_path: Path) -> None:
     """Write and re-read intervals; verify exact round-trip."""
@@ -130,8 +133,10 @@ def test_round_trip_many_sources(tmp_path: Path) -> None:
 # CerberusDataModule.save_interval_manifests
 # ---------------------------------------------------------------------------
 
+
 class _StubSampler:
     """Minimal sampler stub for manifest tests."""
+
     def __init__(self, intervals: list[Interval], source_name: str = "IntervalSampler"):
         self._intervals = intervals
         self._source_name = source_name
@@ -148,16 +153,16 @@ class _StubSampler:
 
 class _MultiStubSampler:
     """Stub mimicking a MultiSampler with peak + background intervals."""
+
     def __init__(
         self,
         peak_intervals: list[Interval],
         bg_intervals: list[Interval],
     ):
         self._intervals = peak_intervals + bg_intervals
-        self._sources = (
-            ["IntervalSampler"] * len(peak_intervals)
-            + ["ComplexityMatchedSampler"] * len(bg_intervals)
-        )
+        self._sources = ["IntervalSampler"] * len(peak_intervals) + [
+            "ComplexityMatchedSampler"
+        ] * len(bg_intervals)
 
     def __len__(self) -> int:
         return len(self._intervals)
@@ -210,7 +215,11 @@ def test_save_interval_manifests_content(tmp_path: Path) -> None:
 
     loaded_iv, loaded_src = load_intervals_bed(tmp_path / "intervals_test.bed")
     assert loaded_iv == peaks + bgs
-    assert loaded_src == ["IntervalSampler", "ComplexityMatchedSampler", "ComplexityMatchedSampler"]
+    assert loaded_src == [
+        "IntervalSampler",
+        "ComplexityMatchedSampler",
+        "ComplexityMatchedSampler",
+    ]
 
 
 def test_save_interval_manifests_skips_none_datasets(tmp_path: Path) -> None:
@@ -266,8 +275,10 @@ def test_save_interval_manifests_raises_before_setup() -> None:
 # Round-trip through real MultiSampler
 # ---------------------------------------------------------------------------
 
+
 class _FakeSampler:
     """Stub sampler for MultiSampler integration tests."""
+
     def __init__(self, intervals: list[Interval]):
         self._intervals = intervals
 
@@ -325,6 +336,7 @@ def test_round_trip_with_real_multisampler(tmp_path: Path) -> None:
 # Determinism: same seed → same manifests
 # ---------------------------------------------------------------------------
 
+
 def test_manifest_deterministic_across_runs(tmp_path: Path) -> None:
     """Two independent MultiSamplers with the same seed produce identical manifests."""
 
@@ -357,38 +369,53 @@ def test_manifest_deterministic_across_runs(tmp_path: Path) -> None:
 # SLOW: Multi-GPU fold determinism (helpers at module level for picklability)
 # ---------------------------------------------------------------------------
 
+
 class _SpawnPeak:
     """Stub peak sampler (module-level for spawn picklability)."""
+
     def __init__(self, ivs: list[Interval]):
         self._intervals = ivs
+
     def __len__(self) -> int:
         return len(self._intervals)
+
     def __iter__(self):  # type: ignore[override]
         return iter(self._intervals)
+
     def __getitem__(self, idx: int) -> Interval:
         return self._intervals[idx]
+
     def resample(self, seed: int | None = None) -> None:
         pass
+
     def split_folds(self, test_fold: int | None = None, val_fold: int | None = None):  # type: ignore[override]
         return self, self, self
+
     def get_interval_source(self, idx: int) -> str:
         return "_SpawnPeak"
 
 
 class _SpawnBg:
     """Stub background sampler (module-level for spawn picklability)."""
+
     def __init__(self, ivs: list[Interval]):
         self._intervals = ivs
+
     def __len__(self) -> int:
         return len(self._intervals)
+
     def __iter__(self):  # type: ignore[override]
         return iter(self._intervals)
+
     def __getitem__(self, idx: int) -> Interval:
         return self._intervals[idx]
+
     def resample(self, seed: int | None = None) -> None:
         pass
+
     def split_folds(self, test_fold: int | None = None, val_fold: int | None = None):  # type: ignore[override]
         return self, self, self
+
     def get_interval_source(self, idx: int) -> str:
         return "_SpawnBg"
 
@@ -422,9 +449,11 @@ def test_multiprocess_fold_determinism(tmp_path: Path) -> None:
     - OS-level randomness (e.g. hash seed)
     """
     import os
+
     if os.environ.get("RUN_SLOW_TESTS") is None:
         pytest.skip("Skipping slow tests (RUN_SLOW_TESTS not set)")
     import multiprocessing
+
     ctx = multiprocessing.get_context("spawn")
 
     seed = 42
@@ -459,6 +488,7 @@ def test_multiprocess_fold_determinism(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # SLOW: Realistic multi-process PeakSampler determinism
 # ---------------------------------------------------------------------------
+
 
 def _build_peak_sampler_and_write_manifest(
     fasta_path: str,
@@ -539,6 +569,7 @@ def test_peak_sampler_multiprocess_determinism(tmp_path: Path) -> None:
     - Random state leakage from process initialization
     """
     import os
+
     if os.environ.get("RUN_SLOW_TESTS") is None:
         pytest.skip("Skipping slow tests (RUN_SLOW_TESTS not set)")
 
@@ -546,6 +577,7 @@ def test_peak_sampler_multiprocess_determinism(tmp_path: Path) -> None:
     import random
 
     import pyfaidx
+
     ctx = multiprocessing.get_context("spawn")
 
     # --- Create a realistic multi-chromosome FASTA ---
@@ -617,7 +649,10 @@ def test_peak_sampler_multiprocess_determinism(tmp_path: Path) -> None:
         source_types = set(loaded_src)
         if len(loaded_iv) > 0:
             # Should have both peaks and complexity-matched backgrounds
-            assert "IntervalSampler" in source_types or "ComplexityMatchedSampler" in source_types
+            assert (
+                "IntervalSampler" in source_types
+                or "ComplexityMatchedSampler" in source_types
+            )
         # Verify round-trip integrity
         reloaded_iv, reloaded_src = load_intervals_bed(dir1 / f"intervals_{split}.bed")
         assert reloaded_iv == loaded_iv
