@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Off-by-one in peak exclusion zones** (`PeakSampler`, `NegativePeakSampler`):
+  Peak intervals were added to the InterLap exclusion tree as closed `(start, end)`
+  instead of `(start, end - 1)`, extending exclusion zones one base pair beyond
+  each peak's half-open end. This caused background candidates starting exactly
+  at a peak's exclusive end to be incorrectly rejected.
+
 ### Added
 - **Ruff linter and formatter** configured in `pyproject.toml`: rules F (Pyflakes),
   I (isort), UP (pyupgrade), B (bugbear) enforced via `ruff check`; `ruff format`

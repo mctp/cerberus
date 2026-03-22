@@ -1327,7 +1327,7 @@ class PeakSampler(MultiSampler):
                 if interval.chrom not in neg_excludes:
                     # initialize a new empty interval-tree for a chrom if needed
                     neg_excludes[interval.chrom] = InterLap()
-                neg_excludes[interval.chrom].add((interval.start, interval.end))
+                neg_excludes[interval.chrom].add((interval.start, interval.end - 1))
 
             # 3. Candidates (Random background, excluding peaks)
             # Auto-calculate candidate pool size.
@@ -1444,7 +1444,7 @@ class NegativePeakSampler(MultiSampler):
         for interval in self.positives:
             if interval.chrom not in neg_excludes:
                 neg_excludes[interval.chrom] = InterLap()
-            neg_excludes[interval.chrom].add((interval.start, interval.end))
+            neg_excludes[interval.chrom].add((interval.start, interval.end - 1))
 
         # 3. Candidates (random background, excluding peaks)
         n_peaks = len(self.positives)
