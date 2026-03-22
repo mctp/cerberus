@@ -15,7 +15,8 @@ from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
 from cerberus.genome import create_genome_folds
 from cerberus.exclude import get_exclude_intervals
 from cerberus.output import compute_total_log_counts, compute_obs_log_counts
-from cerberus.config import get_log_count_params, SamplerConfig
+from cerberus.output import get_log_count_params
+from cerberus.config import SamplerConfig
 from cerberus.module import instantiate_metrics_and_loss
 
 logger = logging.getLogger(__name__)

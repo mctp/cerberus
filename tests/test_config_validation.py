@@ -10,8 +10,8 @@ from cerberus.config import (
     CerberusConfig,
     GenomeConfig,
     TrainConfig,
-    get_log_count_params,
 )
+from cerberus.output import get_log_count_params
 
 # ---------------------------------------------------------------------------
 # Helpers — minimal valid configs for cross-validation tests

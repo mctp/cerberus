@@ -12,7 +12,7 @@ from cerberus.output import (
     ModelOutput, ProfileCountOutput, ProfileLogRates,
     unbatch_modeloutput,
 )
-from cerberus.config import get_log_count_params
+from cerberus.output import get_log_count_params
 from cerberus.samplers import SlidingWindowSampler
 
 logger = logging.getLogger(__name__)

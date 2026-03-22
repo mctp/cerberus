@@ -13,7 +13,6 @@ from cerberus.config import (
     GenomeConfig,
     DataConfig,
     ModelConfig,
-    parse_hparams_config,
 )
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_folds
@@ -27,6 +26,25 @@ from cerberus.output import (
 from cerberus.interval import Interval
 
 logger = logging.getLogger(__name__)
+
+
+def parse_hparams_config(path: str | Path) -> CerberusConfig:
+    """Parse a ``hparams.yaml`` file into a validated :class:`CerberusConfig`.
+
+    Args:
+        path: Path to the YAML file (typically written by Lightning's
+            ``save_hyperparameters``).
+
+    Raises:
+        FileNotFoundError: If *path* does not exist.
+        ValidationError: If the YAML content fails schema validation.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"hparams file not found at: {p}")
+    with open(p, "r") as f:
+        data = yaml.safe_load(f)
+    return CerberusConfig.model_validate(data)
 
 
 class ModelEnsemble(nn.ModuleDict):

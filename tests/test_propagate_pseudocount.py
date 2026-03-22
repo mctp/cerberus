@@ -21,8 +21,8 @@ from cerberus.config import (
     TrainConfig,
     GenomeConfig,
     SamplerConfig,
-    get_log_count_params,
 )
+from cerberus.output import get_log_count_params
 from cerberus.module import instantiate_metrics_and_loss
 from cerberus.loss import MSEMultinomialLoss
 from cerberus.models.bpnet import BPNetLoss

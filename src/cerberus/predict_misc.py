@@ -9,7 +9,8 @@ convenient entry points for scripts and notebooks.
 import logging
 from pathlib import Path
 
-from cerberus.config import CerberusConfig, get_log_count_params
+from cerberus.config import CerberusConfig
+from cerberus.output import get_log_count_params
 from cerberus.dataset import CerberusDataset
 from cerberus.exclude import get_exclude_intervals
 from cerberus.genome import create_genome_folds

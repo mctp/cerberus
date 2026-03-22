@@ -1,12 +1,40 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 import dataclasses
 import logging
 import torch
 import numpy as np
-from typing import Any, Sequence
+from typing import Any, Sequence, TYPE_CHECKING
 from cerberus.interval import Interval
+from cerberus.config import import_class
+
+if TYPE_CHECKING:
+    from cerberus.config import ModelConfig
 
 logger = logging.getLogger(__name__)
+
+
+def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
+    """Determine log-count transform parameters from the model configuration.
+
+    Losses with ``uses_count_pseudocount = True`` (MSE-family, Dalmatian)
+    train log_counts in ``log(count + pseudocount)`` space, while
+    Poisson/NB losses use ``log(count)`` directly.
+
+    Args:
+        model_config: Model configuration containing ``loss_cls`` and
+            ``count_pseudocount``.
+
+    Returns:
+        Tuple of ``(log_counts_include_pseudocount, count_pseudocount)``.
+        The pseudocount is in scaled units or ``0.0`` for losses that
+        do not use it.
+    """
+    loss_cls = import_class(model_config.loss_cls)
+    if loss_cls.uses_count_pseudocount:
+        return True, model_config.count_pseudocount
+    return False, 0.0
 
 @dataclass(kw_only=True)
 class ModelOutput:

@@ -1,18 +1,32 @@
+"""Pydantic V2 configuration schemas for Cerberus.
+
+All configuration types are frozen ``BaseModel`` classes with ``extra="forbid"``.
+Fields are accessed via attribute access (``config.key``).  Mutations produce
+new instances via ``config.model_copy(update={...})``.
+
+The top-level ``CerberusConfig`` aggregates all sections and performs
+cross-validation (padded_size vs input_len, channel matching) at
+construction time.
+"""
+
 from __future__ import annotations
 
 from typing import Any
 from pathlib import Path
-import yaml
-import logging
 import importlib
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-logger = logging.getLogger(__name__)
-
 
 def import_class(name: str) -> Any:
-    """Dynamically imports a class from a module string (e.g., 'package.module.Class')."""
+    """Dynamically import a class from a dotted module path.
+
+    Args:
+        name: Fully qualified class name (e.g. ``'cerberus.models.bpnet.BPNet'``).
+
+    Raises:
+        ImportError: If the module or class cannot be found.
+    """
     try:
         module_name, class_name = name.rsplit(".", 1)
         module = importlib.import_module(module_name)
@@ -21,11 +35,19 @@ def import_class(name: str) -> Any:
         raise ImportError(f"Could not import class '{name}': {e}")
 
 
-# --- Configuration Schemas ---
-
-
 class GenomeConfig(BaseModel):
-    """Configuration for the genome assembly."""
+    """Configuration for the genome assembly.
+
+    Attributes:
+        name: Name of the genome assembly (e.g. ``'hg38'``).
+        fasta_path: Path to the FASTA file.
+        exclude_intervals: Mapping of names to BED files of regions to exclude.
+        allowed_chroms: Chromosome names to include.
+        chrom_sizes: Mapping of chromosome names to their lengths in bp.
+        fold_type: Strategy for creating folds (currently ``'chrom_partition'``).
+        fold_args: Arguments for the fold strategy.  For ``'chrom_partition'``:
+            ``k`` (int), ``test_fold`` (int | None), ``val_fold`` (int | None).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -51,7 +73,17 @@ class GenomeConfig(BaseModel):
 
 
 class SamplerConfig(BaseModel):
-    """Configuration for data samplers."""
+    """Configuration for data samplers.
+
+    Attributes:
+        sampler_type: Sampler kind — ``'interval'``, ``'sliding_window'``,
+            ``'random'``, ``'complexity_matched'``, ``'peak'``, or
+            ``'negative_peak'``.
+        padded_size: Length of intervals yielded by the sampler (after
+            padding/centering).
+        sampler_args: Sampler-specific keyword arguments (schema depends on
+            ``sampler_type``).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -61,7 +93,22 @@ class SamplerConfig(BaseModel):
 
 
 class DataConfig(BaseModel):
-    """Configuration for input/output data handling."""
+    """Configuration for input/output data handling.
+
+    Attributes:
+        inputs: Mapping of input channel names to bigWig file paths.
+        targets: Mapping of target channel names to bigWig file paths.
+        input_len: Length of the input sequence window in bp.
+        output_len: Length of the output signal window in bp.
+        max_jitter: Maximum random shift applied to the interval center
+            during training.
+        output_bin_size: Bin size for signal aggregation (1 = raw signal).
+        encoding: DNA encoding strategy (e.g. ``'ACGT'``).
+        log_transform: Whether to apply ``log(x + 1)`` to signal.
+        reverse_complement: Whether to apply reverse-complement augmentation.
+        use_sequence: Whether to include one-hot sequence as input.
+        target_scale: Multiplicative scaling factor applied to targets.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -88,7 +135,24 @@ class DataConfig(BaseModel):
 
 
 class TrainConfig(BaseModel):
-    """Configuration for training hyperparameters."""
+    """Configuration for training hyperparameters.
+
+    Attributes:
+        batch_size: Batch size for training and validation.
+        max_epochs: Maximum number of training epochs.
+        learning_rate: Base learning rate.
+        weight_decay: Weight decay for the optimizer.
+        patience: Early-stopping patience (epochs without improvement).
+        optimizer: Optimizer name (``'adam'``, ``'adamw'``, ``'sgd'``).
+        scheduler_type: Learning-rate scheduler name (``'default'`` to disable).
+        scheduler_args: Scheduler-specific keyword arguments.
+        filter_bias_and_bn: Exclude bias and batch-norm parameters from
+            weight decay.
+        reload_dataloaders_every_n_epochs: How often to reload data loaders.
+        adam_eps: Epsilon for Adam/AdamW numerical stability.
+        gradient_clip_val: Maximum gradient norm for clipping (``None`` to
+            disable).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -107,7 +171,16 @@ class TrainConfig(BaseModel):
 
 
 class PretrainedConfig(BaseModel):
-    """Configuration for loading pretrained weights into a model or sub-module."""
+    """Configuration for loading pretrained weights into a model sub-module.
+
+    Attributes:
+        weights_path: Path to a ``.pt`` state-dict file.
+        source: Sub-module prefix to extract from the source state dict
+            (``None`` uses all keys).
+        target: Named sub-module to load into (``None`` loads into the
+            whole model).
+        freeze: If ``True``, freeze all parameters in the loaded sub-module.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -118,7 +191,23 @@ class PretrainedConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    """Configuration for the model architecture."""
+    """Configuration for the model architecture.
+
+    Attributes:
+        name: Human-readable model name.
+        model_cls: Fully qualified class name of the model.
+        loss_cls: Fully qualified class name of the loss.
+        loss_args: Loss constructor keyword arguments.
+        metrics_cls: Fully qualified class name of the metric collection.
+        metrics_args: Metrics constructor keyword arguments.
+        model_args: Model constructor keyword arguments.
+        pretrained: List of pretrained-weight configs to apply after
+            instantiation.  Empty list means train from scratch.
+        count_pseudocount: Additive offset before log-transforming count
+            targets, in scaled units (raw coverage × ``target_scale``).
+            Set to ``0.0`` for losses that do not use a pseudocount
+            (Poisson / NB).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -157,9 +246,14 @@ class ModelConfig(BaseModel):
 class CerberusConfig(BaseModel):
     """Combined configuration for Cerberus.
 
-    Note: ``model_config_`` uses alias ``"model_config"`` because Pydantic V2
-    reserves the name. YAML key is ``"model_config"``; Python attribute is
-    ``model_config_``.
+    Aggregates all sub-configs and performs cross-validation at construction
+    time (padded_size vs input_len + jitter, output channel matching).
+
+    Note:
+        The ``model_config_`` attribute uses the alias ``"model_config"``
+        because Pydantic V2 reserves the bare name.  In YAML / dict
+        serialization the key is ``"model_config"``; in Python code use
+        ``cerberus_config.model_config_``.
     """
 
     model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
@@ -201,40 +295,3 @@ class CerberusConfig(BaseModel):
                 raise ValueError(f"Data inputs {missing} are not in model input channels")
 
         return self
-
-
-# --- Utility Functions ---
-
-
-def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
-    """Determines log-count transform parameters from the model configuration.
-
-    Returns (log_counts_include_pseudocount, count_pseudocount).
-    """
-    loss_cls = import_class(model_config.loss_cls)
-    if loss_cls.uses_count_pseudocount:
-        return True, model_config.count_pseudocount
-    return False, 0.0
-
-
-def parse_hparams_config(path: str | Path) -> CerberusConfig:
-    """Parses a hparams.yaml file and returns a validated CerberusConfig.
-
-    Args:
-        path: Path to the hparams.yaml file.
-
-    Returns:
-        Validated and frozen CerberusConfig.
-
-    Raises:
-        FileNotFoundError: If the file does not exist.
-        ValidationError: If the content is invalid.
-    """
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"hparams file not found at: {p}")
-
-    with open(p, "r") as f:
-        data = yaml.safe_load(f)
-
-    return CerberusConfig.model_validate(data)

@@ -30,8 +30,8 @@ from cerberus.config import (
     PretrainedConfig,
     SamplerConfig,
     TrainConfig,
-    parse_hparams_config,
 )
+from cerberus.model_ensemble import parse_hparams_config
 
 
 # ---------------------------------------------------------------------------

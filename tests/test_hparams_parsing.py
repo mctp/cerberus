@@ -2,7 +2,8 @@ import pytest
 import yaml
 from pathlib import Path
 from pydantic import ValidationError
-from cerberus.config import parse_hparams_config, CerberusConfig
+from cerberus.model_ensemble import parse_hparams_config
+from cerberus.config import CerberusConfig
 
 def test_parse_hparams_config_success():
     # Use existing hparams file
