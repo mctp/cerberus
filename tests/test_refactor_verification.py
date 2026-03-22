@@ -2,11 +2,8 @@ import pytest
 from pathlib import Path
 import yaml
 from pydantic import ValidationError
-from cerberus.config import (
-    import_class,
-    ModelConfig,
-    DataConfig,
-)
+from cerberus.config import ModelConfig, DataConfig
+from cerberus.utils import import_class
 from cerberus.module import instantiate_model
 from cerberus.model_ensemble import ModelEnsemble
 import cerberus.model_ensemble

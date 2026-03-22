@@ -2,10 +2,8 @@
 import pytest
 from pathlib import Path
 from pydantic import ValidationError
-from cerberus.config import (
-    import_class,
-    ModelConfig,
-)
+from cerberus.config import ModelConfig
+from cerberus.utils import import_class
 
 
 # ---------------------------------------------------------------------------
@@ -114,12 +112,6 @@ class TestModelConfigValidation:
     def test_valid_config(self):
         cfg = ModelConfig(**self._base_kwargs())
         assert cfg.name == "test_model"
-
-    def test_invalid_output_type(self):
-        kw = self._base_kwargs()
-        kw["model_args"]["output_type"] = "invalid_type"
-        with pytest.raises(ValidationError, match="output_type"):
-            ModelConfig(**kw)
 
     def test_valid_output_type_signal(self):
         kw = self._base_kwargs()

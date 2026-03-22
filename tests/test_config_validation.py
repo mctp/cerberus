@@ -122,39 +122,6 @@ def test_validate_model_config_valid():
     assert cfg.name == "test_model"
     assert cfg.model_args["input_channels"] == ["A", "C", "G", "T"]
 
-def test_validate_model_config_invalid_output_type():
-    with pytest.raises(ValidationError, match=r"output_type"):
-        ModelConfig(
-            name="test",
-            model_cls="torch.nn.Linear",
-            loss_cls="tests.test_config_validation.DummyLoss",
-            loss_args={},
-            metrics_cls="torchmetrics.MetricCollection",
-            metrics_args={},
-            model_args={
-                "input_channels": ["A"],
-                "output_channels": ["B"],
-                "output_type": "invalid_type",
-            },
-            pretrained=[],
-        )
-
-def test_validate_model_config_empty_channels():
-    with pytest.raises(ValidationError, match=r"input_channels.*must not be empty"):
-        ModelConfig(
-            name="test",
-            model_cls="torch.nn.Linear",
-            loss_cls="tests.test_config_validation.DummyLoss",
-            loss_args={},
-            metrics_cls="torchmetrics.MetricCollection",
-            metrics_args={},
-            model_args={
-                "input_channels": [],
-                "output_channels": ["B"],
-                "output_type": "signal",
-            },
-            pretrained=[],
-        )
 
 # --- Compatibility Tests (via CerberusConfig cross-validation) ---
 

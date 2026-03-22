@@ -133,7 +133,7 @@ def test_biasnet_convenience_import():
 
 def test_biasnet_via_import_class():
     """BiasNet can be instantiated via import_class (config pipeline)."""
-    from cerberus.config import import_class
+    from cerberus.utils import import_class
     cls = import_class("cerberus.models.biasnet.BiasNet")
     model = cls(input_len=1128, output_len=1024)
     assert isinstance(model, BiasNet)

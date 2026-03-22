@@ -16,8 +16,8 @@ from cerberus.config import (
     DataConfig,
     SamplerConfig,
     ModelConfig,
-    import_class,
 )
+from cerberus.utils import import_class
 
 logger = logging.getLogger(__name__)
 

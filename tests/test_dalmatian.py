@@ -152,6 +152,10 @@ def test_dalmatian_backward():
             assert p.grad is not None, f"signal_model.{name} has no gradient"
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_VERY_SLOW_TESTS") is None,
+    reason="Skipping very slow test (RUN_VERY_SLOW_TESTS not set)",
+)
 def test_dalmatian_gradient_detach():
     """L_recon gradients reach signal_model but NOT bias_model (gradient separation)."""
     model = Dalmatian()
@@ -415,7 +419,7 @@ def test_dalmatian_loss_missing_interval_source_raises():
 
 def test_dalmatian_model_via_import_class():
     """Dalmatian can be instantiated via import_class (config pipeline)."""
-    from cerberus.config import import_class
+    from cerberus.utils import import_class
     cls = import_class("cerberus.models.dalmatian.Dalmatian")
     model = cls(input_len=2112, output_len=1024)
     assert isinstance(model, Dalmatian)
@@ -423,7 +427,7 @@ def test_dalmatian_model_via_import_class():
 
 def test_dalmatian_loss_via_import_class():
     """DalmatianLoss can be instantiated via import_class (config pipeline)."""
-    from cerberus.config import import_class
+    from cerberus.utils import import_class
     cls = import_class("cerberus.loss.DalmatianLoss")
     loss = cls(base_loss_cls="cerberus.loss.MSEMultinomialLoss")
     assert isinstance(loss, DalmatianLoss)

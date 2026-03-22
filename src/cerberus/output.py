@@ -7,7 +7,7 @@ import torch
 import numpy as np
 from typing import Any, Sequence, TYPE_CHECKING
 from cerberus.interval import Interval
-from cerberus.config import import_class
+from cerberus.utils import import_class
 
 if TYPE_CHECKING:
     from cerberus.config import ModelConfig

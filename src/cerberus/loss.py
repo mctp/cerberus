@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from cerberus.config import import_class
+from cerberus.utils import import_class
 from cerberus.output import FactorizedProfileCountOutput, ProfileCountOutput, ProfileLogRates
 
 

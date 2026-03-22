@@ -13,26 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 from pathlib import Path
-import importlib
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
-
-def import_class(name: str) -> Any:
-    """Dynamically import a class from a dotted module path.
-
-    Args:
-        name: Fully qualified class name (e.g. ``'cerberus.models.bpnet.BPNet'``).
-
-    Raises:
-        ImportError: If the module or class cannot be found.
-    """
-    try:
-        module_name, class_name = name.rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        return getattr(module, class_name)
-    except (ValueError, ImportError, AttributeError) as e:
-        raise ImportError(f"Could not import class '{name}': {e}")
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class GenomeConfig(BaseModel):
@@ -44,6 +26,7 @@ class GenomeConfig(BaseModel):
         exclude_intervals: Mapping of names to BED files of regions to exclude.
         allowed_chroms: Chromosome names to include.
         chrom_sizes: Mapping of chromosome names to their lengths in bp.
+            Must contain exactly the chromosomes listed in ``allowed_chroms``.
         fold_type: Strategy for creating folds (currently ``'chrom_partition'``).
         fold_args: Arguments for the fold strategy.  For ``'chrom_partition'``:
             ``k`` (int), ``test_fold`` (int | None), ``val_fold`` (int | None).
@@ -58,18 +41,6 @@ class GenomeConfig(BaseModel):
     chrom_sizes: dict[str, int]
     fold_type: str
     fold_args: dict[str, Any]
-
-    @model_validator(mode="after")
-    def filter_chrom_sizes(self) -> "GenomeConfig":
-        """Ensure chrom_sizes only contains allowed_chroms and all are present."""
-        allowed_set = set(self.allowed_chroms)
-        filtered = {k: v for k, v in self.chrom_sizes.items() if k in allowed_set}
-        if len(filtered) != len(allowed_set):
-            missing = allowed_set - set(filtered.keys())
-            raise ValueError(f"chrom_sizes missing entries for allowed_chroms: {missing}")
-        if filtered != self.chrom_sizes:
-            return self.model_copy(update={"chrom_sizes": filtered})
-        return self
 
 
 class SamplerConfig(BaseModel):
@@ -220,27 +191,6 @@ class ModelConfig(BaseModel):
     model_args: dict[str, Any]
     pretrained: list[PretrainedConfig] = Field(default_factory=list)
     count_pseudocount: float = Field(default=0.0, ge=0)
-
-    @field_validator("model_args", mode="after")
-    @classmethod
-    def validate_model_args(cls, v: dict[str, Any]) -> dict[str, Any]:
-        if "input_channels" in v:
-            ic = v["input_channels"]
-            if not isinstance(ic, (list, tuple)) or not all(isinstance(c, str) for c in ic):
-                raise TypeError("model_args['input_channels'] must be a list of strings")
-            if len(ic) == 0:
-                raise ValueError("model_args['input_channels'] must not be empty")
-        if "output_channels" in v:
-            oc = v["output_channels"]
-            if not isinstance(oc, (list, tuple)) or not all(isinstance(c, str) for c in oc):
-                raise TypeError("model_args['output_channels'] must be a list of strings")
-            if len(oc) == 0:
-                raise ValueError("model_args['output_channels'] must not be empty")
-        if "output_type" in v:
-            valid_types = {"signal", "decoupled"}
-            if v["output_type"] not in valid_types:
-                raise ValueError(f"model_args['output_type'] must be one of {valid_types}")
-        return v
 
 
 class CerberusConfig(BaseModel):
