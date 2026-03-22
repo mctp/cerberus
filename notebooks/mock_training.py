@@ -28,7 +28,7 @@ if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
 # Cerberus imports
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, FoldArgs, IntervalSamplerArgs
 from cerberus.datamodule import CerberusDataModule
 from cerberus.dataset import CerberusDataset
 from cerberus.models.gopher import GlobalProfileCNN
@@ -97,8 +97,7 @@ class MockDataModule(CerberusDataModule):
         input_extractor = None
         
         # We need to ensure CerberusDataset doesn't load inputs from config
-        data_config_no_inputs = self.data_config.copy()
-        data_config_no_inputs["inputs"] = {}
+        data_config_no_inputs = self.data_config.model_copy(update={"inputs": {}})
 
         # Create Full Dataset
         # We pass dummy configs because CerberusDataset verifies them, 
@@ -138,55 +137,54 @@ dummy_dir.mkdir(exist_ok=True)
 (dummy_dir / "input.bw").touch()
 (dummy_dir / "target.bw").touch()
 
-genome_config: GenomeConfig = {
-    "name": "mock_genome",
-    "fasta_path": dummy_dir / "genome.fa",
-    "exclude_intervals": {"blacklist": dummy_dir / "exclude.bed"},
-    "allowed_chroms": ["chr1"],
-    "chrom_sizes": {"chr1": 1_000_000},
-    "fold_type": "chrom_partition",
-    "fold_args": {"k": 5, "test_fold": 0, "val_fold": 1}
-}
+genome_config = GenomeConfig.model_construct(
+    name="mock_genome",
+    fasta_path=dummy_dir / "genome.fa",
+    exclude_intervals={"blacklist": dummy_dir / "exclude.bed"},
+    allowed_chroms=["chr1"],
+    chrom_sizes={"chr1": 1_000_000},
+    fold_type="chrom_partition",
+    fold_args=FoldArgs(k=5, test_fold=0, val_fold=1),
+)
 
-data_config: DataConfig = {
-    "inputs": {"input1": dummy_dir / "input.bw"},
-    "targets": {"target1": dummy_dir / "target.bw"},
-    "input_len": 2048,
-    "output_len": 2048, # Output matches input for simplicity in this mock
-    "max_jitter": 0,
-    "output_bin_size": 1, # No binning
-    "encoding": "ACGT",
-    "log_transform": False,
-    "reverse_complement": False,
-        "target_scale": 1.0,
-    "count_pseudocount": 1.0,
-    "use_sequence": True
-}
+data_config = DataConfig.model_construct(
+    inputs={"input1": dummy_dir / "input.bw"},
+    targets={"target1": dummy_dir / "target.bw"},
+    input_len=2048,
+    output_len=2048,  # Output matches input for simplicity in this mock
+    max_jitter=0,
+    output_bin_size=1,  # No binning
+    encoding="ACGT",
+    log_transform=False,
+    reverse_complement=False,
+    target_scale=1.0,
+    use_sequence=True,
+)
 
-sampler_config: SamplerConfig = {
-    "sampler_type": "interval",
-    "padded_size": 2048,
-    "sampler_args": {"intervals_path": dummy_dir / "exclude.bed"}
-}
+sampler_config = SamplerConfig.model_construct(
+    sampler_type="interval",
+    padded_size=2048,
+    sampler_args=IntervalSamplerArgs.model_construct(intervals_path=dummy_dir / "exclude.bed"),
+)
 
-train_config: TrainConfig = {
-    "batch_size": 16,
-    "max_epochs": 20,
-    "learning_rate": 2e-3,
-    "weight_decay": 0.0,
-    "patience": 5,
-    "optimizer": "adamw",
-    "filter_bias_and_bn": True,
-    "reload_dataloaders_every_n_epochs": 0,
-    "scheduler_type": "cosine",
-    "scheduler_args": {
+train_config = TrainConfig(
+    batch_size=16,
+    max_epochs=20,
+    learning_rate=2e-3,
+    weight_decay=0.0,
+    patience=5,
+    optimizer="adamw",
+    filter_bias_and_bn=True,
+    reload_dataloaders_every_n_epochs=0,
+    scheduler_type="cosine",
+    scheduler_args={
         "num_epochs": 20,
         "warmup_epochs": 2,
-        "min_lr": 1e-5
+        "min_lr": 1e-5,
     },
-    "adam_eps": 1e-8,
-    "gradient_clip_val": None,
-}
+    adam_eps=1e-8,
+    gradient_clip_val=None,
+)
 
 # %% [markdown]
 # ## 3. Model & Training
@@ -222,9 +220,9 @@ module = CerberusModule(
 # and is not suitable when you need a reference to the model after training.
 if __name__ == "__main__":
     datamodule.prepare_data()
-    datamodule.setup(batch_size=train_config["batch_size"], num_workers=0, in_memory=False)
+    datamodule.setup(batch_size=train_config.batch_size, num_workers=0, in_memory=False)
     trainer = pl.Trainer(
-        max_epochs=train_config["max_epochs"],
+        max_epochs=train_config.max_epochs,
         accelerator="auto",
         devices=1,
         limit_train_batches=50,
@@ -236,7 +234,7 @@ if __name__ == "__main__":
         callbacks=[
             pl.callbacks.EarlyStopping(
                 monitor="val_loss",
-                patience=train_config["patience"],
+                patience=train_config.patience,
             ),
         ],
     )

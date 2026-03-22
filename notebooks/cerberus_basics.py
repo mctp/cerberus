@@ -81,7 +81,7 @@ import pyfaidx
 
 # Initialize SequenceExtractor
 seq_extractor = SequenceExtractor(
-    fasta_path=genome_config["fasta_path"],
+    fasta_path=genome_config.fasta_path,
     encoding="ACGT"  # Can be 'ACGT'
 )
 
@@ -95,7 +95,7 @@ print("Sequence Shape:", seq.shape) # (4, 50) for one-hot
 print("First 10 bases (one-hot):\n", seq[:, :10])
 
 # Extract using pyfaidx directly for comparison
-genome = pyfaidx.Fasta(str(genome_config["fasta_path"]))
+genome = pyfaidx.Fasta(str(genome_config.fasta_path))
 # pyfaidx uses 0-based indexing like we do, but let's verify exact interval
 # Interval is [start, end)
 seq_str = genome[interval.chrom][interval.start:interval.end].seq # type: ignore
@@ -155,31 +155,29 @@ with gzip.open(peaks_path, "rt") as f:
 print("-" * 20)
 
 # Basic config for IntervalSampler
-sampler_config_peaks: SamplerConfig = {
-    "sampler_type": "interval",
-    "padded_size": 1000, # Resize intervals to this width
-    "sampler_args": {
-        "intervals_path": peaks_path
-    }
-}
+sampler_config_peaks = SamplerConfig(
+    sampler_type="interval",
+    padded_size=1000,  # Resize intervals to this width
+    sampler_args={"intervals_path": peaks_path},
+)
 
 # We need the fold configuration from the genome config
 from cerberus.genome import create_genome_folds
 folds = create_genome_folds(
-    genome_config["chrom_sizes"],
-    genome_config["fold_type"],
-    genome_config["fold_args"]
+    genome_config.chrom_sizes,
+    genome_config.fold_type,
+    genome_config.fold_args,
 )
 
 # Create the sampler
 # Note: We need to load exclude intervals (InterLap objects) from paths
-exclude_intervals = get_exclude_intervals(genome_config["exclude_intervals"])
+exclude_intervals = get_exclude_intervals(genome_config.exclude_intervals)
 
 peak_sampler = create_sampler(
     sampler_config_peaks,
-    genome_config["chrom_sizes"],
+    genome_config.chrom_sizes,
     folds=folds,
-    exclude_intervals=exclude_intervals
+    exclude_intervals=exclude_intervals,
 )
 
 print(f"Number of peaks: {len(peak_sampler)}")
@@ -192,19 +190,17 @@ print("Third sample:", peak_sampler[2])
 # ### Sliding Window Sampler
 
 # %%
-sampler_config_sw: SamplerConfig = {
-    "sampler_type": "sliding_window",
-    "padded_size": 1000,
-    "sampler_args": {
-        "stride": 50000 # Large stride for demo purposes
-    }
-}
+sampler_config_sw = SamplerConfig(
+    sampler_type="sliding_window",
+    padded_size=1000,
+    sampler_args={"stride": 50000},  # Large stride for demo purposes
+)
 
 sw_sampler = create_sampler(
     sampler_config_sw,
-    genome_config["chrom_sizes"],
+    genome_config.chrom_sizes,
     folds=folds,
-    exclude_intervals=exclude_intervals
+    exclude_intervals=exclude_intervals,
 )
 
 print(f"Number of sliding windows: {len(sw_sampler)}")
@@ -224,24 +220,19 @@ print("Third window:", sw_sampler[2])
 # It handles splitting into train/val/test folds automatically.
 
 # %%
-data_config: DataConfig = {
-    "encoding": "ACGT",
-    "inputs": {
-        "atac": bigwig_path
-    },
-    "targets": {
-        "atac": bigwig_path # Using same file as target for demo (autoencoder style)
-    },
-    "input_len": 1000, # Should match padded_size from sampler
-    "output_len": 1000,
-    "output_bin_size": 1,
-    "max_jitter": 0,
-    "log_transform": False,
-    "reverse_complement": False,
-        "target_scale": 1.0,
-    "count_pseudocount": 1.0,
-    "use_sequence": True,
-}
+data_config = DataConfig(
+    encoding="ACGT",
+    inputs={"atac": bigwig_path},
+    targets={"atac": bigwig_path},  # Using same file as target for demo (autoencoder style)
+    input_len=1000,  # Should match padded_size from sampler
+    output_len=1000,
+    output_bin_size=1,
+    max_jitter=0,
+    log_transform=False,
+    reverse_complement=False,
+    target_scale=1.0,
+    use_sequence=True,
+)
 
 dataset = CerberusDataset(
     genome_config=genome_config,
@@ -293,13 +284,10 @@ print("Batch Intervals:", batch["intervals"])
 
 # %%
 # Change padded size to 200
-sampler_config_small: SamplerConfig = sampler_config_peaks.copy()
-sampler_config_small["padded_size"] = 200
+sampler_config_small = sampler_config_peaks.model_copy(update={"padded_size": 200})
 
 # Also update data config to match the new size
-data_config_small: DataConfig = data_config.copy()
-data_config_small["input_len"] = 200
-data_config_small["output_len"] = 200
+data_config_small = data_config.model_copy(update={"input_len": 200, "output_len": 200})
 
 ds_small = CerberusDataset(
     genome_config=genome_config,

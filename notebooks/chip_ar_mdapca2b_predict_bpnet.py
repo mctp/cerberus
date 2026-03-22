@@ -87,20 +87,19 @@ output_len = 1000
 output_bin_size = 1
 log_transform = False
 
-data_config: DataConfig = {
-    "inputs": {}, 
-    "targets": {"signal": dataset_files["bigwig"]},
-    "input_len": input_len,
-    "output_len": output_len, 
-    "max_jitter": 128, # Matches training config (ignored if is_train=False)
-    "output_bin_size": output_bin_size,
-    "encoding": "ACGT",
-    "log_transform": log_transform,
-    "reverse_complement": True, # Matches training config (ignored if is_train=False)
-        "target_scale": 1.0,
-    "count_pseudocount": 1.0,
-    "use_sequence": True,
-}
+data_config = DataConfig(
+    inputs={},
+    targets={"signal": dataset_files["bigwig"]},
+    input_len=input_len,
+    output_len=output_len,
+    max_jitter=128,  # Matches training config (ignored if is_train=False)
+    output_bin_size=output_bin_size,
+    encoding="ACGT",
+    log_transform=log_transform,
+    reverse_complement=True,  # Matches training config (ignored if is_train=False)
+    target_scale=1.0,
+    use_sequence=True,
+)
 
 # Sampler Config
 # Note: For prediction, we want exact windows centered on peaks.
@@ -108,48 +107,46 @@ data_config: DataConfig = {
 # The Jitter transform (when deterministic) performs a center crop.
 # So we can define padded_size to accommodate jitter if we want to reuse config exactly.
 # But here we define a prediction-specific sampler config.
-sampler_config: SamplerConfig = {
-    "sampler_type": "interval",
-    "padded_size": input_len + 2 * 128, # Matches training setup
-    "sampler_args": {
-        "intervals_path": dataset_files["narrowPeak"]
-    }
-}
+sampler_config = SamplerConfig(
+    sampler_type="interval",
+    padded_size=input_len + 2 * 128,  # Matches training setup
+    sampler_args={"intervals_path": dataset_files["narrowPeak"]},
+)
 
 # Train Config
-train_config: TrainConfig = {
-    "batch_size": 64,
-    "max_epochs": 1,
-    "learning_rate": 1e-3,
-    "weight_decay": 0.0,
-    "patience": 1,
-    "optimizer": "adamw",
-    "filter_bias_and_bn": True,
-    "reload_dataloaders_every_n_epochs": 0,
-    "scheduler_type": "cosine",
-    "scheduler_args": {},
-    "adam_eps": 1e-7,
-    "gradient_clip_val": None,
-}
+train_config = TrainConfig(
+    batch_size=64,
+    max_epochs=1,
+    learning_rate=1e-3,
+    weight_decay=0.0,
+    patience=1,
+    optimizer="adamw",
+    filter_bias_and_bn=True,
+    reload_dataloaders_every_n_epochs=0,
+    scheduler_type="cosine",
+    scheduler_args={},
+    adam_eps=1e-7,
+    gradient_clip_val=None,
+)
 
 # Model Config for BPNet
-model_config: ModelConfig = {
-    "name": "BPNet",
-    "model_cls": "cerberus.models.bpnet.BPNet",
-    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-    "loss_args": {
-        "alpha": 1.0, 
-        "log1p_targets": log_transform
+model_config = ModelConfig(
+    name="BPNet",
+    model_cls="cerberus.models.bpnet.BPNet",
+    loss_cls="cerberus.models.bpnet.BPNetLoss",
+    loss_args={
+        "alpha": 1.0,
+        "log1p_targets": log_transform,
     },
-    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {},
-    "model_args": {
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],
         "filters": 64,
-        "n_dilated_layers": 8
-    }
-}
+        "n_dilated_layers": 8,
+    },
+)
 
 # %% [markdown]
 # ## 3. Initialize Dataset and Sampler
@@ -264,7 +261,7 @@ for key, track in outputs.items():
 # Visualizing the interval
 print(f"Visualizing interval: {target_interval}")
 
-output_bin_size = data_config["output_bin_size"]
+output_bin_size = data_config.output_bin_size
 rel_start_bp = target_interval.center(output_len).start - merged_interval.start
 rel_start_bin = rel_start_bp // output_bin_size
 n_bins = output_len // output_bin_size
@@ -277,9 +274,9 @@ print(f"Number of Bins: {n_bins}")
 logits = outputs["logits"][:, rel_start_bin : rel_start_bin + n_bins]
 logits_tensor = logits
 
-# Track 1: Log Total Counts (constant over interval)
-log_counts = outputs["log_counts"][:, rel_start_bin : rel_start_bin + n_bins]
-log_counts_val = torch.tensor(log_counts[0, 0]) # Take first value
+# Track 1: Log Total Counts (scalar per channel)
+log_counts = outputs["log_counts"]
+log_counts_val = log_counts[0].detach().clone()  # Take first channel
 total_counts = torch.exp(log_counts_val)
 
 print(f"Predicted Total Counts: {total_counts.item():.2f}")

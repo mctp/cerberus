@@ -20,7 +20,7 @@ The training phase is responsible for learning the mapping from DNA sequence to 
 
 ### Key Components
 
-*   **Configuration**: You define 5 key config dictionaries:
+*   **Configuration**: You define 5 key config objects (Pydantic models):
     *   `GenomeConfig`: Which genome build (hg38), exclusions (blacklists), and fold strategy to use.
     *   `DataConfig`: Input/output shapes, resolution, and transformations (e.g., log-transform targets).
     *   `SamplerConfig`: Where to select training examples (e.g., `interval` sampler for peaks, `sliding_window` for genome-wide).
@@ -33,7 +33,7 @@ The training phase is responsible for learning the mapping from DNA sequence to 
 ### The Process
 
 1.  **Data Setup**: Download/Prepare genome FASTA and signal BigWigs.
-2.  **Config Definition**: Set up the configuration dictionaries.
+2.  **Config Definition**: Set up the configuration objects.
 3.  **Execution**: Call `train_single` or `train_multi`.
 4.  **Output**: Cerberus saves model weights to a `fold_X` subdirectory within the specified output directory. Each fold contains a clean `model.pt` state dict (preferred for inference), interval manifests (`intervals_{train,val,test}.bed` with `interval_source` labels for reproducible evaluation), alongside Lightning `.ckpt` checkpoints and training logs.
 

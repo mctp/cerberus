@@ -280,14 +280,17 @@ class SamplerConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def resolve_sampler_args(cls, data: Any) -> Any:
+    def resolve_sampler_args(cls, data: Any, info: ValidationInfo) -> Any:
         """Route sampler_args to the correct typed model based on sampler_type."""
         if isinstance(data, dict):
             sampler_type = data.get("sampler_type")
             args = data.get("sampler_args", {})
             if sampler_type in _SAMPLER_ARGS_TYPE_MAP and isinstance(args, dict):
                 data = dict(data)  # don't mutate the original
-                data["sampler_args"] = _SAMPLER_ARGS_TYPE_MAP[sampler_type](**args)
+                ctx = info.context if info and info.context else None
+                data["sampler_args"] = _SAMPLER_ARGS_TYPE_MAP[sampler_type].model_validate(
+                    args, context=ctx
+                )
         return data
 
 

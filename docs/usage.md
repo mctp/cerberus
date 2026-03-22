@@ -29,29 +29,31 @@ genome_config = create_genome_config(
 )
 
 # 2. Data Configuration
-data_config = {
-    "inputs": {},  # Only sequence input. Can add {"Track": "path.bw" or "path.bed"}
-    "targets": {"AR": signal_path}, # BigWig signal
-    "input_len": 2114,
-    "output_len": 1000,
-    "output_bin_size": 1,
-    "encoding": "ACGT",
-    "max_jitter": 128,
-    "log_transform": True,
-    "reverse_complement": True,
-    "use_sequence": True,
-    "target_scale": 1.0,  # Multiplicative scale applied to targets before log transform
-}
+from cerberus.config import DataConfig, SamplerConfig, TrainConfig, ModelConfig
+
+data_config = DataConfig(
+    inputs={},  # Only sequence input. Can add {"Track": "path.bw" or "path.bed"}
+    targets={"AR": signal_path},  # BigWig signal
+    input_len=2114,
+    output_len=1000,
+    output_bin_size=1,
+    encoding="ACGT",
+    max_jitter=128,
+    log_transform=True,
+    reverse_complement=True,
+    use_sequence=True,
+    target_scale=1.0,  # Multiplicative scale applied to targets before log transform
+)
 
 # 3. Sampler Configuration (Peaks + Negatives)
-sampler_config = {
-    "sampler_type": "peak",
-    "padded_size": 2114,
-    "sampler_args": {
+sampler_config = SamplerConfig(
+    sampler_type="peak",
+    padded_size=2114,
+    sampler_args={
         "intervals_path": peaks_path,
-        "background_ratio": 1.0 # 1:1 ratio of peaks to complexity-matched background
-    }
-}
+        "background_ratio": 1.0,  # 1:1 ratio of peaks to complexity-matched background
+    },
+)
 ```
 
 ## 2. Instantiate DataModule
@@ -87,42 +89,42 @@ from cerberus.loss import MSEMultinomialLoss
 from torchmetrics import MetricCollection, PearsonCorrCoef, MeanSquaredError
 
 # 4. Train Configuration
-train_config = {
-    "batch_size": 256,
-    "max_epochs": 100,
-    "learning_rate": 1e-3,
-    "weight_decay": 1e-4,
-    "patience": 10,
-    "optimizer": "adamw",
-    "scheduler_type": "cosine",
-    "scheduler_args": {"warmup_epochs": 5},
-    "filter_bias_and_bn": True,
-    "reload_dataloaders_every_n_epochs": 0,
-    "adam_eps": 1e-8,           # Use 1e-7 for BPNet-style models (matches TF/Keras default)
-    "gradient_clip_val": None,  # Set to e.g. 1.0 to clip gradients; None = disabled
-}
+train_config = TrainConfig(
+    batch_size=256,
+    max_epochs=100,
+    learning_rate=1e-3,
+    weight_decay=1e-4,
+    patience=10,
+    optimizer="adamw",
+    scheduler_type="cosine",
+    scheduler_args={"warmup_epochs": 5},
+    filter_bias_and_bn=True,
+    reload_dataloaders_every_n_epochs=0,
+    adam_eps=1e-8,           # Use 1e-7 for BPNet-style models (matches TF/Keras default)
+    gradient_clip_val=None,  # Set to e.g. 1.0 to clip gradients; None = disabled
+)
 
 # 5. Model Configuration
 # Uses standard models from cerberus.models or your own importable class path.
 # "model_cls", "loss_cls", and "metrics_cls" must be fully-qualified class strings.
 # input_len, output_len, output_bin_size are automatically passed from DataConfig.
 
-model_config = {
-    "name": "my_bpnet",
-    "model_cls": "cerberus.models.bpnet.BPNet",
-    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
+model_config = ModelConfig(
+    name="my_bpnet",
+    model_cls="cerberus.models.bpnet.BPNet",
+    loss_cls="cerberus.models.bpnet.BPNetLoss",
     # Set alpha="adaptive" to compute the counts loss weight from the training set
     # automatically (alpha = median_total_counts / 10). This balances the profile
     # and counts loss terms at the correct scale for the dataset depth.
-    "loss_args": {"alpha": "adaptive"},
-    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {},
-    "model_args": {
+    loss_args={"alpha": "adaptive"},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={
         "n_dilated_layers": 8,
         "output_channels": ["AR"],
     },
-    "count_pseudocount": 1.0,  # Additive offset before log-transforming count targets (scaled units)
-}
+    count_pseudocount=1.0,  # Additive offset before log-transforming count targets (scaled units)
+)
 
 # Option A: Train a Single Model (Single Split)
 # Uses the high-level API to handle instantiation and output structure (creates fold_0)

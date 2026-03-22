@@ -111,15 +111,17 @@ The `alpha` parameter balances the two terms. Because the multinomial NLL scales
 **Recommended**: set `alpha="adaptive"` in `ModelConfig.loss_args`. Cerberus will compute `alpha = median_total_counts / 10` from the training set before the module is instantiated, automatically matching the dataset depth:
 
 ```python
-model_config = {
-    "name": "BPNet_AR",
-    "model_cls": "cerberus.models.bpnet.BPNet",
-    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-    "loss_args": {"alpha": "adaptive"},  # resolved from training data at fit time
-    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {},
-    "model_args": {"n_dilated_layers": 8, "output_channels": ["signal"]},
-}
+from cerberus.config import ModelConfig
+
+model_config = ModelConfig(
+    name="BPNet_AR",
+    model_cls="cerberus.models.bpnet.BPNet",
+    loss_cls="cerberus.models.bpnet.BPNetLoss",
+    loss_args={"alpha": "adaptive"},  # resolved from training data at fit time
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={"n_dilated_layers": 8, "output_channels": ["signal"]},
+)
 ```
 
 See `docs/internal/adaptive_counts_loss_weight.md` for the full mathematical derivation.
@@ -177,14 +179,16 @@ A large-capacity architecture combining a ConvNeXtV2 stem with a Basenji-style d
 ASAP outputs log-rates and is trained with Poisson NLL directly on the profile (no separate count head). The data config sets `log_transform=True` so targets are log1p-transformed before computing the loss:
 
 ```python
-model_config = {
-    "name": "ConvNeXtDCNN",
-    "model_cls": "cerberus.models.asap.ConvNeXtDCNN",
-    "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
-    "loss_args": {"log_input": True, "log1p_targets": True},
-    "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
-    "metrics_args": {},
-    "model_args": {
+from cerberus.config import ModelConfig
+
+model_config = ModelConfig(
+    name="ConvNeXtDCNN",
+    model_cls="cerberus.models.asap.ConvNeXtDCNN",
+    loss_cls="cerberus.loss.ProfilePoissonNLLLoss",
+    loss_args={"log_input": True, "log1p_targets": True},
+    metrics_cls="cerberus.metrics.DefaultMetricCollection",
+    metrics_args={},
+    model_args={
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],
         "residual_blocks": 11,
@@ -192,7 +196,7 @@ model_config = {
         "filters1": 128,
         "dropout": 0.3,
     },
-}
+)
 ```
 
 ### Usage
@@ -345,23 +349,25 @@ L = L_recon(combined, target)                          # all examples
 No explicit signal suppression term is needed — gradient detach already prevents SignalNet from activating on background (verified in exp21: removing the L1 penalty had zero measurable effect).
 
 ```python
-model_config = {
-    "name": "Dalmatian",
-    "model_cls": "cerberus.models.dalmatian.Dalmatian",
-    "loss_cls": "cerberus.loss.DalmatianLoss",
-    "loss_args": {
+from cerberus.config import ModelConfig
+
+model_config = ModelConfig(
+    name="Dalmatian",
+    model_cls="cerberus.models.dalmatian.Dalmatian",
+    loss_cls="cerberus.loss.DalmatianLoss",
+    loss_args={
         "base_loss_cls": "cerberus.loss.MSEMultinomialLoss",
         "base_loss_args": {"count_per_channel": True},
         "bias_weight": 1.0,
     },
-    "metrics_cls": "cerberus.models.pomeranian.PomeranianMetricCollection",
-    "metrics_args": {},
-    "model_args": {
+    metrics_cls="cerberus.models.pomeranian.PomeranianMetricCollection",
+    metrics_args={},
+    model_args={
         "input_len": 2112,
         "output_len": 1024,
         "output_channels": ["sample1"],
     },
-}
+)
 ```
 
 ### Usage
@@ -510,19 +516,21 @@ A baseline architecture corresponding to the "Baseline CNN" from the Gopher manu
 Gopher outputs log-rates and is trained with Poisson NLL directly on the profile (no separate count head). The data config should set `log_transform=True` so targets are log1p-transformed before computing the loss:
 
 ```python
-model_config = {
-    "name": "GlobalProfileCNN",
-    "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
-    "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
-    "loss_args": {"log_input": True, "log1p_targets": True},
-    "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
-    "metrics_args": {},
-    "model_args": {
+from cerberus.config import ModelConfig
+
+model_config = ModelConfig(
+    name="GlobalProfileCNN",
+    model_cls="cerberus.models.gopher.GlobalProfileCNN",
+    loss_cls="cerberus.loss.ProfilePoissonNLLLoss",
+    loss_args={"log_input": True, "log1p_targets": True},
+    metrics_cls="cerberus.metrics.DefaultMetricCollection",
+    metrics_args={},
+    model_args={
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],
         "bottleneck_channels": 8,
     },
-}
+)
 ```
 
 ### Usage

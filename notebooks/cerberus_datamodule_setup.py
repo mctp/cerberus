@@ -102,20 +102,19 @@ pp.pprint(genome_config)
 # - `bin_size`: Resolution of the output.
 
 # %%
-data_config: DataConfig = {
-    "inputs": {"mappability": mappability_path},  # Only sequence input
-    "targets": {"AR": signal_path},
-    "input_len": 2048,
-    "output_len": 1024,
-    "output_bin_size": 4,
-    "encoding": "ACGT",
-    "max_jitter": 128,
-    "log_transform": True,
-    "reverse_complement": True,
-        "target_scale": 1.0,
-    "count_pseudocount": 1.0,
-    "use_sequence": True,
-}
+data_config = DataConfig(
+    inputs={"mappability": mappability_path},  # Only sequence input
+    targets={"AR": signal_path},
+    input_len=2048,
+    output_len=1024,
+    output_bin_size=4,
+    encoding="ACGT",
+    max_jitter=128,
+    log_transform=True,
+    reverse_complement=True,
+    target_scale=1.0,
+    use_sequence=True,
+)
 print("Data Config Created:")
 pp.pprint(data_config)
 
@@ -129,13 +128,11 @@ pp.pprint(data_config)
 # padded_size must be >= input_len + 2 * max_jitter
 # input_len = 2048, max_jitter = 128
 # required = 2048 + 2 * 128 = 2304
-sampler_config: SamplerConfig = {
-    "sampler_type": "interval",
-    "padded_size": 2304,
-    "sampler_args": {
-        "intervals_path": peaks_path
-    }
-}
+sampler_config = SamplerConfig(
+    sampler_type="interval",
+    padded_size=2304,
+    sampler_args={"intervals_path": peaks_path},
+)
 
 # %% [markdown]
 # ## 5. Instantiate DataModule

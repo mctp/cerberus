@@ -49,37 +49,36 @@ genome_config: GenomeConfig = create_genome_config(
 
 # 2. Data Config
 # Matches training: 2114bp input -> 1000bp output
-data_config: DataConfig = {
-    "inputs": {}, 
-    "targets": {"signal": DATA_DIR / "dataset/mdapca2b_ar/mdapca2b-ar.bigwig"},
-    "input_len": 2114,
-    "output_len": 1000,
-    "output_bin_size": 1,
-    "encoding": "ACGT",
-    "max_jitter": 0, # Ignored during prediction (is_train=False)
-    "log_transform": False,
-    "reverse_complement": False, # Ignored during prediction
-        "target_scale": 1.0,
-    "count_pseudocount": 1.0,
-    "use_sequence": True,
-}
+data_config = DataConfig(
+    inputs={},
+    targets={"signal": DATA_DIR / "dataset/mdapca2b_ar/mdapca2b-ar.bigwig"},
+    input_len=2114,
+    output_len=1000,
+    output_bin_size=1,
+    encoding="ACGT",
+    max_jitter=0,  # Ignored during prediction (is_train=False)
+    log_transform=False,
+    reverse_complement=False,  # Ignored during prediction
+    target_scale=1.0,
+    use_sequence=True,
+)
 
 # 3. Model Config
 # Matches training architecture
-model_config: ModelConfig = {
-    "name": "BPNet",
-    "model_cls": "cerberus.models.bpnet.BPNet",
-    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-    "loss_args": {"alpha": 1.0},
-    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {},
-    "model_args": {
+model_config = ModelConfig(
+    name="BPNet",
+    model_cls="cerberus.models.bpnet.BPNet",
+    loss_cls="cerberus.models.bpnet.BPNetLoss",
+    loss_args={"alpha": 1.0},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],
         "filters": 64,
-        "n_dilated_layers": 8
-    }
-}
+        "n_dilated_layers": 8,
+    },
+)
 
 # %% [markdown]
 # ## 2. Load Model Ensemble
@@ -112,8 +111,8 @@ print(f"Loaded models: {list(ensemble.keys())}")
 peaks_path = DATA_DIR / "dataset/mdapca2b_ar/mdapca2b-ar.narrowPeak.gz"
 sampler = IntervalSampler(
     file_path=peaks_path,
-    chrom_sizes=genome_config["chrom_sizes"],
-    padded_size=data_config["input_len"],
+    chrom_sizes=genome_config.chrom_sizes,
+    padded_size=data_config.input_len,
     exclude_intervals={}, # Don't filter for this demo
     folds=[] # No fold logic for simple interval loading
 )

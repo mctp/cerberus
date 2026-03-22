@@ -73,51 +73,48 @@ genome_config: GenomeConfig = create_genome_config(
 # Data Config
 # We specify no input tracks (just DNA) and the BigWig as the target.
 # BPNet works at base resolution (output_bin_size=1).
-data_config: DataConfig = {
-    "inputs": {}, # No additional input tracks, just DNA
-    "targets": {"signal": dataset_files["bigwig"]},
-    "input_len": 2114,
-    "output_len": 1000, 
-    "max_jitter": 128,  # Augmentation jitter
-    "output_bin_size": 1, # Base resolution for BPNet
-    "encoding": "ACGT", # Standard One-Hot
-    "log_transform": False, # BPNet uses raw counts for multinomial loss
-    "reverse_complement": True, # Augmentation
-        "target_scale": 1.0,
-    "count_pseudocount": 1.0,
-    "use_sequence": True,
-}
+data_config = DataConfig(
+    inputs={},  # No additional input tracks, just DNA
+    targets={"signal": dataset_files["bigwig"]},
+    input_len=2114,
+    output_len=1000,
+    max_jitter=128,  # Augmentation jitter
+    output_bin_size=1,  # Base resolution for BPNet
+    encoding="ACGT",  # Standard One-Hot
+    log_transform=False,  # BPNet uses raw counts for multinomial loss
+    reverse_complement=True,  # Augmentation
+    target_scale=1.0,
+    use_sequence=True,
+)
 
 # Sampler Config
 # We need padded_size >= input_len + 2 * max_jitter = 2114 + 256 = 2370.
-sampler_config: SamplerConfig = {
-    "sampler_type": "interval",
-    "padded_size": 2370,
-    "sampler_args": {
-        "intervals_path": dataset_files["narrowPeak"]
-    }
-}
+sampler_config = SamplerConfig(
+    sampler_type="interval",
+    padded_size=2370,
+    sampler_args={"intervals_path": dataset_files["narrowPeak"]},
+)
 
 # Train Config
 # Standard training config with AdamW optimizer and cosine scheduler.
-train_config: TrainConfig = {
-    "batch_size": 16, # BPNet can be memory intensive, adjust if needed
-    "max_epochs": 2, # Short training for demonstration
-    "learning_rate": 1e-3,
-    "weight_decay": 0.01,
-    "patience": 5,
-    "optimizer": "adamw",
-    "filter_bias_and_bn": True,
-    "reload_dataloaders_every_n_epochs": 0,
-    "scheduler_type": "cosine",
-    "scheduler_args": {
-        "num_epochs": 2, # Must match max_epochs
+train_config = TrainConfig(
+    batch_size=16,  # BPNet can be memory intensive, adjust if needed
+    max_epochs=2,  # Short training for demonstration
+    learning_rate=1e-3,
+    weight_decay=0.01,
+    patience=5,
+    optimizer="adamw",
+    filter_bias_and_bn=True,
+    reload_dataloaders_every_n_epochs=0,
+    scheduler_type="cosine",
+    scheduler_args={
+        "num_epochs": 2,  # Must match max_epochs
         "warmup_epochs": 0,
-        "min_lr": 1e-5
+        "min_lr": 1e-5,
     },
-    "adam_eps": 1e-7,
-    "gradient_clip_val": None,
-}
+    adam_eps=1e-7,
+    gradient_clip_val=None,
+)
 
 print("Genome Config:")
 pprint(genome_config)
@@ -145,9 +142,9 @@ datamodule = CerberusDataModule(
 # Note: num_workers=0 for compatibility in notebook
 datamodule.prepare_data()
 datamodule.setup(
-    batch_size=train_config["batch_size"],
+    batch_size=train_config.batch_size,
     num_workers=0,
-    in_memory=False
+    in_memory=False,
 )
 if datamodule.train_dataset:
     print("Train set size:", len(datamodule.train_dataset))
@@ -168,18 +165,18 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 1000)
 # (alpha = median_counts / 10), balancing the profile and counts loss terms.
 
 # %%
-model_config: ModelConfig = {
-    "name": "BPNet_AR",
-    "model_cls": "cerberus.models.bpnet.BPNet",
-    "model_args": {
+model_config = ModelConfig(
+    name="BPNet_AR",
+    model_cls="cerberus.models.bpnet.BPNet",
+    model_args={
         "n_dilated_layers": 8,  # 8 layers (dilations 2..256) matches 2114->1000
         "output_channels": ["signal"],
     },
-    "loss_cls": "cerberus.models.bpnet.BPNetLoss",
-    "loss_args": {"alpha": "adaptive"},  # computed from training data at fit time
-    "metrics_cls": "cerberus.models.bpnet.BPNetMetricCollection",
-    "metrics_args": {},
-}
+    loss_cls="cerberus.models.bpnet.BPNetLoss",
+    loss_args={"alpha": "adaptive"},  # computed from training data at fit time
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+)
 
 # %% [markdown]
 # ## 5. Training

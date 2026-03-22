@@ -73,51 +73,48 @@ genome_config: GenomeConfig = create_genome_config(
 
 # Data Config
 # We specify no input tracks (just DNA) and the BigWig as the target.
-data_config: DataConfig = {
-    "inputs": {}, # No additional input tracks, just DNA
-    "targets": {"signal": dataset_files["bigwig"]},
-    "input_len": 2048,
-    "output_len": 1024, # 1024bp field of view -> 256 bins @ 4bp
-    "max_jitter": 128,  # Augmentation jitter
-    "output_bin_size": 4, # Binning resolution
-    "encoding": "ACGT", # Standard One-Hot
-    "log_transform": True, # Log(x+1) transform targets
-    "reverse_complement": True, # Augmentation
-        "target_scale": 1.0,
-    "count_pseudocount": 1.0,
-    "use_sequence": True,
-}
+data_config = DataConfig(
+    inputs={},  # No additional input tracks, just DNA
+    targets={"signal": dataset_files["bigwig"]},
+    input_len=2048,
+    output_len=1024,  # 1024bp field of view -> 256 bins @ 4bp
+    max_jitter=128,  # Augmentation jitter
+    output_bin_size=4,  # Binning resolution
+    encoding="ACGT",  # Standard One-Hot
+    log_transform=True,  # Log(x+1) transform targets
+    reverse_complement=True,  # Augmentation
+    target_scale=1.0,
+    use_sequence=True,
+)
 
 # Sampler Config
 # We need padded_size >= input_len + 2 * max_jitter = 2048 + 256 = 2304.
-sampler_config: SamplerConfig = {
-    "sampler_type": "interval",
-    "padded_size": 2304,
-    "sampler_args": {
-        "intervals_path": dataset_files["narrowPeak"]
-    }
-}
+sampler_config = SamplerConfig(
+    sampler_type="interval",
+    padded_size=2304,
+    sampler_args={"intervals_path": dataset_files["narrowPeak"]},
+)
 
 # Train Config
 # Standard training config with AdamW optimizer and cosine scheduler.
-train_config: TrainConfig = {
-    "batch_size": 16,
-    "max_epochs": 3, # Short training for demonstration
-    "learning_rate": 0.1,
-    "weight_decay": 0.01,
-    "patience": 5,
-    "optimizer": "adamw",
-    "filter_bias_and_bn": True,
-    "reload_dataloaders_every_n_epochs": 0,
-    "scheduler_type": "cosine",
-    "scheduler_args": {
-        "num_epochs": 3, # Must match max_epochs
+train_config = TrainConfig(
+    batch_size=16,
+    max_epochs=3,  # Short training for demonstration
+    learning_rate=0.1,
+    weight_decay=0.01,
+    patience=5,
+    optimizer="adamw",
+    filter_bias_and_bn=True,
+    reload_dataloaders_every_n_epochs=0,
+    scheduler_type="cosine",
+    scheduler_args={
+        "num_epochs": 3,  # Must match max_epochs
         "warmup_epochs": 0,
-        "min_lr": 1e-5
+        "min_lr": 1e-5,
     },
-    "adam_eps": 1e-8,
-    "gradient_clip_val": None,
-}
+    adam_eps=1e-8,
+    gradient_clip_val=None,
+)
 
 print("Genome Config:")
 pprint(genome_config)
@@ -146,9 +143,9 @@ datamodule = CerberusDataModule(
 # Note: num_workers=0 for compatibility in notebook
 datamodule.prepare_data()
 datamodule.setup(
-    batch_size=train_config["batch_size"],
+    batch_size=train_config.batch_size,
     num_workers=0,
-    in_memory=False
+    in_memory=False,
 )
 if datamodule.train_dataset:
     print("Train set size:", len(datamodule.train_dataset))
@@ -168,15 +165,15 @@ print("Batch targets shape:", batch["targets"].shape) # Expected: (B, 1, 256)
 # `output_bin_size`) are taken automatically from `data_config` at instantiation time.
 
 # %%
-model_config: ModelConfig = {
-    "name": "GlobalProfileCNN",
-    "model_cls": "cerberus.models.gopher.GlobalProfileCNN",
-    "model_args": {},  # input_len/output_len/output_bin_size come from data_config
-    "loss_cls": "cerberus.loss.ProfilePoissonNLLLoss",
-    "loss_args": {"log_input": True, "full": False, "log1p_targets": False},
-    "metrics_cls": "cerberus.metrics.DefaultMetricCollection",
-    "metrics_args": {"log1p_targets": False},
-}
+model_config = ModelConfig(
+    name="GlobalProfileCNN",
+    model_cls="cerberus.models.gopher.GlobalProfileCNN",
+    model_args={},  # input_len/output_len/output_bin_size come from data_config
+    loss_cls="cerberus.loss.ProfilePoissonNLLLoss",
+    loss_args={"log_input": True, "full": False, "log1p_targets": False},
+    metrics_cls="cerberus.metrics.DefaultMetricCollection",
+    metrics_args={"log1p_targets": False},
+)
 
 # %% [markdown]
 # ## 5. Training
@@ -287,7 +284,7 @@ except Exception as e:
 # %%
 train_samples = len(datamodule.train_dataset)
 val_samples = len(datamodule.val_dataset)
-batch_size = train_config["batch_size"]
+batch_size = train_config.batch_size
 
 print(f"Total Train Samples (Full Epoch): {train_samples}")
 print(f"Total Validation Samples (Full Epoch): {val_samples}")
