@@ -81,15 +81,25 @@ def predict_to_bigwig(
                 if region.chrom not in chrom_sizes:
                     logger.warning(f"Skipping region on unknown chrom: {region.chrom}")
                     continue
-                # Tile the region with input-length windows
+                # Tile the region with input-length windows.
+                # Clamp start so windows never begin before position 0.
                 windows: list[Interval] = []
-                pos = region.start - offset
+                ideal_start = region.start - offset
+                pos = max(0, ideal_start)
+                if pos != ideal_start:
+                    logger.warning(
+                        "Region %s starts within %d bp of chromosome start; "
+                        "predictions will begin at position %d instead of %d",
+                        region,
+                        offset,
+                        pos + offset,
+                        region.start,
+                    )
                 while pos + input_len <= region.end + offset + input_len:
-                    win_start = max(0, pos)
-                    win_end = win_start + input_len
+                    win_end = pos + input_len
                     if win_end > chrom_sizes[region.chrom]:
                         break
-                    windows.append(Interval(region.chrom, win_start, win_end, "+"))
+                    windows.append(Interval(region.chrom, pos, win_end, "+"))
                     pos += stride
                     if win_end >= region.end + offset:
                         break
