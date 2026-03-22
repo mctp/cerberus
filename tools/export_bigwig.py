@@ -163,11 +163,12 @@ def main():
     # 4. Configure Dataset
     logger.info("Configuring dataset...")
     cerberus_config = ensemble.cerberus_config
-    data_config = cerberus_config["data_config"]
-    genome_config = cerberus_config["genome_config"]
+    data_config = cerberus_config.data_config
+    genome_config = cerberus_config.genome_config
 
-    # No observed targets needed for bigwig export — avoid loading target extractors
-    data_config["targets"] = {}
+    # No observed targets needed for bigwig export — avoid loading target extractors.
+    # data_config is frozen, so use model_copy to clear targets.
+    data_config = data_config.model_copy(update={"targets": {}})
 
     dataset = CerberusDataset(
         genome_config=genome_config,

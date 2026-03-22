@@ -8,7 +8,6 @@
 import os
 from pathlib import Path
 import torch
-from typing import cast
 
 from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
@@ -140,11 +139,11 @@ for iv in test_intervals:
 # ## 4. Single Interval Prediction
 
 # %%
-pred_iv0 = cast(ProfileCountOutput, ensemble.predict_intervals(
+pred_iv0 = ensemble.predict_intervals(
     intervals=[test_intervals[0]],
     dataset=dataset,
     use_folds=["test"],
-    aggregation="interval+model"))
+    aggregation="interval+model")
 
 print(f"Predicted output for interval {test_intervals[0]}:")
 print(f"pred_iv0.out_interval: {pred_iv0.out_interval}")
@@ -158,12 +157,12 @@ print(f"pred_iv0.log_counts.mean().item(): {pred_iv0.log_counts.mean().item()}")
 
 # %%
 iv_block = Interval(chrom="chr8", start=24_000_000, end=24_010_000)
-pred_block = cast(list[ProfileCountOutput], ensemble.predict_output_intervals(
+pred_block = ensemble.predict_output_intervals(
     intervals=[iv_block],
     dataset=dataset,
     stride=100,
     use_folds=["test"],
-    aggregation="interval+model"))
+    aggregation="interval+model")
 
 # %% [markdown]
 # ## 6. Visualize Predictions

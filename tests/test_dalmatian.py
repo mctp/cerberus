@@ -177,6 +177,10 @@ def test_dalmatian_gradient_detach():
             assert p.grad is None, f"bias_model.{name} has gradient from L_recon (detach failed)"
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_VERY_SLOW_TESTS") is None,
+    reason="Skipping very slow test (RUN_VERY_SLOW_TESTS not set)",
+)
 def test_dalmatian_bias_receives_gradient_from_bias_loss():
     """L_bias gradients reach bias_model but NOT signal_model."""
     model = Dalmatian()

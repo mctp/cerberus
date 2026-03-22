@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and bracket access (`fold_args["test_fold"]` instead of `fold_args.test_fold`).
 
 ### Fixed
+- **Post-migration audit of tools/, examples/, notebooks/, docs/**:
+  - `tools/export_bigwig.py`: Fixed bracket access on frozen Pydantic config
+    (`cerberus_config["data_config"]` -> `cerberus_config.data_config`) and
+    replaced direct dict mutation with `model_copy(update=...)`.
+  - `notebooks/model_ensemble_demo.py`: Removed unused `from typing import cast`
+    and replaced `cast(ProfileCountOutput, ...)` calls with direct assignment.
+  - `docs/prediction.md`: Replaced stale `search_paths` parameter documentation
+    with the current config-override approach (`genome_config=`, `data_config=`).
 - **`SamplerConfig.resolve_sampler_args` forwards validation context**: Passes
   `search_paths` via `model_validate()` instead of bare `__init__()`. Fixes
   `FileNotFoundError` when loading `hparams.yaml` with relative paths.

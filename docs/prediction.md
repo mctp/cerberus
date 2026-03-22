@@ -41,15 +41,13 @@ data_config = ensemble.cerberus_config.data_config
 
 ### Path Resolution
 If you move a trained model to a new environment (e.g., from a training cluster to a local machine), the absolute paths in `hparams.yaml` (pointing to FASTA or BigWig files) might be invalid.
-`ModelEnsemble` supports `search_paths` to resolve these files relative to new locations.
+You can override specific configs by passing `genome_config`, `data_config`, or `model_config` to `ModelEnsemble`:
 
 ```python
-from pathlib import Path
-
 ensemble = ModelEnsemble(
     checkpoint_path="logs/my_experiment",
-    # Look for files in current dir and tests/data if original paths fail
-    search_paths=[Path.cwd(), Path("tests/data")] 
+    genome_config=my_genome_config,  # Override genome paths
+    data_config=my_data_config,      # Override data paths
 )
 ```
 

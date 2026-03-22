@@ -25,16 +25,13 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.config`
 
-- **`import_class()`** — Dynamically imports a class from a module string (e.g., 'package.module.Class').
 - **`class GenomeConfig(BaseModel)`** — Configuration for the genome assembly.
 - **`class SamplerConfig(BaseModel)`** — Configuration for data samplers.
 - **`class DataConfig(BaseModel)`** — Configuration for input/output data handling.
 - **`class TrainConfig(BaseModel)`** — Configuration for training hyperparameters.
-- **`class PretrainedConfig(BaseModel)`** — Configuration for loading pretrained weights into a model or sub-module.
+- **`class PretrainedConfig(BaseModel)`** — Configuration for loading pretrained weights into a model sub-module.
 - **`class ModelConfig(BaseModel)`** — Configuration for the model architecture.
 - **`class CerberusConfig(BaseModel)`** — Combined configuration for Cerberus.
-- **`get_log_count_params()`** — Determines log-count transform parameters from the model configuration.
-- **`parse_hparams_config()`** — Parses a hparams.yaml file and returns validated configuration objects.
 
 ### `cerberus.interval`
 
@@ -142,6 +139,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.output`
 
+- **`get_log_count_params()`** — Determine log-count transform parameters from the model configuration.
 - **`class ModelOutput`** — Base class for model outputs.
 - **`class ProfileLogits(ModelOutput)`** — Output for models predicting a profile shape as unnormalized log-probabilities.
 - **`class ProfileLogRates(ModelOutput)`** — Output for models predicting log-rates (log-intensities).
@@ -186,6 +184,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.model_ensemble`
 
+- **`parse_hparams_config()`** — Parse a ``hparams.yaml`` file into a validated :class:`CerberusConfig`.
 - **`class ModelEnsemble(nn.ModuleDict)`** — Wraps a dictionary of models (fold_idx -> model) and manages
 - **`update_ensemble_metadata()`** — Updates or creates ensemble_metadata.yaml in the root directory
 
