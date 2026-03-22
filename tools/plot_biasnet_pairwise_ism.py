@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Plot BiasNet pairwise ISM epistasis analysis.
 
-Loads a trained BiasNet from a run directory (containing config.json + model.pt)
+Loads a trained BiasNet from a run directory (containing hparams.yaml + model.pt)
 or a standalone model.pt file, computes pairwise in-silico mutagenesis (ISM) over
 real genomic sequences to measure epistatic interactions between positions.
 
@@ -19,8 +19,8 @@ Usage:
 import argparse
 import csv
 import gzip
-import json
 import logging
+import yaml
 from itertools import combinations
 from pathlib import Path
 
@@ -57,13 +57,14 @@ def _resolve_fold_dir(path: Path) -> tuple[Path, Path]:
 
 
 def load_config(path: Path) -> dict:
-    """Load config.json from a run directory or model.pt sibling."""
+    """Load hparams.yaml from a run directory or model.pt sibling."""
     fold_dir, _ = _resolve_fold_dir(path)
-    config_path = fold_dir / "config.json"
-    if not config_path.exists():
-        raise FileNotFoundError(f"Missing config.json in {fold_dir}")
-    with open(config_path) as f:
-        return json.load(f)
+    candidates = list(fold_dir.rglob("hparams.yaml"))
+    if not candidates:
+        raise FileNotFoundError(f"No hparams.yaml found in {fold_dir}")
+    hparams_path = sorted(candidates)[-1]
+    with open(hparams_path) as f:
+        return yaml.safe_load(f)
 
 
 def _extract_bias_state_dict(sd: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -539,9 +540,9 @@ def main():
     parser.add_argument("model_path", type=str,
                         help="Path to BiasNet run directory or model.pt file")
     parser.add_argument("--fasta", type=str, default=None,
-                        help="Path to genome FASTA (auto-detected from config.json)")
+                        help="Path to genome FASTA (auto-detected from hparams.yaml)")
     parser.add_argument("--peaks", type=str, default=None,
-                        help="Path to peaks BED file (auto-detected from config.json)")
+                        help="Path to peaks BED file (auto-detected from hparams.yaml)")
     parser.add_argument("--output-dir", type=str, default=None,
                         help="Output directory (default: same as model directory)")
     parser.add_argument("--prefix", type=str, default="biasnet",

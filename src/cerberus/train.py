@@ -1,5 +1,4 @@
 import os
-import json
 import warnings
 import logging
 import torch
@@ -100,50 +99,6 @@ def resolve_adaptive_loss_args(
     }
     return model_config.model_copy(update={"loss_args": resolved_loss_args})
 
-
-def _dump_config(
-    root_dir: str | Path,
-    model_config: ModelConfig,
-    data_config: DataConfig,
-    train_config: TrainConfig,
-    genome_config: GenomeConfig | None = None,
-    sampler_config: SamplerConfig | None = None,
-) -> None:
-    """
-    Write all configuration models to ``<root_dir>/config.json``.
-
-    Records the exact configs used for a training run so they can be inspected
-    without loading a checkpoint. Called once at training start, before
-    ``trainer.fit()``.
-
-    Each Pydantic config is serialized via ``model_dump(mode="json")`` to
-    produce a JSON-safe dict (Path objects become strings, etc.).
-
-    Args:
-        root_dir: Directory in which to write ``config.json``.
-        model_config: Model architecture configuration.
-        data_config: Data inputs/outputs configuration.
-        train_config: Training hyperparameters.
-        genome_config: Genome configuration (optional).
-        sampler_config: Sampler configuration (optional).
-    """
-    config_path = Path(root_dir) / "config.json"
-    payload: dict = {
-        "model_config": model_config.model_dump(mode="json"),
-        "data_config": data_config.model_dump(mode="json"),
-        "train_config": train_config.model_dump(mode="json"),
-    }
-    if genome_config is not None:
-        payload["genome_config"] = genome_config.model_dump(mode="json")
-    if sampler_config is not None:
-        payload["sampler_config"] = sampler_config.model_dump(mode="json")
-    try:
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(config_path, "w") as f:
-            json.dump(payload, f, indent=2)
-        logger.info(f"Saved training config to {config_path}")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(f"Could not write config.json: {exc}")
 
 
 def _save_model_pt(trainer: pl.Trainer, root_dir: str | Path) -> None:
@@ -298,16 +253,7 @@ def _train(
         **trainer_kwargs,
     )
 
-    # 0. Dump configs for reproducibility (rank-0 only, best-effort)
-    if root_dir is not None and trainer.is_global_zero:
-        _dump_config(
-            root_dir,
-            model_config=model_config,
-            data_config=data_config,
-            train_config=train_config,
-            genome_config=genome_config,
-            sampler_config=sampler_config,
-        )
+
 
     # 1. Pre-compute and cache complexity metrics (rank 0 only in DDP).
     datamodule.prepare_data()

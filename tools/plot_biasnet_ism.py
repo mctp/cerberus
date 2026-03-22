@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Plot BiasNet ISM motif as IC logo + heatmap.
 
-Loads a trained BiasNet from a run directory (containing config.json + model.pt)
+Loads a trained BiasNet from a run directory (containing hparams.yaml + model.pt)
 or a standalone model.pt file, computes in-silico mutagenesis (ISM) over real
 genomic sequences, and produces:
   1. A PNG plot with IC logo (top) and ISM delta heatmap (bottom), X-aligned.
@@ -18,8 +18,8 @@ Usage:
 import argparse
 import csv
 import gzip
-import json
 import logging
+import yaml
 from pathlib import Path
 
 import matplotlib.patheffects as path_effects
@@ -55,13 +55,15 @@ def _resolve_fold_dir(path: Path) -> tuple[Path, Path]:
 
 
 def load_config(path: Path) -> dict:
-    """Load config.json from a run directory or model.pt sibling."""
+    """Load hparams.yaml from a run directory or model.pt sibling."""
     fold_dir, _ = _resolve_fold_dir(path)
-    config_path = fold_dir / "config.json"
-    if not config_path.exists():
-        raise FileNotFoundError(f"Missing config.json in {fold_dir}")
-    with open(config_path) as f:
-        return json.load(f)
+    # Search for hparams.yaml in lightning_logs subdirectories
+    candidates = list(fold_dir.rglob("hparams.yaml"))
+    if not candidates:
+        raise FileNotFoundError(f"No hparams.yaml found in {fold_dir}")
+    hparams_path = sorted(candidates)[-1]  # latest version
+    with open(hparams_path) as f:
+        return yaml.safe_load(f)
 
 
 def _extract_bias_state_dict(sd: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -82,8 +84,8 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
     """Load a BiasNet model from a run directory or standalone .pt file.
 
     Supports:
-      - Standalone BiasNet: config.json has ``model_config.name == "BiasNet"``
-      - Dalmatian: config.json has ``model_config.name == "Dalmatian"``;
+      - Standalone BiasNet: hparams has ``model_config.name == "BiasNet"``
+      - Dalmatian: hparams has ``model_config.name == "Dalmatian"``;
         extracts the ``bias_model`` subnetwork from the Dalmatian state dict.
 
     In both cases the returned model is a standalone :class:`BiasNet` instance.
@@ -455,9 +457,9 @@ def main():
     parser.add_argument("model_path", type=str,
                         help="Path to BiasNet run directory or model.pt file")
     parser.add_argument("--fasta", type=str, default=None,
-                        help="Path to genome FASTA (auto-detected from config.json)")
+                        help="Path to genome FASTA (auto-detected from hparams.yaml)")
     parser.add_argument("--peaks", type=str, default=None,
-                        help="Path to peaks BED file (auto-detected from config.json)")
+                        help="Path to peaks BED file (auto-detected from hparams.yaml)")
     parser.add_argument("--output-dir", type=str, default=None,
                         help="Output directory (default: same as model directory)")
     parser.add_argument("--prefix", type=str, default="biasnet",
