@@ -7,72 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+- **Pydantic V2 migration**: All config types (`GenomeConfig`, `DataConfig`,
+  `SamplerConfig`, `TrainConfig`, `ModelConfig`, `CerberusConfig`) are now frozen
+  Pydantic `BaseModel` classes instead of `TypedDict`. Bracket access
+  (`config["key"]`) must change to attribute access (`config.key`). Mutations
+  use `config.model_copy(update={...})`. See
+  `docs/internal/pydantic_migration_breaking_changes.md` for full migration guide.
+- **`count_pseudocount` moved from `DataConfig` to `ModelConfig`**: Specified in
+  scaled units (raw × target_scale). `propagate_pseudocount()` deleted.
+  `instantiate_metrics_and_loss()` now injects the value at construction time.
+  Legacy `hparams.yaml` files are auto-migrated by `parse_hparams_config` with
+  a deprecation warning.
+- **`sampler_args` is now a typed union**: `PeakSamplerArgs`,
+  `IntervalSamplerArgs`, `SlidingWindowSamplerArgs`, `RandomSamplerArgs`,
+  `NegativePeakSamplerArgs`, `ComplexityMatchedSamplerArgs`. Plain dicts are
+  still accepted and auto-routed via `@model_validator`.
+- **`fold_args` is now a `FoldArgs` model**: Fields `k`, `test_fold` (optional),
+  `val_fold` (optional).
+- **Deleted functions**: `validate_genome_config`, `validate_data_config`,
+  `validate_sampler_config`, `validate_train_config`, `validate_model_config`,
+  `validate_data_and_sampler_compatibility`, `validate_data_and_model_compatibility`,
+  `_sanitize_config`, `propagate_pseudocount`. Validation happens at Pydantic
+  model construction time. Cross-validation runs in `CerberusConfig`'s
+  `@model_validator`. Serialization uses `model.model_dump(mode="json")`.
+- **`CerberusConfig.model_config_`**: The `ModelConfig` field is accessed as
+  `model_config_` in Python (Pydantic reserves `model_config`). YAML key
+  remains `"model_config"`.
+- **New dependency**: `pydantic>=2.0` added to `pyproject.toml`.
+
 ### Added
-- **Pydantic config regression test suite** (`tests/test_pydantic_config.py`):
-  76 tests covering model construction, frozen immutability, field validation
-  (missing/invalid/negative/extra), typed sampler args discriminated union routing,
-  FoldArgs defaults and constraints, ModelConfig pseudocount, serialization
-  round-trips (model_dump/model_validate/YAML), CerberusConfig cross-validation
-  (padded_size, channel mismatch), model_copy immutable updates, backward
-  compatibility (parse_hparams_config legacy migration), and the model_config_
-  alias on CerberusConfig.
+- **Pydantic config regression tests** (`tests/test_pydantic_config.py`):
+  76 tests covering construction, validation, typed sampler args, serialization
+  round-trips, cross-validation, model_copy, backward compatibility, and the
+  `model_config_` alias.
 - **`complexity_center_size` parameter** for `PeakSampler`, `NegativePeakSampler`,
   and `ComplexityMatchedSampler`: crops intervals to their center N bp before
-  computing complexity metrics. Decouples the model's input window size from the
-  complexity matching scale, preventing large-context intervals (32kb+) from
-  regressing toward the genome mean GC content. Default `None` preserves existing
-  behavior.
-- **Sampler context-length benchmark** (`tests/benchmark/bench_sampler_context_length.py`):
-  standalone script measuring FASTA, BigWig, and combined extraction throughput
-  across 1–128 kb context lengths using real GRCh38 and MDA-PCA-2B AR ChIP-seq data.
-- **DataLoader context-length benchmark** (`tests/benchmark/bench_dataloader_context_length.py`):
-  standalone script measuring end-to-end DataLoader throughput (multi-worker extraction,
-  transforms, batch collation) across 1–128 kb context lengths via CerberusDataModule.
-  Supports `--in-memory` flag for disk vs in-memory comparison.
-- **`encode_dna` benchmark** (`tests/benchmark/bench_encode_dna.py`):
-  standalone script comparing multiple alternative implementations of one-hot DNA
-  encoding across 1–128 kb sequence lengths.
+  computing complexity metrics. Default `None` preserves existing behavior.
+- **Sampler and DataLoader context-length benchmarks**
+  (`tests/benchmark/bench_sampler_context_length.py`,
+  `bench_dataloader_context_length.py`, `bench_encode_dna.py`).
 
 ### Changed
-- **`train.py` migrated to Pydantic attribute access**: All config dict bracket
-  access (`config["key"]`) replaced with Pydantic attribute access (`config.key`).
-- **All tools/ scripts migrated from dict-literal config to Pydantic model constructors**:
-  `train_bpnet.py`, `train_biasnet.py`, `train_dalmatian.py`, `train_asap.py`,
-  `train_gopher.py`, `train_pomeranian.py`, and `export_predictions.py` now use
-  `DataConfig(...)`, `SamplerConfig(...)`, `TrainConfig(...)`, `ModelConfig(...)`,
-  `PretrainedConfig(...)`, `FoldArgs(...)`, and typed sampler args
-  (`PeakSamplerArgs`, `NegativePeakSamplerArgs`) instead of plain dict literals.
-  `count_pseudocount` moved from `DataConfig` to `ModelConfig` in scaled units
-  (raw x target_scale). `export_predictions.py` converted from bracket access to
-  Pydantic dot access and uses `model_copy()` for frozen-model target overrides.
-  `resolve_adaptive_loss_args` returns a new `ModelConfig` via `model_copy(update=...)`
-  instead of dict spread. `_dump_config` serializes configs via `model_dump(mode="json")`
-  instead of `default=str`. Genome config fold_args override in `train_single` uses
-  `model_copy` on both `FoldArgs` and `GenomeConfig`. Updated all train-related tests
-  to construct real Pydantic models or attribute-access mocks instead of `cast(Type, dict)`.
-- **`predict_misc.py`, `predict_bigwig.py`, `model_ensemble.py` migrated to Pydantic
-  attribute access**: All config dict bracket access replaced with Pydantic attribute
-  access. `ModelEnsemble.__init__` uses `model_copy(update=...)` for config overrides
-  instead of mutating dicts. `get_eval_intervals` uses `sampler_config.model_copy()`
-  instead of dict spread. Updated all related tests (`test_predict_misc.py`,
-  `test_export_bigwig.py`, `test_predict.py`, `test_model_ensemble_loader.py`) to
-  construct Pydantic models via `model_construct()` instead of `cast(Type, dict)`.
-- **`transform.py`, `samplers.py`, `pretrained.py`, `cache.py`, `genome.py`,
-  `interval.py` migrated to Pydantic attribute access**: All config dict bracket
-  access (`config["key"]`) replaced with Pydantic attribute access (`config.key`).
-  `create_sampler()` now accepts only `SamplerConfig` (not dicts) and uses
-  `assert isinstance()` to narrow `sampler_args` to the correct typed sub-model
-  in each branch, satisfying pyright. `create_genome_config()` returns a
-  `GenomeConfig(...)` constructor call instead of a dict literal. `create_genome_folds()`
-  accepts `FoldArgs | dict` for backward compatibility and coerces dicts internally.
-  `resolve_cache_dir()` uses `sampler_config.model_dump(mode="json")` instead of
-  passing the raw config to JSON serialization. Updated tests for transform,
-  sampler, genome, interval, cache, and pretrained modules to construct Pydantic
-  models via `model_construct()` instead of `cast(Type, dict)`.
-- **`encode_dna` rewritten with broadcast comparison**: Replaced LUT-scatter
-  implementation with vectorized `(seq_bytes == encoding_bytes)` broadcast.
-  ~11x faster at 128 kb context length. Drop-in compatible; old implementation
-  preserved as gold-standard reference in `tests/test_encode_dna.py`.
+- **All src/, tools/, tests/, notebooks/, docs/ migrated to Pydantic attribute
+  access**: 158 files changed. `config["key"]` → `config.key`, `{**config}` →
+  `model_copy(update=...)`, `_sanitize_config()` → `model_dump(mode="json")`,
+  `cast(Config, dict)` → `Config(...)` or `Config.model_construct(...)`.
+- **`encode_dna` rewritten with broadcast comparison**: ~11x faster at 128 kb.
+
+### Fixed
+- **`SamplerConfig.resolve_sampler_args` forwards validation context**: Passes
+  `search_paths` via `model_validate()` instead of bare `__init__()`. Fixes
+  `FileNotFoundError` when loading `hparams.yaml` with relative paths.
 
 ## [0.9.5] - 2026-03-20
 
