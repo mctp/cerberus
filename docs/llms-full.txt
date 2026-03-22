@@ -111,7 +111,7 @@ genome_config = create_genome_config(
 )
 
 # 2. Data Configuration
-from cerberus.config import DataConfig, SamplerConfig, TrainConfig, ModelConfig
+from cerberus import DataConfig, SamplerConfig, TrainConfig, ModelConfig
 
 data_config = DataConfig(
     inputs={},  # Only sequence input. Can add {"Track": "path.bw" or "path.bed"}
@@ -166,7 +166,7 @@ You can use the `cerberus.train` module to instantiate the model and start train
 
 ```python
 import torch.nn as nn
-from cerberus.train import train_single, train_multi
+from cerberus import train_single, train_multi
 from cerberus.loss import MSEMultinomialLoss
 from torchmetrics import MetricCollection, PearsonCorrCoef, MeanSquaredError
 
@@ -251,12 +251,11 @@ After training, each fold directory (`fold_0/`, `fold_1/`, …) contains:
 
 | File | Description |
 |------|-------------|
-| `config.json` | All config dicts (model, data, genome, sampler, train) as JSON for reproducibility |
 | `model.pt` | Best checkpoint weights as a plain `state_dict` — load without PyTorch Lightning |
 | `last.ckpt` | Last epoch checkpoint (useful for inspecting final weights) |
 | `checkpoint-epoch=XX-val_loss=Y.ckpt` | Best checkpoint (lowest `val_loss`) |
 | `plots/val_count_scatter_epoch_NNN.png` | Per-epoch scatter of predicted vs. true log-counts |
-| `lightning_logs/version_0/hparams.yaml` | Hyperparameters logged by Lightning |
+| `lightning_logs/version_0/hparams.yaml` | All configs (model, data, genome, sampler, train) as YAML |
 | `lightning_logs/version_0/metrics.csv` | Per-step and per-epoch scalar metrics |
 
 To load `model.pt` for inference without Lightning:
@@ -271,10 +270,7 @@ model.eval()
 
 ### Logging
 
-Cerberus automatically logs all configuration dictionaries (`genome_config`, `data_config`, `sampler_config`, `model_config`, `train_config`) to two places:
-
-- `config.json` in each fold directory — human-readable JSON written before training starts
-- `lightning_logs/version_{#}/hparams.yaml` — Lightning's hyperparameter log
+Cerberus automatically logs all configurations (`genome_config`, `data_config`, `sampler_config`, `model_config`, `train_config`) to `lightning_logs/version_{#}/hparams.yaml` via Lightning's `save_hyperparameters`. This is the authoritative config file used by `ModelEnsemble` for inference.
 
 ## Manual Usage (PyTorch Dataset)
 
@@ -2550,9 +2546,14 @@ from .config import (
     GenomeConfig,
     DataConfig,
     SamplerConfig,
+    TrainConfig,
+    ModelConfig,
+    PretrainedConfig,
+    CerberusConfig,
 )
 from .dataset import CerberusDataset
 from .datamodule import CerberusDataModule
+from .module import CerberusModule, instantiate, instantiate_model
 from .genome import (
     create_genome_config,
     create_human_genome_config,
@@ -2563,7 +2564,7 @@ from .download import (
 )
 from .logging import setup_logging
 from .signal import register_extractor
-from .train import compute_counts_loss_weight, resolve_adaptive_loss_args
+from .train import compute_counts_loss_weight, resolve_adaptive_loss_args, train_single, train_multi
 
 __all__ = [
     # Core
@@ -2572,10 +2573,18 @@ __all__ = [
     "GenomeConfig",
     "DataConfig",
     "SamplerConfig",
+    "TrainConfig",
+    "ModelConfig",
+    "PretrainedConfig",
+    "CerberusConfig",
     # Dataset
     "CerberusDataset",
     # DataModule
     "CerberusDataModule",
+    # Module
+    "CerberusModule",
+    "instantiate",
+    "instantiate_model",
     # Genome Setup
     "create_genome_config",
     "create_human_genome_config",
@@ -2589,6 +2598,8 @@ __all__ = [
     # Training utilities
     "compute_counts_loss_weight",
     "resolve_adaptive_loss_args",
+    "train_single",
+    "train_multi",
 ]
 
 ## src/cerberus/config.py
@@ -5980,7 +5991,7 @@ def create_sampler(
             background_ratio=sampler_args["background_ratio"],
             seed=seed,
             prepare_cache=prepare_cache,
-            complexity_center_size=sampler_args["complexity_center_size"],
+            complexity_center_size=sampler_args.get("complexity_center_size"),
         )
 
     elif sampler_type == "negative_peak":
@@ -5997,7 +6008,7 @@ def create_sampler(
             background_ratio=sampler_args["background_ratio"],
             seed=seed,
             prepare_cache=prepare_cache,
-            complexity_center_size=sampler_args["complexity_center_size"],
+            complexity_center_size=sampler_args.get("complexity_center_size"),
         )
 
     else:
@@ -7596,7 +7607,6 @@ def instantiate_metrics_and_loss(
 ## src/cerberus/train.py
 
 import os
-import json
 import warnings
 import logging
 import torch
@@ -7697,50 +7707,6 @@ def resolve_adaptive_loss_args(
     }
     return model_config.model_copy(update={"loss_args": resolved_loss_args})
 
-
-def _dump_config(
-    root_dir: str | Path,
-    model_config: ModelConfig,
-    data_config: DataConfig,
-    train_config: TrainConfig,
-    genome_config: GenomeConfig | None = None,
-    sampler_config: SamplerConfig | None = None,
-) -> None:
-    """
-    Write all configuration models to ``<root_dir>/config.json``.
-
-    Records the exact configs used for a training run so they can be inspected
-    without loading a checkpoint. Called once at training start, before
-    ``trainer.fit()``.
-
-    Each Pydantic config is serialized via ``model_dump(mode="json")`` to
-    produce a JSON-safe dict (Path objects become strings, etc.).
-
-    Args:
-        root_dir: Directory in which to write ``config.json``.
-        model_config: Model architecture configuration.
-        data_config: Data inputs/outputs configuration.
-        train_config: Training hyperparameters.
-        genome_config: Genome configuration (optional).
-        sampler_config: Sampler configuration (optional).
-    """
-    config_path = Path(root_dir) / "config.json"
-    payload: dict = {
-        "model_config": model_config.model_dump(mode="json"),
-        "data_config": data_config.model_dump(mode="json"),
-        "train_config": train_config.model_dump(mode="json"),
-    }
-    if genome_config is not None:
-        payload["genome_config"] = genome_config.model_dump(mode="json")
-    if sampler_config is not None:
-        payload["sampler_config"] = sampler_config.model_dump(mode="json")
-    try:
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(config_path, "w") as f:
-            json.dump(payload, f, indent=2)
-        logger.info(f"Saved training config to {config_path}")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(f"Could not write config.json: {exc}")
 
 
 def _save_model_pt(trainer: pl.Trainer, root_dir: str | Path) -> None:
@@ -7895,16 +7861,7 @@ def _train(
         **trainer_kwargs,
     )
 
-    # 0. Dump configs for reproducibility (rank-0 only, best-effort)
-    if root_dir is not None and trainer.is_global_zero:
-        _dump_config(
-            root_dir,
-            model_config=model_config,
-            data_config=data_config,
-            train_config=train_config,
-            genome_config=genome_config,
-            sampler_config=sampler_config,
-        )
+
 
     # 1. Pre-compute and cache complexity metrics (rank 0 only in DDP).
     datamodule.prepare_data()

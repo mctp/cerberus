@@ -29,7 +29,7 @@ genome_config = create_genome_config(
 )
 
 # 2. Data Configuration
-from cerberus.config import DataConfig, SamplerConfig, TrainConfig, ModelConfig
+from cerberus import DataConfig, SamplerConfig, TrainConfig, ModelConfig
 
 data_config = DataConfig(
     inputs={},  # Only sequence input. Can add {"Track": "path.bw" or "path.bed"}
@@ -84,7 +84,7 @@ You can use the `cerberus.train` module to instantiate the model and start train
 
 ```python
 import torch.nn as nn
-from cerberus.train import train_single, train_multi
+from cerberus import train_single, train_multi
 from cerberus.loss import MSEMultinomialLoss
 from torchmetrics import MetricCollection, PearsonCorrCoef, MeanSquaredError
 
@@ -169,12 +169,11 @@ After training, each fold directory (`fold_0/`, `fold_1/`, …) contains:
 
 | File | Description |
 |------|-------------|
-| `config.json` | All config dicts (model, data, genome, sampler, train) as JSON for reproducibility |
 | `model.pt` | Best checkpoint weights as a plain `state_dict` — load without PyTorch Lightning |
 | `last.ckpt` | Last epoch checkpoint (useful for inspecting final weights) |
 | `checkpoint-epoch=XX-val_loss=Y.ckpt` | Best checkpoint (lowest `val_loss`) |
 | `plots/val_count_scatter_epoch_NNN.png` | Per-epoch scatter of predicted vs. true log-counts |
-| `lightning_logs/version_0/hparams.yaml` | Hyperparameters logged by Lightning |
+| `lightning_logs/version_0/hparams.yaml` | All configs (model, data, genome, sampler, train) as YAML |
 | `lightning_logs/version_0/metrics.csv` | Per-step and per-epoch scalar metrics |
 
 To load `model.pt` for inference without Lightning:
@@ -189,10 +188,7 @@ model.eval()
 
 ### Logging
 
-Cerberus automatically logs all configuration dictionaries (`genome_config`, `data_config`, `sampler_config`, `model_config`, `train_config`) to two places:
-
-- `config.json` in each fold directory — human-readable JSON written before training starts
-- `lightning_logs/version_{#}/hparams.yaml` — Lightning's hyperparameter log
+Cerberus automatically logs all configurations (`genome_config`, `data_config`, `sampler_config`, `model_config`, `train_config`) to `lightning_logs/version_{#}/hparams.yaml` via Lightning's `save_hyperparameters`. This is the authoritative config file used by `ModelEnsemble` for inference.
 
 ## Manual Usage (PyTorch Dataset)
 
