@@ -287,7 +287,10 @@ def _process_island(
     track_data = accumulator / counts
 
     # Undo training transforms (Scale then Bin) to recover per-bp signal.
-    # Training: raw * target_scale → binned. Inverse: / target_scale / bin_size.
+    # Training: raw * target_scale → sum-binned. Inverse: / target_scale / bin_size.
+    # NOTE: This inversion assumes sum pooling (create_default_transforms enforces
+    # method="sum"). To support avg or max pooling, make this conditional:
+    # sum → divide by bin_size; avg/max → no division (already per-bp scale).
     track_data = track_data / target_scale / output_bin_size
 
     # Select first channel for BigWig output

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Default bin pooling method changed to sum** (`transform.py`):
+  `create_default_transforms` used the `Bin` class default of `"max"` pooling, but
+  `predict_bigwig._process_island` divided by `output_bin_size` to recover per-bp
+  signal, which is only correct for sum pooling. Explicitly set `method="sum"` in
+  the default transform pipeline. Only affects models with `output_bin_size > 1`.
 - **Off-by-one in peak exclusion zones** (`PeakSampler`, `NegativePeakSampler`):
   Peak intervals were added to the InterLap exclusion tree as closed `(start, end)`
   instead of `(start, end - 1)`, extending exclusion zones one base pair beyond

@@ -377,8 +377,15 @@ def create_default_transforms(
         transforms.append(Scale(factor=target_scale, apply_to="targets"))
 
     # 5. Binning (deterministic)
+    # NOTE: method="sum" is required for correct inversion in predict_bigwig
+    # (_process_island divides by output_bin_size to recover per-bp signal,
+    # which is only valid for sum pooling). To support avg or max pooling,
+    # add a bin_method field to DataConfig, pass it here, and make the
+    # inversion in predict_bigwig._process_island conditional on the method.
     if data_config.output_bin_size > 1:
-        transforms.append(Bin(bin_size=data_config.output_bin_size, apply_to="targets"))
+        transforms.append(
+            Bin(bin_size=data_config.output_bin_size, method="sum", apply_to="targets")
+        )
 
     # 6. Log Transform (deterministic)
     if data_config.log_transform:

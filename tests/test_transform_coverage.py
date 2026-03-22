@@ -64,8 +64,10 @@ class TestCreateDefaultTransforms:
     def test_with_output_bin_size(self):
         dc = self._make_data_config(output_bin_size=4)
         transforms = create_default_transforms(dc)
-        has_bin = any(isinstance(t, Bin) for t in transforms)
-        assert has_bin
+        bins = [t for t in transforms if isinstance(t, Bin)]
+        assert len(bins) == 1
+        # Must be sum pooling for correct inversion in predict_bigwig
+        assert bins[0].method == "sum"
 
     def test_with_log_transform(self):
         dc = self._make_data_config(log_transform=True)
