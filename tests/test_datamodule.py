@@ -5,7 +5,8 @@ from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 @pytest.fixture
 def mock_dataset_cls():
-    with patch("cerberus.datamodule.CerberusDataset") as mock:
+    with patch("cerberus.datamodule.CerberusDataset") as mock, \
+         patch.object(CerberusDataModule, "_validate_paths"):
         yield mock
 
 def test_datamodule_setup(
@@ -232,3 +233,174 @@ def test_datamodule_drop_last(
     # Test dataloader
     train_dl = dm.train_dataloader()
     assert train_dl.drop_last == True
+
+
+# ---------------------------------------------------------------------------
+# _validate_paths tests
+# ---------------------------------------------------------------------------
+
+def test_validate_paths_missing_fasta(tmp_path):
+    """_validate_paths raises FileNotFoundError when fasta_path does not exist."""
+    from pathlib import Path
+
+    genome_config = GenomeConfig.model_construct(
+        name="mock_genome",
+        fasta_path=Path(tmp_path / "nonexistent.fa"),
+        chrom_sizes={"chr1": 1000},
+        allowed_chroms=["chr1"],
+        exclude_intervals={},
+        fold_type="chrom_partition",
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
+    )
+    data_config = DataConfig.model_construct(
+        inputs={},
+        targets={},
+        input_len=100,
+        output_len=100,
+        max_jitter=0,
+        output_bin_size=1,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
+    )
+    sampler_config = SamplerConfig.model_construct(
+        sampler_type="random",
+        padded_size=100,
+        sampler_args={"num_intervals": 10},
+    )
+
+    dm = CerberusDataModule(genome_config, data_config, sampler_config)
+    with pytest.raises(FileNotFoundError, match="Genome FASTA not found"):
+        dm.setup(batch_size=4)
+
+
+def test_validate_paths_missing_input_channel(tmp_path):
+    """_validate_paths raises FileNotFoundError for a missing input channel file."""
+    from pathlib import Path
+
+    # Create the fasta so that check passes
+    fasta = tmp_path / "genome.fa"
+    fasta.write_text(">chr1\nACGT\n")
+
+    genome_config = GenomeConfig.model_construct(
+        name="mock_genome",
+        fasta_path=fasta,
+        chrom_sizes={"chr1": 1000},
+        allowed_chroms=["chr1"],
+        exclude_intervals={},
+        fold_type="chrom_partition",
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
+    )
+    data_config = DataConfig.model_construct(
+        inputs={"signal": Path(tmp_path / "missing_input.bw")},
+        targets={},
+        input_len=100,
+        output_len=100,
+        max_jitter=0,
+        output_bin_size=1,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
+    )
+    sampler_config = SamplerConfig.model_construct(
+        sampler_type="random",
+        padded_size=100,
+        sampler_args={"num_intervals": 10},
+    )
+
+    dm = CerberusDataModule(genome_config, data_config, sampler_config)
+    with pytest.raises(FileNotFoundError, match="input channel 'signal'"):
+        dm.setup(batch_size=4)
+
+
+def test_validate_paths_missing_target_channel(tmp_path):
+    """_validate_paths raises FileNotFoundError for a missing target channel file."""
+    from pathlib import Path
+
+    fasta = tmp_path / "genome.fa"
+    fasta.write_text(">chr1\nACGT\n")
+
+    genome_config = GenomeConfig.model_construct(
+        name="mock_genome",
+        fasta_path=fasta,
+        chrom_sizes={"chr1": 1000},
+        allowed_chroms=["chr1"],
+        exclude_intervals={},
+        fold_type="chrom_partition",
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
+    )
+    data_config = DataConfig.model_construct(
+        inputs={},
+        targets={"H3K27ac": Path(tmp_path / "missing_target.bw")},
+        input_len=100,
+        output_len=100,
+        max_jitter=0,
+        output_bin_size=1,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
+    )
+    sampler_config = SamplerConfig.model_construct(
+        sampler_type="random",
+        padded_size=100,
+        sampler_args={"num_intervals": 10},
+    )
+
+    dm = CerberusDataModule(genome_config, data_config, sampler_config)
+    with pytest.raises(FileNotFoundError, match="target channel 'H3K27ac'"):
+        dm.setup(batch_size=4)
+
+
+def test_validate_paths_all_exist(tmp_path):
+    """_validate_paths passes when all configured paths exist."""
+    from pathlib import Path
+
+    fasta = tmp_path / "genome.fa"
+    fasta.write_text(">chr1\nACGT\n")
+    input_bw = tmp_path / "input.bw"
+    input_bw.write_bytes(b"")
+    target_bw = tmp_path / "target.bw"
+    target_bw.write_bytes(b"")
+
+    genome_config = GenomeConfig.model_construct(
+        name="mock_genome",
+        fasta_path=fasta,
+        chrom_sizes={"chr1": 1000},
+        allowed_chroms=["chr1"],
+        exclude_intervals={},
+        fold_type="chrom_partition",
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
+    )
+    data_config = DataConfig.model_construct(
+        inputs={"signal": input_bw},
+        targets={"H3K27ac": target_bw},
+        input_len=100,
+        output_len=100,
+        max_jitter=0,
+        output_bin_size=1,
+        encoding="ACGT",
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
+    )
+    sampler_config = SamplerConfig.model_construct(
+        sampler_type="random",
+        padded_size=100,
+        sampler_args={"num_intervals": 10},
+    )
+
+    with patch("cerberus.datamodule.CerberusDataset") as mock_ds:
+        mock_instance = MagicMock()
+        mock_ds.return_value = mock_instance
+        mock_instance.split_folds.return_value = (MagicMock(), MagicMock(), MagicMock())
+
+        dm = CerberusDataModule(genome_config, data_config, sampler_config)
+        # Should not raise
+        dm.setup(batch_size=4)

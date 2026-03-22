@@ -40,7 +40,8 @@ def test_datamodule_hardware_settings():
         sampler_args={"num_intervals": 10},
     )
 
-    with patch('cerberus.datamodule.CerberusDataset') as mock_dataset_cls:
+    with patch('cerberus.datamodule.CerberusDataset') as mock_dataset_cls, \
+         patch.object(CerberusDataModule, '_validate_paths'):
         # Mock dataset instance for split_folds
         mock_dataset_instance = MagicMock()
         mock_dataset_cls.return_value = mock_dataset_instance

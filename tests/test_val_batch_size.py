@@ -5,7 +5,8 @@ from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 @pytest.fixture
 def mock_dataset_cls():
-    with patch("cerberus.datamodule.CerberusDataset") as mock:
+    with patch("cerberus.datamodule.CerberusDataset") as mock, \
+         patch.object(CerberusDataModule, "_validate_paths"):
         yield mock
 
 def test_val_batch_size_configuration(

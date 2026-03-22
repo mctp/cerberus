@@ -187,17 +187,35 @@ class CerberusDataModule(pl.LightningDataModule):
             return None
         return load_prepare_cache(cache_dir)
 
+    def _validate_paths(self) -> None:
+        """Verify all configured file paths exist before spawning workers.
+
+        Called at the start of :meth:`setup` to surface missing-file errors
+        immediately with a clear message, rather than letting them surface
+        deep inside a DataLoader worker subprocess.
+        """
+        p = Path(self.genome_config.fasta_path)
+        if not p.exists():
+            raise FileNotFoundError(f"Genome FASTA not found: {p}")
+        for label, channel_map in [("input", self.data_config.inputs),
+                                    ("target", self.data_config.targets)]:
+            for channel, path_val in channel_map.items():
+                if not Path(path_val).exists():
+                    raise FileNotFoundError(
+                        f"Data {label} channel '{channel}' file not found: {path_val}"
+                    )
+
     def setup(
-        self, 
-        stage: str | None = None, 
-        batch_size: int | None = None, 
+        self,
+        stage: str | None = None,
+        batch_size: int | None = None,
         val_batch_size: int | None = None,
         num_workers: int | None = None,
         in_memory: bool | None = None,
     ):
         """
         Sets up the datasets for the specified stage.
-        
+
         Initializes the full dataset and splits it into train/val/test sets based on the configured folds.
         Allows updating runtime parameters (batch_size, num_workers).
 
@@ -210,7 +228,7 @@ class CerberusDataModule(pl.LightningDataModule):
         """
         if batch_size is not None:
             self.batch_size = batch_size
-        
+
         if val_batch_size is not None:
             self.val_batch_size = val_batch_size
         elif batch_size is not None:
@@ -223,6 +241,8 @@ class CerberusDataModule(pl.LightningDataModule):
 
         if self._is_initialized:
             return
+
+        self._validate_paths()
 
         logger.info(f"Setting up DataModule (test_fold={self.test_fold}, val_fold={self.val_fold})...")
 

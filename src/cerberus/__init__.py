@@ -3,9 +3,14 @@ from .config import (
     GenomeConfig,
     DataConfig,
     SamplerConfig,
+    TrainConfig,
+    ModelConfig,
+    PretrainedConfig,
+    CerberusConfig,
 )
 from .dataset import CerberusDataset
 from .datamodule import CerberusDataModule
+from .module import CerberusModule, instantiate, instantiate_model
 from .genome import (
     create_genome_config,
     create_human_genome_config,
@@ -16,7 +21,7 @@ from .download import (
 )
 from .logging import setup_logging
 from .signal import register_extractor
-from .train import compute_counts_loss_weight, resolve_adaptive_loss_args
+from .train import compute_counts_loss_weight, resolve_adaptive_loss_args, train_single, train_multi
 
 __all__ = [
     # Core
@@ -25,10 +30,18 @@ __all__ = [
     "GenomeConfig",
     "DataConfig",
     "SamplerConfig",
+    "TrainConfig",
+    "ModelConfig",
+    "PretrainedConfig",
+    "CerberusConfig",
     # Dataset
     "CerberusDataset",
     # DataModule
     "CerberusDataModule",
+    # Module
+    "CerberusModule",
+    "instantiate",
+    "instantiate_model",
     # Genome Setup
     "create_genome_config",
     "create_human_genome_config",
@@ -42,4 +55,6 @@ __all__ = [
     # Training utilities
     "compute_counts_loss_weight",
     "resolve_adaptive_loss_args",
+    "train_single",
+    "train_multi",
 ]

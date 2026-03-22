@@ -2,6 +2,43 @@
 
 Cerberus relies on five Pydantic V2 `BaseModel` configuration objects that together define the full training pipeline: `GenomeConfig`, `DataConfig`, `SamplerConfig`, `TrainConfig`, and `ModelConfig`. All models are frozen and forbid extra fields. Validation happens automatically at construction time — there are no separate `validate_*` functions.
 
+All config types can be imported directly from `cerberus`:
+
+```python
+from cerberus import (
+    GenomeConfig, DataConfig, SamplerConfig,
+    TrainConfig, ModelConfig, PretrainedConfig, CerberusConfig,
+)
+```
+
+!!! warning "`model_config_` attribute on CerberusConfig"
+    Pydantic V2 reserves the name `model_config` for its own internal `ConfigDict`.
+    The `ModelConfig` field on `CerberusConfig` is therefore named **`model_config_`**
+    (with a trailing underscore) in Python code. In YAML and dict serialization the
+    key remains `"model_config"` (no underscore).
+
+    ```python
+    # Correct
+    mc = cerberus_config.model_config_   # → ModelConfig instance
+
+    # Wrong — silently returns Pydantic's internal ConfigDict, not your ModelConfig!
+    mc = cerberus_config.model_config    # → ConfigDict({'frozen': True, ...})
+    ```
+
+### Mutating Frozen Configs
+
+All config objects are frozen. To create a modified copy, use `model_copy(update=...)`:
+
+```python
+# Derive a config with a different learning rate
+new_train = train_config.model_copy(update={"learning_rate": 1e-4})
+
+# Override a nested config in CerberusConfig
+new_cerberus = cerberus_config.model_copy(
+    update={"data_config": cerberus_config.data_config.model_copy(update={"max_jitter": 0})}
+)
+```
+
 ## GenomeConfig
 
 Defines the reference genome and cross-validation strategy.

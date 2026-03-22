@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Eager file path validation** in `CerberusDataModule.setup()`: new
+  `_validate_paths()` method checks that the genome FASTA and all input/target
+  channel files exist before spawning DataLoader workers, surfacing missing-file
+  errors immediately with a clear message naming the field and path.
+- **Loss selection guide** in `docs/components.md`: added a "Choosing a Loss
+  Function" table recommending a loss for common scenarios (ChIP-seq,
+  low-coverage, coupled, bias-factorized, Poisson).
+- **Expanded multi-GPU docs** (`docs/multi_gpu.md`): added minimal working
+  examples for both CLI (`--multi` flag) and Python API, plus notes on
+  `num_workers` interaction and `reload_dataloaders_every_n_epochs` in DDP.
+
 ### Breaking Changes
 - **Pydantic V2 migration**: All config types (`GenomeConfig`, `DataConfig`,
   `SamplerConfig`, `TrainConfig`, `ModelConfig`, `CerberusConfig`) are now frozen
@@ -40,6 +52,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New dependency**: `pydantic>=2.0` added to `pyproject.toml`.
 
 ### Added
+- **Expanded public API** (`__init__.py`): `TrainConfig`, `ModelConfig`,
+  `PretrainedConfig`, `CerberusConfig`, `CerberusModule`, `instantiate`,
+  `instantiate_model`, `train_single`, and `train_multi` are now importable
+  directly from `cerberus`.
+- **`pretrained.py` unit tests** (`tests/test_pretrained.py`): 19 tests
+  covering prefix extraction, full/sub-module weight loading, freeze
+  behavior, strict mode rejection, and multi-config application.
+- **`predict_bigwig.py` unit tests** (`tests/test_predict_bigwig.py`): 18
+  tests covering signal reconstruction (ProfileCountOutput, ProfileLogRates,
+  multi-channel, pseudocount clamping), island processing (overlap averaging,
+  target_scale undo), and end-to-end BigWig write (stride defaults, region
+  mode, error cleanup).
+- **`model_config_` alias warning** (`docs/configuration.md`): prominent
+  admonition explaining the Pydantic V2 naming conflict and showing
+  correct vs incorrect usage.
+- **`model_copy()` examples** (`docs/configuration.md`): new section
+  demonstrating how to derive modified copies of frozen configs.
 - **Pydantic config regression tests** (`tests/test_pydantic_config.py`):
   76 tests covering construction, validation, typed sampler args, serialization
   round-trips, cross-validation, model_copy, backward compatibility, and the

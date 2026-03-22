@@ -635,6 +635,43 @@ Models return standardized output objects (see [**Components: Model Outputs**](c
 
 Cerberus relies on five Pydantic V2 `BaseModel` configuration objects that together define the full training pipeline: `GenomeConfig`, `DataConfig`, `SamplerConfig`, `TrainConfig`, and `ModelConfig`. All models are frozen and forbid extra fields. Validation happens automatically at construction time — there are no separate `validate_*` functions.
 
+All config types can be imported directly from `cerberus`:
+
+```python
+from cerberus import (
+    GenomeConfig, DataConfig, SamplerConfig,
+    TrainConfig, ModelConfig, PretrainedConfig, CerberusConfig,
+)
+```
+
+!!! warning "`model_config_` attribute on CerberusConfig"
+    Pydantic V2 reserves the name `model_config` for its own internal `ConfigDict`.
+    The `ModelConfig` field on `CerberusConfig` is therefore named **`model_config_`**
+    (with a trailing underscore) in Python code. In YAML and dict serialization the
+    key remains `"model_config"` (no underscore).
+
+    ```python
+    # Correct
+    mc = cerberus_config.model_config_   # → ModelConfig instance
+
+    # Wrong — silently returns Pydantic's internal ConfigDict, not your ModelConfig!
+    mc = cerberus_config.model_config    # → ConfigDict({'frozen': True, ...})
+    ```
+
+### Mutating Frozen Configs
+
+All config objects are frozen. To create a modified copy, use `model_copy(update=...)`:
+
+```python
+# Derive a config with a different learning rate
+new_train = train_config.model_copy(update={"learning_rate": 1e-4})
+
+# Override a nested config in CerberusConfig
+new_cerberus = cerberus_config.model_copy(
+    update={"data_config": cerberus_config.data_config.model_copy(update={"max_jitter": 0})}
+)
+```
+
 ## GenomeConfig
 
 Defines the reference genome and cross-validation strategy.
@@ -1261,6 +1298,35 @@ When `transforms` are not explicitly provided to `CerberusDataset`, they are aut
 
 Cerberus provides specialized loss functions for genomic signal prediction.
 
+### Choosing a Loss Function
+
+The choice of loss depends on your model architecture and data characteristics.
+Use the table below as a starting point:
+
+| Scenario | Recommended Loss | Output Type | Why |
+|---|---|---|---|
+| ChIP-seq, moderate–high depth | `MSEMultinomialLoss` | `ProfileCountOutput` | Standard BPNet loss. Multinomial NLL for shape, MSE on log-counts. Robust default. |
+| ChIP-seq with adaptive count weight | `BPNetLoss` | `ProfileCountOutput` | Extends `MSEMultinomialLoss` with a single `alpha` parameter (set to `"adaptive"` in `loss_args`). |
+| Low-coverage or high-variance signal | `NegativeBinomialMultinomialLoss` | `ProfileCountOutput` | NB count loss accounts for overdispersion (variance >> mean). Set `total_count` to control dispersion. |
+| Poisson count model | `PoissonMultinomialLoss` | `ProfileCountOutput` | Poisson count loss. Better statistical match when counts follow a Poisson distribution. |
+| Single output head (no count head) | `CoupledMSEMultinomialLoss` | `ProfileLogRates` | Derives total count via LogSumExp of log-rates. No separate count head needed. |
+| Single head, Poisson counts | `CoupledPoissonMultinomialLoss` | `ProfileLogRates` | Coupled Poisson variant for log-rate models. |
+| Single head, overdispersed | `CoupledNegativeBinomialMultinomialLoss` | `ProfileLogRates` | Coupled NB variant for log-rate models. |
+| Bias-factorized (Dalmatian) | `DalmatianLoss` | `FactorizedProfileCountOutput` | Wraps any base loss. Adds bias-only reconstruction on background examples. |
+| Direct log-rate regression | `ProfilePoissonNLLLoss` | `ProfileLogRates` | Standard Poisson NLL without profile/count factorization. |
+
+**Key distinctions:**
+
+- **"Coupled" losses** derive predicted counts from the profile predictions via
+  LogSumExp, so the model only needs a single output head producing `ProfileLogRates`.
+  Standard (non-coupled) losses require `ProfileCountOutput` with a separate count head.
+- **`count_pseudocount`** (on `ModelConfig`) matters for MSE-family losses: it controls
+  the offset in `log(count + pseudocount)`. Set to `1.0` for log1p behavior, or to
+  `0.0` for Poisson/NB losses that don't use it. This value is injected automatically
+  by `instantiate_metrics_and_loss()`.
+- **`flatten_channels`** (default `False`): set to `True` if you want a single
+  multinomial distribution over all channels × positions rather than per-channel.
+
 ### CerberusLoss Protocol
 All loss classes implement the `CerberusLoss` protocol, which requires:
 *   `loss_components(outputs, targets, **kwargs) -> dict[str, Tensor]`: Returns named, unweighted loss components.
@@ -1330,6 +1396,16 @@ Peak-conditioned loss for bias-factorized models. Wraps any profile+count base l
 *   **Requires**: `interval_source` (list of str) passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context). Intervals from `"IntervalSampler"` are treated as peaks; all others as background.
 *   **Inputs**: `FactorizedProfileCountOutput`.
 *   **Components**: `{"recon_loss": ..., "bias_loss": ...}`.
+
+### Choosing a Loss Function
+
+| Scenario                              | Recommended Loss                     | Why                                  |
+| ------------------------------------- | ------------------------------------ | ------------------------------------ |
+| ChIP-seq, moderate depth              | `MSEMultinomialLoss`                 | Standard BPNet loss, robust default  |
+| Low-coverage / high-variance          | `NegativeBinomialMultinomialLoss`    | Accounts for overdispersion          |
+| Single output head (no count head)    | `CoupledMSEMultinomialLoss`          | Derives counts from profile          |
+| Bias-factorized model (Dalmatian)     | `DalmatianLoss`                      | Handles bias/signal decomposition    |
+| Poisson-family (no pseudocount)       | `PoissonMultinomialLoss`             | Pure log-rate parameterization       |
 
 ## Model Outputs
 
@@ -1649,6 +1725,63 @@ Cerberus fully supports multi-GPU training by leveraging PyTorch Lightning.
 *   **Usage**: Pass `accelerator="gpu"`, `devices=N`, and optionally `strategy="ddp"` as `**trainer_kwargs` to `cerberus.train.train_single()` or `cerberus.train.train_multi()`.
 
 For detailed implementation notes and internal design, see `docs/internal/multi_gpu_support.md` in the repository.
+
+## Minimal Working Example
+
+### CLI (training tools)
+
+All training tool scripts (`train_bpnet.py`, `train_pomeranian.py`, etc.) accept `--accelerator`, `--devices`, and `--multi` flags:
+
+```bash
+# Single-fold training on 4 GPUs
+python tools/train_bpnet.py \
+    --config hparams.yaml \
+    --accelerator gpu \
+    --devices 4
+
+# Multi-fold cross-validation on 4 GPUs
+python tools/train_bpnet.py \
+    --config hparams.yaml \
+    --accelerator gpu \
+    --devices 4 \
+    --multi
+```
+
+The `--multi` flag runs full k-fold cross-validation (one fold at a time, each using all available GPUs).
+
+### Python API
+
+```python
+from cerberus import train_single
+
+trainer = train_single(
+    genome_config=genome_config,
+    data_config=data_config,
+    sampler_config=sampler_config,
+    model_config=model_config,
+    train_config=train_config,
+    num_workers=8,
+    # Multi-GPU arguments (passed through to pl.Trainer)
+    accelerator="gpu",
+    devices=4,
+    strategy="ddp",
+)
+```
+
+## Interaction with DataLoader Settings
+
+### `num_workers`
+
+Each DDP process spawns its own set of DataLoader workers. With `num_workers=8` and `devices=4`, the system runs **32 worker processes** total. Keep total workers within your CPU core count to avoid contention.
+
+### `reload_dataloaders_every_n_epochs`
+
+Setting `reload_dataloaders_every_n_epochs=1` in `TrainConfig` triggers `resample()` at the start of each epoch. In DDP, each rank receives a unique seed derived from `seed + (epoch * world_size) + rank`, ensuring that all GPUs see different data while remaining deterministic.
+
+!!! note "Recommended settings for DDP"
+    - Set `num_workers` to roughly `(total_cores / num_gpus)` to avoid over-subscribing CPU.
+    - Use `reload_dataloaders_every_n_epochs=1` with randomized samplers (Peak, ComplexityMatched, Random) so that each epoch sees a fresh sample across all ranks.
+    - The `prepare_data()` hook runs on rank 0 only. Complexity metrics are cached to disk and loaded by all ranks in `setup()`, avoiding redundant FASTA reads.
 
 ## Maintaining Docs  [contributing.md]
 
@@ -7022,17 +7155,35 @@ class CerberusDataModule(pl.LightningDataModule):
             return None
         return load_prepare_cache(cache_dir)
 
+    def _validate_paths(self) -> None:
+        """Verify all configured file paths exist before spawning workers.
+
+        Called at the start of :meth:`setup` to surface missing-file errors
+        immediately with a clear message, rather than letting them surface
+        deep inside a DataLoader worker subprocess.
+        """
+        p = Path(self.genome_config.fasta_path)
+        if not p.exists():
+            raise FileNotFoundError(f"Genome FASTA not found: {p}")
+        for label, channel_map in [("input", self.data_config.inputs),
+                                    ("target", self.data_config.targets)]:
+            for channel, path_val in channel_map.items():
+                if not Path(path_val).exists():
+                    raise FileNotFoundError(
+                        f"Data {label} channel '{channel}' file not found: {path_val}"
+                    )
+
     def setup(
-        self, 
-        stage: str | None = None, 
-        batch_size: int | None = None, 
+        self,
+        stage: str | None = None,
+        batch_size: int | None = None,
         val_batch_size: int | None = None,
         num_workers: int | None = None,
         in_memory: bool | None = None,
     ):
         """
         Sets up the datasets for the specified stage.
-        
+
         Initializes the full dataset and splits it into train/val/test sets based on the configured folds.
         Allows updating runtime parameters (batch_size, num_workers).
 
@@ -7045,7 +7196,7 @@ class CerberusDataModule(pl.LightningDataModule):
         """
         if batch_size is not None:
             self.batch_size = batch_size
-        
+
         if val_batch_size is not None:
             self.val_batch_size = val_batch_size
         elif batch_size is not None:
@@ -7058,6 +7209,8 @@ class CerberusDataModule(pl.LightningDataModule):
 
         if self._is_initialized:
             return
+
+        self._validate_paths()
 
         logger.info(f"Setting up DataModule (test_fold={self.test_fold}, val_fold={self.val_fold})...")
 

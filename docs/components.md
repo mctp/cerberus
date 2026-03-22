@@ -192,6 +192,35 @@ When `transforms` are not explicitly provided to `CerberusDataset`, they are aut
 
 Cerberus provides specialized loss functions for genomic signal prediction.
 
+### Choosing a Loss Function
+
+The choice of loss depends on your model architecture and data characteristics.
+Use the table below as a starting point:
+
+| Scenario | Recommended Loss | Output Type | Why |
+|---|---|---|---|
+| ChIP-seq, moderate–high depth | `MSEMultinomialLoss` | `ProfileCountOutput` | Standard BPNet loss. Multinomial NLL for shape, MSE on log-counts. Robust default. |
+| ChIP-seq with adaptive count weight | `BPNetLoss` | `ProfileCountOutput` | Extends `MSEMultinomialLoss` with a single `alpha` parameter (set to `"adaptive"` in `loss_args`). |
+| Low-coverage or high-variance signal | `NegativeBinomialMultinomialLoss` | `ProfileCountOutput` | NB count loss accounts for overdispersion (variance >> mean). Set `total_count` to control dispersion. |
+| Poisson count model | `PoissonMultinomialLoss` | `ProfileCountOutput` | Poisson count loss. Better statistical match when counts follow a Poisson distribution. |
+| Single output head (no count head) | `CoupledMSEMultinomialLoss` | `ProfileLogRates` | Derives total count via LogSumExp of log-rates. No separate count head needed. |
+| Single head, Poisson counts | `CoupledPoissonMultinomialLoss` | `ProfileLogRates` | Coupled Poisson variant for log-rate models. |
+| Single head, overdispersed | `CoupledNegativeBinomialMultinomialLoss` | `ProfileLogRates` | Coupled NB variant for log-rate models. |
+| Bias-factorized (Dalmatian) | `DalmatianLoss` | `FactorizedProfileCountOutput` | Wraps any base loss. Adds bias-only reconstruction on background examples. |
+| Direct log-rate regression | `ProfilePoissonNLLLoss` | `ProfileLogRates` | Standard Poisson NLL without profile/count factorization. |
+
+**Key distinctions:**
+
+- **"Coupled" losses** derive predicted counts from the profile predictions via
+  LogSumExp, so the model only needs a single output head producing `ProfileLogRates`.
+  Standard (non-coupled) losses require `ProfileCountOutput` with a separate count head.
+- **`count_pseudocount`** (on `ModelConfig`) matters for MSE-family losses: it controls
+  the offset in `log(count + pseudocount)`. Set to `1.0` for log1p behavior, or to
+  `0.0` for Poisson/NB losses that don't use it. This value is injected automatically
+  by `instantiate_metrics_and_loss()`.
+- **`flatten_channels`** (default `False`): set to `True` if you want a single
+  multinomial distribution over all channels × positions rather than per-channel.
+
 ### CerberusLoss Protocol
 All loss classes implement the `CerberusLoss` protocol, which requires:
 *   `loss_components(outputs, targets, **kwargs) -> dict[str, Tensor]`: Returns named, unweighted loss components.
@@ -261,6 +290,16 @@ Peak-conditioned loss for bias-factorized models. Wraps any profile+count base l
 *   **Requires**: `interval_source` (list of str) passed as keyword argument (automatically forwarded by `CerberusModule._shared_step` from batch context). Intervals from `"IntervalSampler"` are treated as peaks; all others as background.
 *   **Inputs**: `FactorizedProfileCountOutput`.
 *   **Components**: `{"recon_loss": ..., "bias_loss": ...}`.
+
+### Choosing a Loss Function
+
+| Scenario                              | Recommended Loss                     | Why                                  |
+| ------------------------------------- | ------------------------------------ | ------------------------------------ |
+| ChIP-seq, moderate depth              | `MSEMultinomialLoss`                 | Standard BPNet loss, robust default  |
+| Low-coverage / high-variance          | `NegativeBinomialMultinomialLoss`    | Accounts for overdispersion          |
+| Single output head (no count head)    | `CoupledMSEMultinomialLoss`          | Derives counts from profile          |
+| Bias-factorized model (Dalmatian)     | `DalmatianLoss`                      | Handles bias/signal decomposition    |
+| Poisson-family (no pseudocount)       | `PoissonMultinomialLoss`             | Pure log-rate parameterization       |
 
 ## Model Outputs
 
