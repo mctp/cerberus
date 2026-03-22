@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, call
 import torch
 import json
-from cerberus.train import _train as train, _save_model_pt, _dump_config, train_single
+from cerberus.train import _train as train, _save_model_pt, train_single
 from cerberus.config import TrainConfig, ModelConfig, DataConfig, GenomeConfig, SamplerConfig
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
@@ -183,46 +183,6 @@ def test_save_model_pt_skips_when_no_checkpoint():
     with patch("cerberus.train.torch.save") as mock_save:
         _save_model_pt(trainer, "/some/dir")
         mock_save.assert_not_called()
-
-def test_dump_config_writes_json():
-    """_dump_config writes a readable config.json containing all passed configs."""
-    model_cfg = _make_model_config()
-    data_cfg = _make_data_config()
-    train_cfg = _make_train_config()
-    genome_cfg = _make_genome_config()
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        _dump_config(
-            tmp_dir,
-            model_config=model_cfg,
-            data_config=data_cfg,
-            train_config=train_cfg,
-            genome_config=genome_cfg,
-        )
-        config_path = Path(tmp_dir) / "config.json"
-        assert config_path.exists()
-        loaded = json.loads(config_path.read_text())
-
-    assert loaded["model_config"]["name"] == "TestModel"
-    assert "sampler_config" not in loaded
-
-def test_dump_config_skips_none_sections():
-    """Sections passed as None are omitted from config.json."""
-    model_cfg = _make_model_config()
-    data_cfg = _make_data_config()
-    train_cfg = _make_train_config()
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        _dump_config(
-            tmp_dir,
-            model_config=model_cfg,
-            data_config=data_cfg,
-            train_config=train_cfg,
-        )
-        loaded = json.loads((Path(tmp_dir) / "config.json").read_text())
-
-    assert "genome_config" not in loaded
-    assert "sampler_config" not in loaded
 
 def test_train_wrapper_custom_callbacks():
     mock_module = MagicMock(spec=pl.LightningModule)

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from cerberus.config import ModelConfig, DataConfig, TrainConfig, GenomeConfig, SamplerConfig
-from cerberus.train import _dump_config, _save_model_pt
+from cerberus.train import _save_model_pt
 
 
 def _make_model_config(name: str = "test") -> ModelConfig:
@@ -63,72 +63,6 @@ def _make_sampler_config_mock() -> MagicMock:
     sc.model_dump.return_value = {"sampler_type": "random"}
     return sc
 
-
-# ---------------------------------------------------------------------------
-# _dump_config
-# ---------------------------------------------------------------------------
-
-class TestDumpConfig:
-
-    def test_writes_expected_json(self, tmp_path):
-        model_config = _make_model_config()
-        data_config = _make_data_config_mock()
-        train_config = _make_train_config()
-
-        _dump_config(tmp_path, model_config, data_config, train_config)
-
-        config_path = tmp_path / "config.json"
-        assert config_path.exists()
-
-        with open(config_path) as f:
-            data = json.load(f)
-        assert data["model_config"]["name"] == "test"
-        assert data["data_config"]["input_len"] == 1000
-        assert data["train_config"]["batch_size"] == 32
-        # genome_config and sampler_config should not be present when not provided
-        assert "genome_config" not in data
-        assert "sampler_config" not in data
-
-    def test_includes_optional_configs(self, tmp_path):
-        _dump_config(
-            tmp_path,
-            model_config=_make_model_config(name="m"),
-            data_config=_make_data_config_mock(),
-            train_config=_make_train_config(),
-            genome_config=_make_genome_config_mock(),
-            sampler_config=_make_sampler_config_mock(),
-        )
-        with open(tmp_path / "config.json") as f:
-            data = json.load(f)
-        assert data["genome_config"]["name"] == "hg38"
-        assert data["sampler_config"]["sampler_type"] == "random"
-
-    def test_handles_path_objects(self, tmp_path):
-        """Path objects should be serialized as strings via model_dump(mode='json')."""
-        model_config = _make_model_config()
-        data_config = _make_data_config_mock()
-        train_config = _make_train_config()
-
-        _dump_config(tmp_path, model_config, data_config, train_config)
-
-        with open(tmp_path / "config.json") as f:
-            data = json.load(f)
-        # model_dump(mode="json") serializes all fields properly
-        assert isinstance(data["model_config"], dict)
-
-    def test_handles_exception_gracefully(self, tmp_path):
-        """If writing fails, _dump_config should not raise."""
-        # Make root_dir a file (not a directory) to cause failure
-        bad_path = tmp_path / "existing_file"
-        bad_path.touch()
-        # Trying to create a directory inside a file should fail gracefully
-        _dump_config(
-            bad_path / "sub",
-            model_config=_make_model_config(),
-            data_config=_make_data_config_mock(),
-            train_config=_make_train_config(),
-        )
-        # Should not raise — just logs a warning
 
 
 # ---------------------------------------------------------------------------
