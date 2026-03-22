@@ -594,3 +594,16 @@ intervals = sampler_config.sampler_args.intervals_path
 payload = {"data_config": data_config.model_dump(mode="json")}
 json.dump(payload, f, indent=2)
 ```
+
+---
+
+## Verification Status
+
+All breaking changes were verified end-to-end:
+
+- **1473 unit tests pass** (0 failures, 24 skipped)
+- **76 new Pydantic regression tests** in `test_pydantic_config.py`
+- **14/14 training examples pass on A100 GPU** (BPNet, ASAP, Gopher, Pomeranian,
+  BiasNet, Dalmatian across ChIP-seq, ATAC-seq, and scATAC-seq datasets)
+- **Pyright**: 4 errors (all pre-existing, none from migration)
+- **Legacy hparams.yaml**: auto-migrated by `parse_hparams_config` with deprecation warning

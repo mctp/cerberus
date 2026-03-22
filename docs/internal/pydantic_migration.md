@@ -367,3 +367,39 @@ Test migration (Phase 3) is the dominant cost and is almost entirely mechanical 
 3. The codebase is still small enough (982 lines config, 45 test files) that the migration is tractable in a single PR.
 4. Pydantic V2 is a mainstream dependency in the Python ML ecosystem (used by FastAPI, LangChain, vLLM, etc.) and does not conflict with existing deps.
 5. `frozen=True` gives the immutability guarantee the codebase already wants but doesn't consistently enforce.
+
+---
+
+## Outcome (Post-Implementation)
+
+The migration was completed. Key metrics:
+
+| Metric | Estimated | Actual |
+|--------|-----------|--------|
+| Files changed | ~80 | 158 |
+| config.py net lines | -500 | -323 (982 → 659) |
+| Test files migrated | 45 | 62 |
+| Test count after | — | 1473 pass, 0 fail |
+| New regression tests | — | 76 (test_pydantic_config.py) |
+| Examples verified on GPU | — | 14/14 pass (A100) |
+| Pyright errors | — | 4 (all pre-existing) |
+
+### What went as planned
+- TypedDict → BaseModel conversion was straightforward
+- Typed sampler args with discriminated union worked well
+- FoldArgs typing was clean
+- Pseudocount reparameterization eliminated `propagate_pseudocount` entirely
+- `frozen=True` enforcement caught all mutation sites
+- Backward-compat migration in `parse_hparams_config` handles legacy YAML
+
+### Unexpected issues
+- **Context propagation in model_validator** (problem #3 in problems doc): manual model
+  construction inside `@model_validator` does not propagate `ValidationInfo.context`.
+  Required `model_validate(args, context=ctx)` instead of `Model(**args)`.
+- **Test scope was 2x larger than estimated**: 62 files vs 45, because many test files
+  had config construction even though they weren't in the initial grep for `cast()`.
+- **mock.patch cleanup**: ~40 test files patched deleted validation functions. The
+  volume of mock removal was not anticipated in the plan.
+- **`model_construct()` needed pervasively in tests**: almost all test fixtures use fake
+  paths, requiring `model_construct()` to skip path validation. This was anticipated
+  in gotcha #21 but the scale (hundreds of call sites) was larger than expected.

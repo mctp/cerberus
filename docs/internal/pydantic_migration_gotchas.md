@@ -1,7 +1,11 @@
 # Pydantic Migration Gotchas — Detailed Technical Reference
 
-Each gotcha includes: the current code with file/line reference, what breaks and why,
-and the recommended fix with a code snippet.
+Written before implementation as a planning document. All 24 gotchas were encountered
+and resolved during the migration. See `pydantic_migration_problems.md` for the most
+critical issues that were harder than expected (especially #3: context propagation).
+
+Each gotcha includes: the pre-migration code with file/line reference, what breaks and
+why, and the fix that was applied.
 
 ---
 
