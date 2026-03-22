@@ -1540,7 +1540,7 @@ def create_sampler(
             background_ratio=sampler_args["background_ratio"],
             seed=seed,
             prepare_cache=prepare_cache,
-            complexity_center_size=sampler_args["complexity_center_size"],
+            complexity_center_size=sampler_args.get("complexity_center_size"),
         )
 
     elif sampler_type == "negative_peak":
@@ -1557,7 +1557,7 @@ def create_sampler(
             background_ratio=sampler_args["background_ratio"],
             seed=seed,
             prepare_cache=prepare_cache,
-            complexity_center_size=sampler_args["complexity_center_size"],
+            complexity_center_size=sampler_args.get("complexity_center_size"),
         )
 
     else:
