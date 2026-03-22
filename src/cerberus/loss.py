@@ -188,8 +188,15 @@ class MSEMultinomialLoss(nn.Module):
         pred_log_counts = outputs.log_counts
         profile_loss = self._compute_profile_loss(logits, targets)
         if self.count_per_channel:
-            target_counts = targets.sum(dim=2)
+            target_counts = targets.sum(dim=2)  # (B, C)
             target_log_counts = torch.log(target_counts + self.count_pseudocount)
+            if pred_log_counts.shape != target_log_counts.shape:
+                raise ValueError(
+                    f"count_per_channel=True requires per-channel log_counts "
+                    f"{target_log_counts.shape}, but model predicted "
+                    f"{pred_log_counts.shape}. Set predict_total_count=False "
+                    f"in model_args when using count_per_channel=True."
+                )
             count_loss = F.mse_loss(pred_log_counts, target_log_counts)
         else:
             target_global_count = targets.sum(dim=(1, 2))
@@ -345,7 +352,14 @@ class PoissonMultinomialLoss(nn.Module):
         logits = predictions.logits
         pred_log_counts = predictions.log_counts
         if self.count_per_channel:
-            target_counts = targets.sum(dim=2)
+            target_counts = targets.sum(dim=2)  # (B, C)
+            if pred_log_counts.shape != target_counts.shape:
+                raise ValueError(
+                    f"count_per_channel=True requires per-channel log_counts "
+                    f"{target_counts.shape}, but model predicted "
+                    f"{pred_log_counts.shape}. Set predict_total_count=False "
+                    f"in model_args when using count_per_channel=True."
+                )
             count_loss = self.count_loss_fn(pred_log_counts, target_counts)
         else:
             target_global_count = targets.sum(dim=(1, 2))
@@ -447,7 +461,14 @@ class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss):
         logits = predictions.logits
         pred_log_counts = predictions.log_counts
         if self.count_per_channel:
-            target_counts = targets.sum(dim=2)
+            target_counts = targets.sum(dim=2)  # (B, C)
+            if pred_log_counts.shape != target_counts.shape:
+                raise ValueError(
+                    f"count_per_channel=True requires per-channel log_counts "
+                    f"{target_counts.shape}, but model predicted "
+                    f"{pred_log_counts.shape}. Set predict_total_count=False "
+                    f"in model_args when using count_per_channel=True."
+                )
         else:
             target_counts = targets.sum(dim=(1, 2))
             if pred_log_counts.ndim > 1:

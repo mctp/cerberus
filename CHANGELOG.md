@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of `(start, end - 1)`, extending exclusion zones one base pair beyond
   each peak's half-open end. This caused background candidates starting exactly
   at a peak's exclusive end to be incorrectly rejected.
+- **Shape mismatch with `count_per_channel=True` + `predict_total_count=True`**:
+  The combination silently broadcast `(B, 1)` log_counts against `(B, C)` targets
+  via PyTorch broadcasting, training the count head on the wrong objective. The
+  affected losses (`MSEMultinomialLoss`, `PoissonMultinomialLoss`,
+  `NegativeBinomialMultinomialLoss`) now raise `ValueError` on shape mismatch.
 - **Misaligned windows in `predict_bigwig` near chromosome start**: When a region
   started within `offset` bp of position 0, the mid-loop `max(0, pos)` clamp
   broke stride alignment and produced an irregular first output gap. The clamp is
