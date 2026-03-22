@@ -6,11 +6,12 @@
 
 # %%
 import pprint
+
 import torch
 
-from cerberus.genome import create_genome_config
 from cerberus import CerberusDataModule
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
+from cerberus.genome import create_genome_config
 
 try:
     from paths import get_project_root
@@ -65,7 +66,7 @@ for name, path in required_paths.items():
 
 if missing_paths:
     raise FileNotFoundError(
-        f"The following required files are missing:\n"
+        "The following required files are missing:\n"
         + "\n".join(f"  - {p}" for p in missing_paths)
     )
 

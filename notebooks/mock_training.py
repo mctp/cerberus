@@ -7,12 +7,13 @@
 # **Task**: Train a model to predict Gaussian peaks at locations of 'GGAA' motifs in the input sequence.
 
 # %%
-import sys
 import os
+import sys
 from pathlib import Path
-import torch
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
 
 # Ensure project root is in path
 try:
@@ -29,33 +30,34 @@ if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
 # Cerberus imports
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
+import pytorch_lightning as pl
+
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig, TrainConfig
 from cerberus.datamodule import CerberusDataModule
 from cerberus.dataset import CerberusDataset
-from cerberus.models.gopher import GlobalProfileCNN
-from cerberus.metrics import DefaultMetricCollection
 from cerberus.loss import ProfilePoissonNLLLoss
+from cerberus.metrics import DefaultMetricCollection
+from cerberus.models.gopher import GlobalProfileCNN
 from cerberus.module import CerberusModule
-import pytorch_lightning as pl
 
 # Mock imports (assuming tests/mock_utils.py exists)
 try:
     from tests.mock_utils import (
+        GaussianSignalGenerator,
         MockSampler,
         MockSequenceExtractor,
         MockSignalExtractor,
         insert_ggaa_motifs,
-        GaussianSignalGenerator,
     )
 except ImportError:
     # If tests module is not importable, we might need to add it to path
     sys.path.append(str(project_root / "tests"))
     from mock_utils import (  # type: ignore
+        GaussianSignalGenerator,
         MockSampler,
         MockSequenceExtractor,
         MockSignalExtractor,
         insert_ggaa_motifs,
-        GaussianSignalGenerator,
     )
 
 # %% [markdown]
@@ -123,7 +125,7 @@ class MockDataModule(CerberusDataModule):
         )
         self._is_initialized = True
 
-        print(f"Mock Data Setup Complete.")
+        print("Mock Data Setup Complete.")
         print(
             f"Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}, Test: {len(self.test_dataset)}"
         )

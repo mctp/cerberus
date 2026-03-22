@@ -5,12 +5,12 @@
 # It is based on the `examples/chip_ar_mdapca2b.py` training script (BPNet configuration).
 
 # %%
-import torch
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
-
 # Add project root to path if needed to import notebooks.paths
 import sys
+
+import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as F
 
 try:
     from paths import get_project_root
@@ -19,16 +19,16 @@ except ImportError:
     sys.path.append("notebooks")
     from paths import get_project_root
 
-from cerberus.download import download_dataset, download_human_reference
 from cerberus.config import (
-    GenomeConfig,
     DataConfig,
+    GenomeConfig,
+    ModelConfig,
     SamplerConfig,
     TrainConfig,
-    ModelConfig,
 )
-from cerberus.genome import create_genome_config
 from cerberus.dataset import CerberusDataset
+from cerberus.download import download_dataset, download_human_reference
+from cerberus.genome import create_genome_config
 from cerberus.model_ensemble import ModelEnsemble
 
 # %% [markdown]

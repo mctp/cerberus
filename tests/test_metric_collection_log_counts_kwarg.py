@@ -114,7 +114,7 @@ class TestLogCountsIncludePseudocountPropagation:
         for name, metric in mc.items():
             if name not in LOG_COUNTS_METRIC_NAMES:
                 assert not isinstance(
-                    metric, (LogCountsMeanSquaredError, LogCountsPearsonCorrCoef)
+                    metric, LogCountsMeanSquaredError | LogCountsPearsonCorrCoef
                 )
 
 

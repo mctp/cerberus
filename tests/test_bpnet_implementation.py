@@ -33,7 +33,7 @@ def test_bpnet_xavier_init():
         n_dilated_layers=3,
     )
     for name, m in model.named_modules():
-        if isinstance(m, (nn.Conv1d, nn.Linear)):
+        if isinstance(m, nn.Conv1d | nn.Linear):
             # Biases must be exactly zero
             if m.bias is not None:
                 assert m.bias.data.eq(0).all(), f"{name}.bias not zero-initialized"
@@ -691,7 +691,7 @@ def test_bpnet_stable_xavier_init():
         weight_norm=True,
     )
     for name, m in model.named_modules():
-        if isinstance(m, (nn.Conv1d, nn.Linear)):
+        if isinstance(m, nn.Conv1d | nn.Linear):
             if nn_parametrize.is_parametrized(m, "weight"):
                 # Effective weight is computed (Xavier-derived via right_inverse)
                 assert m.weight.data.std() > 0, (
@@ -744,12 +744,12 @@ def test_bpnet_weight_norm_init_matches_xavier():
     wn_mods = {
         n: m
         for n, m in model_wn.named_modules()
-        if isinstance(m, (nn.Conv1d, nn.Linear))
+        if isinstance(m, nn.Conv1d | nn.Linear)
     }
     plain_mods = {
         n: m
         for n, m in model_plain.named_modules()
-        if isinstance(m, (nn.Conv1d, nn.Linear))
+        if isinstance(m, nn.Conv1d | nn.Linear)
     }
 
     for name in wn_mods:
@@ -765,7 +765,7 @@ def test_bpnet_weight_norm_init_matches_xavier():
 
     # Also verify the Xavier bound: all effective weights must satisfy |w| <= bound
     for name, m in model_wn.named_modules():
-        if isinstance(m, (nn.Conv1d, nn.Linear)) and nn_parametrize.is_parametrized(
+        if isinstance(m, nn.Conv1d | nn.Linear) and nn_parametrize.is_parametrized(
             m, "weight"
         ):
             fan_in = m.weight.data.shape[1] * (

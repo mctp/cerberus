@@ -7,13 +7,14 @@
 # %%
 import os
 from pathlib import Path
+
 import torch
 
+from cerberus.config import DataConfig, GenomeConfig, ModelConfig
+from cerberus.dataset import CerberusDataset
+from cerberus.genome import create_genome_config
 from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.dataset import CerberusDataset
-from cerberus.config import GenomeConfig, DataConfig, ModelConfig
-from cerberus.genome import create_genome_config
 from cerberus.samplers import IntervalSampler
 
 # %% [markdown]

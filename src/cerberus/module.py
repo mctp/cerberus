@@ -177,7 +177,7 @@ class CerberusModule(pl.LightningModule):
             self.train_metrics if prefix == "train_" else self.val_metrics
         )
 
-        if isinstance(outputs, (tuple, list)):
+        if isinstance(outputs, tuple | list):
             outputs_detached = tuple(o.detach() for o in outputs)
         else:
             outputs_detached = outputs.detach()

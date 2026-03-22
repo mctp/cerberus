@@ -72,7 +72,7 @@ def _first_docstring_line(node: ast.AST) -> str:
     """Return the first line of a docstring, or empty string."""
     if (
         isinstance(
-            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
+            node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Module
         )
         and node.body
         and isinstance(node.body[0], ast.Expr)
@@ -107,7 +107,7 @@ def extract_api(filepath: Path) -> list[dict]:
                     "doc": _first_docstring_line(node),
                 }
             )
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             items.append(
                 {
                     "kind": "function",

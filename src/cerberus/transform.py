@@ -137,6 +137,9 @@ class TargetCrop:
         return inputs, targets, interval
 
 
+_DEFAULT_DNA_CHANNELS = slice(0, 4)
+
+
 class ReverseComplement:
     """
     Randomly reverse complements the sequence and reverses the signal.
@@ -146,7 +149,9 @@ class ReverseComplement:
     """
 
     def __init__(
-        self, probability: float = 0.5, dna_channels: slice | list[int] = slice(0, 4)
+        self,
+        probability: float = 0.5,
+        dna_channels: slice | list[int] = _DEFAULT_DNA_CHANNELS,
     ):
         """
         Args:

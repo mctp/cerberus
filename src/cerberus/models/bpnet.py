@@ -188,7 +188,7 @@ class BPNet(nn.Module):
         into ``weight_g`` and ``weight_v``, preserving the initialization intent.
         """
         for m in self.modules():
-            if isinstance(m, (nn.Conv1d, nn.Linear)):
+            if isinstance(m, nn.Conv1d | nn.Linear):
                 if m.weight is not None:
                     nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:

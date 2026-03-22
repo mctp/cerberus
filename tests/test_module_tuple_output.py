@@ -37,7 +37,7 @@ class MockTupleMetric(Metric):
 
     def update(self, preds, target):
         # preds should be tuple (out1, out2)
-        assert isinstance(preds, (tuple, list))
+        assert isinstance(preds, tuple | list)
         # Ensure elements are detached tensors (no grad)
         assert not preds[0].requires_grad
         self.sum += torch.sum(preds[0] - target)

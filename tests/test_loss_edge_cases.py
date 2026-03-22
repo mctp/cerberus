@@ -131,7 +131,7 @@ def test_metrics_log1p_targets_equivalence():
 def _get_init_kwargs(metric_instance):
     """Helper to extract init args that need to be passed back."""
     kwargs = {}
-    if isinstance(metric_instance, (ProfilePoissonNLLLoss, torch.nn.PoissonNLLLoss)):
+    if isinstance(metric_instance, ProfilePoissonNLLLoss | torch.nn.PoissonNLLLoss):
         kwargs["log_input"] = True
         kwargs["full"] = False
     return kwargs

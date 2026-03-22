@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pybigwig", "pysam", "matplotlib", "jupyter", "ipywidgets", "snapatac2"]
+dev = ["pytest", "pybigwig", "pysam", "matplotlib", "jupyter", "ipywidgets", "snapatac2", "ruff", "pre-commit"]
 docs = [
   "mkdocs>=1.6",
   "mkdocs-material>=9.5",
@@ -39,6 +39,17 @@ docs = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["F", "I", "UP", "B"]
+ignore = ["B017"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.pytest.ini_options]
 norecursedirs = ["tests/benchmark"]

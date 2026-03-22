@@ -14,16 +14,17 @@ except ImportError:
 
 # Cerberus imports
 from pprint import pprint
-from cerberus.download import download_dataset, download_human_reference
+
 from cerberus.config import (
-    GenomeConfig,
     DataConfig,
+    GenomeConfig,
+    ModelConfig,
     SamplerConfig,
     TrainConfig,
-    ModelConfig,
 )
-from cerberus.genome import create_genome_config
 from cerberus.datamodule import CerberusDataModule
+from cerberus.download import download_dataset, download_human_reference
+from cerberus.genome import create_genome_config
 from cerberus.train import _train
 
 # %% [markdown]
@@ -233,6 +234,7 @@ print("Training finished.")
 
 # %%
 import csv
+
 import matplotlib.pyplot as plt
 
 # The trainer object from the previous cell contains the logger

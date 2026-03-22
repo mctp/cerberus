@@ -19,16 +19,16 @@ try:
 except ImportError:
     from notebooks.paths import get_project_root
 
-from cerberus.genome import create_human_genome_config
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
+from cerberus.datamodule import CerberusDataModule
+from cerberus.dataset import CerberusDataset
 from cerberus.download import download_human_reference
+from cerberus.exclude import get_exclude_intervals
+from cerberus.genome import create_human_genome_config
+from cerberus.interval import Interval
+from cerberus.samplers import create_sampler
 from cerberus.sequence import SequenceExtractor
 from cerberus.signal import SignalExtractor
-from cerberus.samplers import create_sampler
-from cerberus.dataset import CerberusDataset
-from cerberus.datamodule import CerberusDataModule
-from cerberus.interval import Interval
-from cerberus.exclude import get_exclude_intervals
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 # Set up paths
 project_root = get_project_root()

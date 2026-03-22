@@ -41,7 +41,7 @@ def find_model_class(model_name):
 def get_shape_hook(name):
     def hook(model, input, output):
         # Format the output shape(s)
-        if isinstance(output, (tuple, list)):
+        if isinstance(output, tuple | list):
             shapes = []
             for o in output:
                 if hasattr(o, "shape"):
@@ -154,7 +154,7 @@ def print_model_dims(model_name, input_len=None, output_len=None, verbose=False)
             child.register_forward_hook(get_shape_hook(full_name))
 
             # If it's a container, recurse to see internal structure
-            if isinstance(child, (nn.Sequential, nn.ModuleList)):
+            if isinstance(child, nn.Sequential | nn.ModuleList):
                 register_hooks_recursive(child, prefix=f"{full_name}.")
             # Special case for Pomeranian/BPNet:
             # PGCBlock, DilatedResidualBlock are modules but we might want to see inside if verbose?
@@ -165,7 +165,7 @@ def print_model_dims(model_name, input_len=None, output_len=None, verbose=False)
     for name, child in model.named_children():
         child.register_forward_hook(get_shape_hook(name))
 
-        if isinstance(child, (nn.ModuleList, nn.Sequential)):
+        if isinstance(child, nn.ModuleList | nn.Sequential):
             for _i, (sub_name, sub_child) in enumerate(child.named_children()):
                 # named_children for list/sequential returns "0", "1", etc.
                 child_name = f"{name}.{sub_name}"

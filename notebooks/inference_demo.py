@@ -5,10 +5,10 @@
 # %%
 
 from pprint import pprint
-from cerberus import model_ensemble
-from cerberus.model_ensemble import ModelEnsemble
-from cerberus.interval import Interval
+
 from cerberus.dataset import CerberusDataset
+from cerberus.interval import Interval
+from cerberus.model_ensemble import ModelEnsemble
 
 try:
     from paths import get_project_root

@@ -128,7 +128,7 @@ def resolve_interval(query: str | tuple | list | Interval) -> Interval:
                 f"Invalid interval string format: {query}. Expected 'chrom:start-end'."
             ) from None
 
-    if isinstance(query, (tuple, list)):
+    if isinstance(query, tuple | list):
         if len(query) < 3:
             raise ValueError(
                 f"Invalid interval tuple: {query}. Expected (chrom, start, end)."

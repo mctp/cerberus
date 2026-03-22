@@ -631,7 +631,6 @@ class RandomSampler(BaseSampler):
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
     ) -> tuple["RandomSampler", "RandomSampler", "RandomSampler"]:
-
         if not self.folds:
             raise ValueError("Cannot split folds without fold definitions.")
 
@@ -946,7 +945,6 @@ class ScaledSampler(ProxySampler):
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
     ) -> tuple["ScaledSampler", "ScaledSampler", "ScaledSampler"]:
-
         train, val, test = self.sampler.split_folds(test_fold, val_fold)
 
         total_len = len(self.sampler)
@@ -1171,7 +1169,6 @@ class ComplexityMatchedSampler(ProxySampler):
         "ComplexityMatchedSampler",
         "ComplexityMatchedSampler",
     ]:
-
         target_splits = self.target_sampler.split_folds(test_fold, val_fold)
 
         # If initialized, partition the existing candidate pool to preserve cache hits.
