@@ -42,6 +42,14 @@ class GenomeConfig(BaseModel):
     fold_type: str
     fold_args: dict[str, Any]
 
+    @model_validator(mode="after")
+    def check_chrom_sizes_complete(self) -> "GenomeConfig":
+        """Every allowed_chrom must have an entry in chrom_sizes."""
+        missing = set(self.allowed_chroms) - set(self.chrom_sizes)
+        if missing:
+            raise ValueError(f"chrom_sizes missing entries for allowed_chroms: {missing}")
+        return self
+
 
 class SamplerConfig(BaseModel):
     """Configuration for data samplers.
