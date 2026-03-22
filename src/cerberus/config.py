@@ -15,9 +15,6 @@ def import_class(name: str) -> Any:
     """
     Dynamically imports a class from a module string (e.g., 'package.module.Class').
     """
-    if not isinstance(name, str):
-        raise TypeError(f"Class name must be a string, got {type(name)}")
-
     try:
         module_name, class_name = name.rsplit(".", 1)
         module = importlib.import_module(module_name)
