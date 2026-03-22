@@ -8,7 +8,7 @@ Cerberus is organized into modular components to separate concerns between confi
 src/cerberus/
 ├── __init__.py         # Top-level API exports
 ├── complexity.py       # Sequence complexity metrics (GC, DUST, CpG)
-├── config.py           # TypedDict schemas and validation (GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig)
+├── config.py           # Pydantic V2 BaseModel schemas (GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig)
 ├── datamodule.py       # PyTorch Lightning DataModule implementation
 ├── dataset.py          # PyTorch Dataset implementation
 ├── download.py         # Utilities for downloading reference genomes and datasets
@@ -35,7 +35,7 @@ src/cerberus/
 ## Module Responsibilities
 
 ### Configuration (`config.py`)
-Defines the "schema" for the application. It ensures that user inputs are validated before they reach the core logic. All TypedDicts and their `validate_*` functions live here.
+Defines the "schema" for the application using Pydantic V2 `BaseModel` classes. All models are frozen and forbid extra fields. Validation happens automatically at construction time — there are no separate `validate_*` functions.
 
 ### Core Logic (`dataset.py`, `datamodule.py`, `module.py`, `train.py`)
 These are the main entry points.

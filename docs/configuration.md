@@ -1,13 +1,19 @@
 # Configuration
 
-Cerberus relies on five configuration dictionaries that together define the full training pipeline: `GenomeConfig`, `DataConfig`, `SamplerConfig`, `TrainConfig`, and `ModelConfig`.
+Cerberus relies on five Pydantic V2 `BaseModel` configuration objects that together define the full training pipeline: `GenomeConfig`, `DataConfig`, `SamplerConfig`, `TrainConfig`, and `ModelConfig`. All models are frozen and forbid extra fields. Validation happens automatically at construction time — there are no separate `validate_*` functions.
 
 ## GenomeConfig
 
 Defines the reference genome and cross-validation strategy.
 
 ```python
-class GenomeConfig(TypedDict):
+class FoldArgs(BaseModel):
+    """Arguments for the chromosome-partition fold strategy."""
+    k: int          # Number of folds (>= 0)
+    test_fold: int | None = None  # Fold index for test set (optional)
+    val_fold: int | None = None   # Fold index for validation set (optional)
+
+class GenomeConfig(BaseModel):
     # Name of the genome assembly (e.g., "hg38")
     name: str
 
@@ -18,17 +24,15 @@ class GenomeConfig(TypedDict):
     chrom_sizes: dict[str, int]
 
     # Dictionary mapping names to BED file paths of regions to exclude
-    # (e.g., blacklists, gaps). Paths are resolved at validation time.
+    # (e.g., blacklists, gaps). Paths are resolved at construction time.
     exclude_intervals: dict[str, Path]
 
     # Cross-validation strategy. Currently only "chrom_partition" is supported.
     fold_type: str  # e.g., "chrom_partition"
 
-    # Arguments for the fold strategy.
-    # For 'chrom_partition', required keys: 'k' (int, number of folds),
-    # 'test_fold' (int, fold index for test set), 'val_fold' (int, fold index for validation set).
+    # Arguments for the fold strategy (typed Pydantic model).
     # test_fold and val_fold can be omitted if passed directly to CerberusDataModule or train_single.
-    fold_args: dict[str, Any]
+    fold_args: FoldArgs
 
     # List of chromosome names to include (e.g., ["chr1", ..., "chrX"])
     allowed_chroms: list[str]
@@ -39,7 +43,7 @@ class GenomeConfig(TypedDict):
 Defines the input and output data characteristics.
 
 ```python
-class DataConfig(TypedDict):
+class DataConfig(BaseModel):
     # Paths to input track files (BigWig, BigBed, BED).
     # Supported formats:
     # - BigWig (.bw, .bigwig): Continuous signal (coverage, fold-change).
@@ -77,14 +81,6 @@ class DataConfig(TypedDict):
     # Set to 1.0 to disable.
     target_scale: float
 
-    # Additive offset before log-transforming count targets, specified in raw
-    # coverage units (i.e. approximately read_length). propagate_pseudocount
-    # (called from instantiate()) multiplies this by target_scale before injecting
-    # into loss_args and metrics_args so that loss and metrics always receive the
-    # value in their native (scaled) units.
-    # A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.
-    count_pseudocount: float
-
     # Whether to include DNA sequence as an input channel (default: True)
     use_sequence: bool
 ```
@@ -117,7 +113,7 @@ The `in_memory` flag (passed at runtime to `CerberusDataModule.setup()`) signifi
 Defines how data samples are selected from the genome.
 
 ```python
-class SamplerConfig(TypedDict):
+class SamplerConfig(BaseModel):
     # Type of sampler: "interval", "sliding_window", "random", "complexity_matched", "peak"
     sampler_type: str
 
@@ -125,8 +121,10 @@ class SamplerConfig(TypedDict):
     # Must be >= input_len + 2 * max_jitter to allow jitter headroom.
     padded_size: int
 
-    # Arguments specific to the chosen sampler type
-    sampler_args: dict[str, Any]
+    # Arguments specific to the chosen sampler type.
+    # This is a typed union — the correct model is selected automatically
+    # based on sampler_type (e.g., PeakSamplerArgs, IntervalSamplerArgs).
+    sampler_args: SamplerArgsUnion
 ```
 
 ## TrainConfig
@@ -134,7 +132,7 @@ class SamplerConfig(TypedDict):
 Defines hyperparameters for training.
 
 ```python
-class TrainConfig(TypedDict):
+class TrainConfig(BaseModel):
     # Batch size
     batch_size: int
 
@@ -183,7 +181,7 @@ class TrainConfig(TypedDict):
 Defines configuration arguments for inference/prediction functions (e.g., `predict_to_bigwig`). These are passed as runtime arguments rather than a static configuration object.
 
 ```python
-class PredictConfig(TypedDict):
+class PredictConfig(BaseModel):
     # List of fold roles to use for prediction (e.g. ["test"], ["train", "val"])
     use_folds: list[str]
 
@@ -199,7 +197,7 @@ class PredictConfig(TypedDict):
 Defines the model architecture and its training components.
 
 ```python
-class ModelConfig(TypedDict):
+class ModelConfig(BaseModel):
     # Name of the model (used for logging)
     name: str
 
@@ -229,6 +227,18 @@ class ModelConfig(TypedDict):
     # Note: "input_len", "output_len", and "output_bin_size" are automatically passed
     # from DataConfig and do not need to be specified here.
     model_args: dict[str, Any]
+
+    # List of pretrained weight configs to load after model instantiation.
+    # Empty list means no pretrained weights.
+    pretrained: list[PretrainedConfig] = []
+
+    # Additive offset before log-transforming count targets, specified in scaled
+    # units (i.e. raw coverage × target_scale). Injected into loss_args and
+    # metrics_args automatically so that loss and metrics receive the value in
+    # their native (scaled) units.
+    # A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.
+    # Set to 0.0 for Poisson/NB losses that do not use a pseudocount.
+    count_pseudocount: float = 0.0
 ```
 
 ## DataModule Runtime Arguments

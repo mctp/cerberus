@@ -41,7 +41,6 @@ data_config = {
     "reverse_complement": True,
     "use_sequence": True,
     "target_scale": 1.0,  # Multiplicative scale applied to targets before log transform
-    "count_pseudocount": 1.0,  # Additive offset before log-transforming count targets
 }
 
 # 3. Sampler Configuration (Peaks + Negatives)
@@ -122,6 +121,7 @@ model_config = {
         "n_dilated_layers": 8,
         "output_channels": ["AR"],
     },
+    "count_pseudocount": 1.0,  # Additive offset before log-transforming count targets (scaled units)
 }
 
 # Option A: Train a Single Model (Single Split)
