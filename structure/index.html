@@ -282,7 +282,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../contributing/" class="md-tabs__link">
+        <a href="../developing/" class="md-tabs__link">
           
   
   
@@ -825,6 +825,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../developing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../contributing/" class="md-nav__link">
         
   
@@ -1089,10 +1117,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#prediction-model_ensemblepy-predict_bigwigpy" class="md-nav__link">
+  <a href="#prediction-model_ensemblepy-predict_bigwigpy-predict_miscpy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Prediction (model_ensemble.py, predict_bigwig.py)
+        Prediction (model_ensemble.py, predict_bigwig.py, predict_misc.py)
       
     </span>
   </a>
@@ -1207,7 +1235,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>src/cerberus/
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── __init__.py         # Top-level API exports
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── complexity.py       # Sequence complexity metrics (GC, DUST, CpG)
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── config.py           # TypedDict schemas and validation (GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── config.py           # Pydantic V2 BaseModel schemas (GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig)
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── datamodule.py       # PyTorch Lightning DataModule implementation
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── dataset.py          # PyTorch Dataset implementation
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── download.py         # Utilities for downloading reference genomes and datasets
@@ -1223,15 +1251,16 @@
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>├── module.py           # PyTorch Lightning Module wrapper (CerberusModule)
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>├── output.py           # Model output dataclasses (ProfileLogits, ProfileLogRates, ProfileCountOutput)
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>├── predict_bigwig.py   # Genome-wide BigWig generation
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>├── samplers.py         # Sampling logic (IntervalSampler, SlidingWindowSampler, PeakSampler, etc.)
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>├── sequence.py         # DNA sequence extraction from FASTA files
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>├── signal.py           # Signal extraction from BigWig files
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>├── train.py            # High-level training workflows (train_single, train_multi)
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>└── transform.py        # Data augmentation transforms (Jitter, ReverseComplement, Scale, etc.)
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>├── predict_misc.py     # High-level inference utilities (dataset, intervals, log-count prediction)
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>├── samplers.py         # Sampling logic (IntervalSampler, SlidingWindowSampler, PeakSampler, etc.)
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>├── sequence.py         # DNA sequence extraction from FASTA files
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>├── signal.py           # Signal extraction from BigWig files
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>├── train.py            # High-level training workflows (train_single, train_multi)
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>└── transform.py        # Data augmentation transforms (Jitter, ReverseComplement, Scale, etc.)
 </code></pre></div>
 <h2 id="module-responsibilities">Module Responsibilities<a class="headerlink" href="#module-responsibilities" title="Permanent link">&para;</a></h2>
 <h3 id="configuration-configpy">Configuration (<code>config.py</code>)<a class="headerlink" href="#configuration-configpy" title="Permanent link">&para;</a></h3>
-<p>Defines the "schema" for the application. It ensures that user inputs are validated before they reach the core logic. All TypedDicts and their <code>validate_*</code> functions live here.</p>
+<p>Defines the "schema" for the application using Pydantic V2 <code>BaseModel</code> classes. All models are frozen and forbid extra fields. Validation happens automatically at construction time — there are no separate <code>validate_*</code> functions.</p>
 <h3 id="core-logic-datasetpy-datamodulepy-modulepy-trainpy">Core Logic (<code>dataset.py</code>, <code>datamodule.py</code>, <code>module.py</code>, <code>train.py</code>)<a class="headerlink" href="#core-logic-datasetpy-datamodulepy-modulepy-trainpy" title="Permanent link">&para;</a></h3>
 <p>These are the main entry points.
 *   <code>dataset.py</code>: Ties together the Sampler (where), Extractors (what), and Transforms (how).
@@ -1246,10 +1275,11 @@
 <li><code>module.py</code>: <code>CerberusModule</code> (PL wrapper), optimization configuration, and model factory logic (<code>instantiate</code>).</li>
 <li><code>layers.py</code>: Reusable neural network blocks (PGC, ConvNeXtV2, GRN).</li>
 </ul>
-<h3 id="prediction-model_ensemblepy-predict_bigwigpy">Prediction (<code>model_ensemble.py</code>, <code>predict_bigwig.py</code>)<a class="headerlink" href="#prediction-model_ensemblepy-predict_bigwigpy" title="Permanent link">&para;</a></h3>
+<h3 id="prediction-model_ensemblepy-predict_bigwigpy-predict_miscpy">Prediction (<code>model_ensemble.py</code>, <code>predict_bigwig.py</code>, <code>predict_misc.py</code>)<a class="headerlink" href="#prediction-model_ensemblepy-predict_bigwigpy-predict_miscpy" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>model_ensemble.py</code>: Manages loading models (single or multi-fold) and selecting models for intervals. Delegates aggregation to <code>output.py</code>.</li>
 <li><code>predict_bigwig.py</code>: Streamlines genome-wide prediction generation into BigWig files.</li>
+<li><code>predict_misc.py</code>: High-level inference utilities — <code>create_eval_dataset</code>, <code>load_bed_intervals</code>, <code>get_eval_intervals</code>, <code>predict_log_counts</code>.</li>
 </ul>
 <h3 id="sampling-samplerspy">Sampling (<code>samplers.py</code>)<a class="headerlink" href="#sampling-samplerspy" title="Permanent link">&para;</a></h3>
 <p>Contains the logic for generating lists of <code>Interval</code> objects. This is decoupled from data reading, allowing lightweight iteration and manipulation of genomic regions before any heavy I/O occurs.</p>
@@ -1286,7 +1316,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 1, 2026 03:09:28 UTC">March 1, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 00:47:31 UTC">March 22, 2026</span>
   </span>
 
     

@@ -284,7 +284,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../contributing/" class="md-tabs__link">
+        <a href="../developing/" class="md-tabs__link">
           
   
   
@@ -1128,6 +1128,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../developing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../contributing/" class="md-nav__link">
         
   
@@ -1376,19 +1404,17 @@ Prediction starts are floored to the nearest bin relative to the merged interval
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># Access the configs used during training</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">genome_config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="p">[</span><span class="s2">&quot;genome_config&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">data_config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="p">[</span><span class="s2">&quot;data_config&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">genome_config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="o">.</span><span class="n">genome_config</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">data_config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="o">.</span><span class="n">data_config</span>
 </code></pre></div>
 <h3 id="path-resolution">Path Resolution<a class="headerlink" href="#path-resolution" title="Permanent link">&para;</a></h3>
 <p>If you move a trained model to a new environment (e.g., from a training cluster to a local machine), the absolute paths in <code>hparams.yaml</code> (pointing to FASTA or BigWig files) might be invalid.
-<code>ModelEnsemble</code> supports <code>search_paths</code> to resolve these files relative to new locations.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">checkpoint_path</span><span class="o">=</span><span class="s2">&quot;logs/my_experiment&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="c1"># Look for files in current dir and tests/data if original paths fail</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">search_paths</span><span class="o">=</span><span class="p">[</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">(),</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;tests/data&quot;</span><span class="p">)]</span> 
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">)</span>
+You can override specific configs by passing <code>genome_config</code>, <code>data_config</code>, or <code>model_config</code> to <code>ModelEnsemble</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">checkpoint_path</span><span class="o">=</span><span class="s2">&quot;logs/my_experiment&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">my_genome_config</span><span class="p">,</span>  <span class="c1"># Override genome paths</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">my_data_config</span><span class="p">,</span>      <span class="c1"># Override data paths</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
 </code></pre></div>
 <h2 id="prediction-methods">Prediction Methods<a class="headerlink" href="#prediction-methods" title="Permanent link">&para;</a></h2>
 <h3 id="1-batched-interval-prediction-efficient">1. Batched Interval Prediction (Efficient)<a class="headerlink" href="#1-batched-interval-prediction-efficient" title="Permanent link">&para;</a></h3>
@@ -1486,10 +1512,6 @@ Prediction starts are floored to the nearest bin relative to the merged interval
 <td><code>--device</code></td>
 <td>Override device selection (<code>cuda</code>, <code>mps</code>, <code>cpu</code>).</td>
 </tr>
-<tr>
-<td><code>--count-pseudocount</code></td>
-<td>Override pseudocount for log_counts inversion. Auto-read from config if omitted.</td>
-</tr>
 </tbody>
 </table>
 <h3 id="export-predictions-toolsexport_predictionspy">Export Predictions (<code>tools/export_predictions.py</code>)<a class="headerlink" href="#export-predictions-toolsexport_predictionspy" title="Permanent link">&para;</a></h3>
@@ -1531,8 +1553,8 @@ Prediction starts are floored to the nearest bin relative to the merged interval
 </tr>
 </tbody>
 </table>
-<p>The tool reads the instantiated loss to determine this automatically — no manual configuration is needed.</p>
-<p>The observed total is computed from raw BigWig signal (bypassing transforms) and then multiplied by <code>data_config["target_scale"]</code> before the log transform, matching what the loss was trained against.</p>
+<p>The tool reads <code>uses_count_pseudocount</code> from the loss class via <code>get_log_count_params</code> to determine this automatically — no manual configuration is needed.</p>
+<p>The observed total is computed from raw BigWig signal (bypassing transforms) and then multiplied by <code>data_config.target_scale</code> before the log transform, matching what the loss was trained against.</p>
 <h4 id="multi-channel-models-count_per_channeltrue">Multi-channel models (<code>count_per_channel=True</code>)<a class="headerlink" href="#multi-channel-models-count_per_channeltrue" title="Permanent link">&para;</a></h4>
 <p>When the model has multiple output channels and was trained with <code>count_per_channel=True</code> under an MSE loss, each channel's <code>log_counts</code> is in <code>log(count + count_pseudocount)</code> space. The tool correctly aggregates these to a single global log-count via:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>log((exp(lc_ch0) - p) + (exp(lc_ch1) - p) + ... + p)
@@ -1553,7 +1575,7 @@ Prediction starts are floored to the nearest bin relative to the merged interval
 </tr>
 <tr>
 <td><code>--include-background</code></td>
-<td>Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a <code>peak</code> sampler. Adds a <code>peak_status</code> column to the output (1=peak, 0=background).</td>
+<td>Include complexity-matched background (non-peak) intervals alongside peaks, replicating the training evaluation setup. Requires the model to have been trained with a <code>peak</code> sampler. Adds an <code>interval_source</code> column to the output (sampler class name).</td>
 </tr>
 <tr>
 <td><code>--background-ratio</code></td>
@@ -1622,7 +1644,7 @@ Prediction starts are floored to the nearest bin relative to the merged interval
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 19, 2026 14:48:34 UTC">March 19, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 04:11:18 UTC">March 22, 2026</span>
   </span>
 
     

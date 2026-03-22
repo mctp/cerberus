@@ -25,27 +25,19 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.config`
 
-- **`import_class()`** — Dynamically imports a class from a module string (e.g., 'package.module.Class').
-- **`class GenomeConfig(TypedDict)`** — Configuration for the genome assembly.
-- **`class SamplerConfig(TypedDict)`** — Configuration for data samplers.
-- **`class DataConfig(TypedDict)`** — Configuration for input/output data handling.
-- **`class TrainConfig(TypedDict)`** — Configuration for training hyperparameters.
-- **`class PretrainedConfig(TypedDict)`** — Configuration for loading pretrained weights into a model or sub-module.
-- **`class ModelConfig(TypedDict)`** — Configuration for the model architecture.
-- **`class CerberusConfig(TypedDict)`** — Combined configuration for Cerberus.
-- **`validate_genome_config()`** — Validates the genome configuration and returns a GenomeConfig object.
-- **`validate_data_config()`** — Validates the data configuration dictionary.
-- **`validate_sampler_config()`** — Validates the sampler configuration dictionary.
-- **`validate_data_and_sampler_compatibility()`** — Validates compatibility between data and sampler configurations.
-- **`validate_train_config()`** — Validates the training configuration dictionary.
-- **`validate_model_config()`** — Validates the model configuration dictionary.
-- **`validate_data_and_model_compatibility()`** — Validates compatibility between data and model configurations.
-- **`propagate_pseudocount()`** — Propagate the scaled count_pseudocount from data_config into model_config's
-- **`parse_hparams_config()`** — Parses a hparams.yaml file and returns validated configuration objects.
+- **`class GenomeConfig(BaseModel)`** — Configuration for the genome assembly.
+- **`class SamplerConfig(BaseModel)`** — Configuration for data samplers.
+- **`class DataConfig(BaseModel)`** — Configuration for input/output data handling.
+- **`class TrainConfig(BaseModel)`** — Configuration for training hyperparameters.
+- **`class PretrainedConfig(BaseModel)`** — Configuration for loading pretrained weights into a model sub-module.
+- **`class ModelConfig(BaseModel)`** — Configuration for the model architecture.
+- **`class CerberusConfig(BaseModel)`** — Combined configuration for Cerberus.
 
 ### `cerberus.interval`
 
 - **`class Interval`** — Represents a genomic interval.
+- **`write_intervals_bed()`** — Write intervals with source labels to a BED-like TSV file.
+- **`load_intervals_bed()`** — Load intervals and source labels from a BED-like TSV file.
 - **`resolve_interval()`** — Resolves a query into an Interval object.
 - **`parse_intervals()`** — Parses intervals from a list of strings and paths to BED files.
 - **`merge_intervals()`** — Sorts and merges overlapping or adjacent intervals.
@@ -147,6 +139,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.output`
 
+- **`get_log_count_params()`** — Determine log-count transform parameters from the model configuration.
 - **`class ModelOutput`** — Base class for model outputs.
 - **`class ProfileLogits(ModelOutput)`** — Output for models predicting a profile shape as unnormalized log-probabilities.
 - **`class ProfileLogRates(ModelOutput)`** — Output for models predicting log-rates (log-intensities).
@@ -157,6 +150,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`aggregate_intervals()`** — Merges predictions from multiple genomic intervals into a single ModelOutput.
 - **`aggregate_models()`** — Ensembles outputs from multiple models by reducing each tensor field.
 - **`compute_total_log_counts()`** — Computes total log counts across all channels, returning shape (B,).
+- **`compute_obs_log_counts()`** — Computes observed total log-counts from raw target counts.
 
 ### `cerberus.loss`
 
@@ -190,6 +184,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.model_ensemble`
 
+- **`parse_hparams_config()`** — Parse a ``hparams.yaml`` file into a validated :class:`CerberusConfig`.
 - **`class ModelEnsemble(nn.ModuleDict)`** — Wraps a dictionary of models (fold_idx -> model) and manages
 - **`update_ensemble_metadata()`** — Updates or creates ensemble_metadata.yaml in the root directory
 

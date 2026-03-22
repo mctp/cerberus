@@ -1,4 +1,5 @@
 import numpy as np
+
 from cerberus.complexity import calculate_gc_content
 
 try:

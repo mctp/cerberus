@@ -16,7 +16,7 @@
         <link rel="prev" href="../prediction/">
       
       
-        <link rel="next" href="../contributing/">
+        <link rel="next" href="../developing/">
       
       
         
@@ -284,7 +284,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../contributing/" class="md-tabs__link">
+        <a href="../developing/" class="md-tabs__link">
           
   
   
@@ -752,6 +752,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-GPU
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -768,6 +786,103 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-working-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal Working Example
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Minimal Working Example">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli-training-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI (training tools)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interaction-with-dataloader-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interaction with DataLoader Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Interaction with DataLoader Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#num_workers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        num_workers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reload_dataloaders_every_n_epochs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        reload_dataloaders_every_n_epochs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -832,6 +947,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../developing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1067,6 +1210,52 @@
 <li><strong>Usage</strong>: Pass <code>accelerator="gpu"</code>, <code>devices=N</code>, and optionally <code>strategy="ddp"</code> as <code>**trainer_kwargs</code> to <code>cerberus.train.train_single()</code> or <code>cerberus.train.train_multi()</code>.</li>
 </ul>
 <p>For detailed implementation notes and internal design, see <code>docs/internal/multi_gpu_support.md</code> in the repository.</p>
+<h2 id="minimal-working-example">Minimal Working Example<a class="headerlink" href="#minimal-working-example" title="Permanent link">&para;</a></h2>
+<h3 id="cli-training-tools">CLI (training tools)<a class="headerlink" href="#cli-training-tools" title="Permanent link">&para;</a></h3>
+<p>All training tool scripts (<code>train_bpnet.py</code>, <code>train_pomeranian.py</code>, etc.) accept <code>--accelerator</code>, <code>--devices</code>, and <code>--multi</code> flags:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Single-fold training on 4 GPUs</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span>--config<span class="w"> </span>hparams.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span>--accelerator<span class="w"> </span>gpu<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span>--devices<span class="w"> </span><span class="m">4</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Multi-fold cross-validation on 4 GPUs</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span>--config<span class="w"> </span>hparams.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span>--accelerator<span class="w"> </span>gpu<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span>--devices<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span>--multi
+</code></pre></div>
+<p>The <code>--multi</code> flag runs full k-fold cross-validation (one fold at a time, each using all available GPUs).</p>
+<h3 id="python-api">Python API<a class="headerlink" href="#python-api" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus</span><span class="w"> </span><span class="kn">import</span> <span class="n">train_single</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">trainer</span> <span class="o">=</span> <span class="n">train_single</span><span class="p">(</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">genome_config</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">data_config</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">sampler_config</span><span class="o">=</span><span class="n">sampler_config</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">model_config</span><span class="o">=</span><span class="n">model_config</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">train_config</span><span class="o">=</span><span class="n">train_config</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">num_workers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="c1"># Multi-GPU arguments (passed through to pl.Trainer)</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">accelerator</span><span class="o">=</span><span class="s2">&quot;gpu&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">devices</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">strategy</span><span class="o">=</span><span class="s2">&quot;ddp&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="p">)</span>
+</code></pre></div>
+<h2 id="interaction-with-dataloader-settings">Interaction with DataLoader Settings<a class="headerlink" href="#interaction-with-dataloader-settings" title="Permanent link">&para;</a></h2>
+<h3 id="num_workers"><code>num_workers</code><a class="headerlink" href="#num_workers" title="Permanent link">&para;</a></h3>
+<p>Each DDP process spawns its own set of DataLoader workers. With <code>num_workers=8</code> and <code>devices=4</code>, the system runs <strong>32 worker processes</strong> total. Keep total workers within your CPU core count to avoid contention.</p>
+<h3 id="reload_dataloaders_every_n_epochs"><code>reload_dataloaders_every_n_epochs</code><a class="headerlink" href="#reload_dataloaders_every_n_epochs" title="Permanent link">&para;</a></h3>
+<p>Setting <code>reload_dataloaders_every_n_epochs=1</code> in <code>TrainConfig</code> triggers <code>resample()</code> at the start of each epoch. In DDP, each rank receives a unique seed derived from <code>seed + (epoch * world_size) + rank</code>, ensuring that all GPUs see different data while remaining deterministic.</p>
+<div class="admonition note">
+<p class="admonition-title">Recommended settings for DDP</p>
+<ul>
+<li>Set <code>num_workers</code> to roughly <code>(total_cores / num_gpus)</code> to avoid over-subscribing CPU.</li>
+<li>Use <code>reload_dataloaders_every_n_epochs=1</code> with randomized samplers (Peak, ComplexityMatched, Random) so that each epoch sees a fresh sample across all ranks.</li>
+<li>The <code>prepare_data()</code> hook runs on rank 0 only. Complexity metrics are cached to disk and loaded by all ranks in <code>setup()</code>, avoiding redundant FASTA reads.</li>
+</ul>
+</div>
 
 
 
@@ -1089,7 +1278,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 3, 2026 04:12:33 UTC">March 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 05:25:05 UTC">March 22, 2026</span>
   </span>
 
     
@@ -1151,13 +1340,13 @@
         
         
           
-          <a href="../contributing/" class="md-footer__link md-footer__link--next" aria-label="Next: Maintaining Docs">
+          <a href="../developing/" class="md-footer__link md-footer__link--next" aria-label="Next: Developing">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Maintaining Docs
+                Developing
               </div>
             </div>
             <div class="md-footer__button md-icon">
