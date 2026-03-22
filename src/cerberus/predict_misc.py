@@ -103,8 +103,8 @@ def get_eval_intervals(
     exclude_intervals = get_exclude_intervals(genome_config.exclude_intervals)
 
     fold_args = genome_config.fold_args
-    test_fold_idx = fold_args.test_fold
-    val_fold_idx = fold_args.val_fold
+    test_fold_idx = fold_args["test_fold"]
+    val_fold_idx = fold_args["val_fold"]
 
     full_sampler_config = sampler_config.model_copy(
         update={"padded_size": data_config.input_len},

@@ -19,12 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `instantiate_metrics_and_loss()` now injects the value at construction time.
   Legacy `hparams.yaml` files are auto-migrated by `parse_hparams_config` with
   a deprecation warning.
-- **`sampler_args` is now a typed union**: `PeakSamplerArgs`,
-  `IntervalSamplerArgs`, `SlidingWindowSamplerArgs`, `RandomSamplerArgs`,
-  `NegativePeakSamplerArgs`, `ComplexityMatchedSamplerArgs`. Plain dicts are
-  still accepted and auto-routed via `@model_validator`.
-- **`fold_args` is now a `FoldArgs` model**: Fields `k`, `test_fold` (optional),
-  `val_fold` (optional).
+- **`sampler_args` is `dict[str, Any]`**: Typed sampler args models
+  (`PeakSamplerArgs`, `IntervalSamplerArgs`, etc.) have been removed.
+  `SamplerConfig.sampler_args` is a plain dict; consumers use bracket access.
+- **`fold_args` is `dict[str, Any]`**: The `FoldArgs` Pydantic model has been
+  removed. `GenomeConfig.fold_args` is a plain dict; consumers use bracket
+  access (e.g. `fold_args["k"]`).
 - **Deleted functions**: `validate_genome_config`, `validate_data_config`,
   `validate_sampler_config`, `validate_train_config`, `validate_model_config`,
   `validate_data_and_sampler_compatibility`, `validate_data_and_model_compatibility`,
@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`CerberusConfig.model_config_`**: The `ModelConfig` field is accessed as
   `model_config_` in Python (Pydantic reserves `model_config`). YAML key
   remains `"model_config"`.
+- **Path validation removed from Pydantic models**: `@field_validator` on path
+  fields has been deleted. Path resolution now happens only in
+  `parse_hparams_config` via `_resolve_paths_in_config()`.
 - **New dependency**: `pydantic>=2.0` added to `pyproject.toml`.
 
 ### Added
@@ -54,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `model_copy(update=...)`, `_sanitize_config()` → `model_dump(mode="json")`,
   `cast(Config, dict)` → `Config(...)` or `Config.model_construct(...)`.
 - **`encode_dna` rewritten with broadcast comparison**: ~11x faster at 128 kb.
+- **`sampler_args` and `fold_args` simplified to plain dicts**: Deleted typed
+  args classes (`FoldArgs`, `PeakSamplerArgs`, `NegativePeakSamplerArgs`,
+  `IntervalSamplerArgs`, etc.). `SamplerConfig.sampler_args` is now
+  `dict[str, Any]`; `GenomeConfig.fold_args` is now `dict[str, Any]`. All
+  `tools/`, `notebooks/`, and `tests/` updated to use plain dict constructors
+  and bracket access (`fold_args["test_fold"]` instead of `fold_args.test_fold`).
 
 ### Fixed
 - **`SamplerConfig.resolve_sampler_args` forwards validation context**: Passes

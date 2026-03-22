@@ -15,7 +15,7 @@ from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
 from cerberus.genome import create_genome_folds
 from cerberus.exclude import get_exclude_intervals
 from cerberus.output import compute_total_log_counts, compute_obs_log_counts
-from cerberus.config import get_log_count_params, SamplerConfig, PeakSamplerArgs
+from cerberus.config import get_log_count_params, SamplerConfig
 from cerberus.module import instantiate_metrics_and_loss
 
 logger = logging.getLogger(__name__)
@@ -132,8 +132,8 @@ def main():
 
     # Resolve test_fold / val_fold indices from the stored genome config.
     fold_args = genome_config.fold_args
-    test_fold_idx: int | None = fold_args.test_fold
-    val_fold_idx: int | None = fold_args.val_fold
+    test_fold_idx: int | None = fold_args["test_fold"]
+    val_fold_idx: int | None = fold_args["val_fold"]
 
     if args.eval_split != "all" and test_fold_idx is None and val_fold_idx is None:
         raise ValueError(
@@ -158,12 +158,12 @@ def main():
         # (e.g. larger window for complexity computation), but predict_intervals_batched
         # requires intervals pre-sized to input_len.
         orig_sampler_args = sampler_config.sampler_args
-        bg_ratio = args.background_ratio if args.background_ratio is not None else orig_sampler_args.background_ratio
-        bg_sampler_args = PeakSamplerArgs(
-            intervals_path=Path(args.peaks),
-            background_ratio=bg_ratio,
-            complexity_center_size=orig_sampler_args.complexity_center_size if hasattr(orig_sampler_args, "complexity_center_size") else None,
-        )
+        bg_ratio = args.background_ratio if args.background_ratio is not None else orig_sampler_args["background_ratio"]
+        bg_sampler_args = {
+            "intervals_path": Path(args.peaks),
+            "background_ratio": bg_ratio,
+            "complexity_center_size": orig_sampler_args["complexity_center_size"] if "complexity_center_size" in orig_sampler_args else None,
+        }
         bg_sampler_config = SamplerConfig(
             sampler_type=sampler_config.sampler_type,
             padded_size=padded_size,

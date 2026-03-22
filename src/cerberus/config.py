@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Union, Annotated, Literal
+from typing import Any
 from pathlib import Path
 import yaml
 import logging
 import importlib
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, ValidationInfo
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +42,12 @@ def _resolve_path(path: Path, search_paths: list[Path] | None = None) -> Path:
 
     if search_paths:
         for base in search_paths:
-            # 1. Check if path is relative to base
             candidate = base / path
             if candidate.exists():
                 return candidate.resolve()
 
-            # 2. If path is absolute, try to match suffixes
             if path.is_absolute():
                 parts = path.parts
-                # Try progressively shorter suffixes of the original path
-                # e.g. /a/b/c/d/file.txt -> d/file.txt, c/d/file.txt, etc.
                 for i in range(len(parts) - 1, 0, -1):
                     suffix = Path(*parts[i:])
                     candidate = base / suffix
@@ -63,23 +59,17 @@ def _resolve_path(path: Path, search_paths: list[Path] | None = None) -> Path:
 def _validate_path(
     path: str | Path,
     description: str,
-    check_exists: bool = True,
     search_paths: list[Path] | None = None,
 ) -> Path:
-    """Validates that a path exists (optional) and returns it as a Path object."""
+    """Validates that a path exists and returns it as a Path object."""
     p = Path(path)
-
-    if check_exists:
-        if not p.exists():
-            # Attempt resolution
-            resolved = _resolve_path(p, search_paths)
-            if resolved.exists():
-                return resolved
-            # If still not found
-            raise FileNotFoundError(
-                f"{description} not found at: {p} (and could not be resolved in search paths)"
-            )
-
+    if not p.exists():
+        resolved = _resolve_path(p, search_paths)
+        if resolved.exists():
+            return resolved
+        raise FileNotFoundError(
+            f"{description} not found at: {p} (and could not be resolved in search paths)"
+        )
     return p
 
 
@@ -100,115 +90,47 @@ def _validate_file_dict(
     return validated
 
 
+def _resolve_paths_in_config(config_data: dict[str, Any], search_paths: list[Path]) -> None:
+    """Resolve file paths in config dicts before Pydantic validation.
+
+    Mutates *config_data* in place. Called once from ``parse_hparams_config``
+    so that individual models don't need path-resolution validators.
+    """
+    # genome_config paths
+    gc = config_data.get("genome_config")
+    if gc and isinstance(gc, dict):
+        if "fasta_path" in gc:
+            gc["fasta_path"] = _validate_path(gc["fasta_path"], "Genome file", search_paths)
+        if "exclude_intervals" in gc and isinstance(gc["exclude_intervals"], dict):
+            gc["exclude_intervals"] = _validate_file_dict(gc["exclude_intervals"], "exclude_intervals", search_paths)
+
+    # data_config paths
+    dc = config_data.get("data_config")
+    if dc and isinstance(dc, dict):
+        if "inputs" in dc and isinstance(dc["inputs"], dict):
+            dc["inputs"] = _validate_file_dict(dc["inputs"], "inputs", search_paths)
+        if "targets" in dc and isinstance(dc["targets"], dict):
+            dc["targets"] = _validate_file_dict(dc["targets"], "targets", search_paths)
+
+    # sampler_config paths (intervals_path inside sampler_args)
+    sc = config_data.get("sampler_config")
+    if sc and isinstance(sc, dict):
+        sa = sc.get("sampler_args")
+        if sa and isinstance(sa, dict) and "intervals_path" in sa:
+            sa["intervals_path"] = _validate_path(sa["intervals_path"], "intervals file", search_paths)
+        # Recursive: complexity_matched has nested sampler configs
+        if sa and isinstance(sa, dict):
+            for sub_key in ("target_sampler", "candidate_sampler"):
+                sub = sa.get(sub_key)
+                if sub and isinstance(sub, dict):
+                    sub_sa = sub.get("sampler_args")
+                    if sub_sa and isinstance(sub_sa, dict) and "intervals_path" in sub_sa:
+                        sub_sa["intervals_path"] = _validate_path(
+                            sub_sa["intervals_path"], f"{sub_key} intervals file", search_paths
+                        )
+
+
 # --- Configuration Schemas ---
-
-
-class FoldArgs(BaseModel):
-    """Arguments for the chromosome-partition fold strategy."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    k: int = Field(ge=0)
-    test_fold: int | None = Field(default=None, ge=0)
-    val_fold: int | None = Field(default=None, ge=0)
-
-
-# --- Sampler Args Sub-Models ---
-
-
-class IntervalSamplerArgs(BaseModel):
-    """Arguments for the interval sampler."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    intervals_path: Path
-
-    @field_validator("intervals_path", mode="before")
-    @classmethod
-    def resolve_intervals_path(cls, v: Any, info: ValidationInfo) -> Path:
-        search_paths = info.context.get("search_paths") if info.context else None
-        return _validate_path(v, "intervals file", search_paths=search_paths)
-
-
-class SlidingWindowSamplerArgs(BaseModel):
-    """Arguments for the sliding window sampler."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    stride: int = Field(gt=0)
-
-
-class RandomSamplerArgs(BaseModel):
-    """Arguments for the random sampler."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    num_intervals: int = Field(gt=0)
-
-
-class PeakSamplerArgs(BaseModel):
-    """Arguments for the peak sampler."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    intervals_path: Path
-    background_ratio: float = Field(default=1.0, gt=0)
-    complexity_center_size: int | None = None
-
-    @field_validator("intervals_path", mode="before")
-    @classmethod
-    def resolve_intervals_path(cls, v: Any, info: ValidationInfo) -> Path:
-        search_paths = info.context.get("search_paths") if info.context else None
-        return _validate_path(v, "intervals file", search_paths=search_paths)
-
-
-class NegativePeakSamplerArgs(BaseModel):
-    """Arguments for the negative peak sampler."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    intervals_path: Path
-    background_ratio: float = Field(default=1.0, gt=0)
-    complexity_center_size: int | None = None
-
-    @field_validator("intervals_path", mode="before")
-    @classmethod
-    def resolve_intervals_path(cls, v: Any, info: ValidationInfo) -> Path:
-        search_paths = info.context.get("search_paths") if info.context else None
-        return _validate_path(v, "intervals file", search_paths=search_paths)
-
-
-class ComplexityMatchedSamplerArgs(BaseModel):
-    """Arguments for the complexity-matched sampler."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    target_sampler: "SamplerConfig"
-    candidate_sampler: "SamplerConfig"
-    bins: int = Field(gt=0)
-    candidate_ratio: float = Field(gt=0)
-    metrics: list[str]
-
-
-SamplerArgsUnion = Union[
-    IntervalSamplerArgs,
-    SlidingWindowSamplerArgs,
-    RandomSamplerArgs,
-    PeakSamplerArgs,
-    NegativePeakSamplerArgs,
-    ComplexityMatchedSamplerArgs,
-]
-
-_SAMPLER_ARGS_TYPE_MAP: dict[str, type[BaseModel]] = {
-    "interval": IntervalSamplerArgs,
-    "sliding_window": SlidingWindowSamplerArgs,
-    "random": RandomSamplerArgs,
-    "peak": PeakSamplerArgs,
-    "negative_peak": NegativePeakSamplerArgs,
-    "complexity_matched": ComplexityMatchedSamplerArgs,
-}
-
-# --- Main Config Models ---
 
 
 class GenomeConfig(BaseModel):
@@ -223,6 +145,8 @@ class GenomeConfig(BaseModel):
         chrom_sizes: Dictionary mapping chromosome names to their lengths.
         fold_type: Strategy for creating folds. Currently only 'chrom_partition' is supported.
         fold_args: Arguments for the folding strategy.
+                   For 'chrom_partition': keys 'k' (int), 'test_fold' (int|None),
+                   'val_fold' (int|None).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -233,19 +157,7 @@ class GenomeConfig(BaseModel):
     allowed_chroms: list[str]
     chrom_sizes: dict[str, int]
     fold_type: str
-    fold_args: FoldArgs
-
-    @field_validator("fasta_path", mode="before")
-    @classmethod
-    def resolve_fasta_path(cls, v: Any, info: ValidationInfo) -> Path:
-        search_paths = info.context.get("search_paths") if info.context else None
-        return _validate_path(v, "Genome file", search_paths=search_paths)
-
-    @field_validator("exclude_intervals", mode="before")
-    @classmethod
-    def resolve_exclude_intervals(cls, v: Any, info: ValidationInfo) -> dict[str, Path]:
-        search_paths = info.context.get("search_paths") if info.context else None
-        return _validate_file_dict(v, "exclude_intervals", search_paths=search_paths)
+    fold_args: dict[str, Any]
 
     @model_validator(mode="after")
     def filter_chrom_sizes(self) -> "GenomeConfig":
@@ -256,7 +168,6 @@ class GenomeConfig(BaseModel):
             missing = allowed_set - set(filtered.keys())
             raise ValueError(f"chrom_sizes missing entries for allowed_chroms: {missing}")
         if filtered != self.chrom_sizes:
-            # Reconstruct with filtered chrom_sizes (bypass frozen via model_construct)
             return self.model_copy(update={"chrom_sizes": filtered})
         return self
 
@@ -269,29 +180,14 @@ class SamplerConfig(BaseModel):
         sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random',
             'complexity_matched', 'peak', 'negative_peak').
         padded_size: Length of the intervals yielded by the sampler (after padding/centering).
-        sampler_args: Typed arguments specific to the sampler type.
+        sampler_args: Dictionary of arguments specific to the sampler type.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     sampler_type: str
     padded_size: int = Field(gt=0)
-    sampler_args: SamplerArgsUnion
-
-    @model_validator(mode="before")
-    @classmethod
-    def resolve_sampler_args(cls, data: Any, info: ValidationInfo) -> Any:
-        """Route sampler_args to the correct typed model based on sampler_type."""
-        if isinstance(data, dict):
-            sampler_type = data.get("sampler_type")
-            args = data.get("sampler_args", {})
-            if sampler_type in _SAMPLER_ARGS_TYPE_MAP and isinstance(args, dict):
-                data = dict(data)  # don't mutate the original
-                ctx = info.context if info and info.context else None
-                data["sampler_args"] = _SAMPLER_ARGS_TYPE_MAP[sampler_type].model_validate(
-                    args, context=ctx
-                )
-        return data
+    sampler_args: dict[str, Any]
 
 
 class DataConfig(BaseModel):
@@ -325,18 +221,6 @@ class DataConfig(BaseModel):
     reverse_complement: bool
     use_sequence: bool
     target_scale: float = Field(gt=0)
-
-    @field_validator("inputs", mode="before")
-    @classmethod
-    def resolve_inputs(cls, v: Any, info: ValidationInfo) -> dict[str, Path]:
-        search_paths = info.context.get("search_paths") if info.context else None
-        return _validate_file_dict(v, "inputs", search_paths=search_paths)
-
-    @field_validator("targets", mode="before")
-    @classmethod
-    def resolve_targets(cls, v: Any, info: ValidationInfo) -> dict[str, Path]:
-        search_paths = info.context.get("search_paths") if info.context else None
-        return _validate_file_dict(v, "targets", search_paths=search_paths)
 
     @model_validator(mode="after")
     def check_rc_requires_sequence(self) -> "DataConfig":
@@ -474,7 +358,6 @@ class CerberusConfig(BaseModel):
     @model_validator(mode="after")
     def cross_validate(self) -> "CerberusConfig":
         """Cross-validate data/sampler and data/model compatibility."""
-        # Data-sampler compatibility
         input_len = self.data_config.input_len
         max_jitter = self.data_config.max_jitter
         padded_size = self.sampler_config.padded_size
@@ -486,7 +369,6 @@ class CerberusConfig(BaseModel):
                 "Please increase padded_size or decrease input_len/max_jitter."
             )
 
-        # Data-model compatibility
         model_args = self.model_config_.model_args
         if "output_channels" in model_args:
             target_channels = set(self.data_config.targets.keys())
@@ -503,12 +385,6 @@ class CerberusConfig(BaseModel):
                 raise ValueError(f"Data inputs {missing} are not in model input channels")
 
         return self
-
-
-# Resolve forward references for recursive SamplerConfig
-ComplexityMatchedSamplerArgs.model_rebuild()
-SamplerConfig.model_rebuild()
-CerberusConfig.model_rebuild()
 
 
 # --- Utility Functions ---
@@ -550,7 +426,8 @@ def parse_hparams_config(
 
     Args:
         path: Path to the hparams.yaml file.
-        search_paths: List of directories to search for referenced files if not found at original paths.
+        search_paths: List of directories to search for referenced files
+            if not found at original paths.
 
     Returns:
         CerberusConfig: Validated and frozen configuration.
@@ -575,7 +452,6 @@ def parse_hparams_config(
     if not isinstance(data, dict):
         raise ValueError("hparams file must contain a dictionary")
 
-    # Required top-level keys
     required_keys = {
         "train_config",
         "genome_config",
@@ -589,42 +465,37 @@ def parse_hparams_config(
         raise ValueError(f"hparams missing required sections: {missing}")
 
     # Extract only known keys (Lightning may add extra hparams)
-    config_data = {k: data[k] for k in required_keys}
+    config_data = {k: dict(data[k]) for k in required_keys}
 
     # Backwards compatibility: backfill pretrained for old YAML files
-    raw_model_config = config_data["model_config"]
-    if "pretrained" not in raw_model_config:
+    raw_mc = config_data["model_config"]
+    if "pretrained" not in raw_mc:
         logger.warning(
             "hparams.yaml at %s is missing 'pretrained' field in model_config. "
-            "Defaulting to pretrained=[]. Retrain the model to update the config. "
-            "This backwards compatibility shim will be removed in a future release.",
+            "Defaulting to pretrained=[].",
             p,
         )
-        raw_model_config["pretrained"] = []
+        raw_mc["pretrained"] = []
 
     # Backwards compatibility: migrate legacy count_pseudocount from data_config
-    raw_data_config = config_data["data_config"]
-    if "count_pseudocount" in raw_data_config and "count_pseudocount" not in raw_model_config:
-        target_scale = raw_data_config.get("target_scale", 1.0)
-        raw_pseudocount = raw_data_config["count_pseudocount"]
-        scaled = raw_pseudocount * target_scale
-        raw_model_config["count_pseudocount"] = scaled
-        logger.warning(
-            "hparams.yaml at %s has legacy count_pseudocount=%.4g in data_config. "
-            "Migrated to model_config.count_pseudocount=%.4g (raw × target_scale=%.4g). "
-            "Retrain the model to update the config.",
-            p,
-            raw_pseudocount,
-            scaled,
-            target_scale,
-        )
-    # Remove count_pseudocount from data_config if present (legacy field)
-    raw_data_config.pop("count_pseudocount", None)
+    raw_dc = config_data["data_config"]
+    if "count_pseudocount" in raw_dc:
+        if "count_pseudocount" not in raw_mc:
+            target_scale = raw_dc.get("target_scale", 1.0)
+            raw_pseudocount = raw_dc["count_pseudocount"]
+            scaled = raw_pseudocount * target_scale
+            raw_mc["count_pseudocount"] = scaled
+            logger.warning(
+                "hparams.yaml at %s has legacy count_pseudocount=%.4g in data_config. "
+                "Migrated to model_config.count_pseudocount=%.4g (raw × target_scale=%.4g).",
+                p, raw_pseudocount, scaled, target_scale,
+            )
+        del raw_dc["count_pseudocount"]
 
-    config = CerberusConfig.model_validate(
-        config_data, context={"search_paths": search_paths}
-    )
+    # Resolve file paths before Pydantic validation
+    _resolve_paths_in_config(config_data, search_paths)
+
+    config = CerberusConfig.model_validate(config_data)
 
     logger.info(f"Successfully parsed hparams from {p}")
-
     return config

@@ -7,12 +7,6 @@ Cerberus relies on five Pydantic V2 `BaseModel` configuration objects that toget
 Defines the reference genome and cross-validation strategy.
 
 ```python
-class FoldArgs(BaseModel):
-    """Arguments for the chromosome-partition fold strategy."""
-    k: int          # Number of folds (>= 0)
-    test_fold: int | None = None  # Fold index for test set (optional)
-    val_fold: int | None = None   # Fold index for validation set (optional)
-
 class GenomeConfig(BaseModel):
     # Name of the genome assembly (e.g., "hg38")
     name: str
@@ -24,15 +18,17 @@ class GenomeConfig(BaseModel):
     chrom_sizes: dict[str, int]
 
     # Dictionary mapping names to BED file paths of regions to exclude
-    # (e.g., blacklists, gaps). Paths are resolved at construction time.
+    # (e.g., blacklists, gaps). Paths are resolved via parse_hparams_config.
     exclude_intervals: dict[str, Path]
 
     # Cross-validation strategy. Currently only "chrom_partition" is supported.
     fold_type: str  # e.g., "chrom_partition"
 
-    # Arguments for the fold strategy (typed Pydantic model).
-    # test_fold and val_fold can be omitted if passed directly to CerberusDataModule or train_single.
-    fold_args: FoldArgs
+    # Arguments for the fold strategy (plain dict).
+    # For "chrom_partition": {"k": 5, "test_fold": 0, "val_fold": 1}
+    # test_fold and val_fold can be omitted if passed directly to
+    # CerberusDataModule or train_single.
+    fold_args: dict[str, Any]
 
     # List of chromosome names to include (e.g., ["chr1", ..., "chrX"])
     allowed_chroms: list[str]
@@ -121,10 +117,9 @@ class SamplerConfig(BaseModel):
     # Must be >= input_len + 2 * max_jitter to allow jitter headroom.
     padded_size: int
 
-    # Arguments specific to the chosen sampler type.
-    # This is a typed union — the correct model is selected automatically
-    # based on sampler_type (e.g., PeakSamplerArgs, IntervalSamplerArgs).
-    sampler_args: SamplerArgsUnion
+    # Arguments specific to the chosen sampler type (plain dict).
+    # Keys depend on sampler_type — see "Sampler Arguments" below.
+    sampler_args: dict[str, Any]
 ```
 
 ## TrainConfig

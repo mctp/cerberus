@@ -28,7 +28,7 @@ if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
 # Cerberus imports
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, FoldArgs, IntervalSamplerArgs
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig
 from cerberus.datamodule import CerberusDataModule
 from cerberus.dataset import CerberusDataset
 from cerberus.models.gopher import GlobalProfileCNN
@@ -121,7 +121,6 @@ class MockDataModule(CerberusDataModule):
         print(f"Mock Data Setup Complete.")
         print(f"Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}, Test: {len(self.test_dataset)}")
 
-
 # %% [markdown]
 # ## 2. Configuration
 # 
@@ -144,7 +143,7 @@ genome_config = GenomeConfig.model_construct(
     allowed_chroms=["chr1"],
     chrom_sizes={"chr1": 1_000_000},
     fold_type="chrom_partition",
-    fold_args=FoldArgs(k=5, test_fold=0, val_fold=1),
+    fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
 )
 
 data_config = DataConfig.model_construct(
@@ -164,7 +163,7 @@ data_config = DataConfig.model_construct(
 sampler_config = SamplerConfig.model_construct(
     sampler_type="interval",
     padded_size=2048,
-    sampler_args=IntervalSamplerArgs.model_construct(intervals_path=dummy_dir / "exclude.bed"),
+    sampler_args={"intervals_path": dummy_dir / "exclude.bed"},
 )
 
 train_config = TrainConfig(

@@ -26,7 +26,7 @@ import cerberus
 from cerberus.download import download_human_reference
 from cerberus.config import (
     GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig,
-    PretrainedConfig, FoldArgs, PeakSamplerArgs,
+    PretrainedConfig,
 )
 from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
@@ -170,7 +170,7 @@ def main():
         fasta_path=fasta_path,
         species=args.species,
         fold_type="chrom_partition",
-        fold_args=FoldArgs(k=5, val_fold=args.val_fold, test_fold=args.test_fold),
+        fold_args={"k": 5, "val_fold": args.val_fold, "test_fold": args.test_fold},
         exclude_intervals=exclude_intervals
     )
 
@@ -202,10 +202,10 @@ def main():
     sampler_config = SamplerConfig(
         sampler_type="peak",
         padded_size=padded_size,
-        sampler_args=PeakSamplerArgs(
-            intervals_path=args.peaks,
-            background_ratio=args.background_ratio,
-        ),
+        sampler_args={
+            "intervals_path": args.peaks,
+            "background_ratio": args.background_ratio,
+        },
     )
 
     # Train Config

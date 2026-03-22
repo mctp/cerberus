@@ -26,13 +26,6 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 ### `cerberus.config`
 
 - **`import_class()`** — Dynamically imports a class from a module string (e.g., 'package.module.Class').
-- **`class FoldArgs(BaseModel)`** — Arguments for the chromosome-partition fold strategy.
-- **`class IntervalSamplerArgs(BaseModel)`** — Arguments for the interval sampler.
-- **`class SlidingWindowSamplerArgs(BaseModel)`** — Arguments for the sliding window sampler.
-- **`class RandomSamplerArgs(BaseModel)`** — Arguments for the random sampler.
-- **`class PeakSamplerArgs(BaseModel)`** — Arguments for the peak sampler.
-- **`class NegativePeakSamplerArgs(BaseModel)`** — Arguments for the negative peak sampler.
-- **`class ComplexityMatchedSamplerArgs(BaseModel)`** — Arguments for the complexity-matched sampler.
 - **`class GenomeConfig(BaseModel)`** — Configuration for the genome assembly.
 - **`class SamplerConfig(BaseModel)`** — Configuration for data samplers.
 - **`class DataConfig(BaseModel)`** — Configuration for input/output data handling.

@@ -428,10 +428,9 @@ def train_single(
     # This ensures hparams.yaml logged by Lightning matches the directory structure
     fold_args = genome_config.fold_args
     if fold_args is not None:
-        updated_fold_args = fold_args.model_copy(
-            update={"test_fold": test_fold, "val_fold": val_fold}
-        )
-        genome_config = genome_config.model_copy(update={"fold_args": updated_fold_args})
+        genome_config = genome_config.model_copy(update={
+            "fold_args": {**fold_args, "test_fold": test_fold, "val_fold": val_fold}
+        })
 
     # 2. Train (setup → adaptive resolution → instantiate → fit happen inside _train)
     trainer = _train(
@@ -515,7 +514,7 @@ def train_multi(
     Returns:
         List of fitted PyTorch Lightning Trainer objects (one per fold).
     """
-    k = genome_config.fold_args.k
+    k = genome_config.fold_args["k"]
     trainers = []
 
     for i in range(k):

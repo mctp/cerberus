@@ -41,7 +41,7 @@ import cerberus
 from cerberus.download import download_human_reference
 from cerberus.config import (
     GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig,
-    PretrainedConfig, FoldArgs, PeakSamplerArgs, NegativePeakSamplerArgs,
+    PretrainedConfig,
 )
 from cerberus.genome import create_genome_config
 from cerberus.train import train_single, train_multi
@@ -197,7 +197,7 @@ def main():
         fasta_path=fasta_path,
         species=args.species,
         fold_type="chrom_partition",
-        fold_args=FoldArgs(k=5, val_fold=args.val_fold, test_fold=args.test_fold),
+        fold_args={"k": 5, "val_fold": args.val_fold, "test_fold": args.test_fold},
         exclude_intervals=exclude_intervals,
     )
 
@@ -235,15 +235,15 @@ def main():
 
     # Build the appropriate sampler args based on sampler type
     if args.sampler_type == "negative_peak":
-        sampler_args_obj = NegativePeakSamplerArgs(
-            intervals_path=args.peaks,
-            background_ratio=args.background_ratio,
-        )
+        sampler_args_obj = {
+            "intervals_path": args.peaks,
+            "background_ratio": args.background_ratio,
+        }
     else:
-        sampler_args_obj = PeakSamplerArgs(
-            intervals_path=args.peaks,
-            background_ratio=args.background_ratio,
-        )
+        sampler_args_obj = {
+            "intervals_path": args.peaks,
+            "background_ratio": args.background_ratio,
+        }
 
     sampler_config = SamplerConfig(
         sampler_type=args.sampler_type,

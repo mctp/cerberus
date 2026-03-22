@@ -67,9 +67,9 @@ class CerberusDataModule(pl.LightningDataModule):
 
         # Resolve fold indices: argument > config
         if test_fold is None:
-            test_fold = self.genome_config.fold_args.test_fold
+            test_fold = self.genome_config.fold_args["test_fold"]
         if val_fold is None:
-            val_fold = self.genome_config.fold_args.val_fold
+            val_fold = self.genome_config.fold_args["val_fold"]
         
         self.test_fold = test_fold
         self.val_fold = val_fold
