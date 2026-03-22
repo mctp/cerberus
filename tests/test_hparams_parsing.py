@@ -1,6 +1,7 @@
 import pytest
 import yaml
 from pathlib import Path
+from pydantic import ValidationError
 from cerberus.config import parse_hparams_config, CerberusConfig
 
 def test_parse_hparams_config_success():
@@ -29,5 +30,5 @@ def test_parse_hparams_config_missing_sections(tmp_path):
     with open(p, 'w') as f:
         yaml.dump(data, f)
 
-    with pytest.raises(ValueError, match="missing required sections"):
+    with pytest.raises(ValidationError):
         parse_hparams_config(p)

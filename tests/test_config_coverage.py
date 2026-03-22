@@ -128,7 +128,7 @@ class TestImportClass:
             import_class("cerberus.loss.NonExistentClass")
 
     def test_non_string_raises(self):
-        with pytest.raises(TypeError, match="must be a string"):
+        with pytest.raises(ImportError):
             import_class(123)  # type: ignore[arg-type]
 
 

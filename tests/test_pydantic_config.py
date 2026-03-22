@@ -807,12 +807,12 @@ class TestBackwardCompatibility:
         assert isinstance(config, CerberusConfig)
 
     def test_missing_required_section_raises(self, tmp_path):
-        """Missing required top-level key raises ValueError."""
+        """Missing required top-level key raises ValidationError."""
         d = _full_config_dict(tmp_path)
         del d["train_config"]
 
         hparams_path = self._write_hparams(tmp_path, d)
-        with pytest.raises(ValueError, match="missing required"):
+        with pytest.raises(ValidationError, match="train_config"):
             parse_hparams_config(hparams_path)
 
     def test_file_not_found_raises(self):

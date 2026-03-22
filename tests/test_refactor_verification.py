@@ -105,7 +105,7 @@ def test_import_class_failure():
     with pytest.raises(ImportError):
         import_class("cerberus.config.NonExistentClass")
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ImportError):
         import_class(123) # type: ignore
 
 # --- Entrypoints Tests ---

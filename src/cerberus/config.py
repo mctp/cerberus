@@ -344,7 +344,7 @@ class CerberusConfig(BaseModel):
     code the attribute is ``model_config_``.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
 
     train_config: TrainConfig
     genome_config: GenomeConfig
@@ -449,50 +449,26 @@ def parse_hparams_config(
     if not isinstance(data, dict):
         raise ValueError("hparams file must contain a dictionary")
 
-    required_keys = {
-        "train_config",
-        "genome_config",
-        "data_config",
-        "sampler_config",
-        "model_config",
-    }
-
-    if not all(key in data for key in required_keys):
-        missing = required_keys - data.keys()
-        raise ValueError(f"hparams missing required sections: {missing}")
-
-    # Extract only known keys (Lightning may add extra hparams)
-    config_data = {k: dict(data[k]) for k in required_keys}
-
-    # Backwards compatibility: backfill pretrained for old YAML files
-    raw_mc = config_data["model_config"]
-    if "pretrained" not in raw_mc:
-        logger.warning(
-            "hparams.yaml at %s is missing 'pretrained' field in model_config. "
-            "Defaulting to pretrained=[].",
-            p,
-        )
-        raw_mc["pretrained"] = []
-
     # Backwards compatibility: migrate legacy count_pseudocount from data_config
-    raw_dc = config_data["data_config"]
-    if "count_pseudocount" in raw_dc:
-        if "count_pseudocount" not in raw_mc:
+    raw_dc = data.get("data_config", {})
+    raw_mc = data.get("model_config", {})
+    if isinstance(raw_dc, dict) and "count_pseudocount" in raw_dc:
+        if isinstance(raw_mc, dict) and "count_pseudocount" not in raw_mc:
             target_scale = raw_dc.get("target_scale", 1.0)
             raw_pseudocount = raw_dc["count_pseudocount"]
-            scaled = raw_pseudocount * target_scale
-            raw_mc["count_pseudocount"] = scaled
+            raw_mc["count_pseudocount"] = raw_pseudocount * target_scale
             logger.warning(
-                "hparams.yaml at %s has legacy count_pseudocount=%.4g in data_config. "
-                "Migrated to model_config.count_pseudocount=%.4g (raw × target_scale=%.4g).",
-                p, raw_pseudocount, scaled, target_scale,
+                "hparams.yaml at %s has legacy count_pseudocount in data_config. "
+                "Migrated to model_config.count_pseudocount.",
+                p,
             )
         del raw_dc["count_pseudocount"]
 
     # Resolve file paths before Pydantic validation
-    _resolve_paths_in_config(config_data, search_paths)
+    _resolve_paths_in_config(data, search_paths)
 
-    config = CerberusConfig.model_validate(config_data)
+    # CerberusConfig uses extra="ignore" so Lightning's extra keys are fine
+    config = CerberusConfig.model_validate(data)
 
     logger.info(f"Successfully parsed hparams from {p}")
     return config
