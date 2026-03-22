@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Jitter mutation destroyed after first epoch** (`dataset.py`):
+  `__getitem__` passed the sampler's stored `Interval` reference directly to
+  transforms. Jitter mutated it in place (shrinking from `padded_size` to
+  `input_len`), making jitter a no-op on all subsequent accesses to the same
+  index. Now copies the interval before applying transforms.
 - **Default bin pooling method changed to sum** (`transform.py`):
   `create_default_transforms` used the `Bin` class default of `"max"` pooling, but
   `predict_bigwig._process_island` divided by `output_bin_size` to recover per-bp

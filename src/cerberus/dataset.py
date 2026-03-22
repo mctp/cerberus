@@ -1,3 +1,4 @@
+import copy
 import logging
 from typing import Any
 
@@ -356,7 +357,10 @@ class CerberusDataset(Dataset):
             raise TypeError(
                 "Dataset has no sampler configured. Use get_interval() for specific queries."
             )
-        interval = self.sampler[idx]
+        # Copy so that in-place transforms (Jitter) don't mutate the
+        # sampler's stored interval, which would make jitter a no-op on
+        # subsequent accesses to the same index.
+        interval = copy.copy(self.sampler[idx])
         result = self._get_interval(interval)
         result["interval_source"] = self.sampler.get_interval_source(idx)
         return result
