@@ -23,25 +23,25 @@ def benchmark():
     print(f"Loop (Fixed): {time.time() - start:.4f}s")
     
     start = time.time()
-    _ = calculate_gc_content(seqs_fixed)
+    _ = [calculate_gc_content(s) for s in seqs_fixed]
     print(f"Batch (Fixed): {time.time() - start:.4f}s")
-    
+
     start = time.time()
-    _ = calculate_gc_content(seqs_var)
+    _ = [calculate_gc_content(s) for s in seqs_var]
     print(f"Batch (Var):   {time.time() - start:.4f}s")
-    
+
     print("\n--- DUST Score (k=3) ---")
-    
+
     start = time.time()
     _ = [calculate_dust_score(s, k=3) for s in seqs_fixed]
     print(f"Loop (Fixed): {time.time() - start:.4f}s")
-    
+
     start = time.time()
-    _ = calculate_dust_score(seqs_fixed, k=3)
+    _ = [calculate_dust_score(s, k=3) for s in seqs_fixed]
     print(f"Batch (Fixed): {time.time() - start:.4f}s")
-    
+
     start = time.time()
-    _ = calculate_dust_score(seqs_var, k=3)
+    _ = [calculate_dust_score(s, k=3) for s in seqs_var]
     print(f"Batch (Var):   {time.time() - start:.4f}s")
 
 if __name__ == "__main__":
