@@ -81,6 +81,7 @@ nav:
     - Prediction: prediction.md
     - Multi-GPU: multi_gpu.md
   - Contributing:
+    - Developing: developing.md
     - Maintaining Docs: contributing.md
   - Reference:
     - Models: models.md

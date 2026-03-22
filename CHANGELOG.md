@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Ruff linter and formatter** configured in `pyproject.toml`: rules F (Pyflakes),
+  I (isort), UP (pyupgrade), B (bugbear) enforced via `ruff check`; `ruff format`
+  for deterministic whitespace normalization.
+- **Pre-commit hooks** (`.pre-commit-config.yaml`): `ruff-format` and `ruff --fix`
+  run automatically on every commit via the `pre-commit` framework.
+- **`__all__` in `cerberus.models.__init__`**: All model re-exports are now explicit.
+- `write_intervals_bed` and `load_intervals_bed` added to `cerberus.__all__`.
+
+### Changed
+- **Codebase-wide lint cleanup** (F, I, UP, B rules):
+  - Removed ~150 unused imports (F401) and ~55 unused variable assignments (F841).
+  - Sorted and formatted all import blocks (I001).
+  - Modernized syntax: `collections.abc` imports (UP035), unquoted annotations
+    (UP037), redundant open modes (UP015), `yield from` (UP028), `isinstance`
+    union syntax (UP038).
+  - Added exception chaining `raise ... from err/None` (B904).
+  - Added `zip(strict=True)` for parallel iteration safety (B905); fixed a
+    test mock in `test_complexity_matched_resample` that returned wrong-sized
+    arrays (caught by `strict=True`).
+  - Fixed mutable default argument in `MockSampler` (B006) and
+    `ReverseComplement` (B008).
+  - Prefixed unused loop variables with `_` (B007).
+  - Removed duplicate `GenomeConfig` import in `dataset.py`.
+- **`ruff format` applied to entire codebase**: 223 files reformatted for
+  consistent whitespace, line wrapping, trailing commas, and quote style.
+
+### Added
 - **Eager file path validation** in `CerberusDataModule.setup()`: new
   `_validate_paths()` method checks that the genome FASTA and all input/target
   channel files exist before spawning DataLoader workers, surfacing missing-file
