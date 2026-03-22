@@ -12,9 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def import_class(name: str) -> Any:
-    """
-    Dynamically imports a class from a module string (e.g., 'package.module.Class').
-    """
+    """Dynamically imports a class from a module string (e.g., 'package.module.Class')."""
     try:
         module_name, class_name = name.rsplit(".", 1)
         module = importlib.import_module(module_name)
@@ -23,128 +21,11 @@ def import_class(name: str) -> Any:
         raise ImportError(f"Could not import class '{name}': {e}")
 
 
-# --- Path Resolution Utilities ---
-
-
-def _resolve_path(path: Path, search_paths: list[Path] | None = None) -> Path:
-    """
-    Attempts to resolve a path that might be relative to a different root.
-
-    If the path exists, it is returned as is.
-    If not, and search_paths are provided, it checks if the path (or its suffixes)
-    exist relative to any of the search paths.
-    """
-    if path.exists():
-        return path
-
-    if search_paths:
-        for base in search_paths:
-            candidate = base / path
-            if candidate.exists():
-                return candidate.resolve()
-
-            if path.is_absolute():
-                parts = path.parts
-                for i in range(len(parts) - 1, 0, -1):
-                    suffix = Path(*parts[i:])
-                    candidate = base / suffix
-                    if candidate.exists():
-                        return candidate.resolve()
-    return path
-
-
-def _validate_path(
-    path: str | Path,
-    description: str,
-    search_paths: list[Path] | None = None,
-) -> Path:
-    """Validates that a path exists and returns it as a Path object."""
-    p = Path(path)
-    if not p.exists():
-        resolved = _resolve_path(p, search_paths)
-        if resolved.exists():
-            return resolved
-        raise FileNotFoundError(
-            f"{description} not found at: {p} (and could not be resolved in search paths)"
-        )
-    return p
-
-
-def _validate_file_dict(
-    data: dict[str, Any],
-    description: str,
-    search_paths: list[Path] | None = None,
-) -> dict[str, Path]:
-    """Validates a dictionary of name -> filepath mappings."""
-    if not isinstance(data, dict):
-        raise TypeError(f"{description} must be a dictionary")
-
-    validated = {}
-    for k, v in data.items():
-        if not isinstance(k, str):
-            raise TypeError(f"{description} keys must be strings")
-        validated[k] = _validate_path(v, f"{description} file '{k}'", search_paths=search_paths)
-    return validated
-
-
-def _resolve_paths_in_config(config_data: dict[str, Any], search_paths: list[Path]) -> None:
-    """Resolve file paths in config dicts before Pydantic validation.
-
-    Mutates *config_data* in place. Called once from ``parse_hparams_config``
-    so that individual models don't need path-resolution validators.
-    """
-    # genome_config paths
-    gc = config_data.get("genome_config")
-    if gc and isinstance(gc, dict):
-        if "fasta_path" in gc:
-            gc["fasta_path"] = _validate_path(gc["fasta_path"], "Genome file", search_paths)
-        if "exclude_intervals" in gc and isinstance(gc["exclude_intervals"], dict):
-            gc["exclude_intervals"] = _validate_file_dict(gc["exclude_intervals"], "exclude_intervals", search_paths)
-
-    # data_config paths
-    dc = config_data.get("data_config")
-    if dc and isinstance(dc, dict):
-        if "inputs" in dc and isinstance(dc["inputs"], dict):
-            dc["inputs"] = _validate_file_dict(dc["inputs"], "inputs", search_paths)
-        if "targets" in dc and isinstance(dc["targets"], dict):
-            dc["targets"] = _validate_file_dict(dc["targets"], "targets", search_paths)
-
-    # sampler_config paths (intervals_path inside sampler_args)
-    sc = config_data.get("sampler_config")
-    if sc and isinstance(sc, dict):
-        sa = sc.get("sampler_args")
-        if sa and isinstance(sa, dict) and "intervals_path" in sa:
-            sa["intervals_path"] = _validate_path(sa["intervals_path"], "intervals file", search_paths)
-        # Recursive: complexity_matched has nested sampler configs
-        if sa and isinstance(sa, dict):
-            for sub_key in ("target_sampler", "candidate_sampler"):
-                sub = sa.get(sub_key)
-                if sub and isinstance(sub, dict):
-                    sub_sa = sub.get("sampler_args")
-                    if sub_sa and isinstance(sub_sa, dict) and "intervals_path" in sub_sa:
-                        sub_sa["intervals_path"] = _validate_path(
-                            sub_sa["intervals_path"], f"{sub_key} intervals file", search_paths
-                        )
-
-
 # --- Configuration Schemas ---
 
 
 class GenomeConfig(BaseModel):
-    """
-    Configuration for the genome assembly.
-
-    Attributes:
-        name: Name of the genome assembly (e.g., 'hg38').
-        fasta_path: Path to the FASTA file.
-        exclude_intervals: Dictionary mapping names to BED files of regions to exclude.
-        allowed_chroms: List of chromosome names to include.
-        chrom_sizes: Dictionary mapping chromosome names to their lengths.
-        fold_type: Strategy for creating folds. Currently only 'chrom_partition' is supported.
-        fold_args: Arguments for the folding strategy.
-                   For 'chrom_partition': keys 'k' (int), 'test_fold' (int|None),
-                   'val_fold' (int|None).
-    """
+    """Configuration for the genome assembly."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -170,15 +51,7 @@ class GenomeConfig(BaseModel):
 
 
 class SamplerConfig(BaseModel):
-    """
-    Configuration for data samplers.
-
-    Attributes:
-        sampler_type: Type of sampler to use ('interval', 'sliding_window', 'random',
-            'complexity_matched', 'peak', 'negative_peak').
-        padded_size: Length of the intervals yielded by the sampler (after padding/centering).
-        sampler_args: Dictionary of arguments specific to the sampler type.
-    """
+    """Configuration for data samplers."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -188,22 +61,7 @@ class SamplerConfig(BaseModel):
 
 
 class DataConfig(BaseModel):
-    """
-    Configuration for input/output data handling.
-
-    Attributes:
-        inputs: Dictionary mapping input channel names to bigWig file paths.
-        targets: Dictionary mapping target channel names to bigWig file paths.
-        input_len: Length of the input sequence window.
-        output_len: Length of the output signal window.
-        max_jitter: Maximum random shift applied to the interval center during training.
-        output_bin_size: Size of bins for signal aggregation (1 means raw signal).
-        encoding: DNA encoding strategy (e.g., 'ACGT').
-        log_transform: Whether to apply log(x+1) transformation to signal.
-        reverse_complement: Whether to apply reverse complement augmentation.
-        target_scale: Multiplicative scaling factor for targets.
-        use_sequence: Whether to use sequence input (default: True).
-    """
+    """Configuration for input/output data handling."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -230,20 +88,7 @@ class DataConfig(BaseModel):
 
 
 class TrainConfig(BaseModel):
-    """
-    Configuration for training hyperparameters.
-
-    Attributes:
-        batch_size: Batch size for training/validation.
-        max_epochs: Maximum number of epochs to train.
-        learning_rate: Base learning rate.
-        weight_decay: Weight decay for optimizer.
-        patience: Patience for early stopping.
-        optimizer: Optimizer name (e.g., 'adam', 'adamw', 'sgd').
-        filter_bias_and_bn: Whether to exclude bias and batch norm parameters from weight decay.
-        adam_eps: Epsilon for Adam/AdamW optimizer numerical stability (default: 1e-8).
-        gradient_clip_val: Maximum gradient norm for gradient clipping (default: None = disabled).
-    """
+    """Configuration for training hyperparameters."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -262,15 +107,7 @@ class TrainConfig(BaseModel):
 
 
 class PretrainedConfig(BaseModel):
-    """Configuration for loading pretrained weights into a model or sub-module.
-
-    Attributes:
-        weights_path: Path to a .pt state dict file (clean, no "model." prefix).
-        source: Sub-module prefix to extract from the source state dict.
-            None uses all keys.
-        target: Named sub-module to load into. None loads into the whole model.
-        freeze: If True, freeze all parameters in the loaded (sub)module.
-    """
+    """Configuration for loading pretrained weights into a model or sub-module."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -281,23 +118,7 @@ class PretrainedConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    """
-    Configuration for the model architecture.
-
-    Attributes:
-        name: Name of the model.
-        model_cls: Fully qualified class name string of the model.
-        loss_cls: Fully qualified class name string of the loss.
-        loss_args: Loss-specific keyword arguments.
-        metrics_cls: Fully qualified class name string of the metric collection.
-        metrics_args: Metrics-specific keyword arguments.
-        model_args: Model-specific keyword arguments.
-        pretrained: List of pretrained weight configs to load after
-            model instantiation. Empty list means no pretrained weights.
-        count_pseudocount: Additive offset before log-transforming count targets,
-            specified in scaled units (i.e. raw coverage × target_scale).
-            A value of 0.0 means no pseudocount (for Poisson/NB losses).
-    """
+    """Configuration for the model architecture."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -327,21 +148,18 @@ class ModelConfig(BaseModel):
             if len(oc) == 0:
                 raise ValueError("model_args['output_channels'] must not be empty")
         if "output_type" in v:
-            ot = v["output_type"]
             valid_types = {"signal", "decoupled"}
-            if ot not in valid_types:
+            if v["output_type"] not in valid_types:
                 raise ValueError(f"model_args['output_type'] must be one of {valid_types}")
         return v
 
 
 class CerberusConfig(BaseModel):
-    """
-    Combined configuration for Cerberus.
+    """Combined configuration for Cerberus.
 
-    Note: The ``model_config_`` field uses an alias ``"model_config"`` because
-    Pydantic V2 reserves the ``model_config`` name for its own ConfigDict.
-    In YAML/dict serialization the key is ``"model_config"``, but in Python
-    code the attribute is ``model_config_``.
+    Note: ``model_config_`` uses alias ``"model_config"`` because Pydantic V2
+    reserves the name. YAML key is ``"model_config"``; Python attribute is
+    ``model_config_``.
     """
 
     model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
@@ -372,7 +190,8 @@ class CerberusConfig(BaseModel):
             model_outputs = set(model_args["output_channels"])
             if target_channels != model_outputs:
                 raise ValueError(
-                    f"Model output channels {model_outputs} do not match data targets {target_channels}"
+                    f"Model output channels {model_outputs} do not match "
+                    f"data targets {target_channels}"
                 )
         if "input_channels" in model_args:
             input_tracks = set(self.data_config.inputs.keys())
@@ -390,85 +209,32 @@ class CerberusConfig(BaseModel):
 def get_log_count_params(model_config: ModelConfig) -> tuple[bool, float]:
     """Determines log-count transform parameters from the model configuration.
 
-    Losses with ``uses_count_pseudocount = True`` (MSE-family, Dalmatian) train
-    log_counts in log(count + pseudocount) space, while Poisson/NB losses use
-    log(count) directly.
-
-    Args:
-        model_config: Model configuration (must contain ``loss_cls`` and
-            ``count_pseudocount`` fields).
-
-    Returns:
-        Tuple of (log_counts_include_pseudocount, count_pseudocount):
-            - log_counts_include_pseudocount: True if the loss uses
-              log(count + pseudocount) space.
-            - count_pseudocount: The pseudocount value from model_config
-              (scaled units), or 0.0 for losses that don't use pseudocount.
+    Returns (log_counts_include_pseudocount, count_pseudocount).
     """
     loss_cls = import_class(model_config.loss_cls)
-    log_counts_include_pseudocount = loss_cls.uses_count_pseudocount
-    if log_counts_include_pseudocount:
-        count_pseudocount = model_config.count_pseudocount
-    else:
-        count_pseudocount = 0.0
-    return log_counts_include_pseudocount, count_pseudocount
+    if loss_cls.uses_count_pseudocount:
+        return True, model_config.count_pseudocount
+    return False, 0.0
 
 
-def parse_hparams_config(
-    path: str | Path,
-    search_paths: list[Path] | None = None,
-) -> CerberusConfig:
-    """
-    Parses a hparams.yaml file and returns validated configuration objects.
+def parse_hparams_config(path: str | Path) -> CerberusConfig:
+    """Parses a hparams.yaml file and returns a validated CerberusConfig.
 
     Args:
         path: Path to the hparams.yaml file.
-        search_paths: List of directories to search for referenced files
-            if not found at original paths.
 
     Returns:
-        CerberusConfig: Validated and frozen configuration.
+        Validated and frozen CerberusConfig.
 
     Raises:
         FileNotFoundError: If the file does not exist.
-        ValidationError: If the file content is invalid or missing required sections.
+        ValidationError: If the content is invalid.
     """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"hparams file not found at: {p}")
 
-    # Add hparams directory to search paths by default
-    if search_paths is None:
-        search_paths = []
-    if p.parent not in search_paths:
-        search_paths = [*search_paths, p.parent]
-
     with open(p, "r") as f:
         data = yaml.safe_load(f)
 
-    if not isinstance(data, dict):
-        raise ValueError("hparams file must contain a dictionary")
-
-    # Backwards compatibility: migrate legacy count_pseudocount from data_config
-    raw_dc = data.get("data_config", {})
-    raw_mc = data.get("model_config", {})
-    if isinstance(raw_dc, dict) and "count_pseudocount" in raw_dc:
-        if isinstance(raw_mc, dict) and "count_pseudocount" not in raw_mc:
-            target_scale = raw_dc.get("target_scale", 1.0)
-            raw_pseudocount = raw_dc["count_pseudocount"]
-            raw_mc["count_pseudocount"] = raw_pseudocount * target_scale
-            logger.warning(
-                "hparams.yaml at %s has legacy count_pseudocount in data_config. "
-                "Migrated to model_config.count_pseudocount.",
-                p,
-            )
-        del raw_dc["count_pseudocount"]
-
-    # Resolve file paths before Pydantic validation
-    _resolve_paths_in_config(data, search_paths)
-
-    # CerberusConfig uses extra="ignore" so Lightning's extra keys are fine
-    config = CerberusConfig.model_validate(data)
-
-    logger.info(f"Successfully parsed hparams from {p}")
-    return config
+    return CerberusConfig.model_validate(data)

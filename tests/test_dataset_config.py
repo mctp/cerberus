@@ -129,11 +129,7 @@ def test_dataset_init(tmp_path):
     assert "chr2" not in ds.genome_config.chrom_sizes
 
 def test_data_config_accepts_missing_file(tmp_path):
-    """DataConfig no longer validates file existence at model level.
-
-    Path validation was removed from Pydantic models and now happens only
-    in parse_hparams_config via _resolve_paths_in_config.
-    """
+    """DataConfig accepts paths without checking existence."""
     cfg = DataConfig(
         inputs={"cons": tmp_path / "missing.bw"},
         targets={},

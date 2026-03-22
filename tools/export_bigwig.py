@@ -141,8 +141,7 @@ def main():
     script_dir = Path(__file__).resolve().parent
     project_root = script_dir.parent
     tests_data = project_root / "tests/data"
-    search_paths = [tests_data, project_root, Path.cwd()]
-    ensemble = ModelEnsemble(args.model_path, device=device, search_paths=search_paths)
+    ensemble = ModelEnsemble(args.model_path, device=device)
 
     # 3. Parse use_folds
     use_folds = None

@@ -41,7 +41,6 @@ class ModelEnsemble(nn.ModuleDict):
         data_config: DataConfig | None = None,
         genome_config: GenomeConfig | None = None,
         device: torch.device | str | None = None,
-        search_paths: list[Path] | None = None,
     ):
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -54,9 +53,7 @@ class ModelEnsemble(nn.ModuleDict):
 
         # Resolve configuration
         hparams_path = self._find_hparams(path)
-        self.cerberus_config : CerberusConfig = parse_hparams_config(
-            hparams_path, search_paths=search_paths
-        )
+        self.cerberus_config : CerberusConfig = parse_hparams_config(hparams_path)
 
         overrides = {}
         if model_config is not None:

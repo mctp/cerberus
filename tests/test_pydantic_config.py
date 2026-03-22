@@ -762,31 +762,6 @@ class TestBackwardCompatibility:
             yaml.dump(config_dict, f)
         return hparams_path
 
-    def test_legacy_count_pseudocount_migrates_to_model_config(self, tmp_path):
-        """count_pseudocount in data_config migrates to model_config."""
-        d = _full_config_dict(tmp_path)
-        # Add legacy pseudocount to data_config
-        d["data_config"]["count_pseudocount"] = 50.0
-        # Remove from model_config to trigger migration
-        del d["model_config"]["count_pseudocount"]
-
-        hparams_path = self._write_hparams(tmp_path, d)
-        config = parse_hparams_config(hparams_path)
-        # 50.0 * target_scale(1.0) = 50.0
-        assert config.model_config_.count_pseudocount == pytest.approx(50.0)
-
-    def test_legacy_pseudocount_scaled_by_target_scale(self, tmp_path):
-        """Legacy pseudocount is multiplied by target_scale during migration."""
-        d = _full_config_dict(tmp_path)
-        d["data_config"]["count_pseudocount"] = 50.0
-        d["data_config"]["target_scale"] = 2.0
-        del d["model_config"]["count_pseudocount"]
-
-        hparams_path = self._write_hparams(tmp_path, d)
-        config = parse_hparams_config(hparams_path)
-        # 50.0 * 2.0 = 100.0
-        assert config.model_config_.count_pseudocount == pytest.approx(100.0)
-
     def test_missing_pretrained_defaults_to_empty_list(self, tmp_path):
         """Old YAML without 'pretrained' in model_config gets [] backfilled."""
         d = _full_config_dict(tmp_path)

@@ -1,5 +1,4 @@
 data_config:
-  count_pseudocount: 150.0
   encoding: ACGT
   input_len: 2114
   inputs: {}
@@ -74,6 +73,7 @@ genome_config:
   fold_type: chrom_partition
   name: hg38
 model_config:
+  count_pseudocount: 150.0
   loss_args:
     alpha: 127.43417358398438
     count_pseudocount: 150.0

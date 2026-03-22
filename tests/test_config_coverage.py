@@ -3,48 +3,9 @@ import pytest
 from pathlib import Path
 from pydantic import ValidationError
 from cerberus.config import (
-    _resolve_path,
     import_class,
     ModelConfig,
 )
-
-
-# ---------------------------------------------------------------------------
-# _resolve_path
-# ---------------------------------------------------------------------------
-
-class TestResolvePath:
-
-    def test_existing_path_returned(self, tmp_path):
-        f = tmp_path / "existing.txt"
-        f.touch()
-        result = _resolve_path(f)
-        assert result == f
-
-    def test_absolute_path_suffix_matching(self, tmp_path):
-        """When path is absolute and not found, try suffix matching in search_paths."""
-        # Create file at search_path/sub/file.txt
-        sub = tmp_path / "sub"
-        sub.mkdir()
-        f = sub / "file.txt"
-        f.touch()
-
-        # Query with a non-existent absolute path ending in sub/file.txt
-        fake_abs = Path("/nonexistent/root/sub/file.txt")
-        result = _resolve_path(fake_abs, search_paths=[tmp_path])
-        assert result.exists()
-        assert result.resolve() == f.resolve()
-
-    def test_relative_path_in_search_path(self, tmp_path):
-        f = tmp_path / "data.bin"
-        f.touch()
-        result = _resolve_path(Path("data.bin"), search_paths=[tmp_path])
-        assert result.exists()
-
-    def test_not_found_returns_original(self):
-        p = Path("/surely/nonexistent/path.xyz")
-        result = _resolve_path(p)
-        assert result == p
 
 
 # ---------------------------------------------------------------------------

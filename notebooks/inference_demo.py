@@ -24,7 +24,6 @@ if not checkpoint_path.exists():
     import sys; sys.exit(0)
 model_ensemble = ModelEnsemble(
     checkpoint_path=checkpoint_path,
-    search_paths=[project_root],
 )
 # pprint(model_ensemble.folds)
 # pprint(model_ensemble.keys())

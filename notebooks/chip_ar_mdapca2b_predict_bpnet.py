@@ -188,7 +188,6 @@ model_ensemble = ModelEnsemble(
     data_config=data_config,
     genome_config=genome_config,
     device=device,
-    search_paths=[project_root],
 )
 
 # %% [markdown]
