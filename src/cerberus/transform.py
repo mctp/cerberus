@@ -1,8 +1,10 @@
+from typing import Protocol
+
 import torch
 import torch.nn.functional as F
-from typing import Protocol
-from .interval import Interval
+
 from .config import DataConfig
+from .interval import Interval
 
 
 class DataTransform(Protocol):

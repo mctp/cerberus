@@ -1,8 +1,10 @@
 import pytest
 import torch
-from cerberus.dataset import CerberusDataset
+
 from cerberus.config import DataConfig, SamplerConfig
+from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
+
 
 @pytest.fixture
 def genome_setup(tmp_path):

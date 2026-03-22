@@ -1,9 +1,11 @@
 
-import pytest
-import numpy as np
 from unittest.mock import MagicMock, patch
-from cerberus.samplers import ComplexityMatchedSampler, ListSampler, Interval
-from interlap import InterLap
+
+import numpy as np
+import pytest
+
+from cerberus.samplers import ComplexityMatchedSampler, Interval, ListSampler
+
 
 @pytest.fixture
 def mock_fasta(tmp_path):
@@ -33,9 +35,9 @@ def test_complexity_matched_resample_static_candidates(mock_fasta):
     candidate_sampler.__iter__.return_value = iter([Interval("chr1", i*10, i*10+10, "+") for i in range(100)])
     candidate_sampler.__getitem__.side_effect = lambda i: Interval("chr1", i*10, i*10+10, "+")
     
-    # Mock complexity computation to return random values
+    # Mock complexity computation to return random values (matching input length)
     with patch("cerberus.samplers.compute_intervals_complexity") as mock_compute:
-        mock_compute.return_value = np.random.rand(100, 1) # 1 metric
+        mock_compute.side_effect = lambda intervals, *a, **kw: np.random.rand(len(list(intervals)), 1)
         
         sampler = ComplexityMatchedSampler(
             target_sampler=target_sampler,
@@ -74,11 +76,13 @@ def test_complexity_matched_fallback(mock_fasta):
     candidate_sampler = ListSampler(intervals=candidate_intervals, chrom_sizes=chrom_sizes)
     
     with patch("cerberus.samplers.compute_intervals_complexity") as mock_compute:
-        def side_effect(sampler, fasta, metrics, center_size=None):
-            if sampler is target_sampler:
+        def side_effect(intervals, fasta, metrics, center_size=None):
+            ivs = list(intervals)
+            # Check if these are target intervals (high complexity) or candidate (low)
+            if len(ivs) == 1 and ivs[0].start == 0:
                 return np.array([[0.9]]) # High
             else:
-                return np.array([[0.1], [0.1]]) # Low
+                return np.array([[0.1]] * len(ivs)) # Low
         mock_compute.side_effect = side_effect
         
         sampler = ComplexityMatchedSampler(

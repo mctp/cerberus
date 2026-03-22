@@ -1,14 +1,16 @@
-import pytest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+import torch
 import yaml
 from pydantic import ValidationError
-from cerberus.config import ModelConfig, DataConfig
-from cerberus.utils import import_class
-from cerberus.module import instantiate_model
-from cerberus.model_ensemble import ModelEnsemble
+
 import cerberus.model_ensemble
-import torch
-from unittest.mock import MagicMock, patch
+from cerberus.config import DataConfig, ModelConfig
+from cerberus.model_ensemble import ModelEnsemble
+from cerberus.module import instantiate_model
+from cerberus.utils import import_class
 
 # --- Config Tests ---
 

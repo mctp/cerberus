@@ -1,12 +1,23 @@
+import pytest
 import torch
 import torch.nn as nn
 import torch.nn.utils.parametrize as nn_parametrize
-import pytest
-from cerberus.models.bpnet import BPNet, BPNet1024, BPNetMetricCollection, BPNetLoss
+
 from cerberus.layers import DilatedResidualBlock
-from cerberus.loss import PoissonMultinomialLoss, MSEMultinomialLoss, CoupledMSEMultinomialLoss, CoupledPoissonMultinomialLoss
-from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError
+from cerberus.loss import (
+    CoupledMSEMultinomialLoss,
+    CoupledPoissonMultinomialLoss,
+    MSEMultinomialLoss,
+    PoissonMultinomialLoss,
+)
+from cerberus.metrics import (
+    CountProfileMeanSquaredError,
+    CountProfilePearsonCorrCoef,
+    LogCountsMeanSquaredError,
+)
+from cerberus.models.bpnet import BPNet, BPNet1024, BPNetLoss, BPNetMetricCollection
 from cerberus.output import ProfileCountOutput, ProfileLogRates
+
 
 def test_bpnet_xavier_init():
     """BPNet must initialize conv/linear weights with Xavier uniform and biases to zero.
@@ -389,7 +400,7 @@ def test_dilated_residual_block_all_residual_architectures():
 
 def test_dilated_residual_block_residual_architecture_math():
     """Verify the three residual formulas with an identity 1x1 convolution."""
-    filters, kernel_size, dilation, length = 2, 1, 1, 6
+    filters, kernel_size, dilation, _length = 2, 1, 1, 6
     x = torch.tensor(
         [[[1.0, -2.0, 0.5, -0.1, 3.0, -4.0],
           [-1.0, 2.0, -0.5, 0.1, -3.0, 4.0]]]
@@ -568,9 +579,9 @@ def test_bpnet_preactivation_variants_skip_initial_iconv_activation():
         model = _build(mode)
         captured = {}
 
-        def _hook(_module, args):
+        def _hook(_module, args, _captured=captured):
             # args is a tuple containing block input.
-            captured["tower_input"] = args[0].detach().clone()
+            _captured["tower_input"] = args[0].detach().clone()
 
         handle = model.res_layers[0].register_forward_pre_hook(_hook)
         with torch.no_grad():

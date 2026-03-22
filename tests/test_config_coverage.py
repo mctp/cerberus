@@ -1,10 +1,9 @@
 """Coverage tests for cerberus.config — untested code paths."""
 import pytest
-from pathlib import Path
 from pydantic import ValidationError
+
 from cerberus.config import ModelConfig
 from cerberus.utils import import_class
-
 
 # ---------------------------------------------------------------------------
 # model_dump(mode="json") — replacement for _sanitize_config

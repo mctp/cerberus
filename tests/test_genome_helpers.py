@@ -1,8 +1,6 @@
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch
-from cerberus.genome import create_mouse_genome_config, create_human_genome_config
+from cerberus.genome import create_human_genome_config, create_mouse_genome_config
+
 
 def test_create_mouse_genome_config(tmp_path):
     """Test that create_mouse_genome_config creates a valid config."""

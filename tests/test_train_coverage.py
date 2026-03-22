@@ -1,12 +1,16 @@
 """Coverage tests for cerberus.train — untested code paths."""
-import pytest
-import json
+from unittest.mock import MagicMock
+
 import torch
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from cerberus.config import ModelConfig, DataConfig, TrainConfig, GenomeConfig, SamplerConfig
+from cerberus.config import (
+    DataConfig,
+    GenomeConfig,
+    ModelConfig,
+    SamplerConfig,
+    TrainConfig,
+)
 from cerberus.train import _save_model_pt
 
 

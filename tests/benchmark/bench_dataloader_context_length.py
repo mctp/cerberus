@@ -32,13 +32,13 @@ sys.path.insert(0, str(project_root / "src"))
 
 from torch.utils.data import DataLoader
 
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.datamodule import CerberusDataModule
 from cerberus.dataset import CerberusDataset
 from cerberus.download import download_dataset, download_reference_genome
 from cerberus.genome import create_genome_config
-from cerberus.sequence import InMemorySequenceExtractor, BaseSequenceExtractor
-from cerberus.signal import InMemorySignalExtractor, BaseSignalExtractor
+from cerberus.sequence import BaseSequenceExtractor, InMemorySequenceExtractor
+from cerberus.signal import BaseSignalExtractor, InMemorySignalExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -389,7 +389,7 @@ def print_comparison_table(
     print(header)
     print("-" * len(header))
 
-    for d_row, m_row in zip(disk_results, mem_results):
+    for d_row, m_row in zip(disk_results, mem_results, strict=True):
         parts = [f"{format_length(d_row['context_length']):>10s}"]
         for sc in SCENARIOS:
             d_its = d_row[sc]["it_per_s"]

@@ -1,14 +1,16 @@
 import pytest
+
+from cerberus.config import DataConfig
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
-from cerberus.config import DataConfig
+
 
 def test_dataset_no_sampler_implicit(tmp_path):
     # Setup
     genome = tmp_path / "genome.fa"
     genome.write_text(">chr1\n" + "N" * 1000 + "\n")
     fai = tmp_path / "genome.fa.fai"
-    fai.write_text(f"chr1\t1000\t6\t1000\t1001\n")
+    fai.write_text("chr1\t1000\t6\t1000\t1001\n")
 
     genome_config = create_genome_config(
         name="test_genome",
@@ -64,7 +66,7 @@ def test_dataset_no_sampler_explicit_none_config(tmp_path):
     genome = tmp_path / "genome.fa"
     genome.write_text(">chr1\n" + "N" * 1000 + "\n")
     fai = tmp_path / "genome.fa.fai"
-    fai.write_text(f"chr1\t1000\t6\t1000\t1001\n")
+    fai.write_text("chr1\t1000\t6\t1000\t1001\n")
 
     genome_config = create_genome_config(
         name="test_genome",

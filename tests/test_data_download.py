@@ -1,4 +1,5 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 from cerberus.download import download_dataset
 
 

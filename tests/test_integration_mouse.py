@@ -1,6 +1,4 @@
 
-import pytest
-import os
 
 def test_mouse_genome_fixture(mouse_genome):
     """

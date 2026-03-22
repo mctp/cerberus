@@ -1,8 +1,8 @@
 """Tests for interval_source labelling in MultiSampler and CerberusDataset."""
 from unittest.mock import MagicMock
+
 from cerberus.interval import Interval
 from cerberus.samplers import MultiSampler
-
 
 # ---------------------------------------------------------------------------
 # Helper: a minimal sampler stub

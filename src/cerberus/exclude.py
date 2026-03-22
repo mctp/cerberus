@@ -1,5 +1,6 @@
-from pathlib import Path
 import logging
+from pathlib import Path
+
 from interlap import InterLap
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ def get_exclude_intervals(
         if not path.exists():
             raise FileNotFoundError(f"Exclude file not found: {path}")
 
-        with open(path, "r") as f:
+        with open(path) as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith(("#", "track", "browser")):

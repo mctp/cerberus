@@ -13,9 +13,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 import time
-import random
 from pathlib import Path
 
 import numpy as np
@@ -185,6 +185,7 @@ def impl_np_put_along(sequence: str) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 
 from collections.abc import Callable
+
 IMPLEMENTATIONS: dict[str, Callable[[str], torch.Tensor]] = {
     "baseline":         impl_baseline,
     "np_scatter":       impl_np_scatter,
@@ -305,7 +306,7 @@ def run_benchmark(num_iters: int) -> None:
         print("".join(parts))
 
     # Speedup relative to baseline
-    print(f"\n--- Speedup vs baseline ---")
+    print("\n--- Speedup vs baseline ---")
     header = f"{'length':>10s}" + "".join(f"{n:>{col_w}s}" for n in names)
     print(header)
     print("-" * len(header))
@@ -319,7 +320,7 @@ def run_benchmark(num_iters: int) -> None:
         print("".join(parts))
 
     # Summary: best implementation per length
-    print(f"\n--- Best implementation per length ---")
+    print("\n--- Best implementation per length ---")
     for length in LENGTHS:
         row = results[length]
         best_name = min(row, key=lambda k: row[k])

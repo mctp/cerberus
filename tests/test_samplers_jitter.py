@@ -1,6 +1,8 @@
 import pytest
+
 from cerberus.genome import create_genome_folds
 from cerberus.samplers import IntervalSampler
+
 
 @pytest.fixture
 def mock_bed_file(tmp_path):

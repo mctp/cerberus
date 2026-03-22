@@ -1,13 +1,12 @@
 """Coverage tests for cerberus.layers — untested code paths."""
-import pytest
 import torch
-from cerberus.layers import (
-    GRN1d,
-    ConvNeXtV2Block,
-    PGCBlock,
-    DilatedResidualBlock,
-)
 
+from cerberus.layers import (
+    ConvNeXtV2Block,
+    DilatedResidualBlock,
+    GRN1d,
+    PGCBlock,
+)
 
 # ---------------------------------------------------------------------------
 # GRN1d

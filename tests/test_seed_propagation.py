@@ -1,9 +1,9 @@
 
-import random
-import pytest
-from cerberus.samplers import ScaledSampler, MultiSampler, ListSampler, RandomSampler
-from cerberus.interval import Interval
 from interlap import InterLap
+
+from cerberus.interval import Interval
+from cerberus.samplers import ListSampler, MultiSampler, RandomSampler, ScaledSampler
+
 
 def test_multisampler_seed_propagation():
     """

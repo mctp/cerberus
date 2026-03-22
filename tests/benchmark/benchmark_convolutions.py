@@ -1,6 +1,8 @@
+import time
+
 import torch
 import torch.nn as nn
-import time
+
 
 def benchmark_op(layer, input_data, name, iterations=50):
     # Warmup
@@ -14,7 +16,7 @@ def benchmark_op(layer, input_data, name, iterations=50):
     start = time.perf_counter()
     with torch.no_grad():
         for _ in range(iterations):
-            output = layer(input_data)
+            layer(input_data)
     end = time.perf_counter()
     
     avg_time = (end - start) / iterations

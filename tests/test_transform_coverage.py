@@ -1,19 +1,20 @@
 """Coverage tests for cerberus.transform — untested code paths."""
 import pytest
 import torch
+
 from cerberus.config import DataConfig
+from cerberus.interval import Interval
 from cerberus.transform import (
-    Log1p,
-    Sqrt,
     Arcsinh,
-    Scale,
     Bin,
-    TargetCrop,
     Jitter,
+    Log1p,
     ReverseComplement,
+    Scale,
+    Sqrt,
+    TargetCrop,
     create_default_transforms,
 )
-from cerberus.interval import Interval
 
 
 @pytest.fixture

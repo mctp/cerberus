@@ -14,7 +14,6 @@ from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
 from cerberus.config import GenomeConfig, DataConfig, ModelConfig
 from cerberus.genome import create_genome_config
-from cerberus.output import ProfileCountOutput
 from cerberus.samplers import IntervalSampler
 
 # %% [markdown]
@@ -171,7 +170,6 @@ pred_block = ensemble.predict_output_intervals(
 
 # %%
 import matplotlib.pyplot as plt
-import numpy as np
 
 if pred_block:
     # Assuming pred_block is a list of results, and we want the first one

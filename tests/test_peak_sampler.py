@@ -1,9 +1,17 @@
 
-import pytest
 from unittest.mock import MagicMock, patch
-from cerberus.samplers import PeakSampler, IntervalSampler, RandomSampler, ComplexityMatchedSampler
-from cerberus.interval import Interval
+
+import pytest
 from interlap import InterLap
+
+from cerberus.interval import Interval
+from cerberus.samplers import (
+    ComplexityMatchedSampler,
+    IntervalSampler,
+    PeakSampler,
+    RandomSampler,
+)
+
 
 @pytest.fixture
 def mock_dependencies():
@@ -39,7 +47,7 @@ def test_peak_sampler_init(mock_dependencies):
     exclude_intervals = {"chr1": InterLap()}
     
     # Init PeakSampler
-    sampler = PeakSampler(
+    PeakSampler(
         intervals_path="peaks.bed",
         fasta_path="genome.fa",
         chrom_sizes=chrom_sizes,
@@ -99,7 +107,7 @@ def test_peak_sampler_parameters(mock_dependencies):
     exclude_intervals = {"chr1": InterLap()}
     
     # Init PeakSampler with custom parameters
-    sampler = PeakSampler(
+    PeakSampler(
         intervals_path="peaks.bed",
         fasta_path="genome.fa",
         chrom_sizes=chrom_sizes,
@@ -119,7 +127,7 @@ def test_peak_sampler_parameters(mock_dependencies):
     assert call_args.kwargs["num_intervals"] == 5000
 
     # Test where oversample factor dominates
-    sampler = PeakSampler(
+    PeakSampler(
         intervals_path="peaks.bed",
         fasta_path="genome.fa",
         chrom_sizes=chrom_sizes,

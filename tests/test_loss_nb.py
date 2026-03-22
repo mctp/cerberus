@@ -1,9 +1,10 @@
 
 import torch
 import torch.nn.functional as F
-import pytest
-from cerberus.loss import NegativeBinomialMultinomialLoss, CoupledNegativeBinomialMultinomialLoss
-from cerberus.output import ProfileCountOutput, ProfileLogRates
+
+from cerberus.loss import NegativeBinomialMultinomialLoss
+from cerberus.output import ProfileCountOutput
+
 
 def test_nb_loss_forward_shapes():
     B, C, L = 2, 3, 100
@@ -107,7 +108,7 @@ def test_nb_convergence_to_poisson():
     # NB log_prob includes normalization.
     # So we should compare with full=True Poisson.
     
-    val_poisson_full = F.poisson_nll_loss(log_counts, targets.sum().view(1), log_input=True, full=True)
+    F.poisson_nll_loss(log_counts, targets.sum().view(1), log_input=True, full=True)
     
     # Allow some tolerance due to float precision and approximation
     # 1e9 might not be enough for perfect float32 match but should be close.

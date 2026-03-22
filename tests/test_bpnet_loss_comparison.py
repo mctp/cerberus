@@ -1,9 +1,11 @@
 
+import unittest
+
 import torch
 import torch.nn.functional as F
-import unittest
-import numpy as np
+
 from cerberus.models.bpnet import BPNetLoss
+
 
 def reference_multinomial_nll(logits, true_counts):
     """Compute the multinomial negative log-likelihood in PyTorch.
@@ -58,7 +60,7 @@ class TestBPNetLossComparison(unittest.TestCase):
         # MSEMultinomialLoss expects targets same shape as logits/counts
         # For counts, it computes internal sums if count_per_channel=False
         
-        loss_cerberus = cerberus_loss_fn(outputs, true_counts)
+        cerberus_loss_fn(outputs, true_counts)
         
         # Reference Loss
         # Reference calculates profile loss using MNLL

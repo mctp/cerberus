@@ -1,17 +1,17 @@
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import numpy as np
-import torch
-import pytest
 
-from cerberus.plots import save_count_scatter
-from cerberus.module import CerberusModule
+import numpy as np
+import pytest
+import torch
+
+from cerberus.config import TrainConfig
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.metrics import DefaultMetricCollection
+from cerberus.module import CerberusModule
 from cerberus.output import ProfileLogRates
-from cerberus.config import TrainConfig
-
+from cerberus.plots import save_count_scatter
 
 # ---------------------------------------------------------------------------
 # save_count_scatter unit tests

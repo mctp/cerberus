@@ -1,12 +1,14 @@
 """Coverage tests for cerberus.metrics — untested code paths."""
 import warnings
+
 import pytest
 import torch
+
 from cerberus.metrics import (
     LogCountsMeanSquaredError,
     LogCountsPearsonCorrCoef,
-    ProfilePearsonCorrCoef,
     ProfileMeanSquaredError,
+    ProfilePearsonCorrCoef,
 )
 from cerberus.output import ProfileCountOutput, ProfileLogRates
 

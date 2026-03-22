@@ -1,22 +1,23 @@
-import pytest
+from dataclasses import dataclass
+from pathlib import Path
+from typing import cast
+from unittest.mock import MagicMock, patch
+
 import torch
 import torch.nn as nn
-from dataclasses import dataclass
-from unittest.mock import MagicMock, patch
-from typing import cast
-from pathlib import Path
 
-from cerberus.model_ensemble import ModelEnsemble
 from cerberus.config import (
-    ModelConfig,
-    DataConfig,
-    TrainConfig,
-    GenomeConfig,
-    SamplerConfig,
     CerberusConfig,
+    DataConfig,
+    GenomeConfig,
+    ModelConfig,
+    SamplerConfig,
+    TrainConfig,
 )
-from cerberus.output import ModelOutput, aggregate_models
 from cerberus.interval import Interval
+from cerberus.model_ensemble import ModelEnsemble
+from cerberus.output import ModelOutput, aggregate_models
+
 
 @dataclass
 class MockOutput(ModelOutput):

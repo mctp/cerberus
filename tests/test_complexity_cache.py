@@ -1,9 +1,12 @@
-import pytest
+from unittest.mock import patch
+
 import numpy as np
-from unittest.mock import MagicMock, patch
-from cerberus.samplers import ComplexityMatchedSampler, ListSampler
-from cerberus.interval import Interval
+import pytest
 from interlap import InterLap
+
+from cerberus.interval import Interval
+from cerberus.samplers import ComplexityMatchedSampler, ListSampler
+
 
 # Mock compute_intervals_complexity
 @pytest.fixture
@@ -90,7 +93,6 @@ def test_metrics_cache_partial_hit(mock_compute):
         generate_on_init=True
     )
     
-    initial_calls = mock_compute.call_count
     mock_compute.reset_mock()
     
     # New interval
@@ -98,7 +100,7 @@ def test_metrics_cache_partial_hit(mock_compute):
     new_target = ListSampler(new_intervals)
     
     # Create new sampler sharing cache
-    sampler2 = ComplexityMatchedSampler(
+    ComplexityMatchedSampler(
         target_sampler=new_target,
         candidate_sampler=candidate_sampler, # Reused
         fasta_path="mock.fa",

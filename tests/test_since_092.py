@@ -14,16 +14,12 @@ Covers:
 """
 
 import logging
-import random
-import unittest
 from pathlib import Path
-from typing import cast
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 import yaml
-from interlap import InterLap
 
 from cerberus.cache import (
     get_default_cache_dir,
@@ -32,11 +28,11 @@ from cerberus.cache import (
     save_prepare_cache,
 )
 from cerberus.config import (
-    SamplerConfig,
-    ModelConfig,
-    TrainConfig,
-    GenomeConfig,
     DataConfig,
+    GenomeConfig,
+    ModelConfig,
+    SamplerConfig,
+    TrainConfig,
 )
 from cerberus.interval import Interval
 from cerberus.samplers import (
@@ -477,7 +473,7 @@ class TestTrainSeedPropagation:
         """train_single(seed=77) passes seed=77 to CerberusDataModule."""
         with patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
              patch("cerberus.train.instantiate"), \
-             patch("cerberus.train._train") as mock_train:
+             patch("cerberus.train._train"):
 
             from cerberus.train import train_single
 
@@ -553,7 +549,7 @@ class TestTrainSeedPropagation:
 
             assert mock_ts.call_count == 4
             expected_pairs = [(0, 1), (1, 2), (2, 3), (3, 0)]
-            for c, (test_f, val_f) in zip(mock_ts.call_args_list, expected_pairs):
+            for c, (test_f, val_f) in zip(mock_ts.call_args_list, expected_pairs, strict=True):
                 assert c.kwargs["test_fold"] == test_f
                 assert c.kwargs["val_fold"] == val_f
 
@@ -665,6 +661,7 @@ class TestEnsembleMetadata:
     def test_corrupt_metadata_warns(self, tmp_path):
         """Corrupt YAML triggers a warning and recovers."""
         import io
+
         from cerberus.model_ensemble import update_ensemble_metadata
 
         meta_path = tmp_path / "ensemble_metadata.yaml"
@@ -1027,7 +1024,7 @@ class TestTrainCallsPrepareThenSetup:
 
         with patch("cerberus.train.configure_callbacks", return_value=[]), \
              patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm: mc), \
-             patch("cerberus.train.instantiate") as mock_inst, \
+             patch("cerberus.train.instantiate"), \
              patch("pytorch_lightning.Trainer") as mock_trainer_cls:
 
             mock_trainer = MagicMock()

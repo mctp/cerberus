@@ -1,8 +1,10 @@
 
 import unittest
-from cerberus.samplers import RandomSampler, ScaledSampler
-from cerberus.interval import Interval
+
 from interlap import InterLap
+
+from cerberus.samplers import RandomSampler, ScaledSampler
+
 
 class TestScaledSamplerFix(unittest.TestCase):
     def test_scaled_sampler_split_folds_after_resample(self):

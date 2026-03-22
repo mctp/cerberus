@@ -1,7 +1,8 @@
 
 import unittest
-from cerberus.samplers import RandomSampler, MultiSampler
-from cerberus.interval import Interval
+
+from cerberus.samplers import MultiSampler, RandomSampler
+
 
 class TestMultiSamplerCorrelation(unittest.TestCase):
     def test_multisampler_decorrelates_sub_samplers(self):
@@ -21,7 +22,7 @@ class TestMultiSamplerCorrelation(unittest.TestCase):
         self.assertEqual([i.start for i in rs1], [i.start for i in rs2])
 
         # Wrap in MultiSampler with explicit seed
-        ms = MultiSampler([rs1, rs2], chrom_sizes, folds=[], exclude_intervals={}, seed=42)
+        MultiSampler([rs1, rs2], chrom_sizes, folds=[], exclude_intervals={}, seed=42)
 
         # MultiSampler uses generate_sub_seeds to give each sub-sampler a
         # different derived seed, de-correlating them.

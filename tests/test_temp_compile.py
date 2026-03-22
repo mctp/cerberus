@@ -1,10 +1,13 @@
 
+from unittest.mock import patch
+
 import pytest
 import torch
 import torch.nn as nn
+
+from cerberus.config import DataConfig, ModelConfig
 from cerberus.module import instantiate_model
-from cerberus.config import ModelConfig, DataConfig
-from unittest.mock import patch, MagicMock
+
 
 # Mock import_class to return a DummyModel
 class DummyModel(nn.Module):

@@ -1,8 +1,10 @@
+import pybigtools
 import pytest
 import torch
-from cerberus.mask import BigBedMaskExtractor, InMemoryBigBedMaskExtractor
-import pybigtools
+
 from cerberus.interval import Interval
+from cerberus.mask import BigBedMaskExtractor, InMemoryBigBedMaskExtractor
+
 
 @pytest.fixture
 def bigbed_file(tmp_path):

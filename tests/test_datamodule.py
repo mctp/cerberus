@@ -1,7 +1,10 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.datamodule import CerberusDataModule
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
+
 
 @pytest.fixture
 def mock_dataset_cls():
@@ -359,7 +362,6 @@ def test_validate_paths_missing_target_channel(tmp_path):
 
 def test_validate_paths_all_exist(tmp_path):
     """_validate_paths passes when all configured paths exist."""
-    from pathlib import Path
 
     fasta = tmp_path / "genome.fa"
     fasta.write_text(">chr1\nACGT\n")

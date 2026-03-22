@@ -1,7 +1,18 @@
 import pytest
 import torch
-from cerberus.transform import Jitter, TargetCrop, ReverseComplement, Log1p, Sqrt, Arcsinh, Bin, Compose
+
 from cerberus.interval import Interval
+from cerberus.transform import (
+    Arcsinh,
+    Bin,
+    Compose,
+    Jitter,
+    Log1p,
+    ReverseComplement,
+    Sqrt,
+    TargetCrop,
+)
+
 
 @pytest.fixture
 def dummy_interval():

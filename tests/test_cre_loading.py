@@ -1,6 +1,7 @@
 
-from cerberus.mask import BigBedMaskExtractor as MaskExtractor
 from cerberus.interval import Interval
+from cerberus.mask import BigBedMaskExtractor as MaskExtractor
+
 
 def test_cre_loading_real(human_genome):
     """

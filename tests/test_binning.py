@@ -1,7 +1,9 @@
 import numpy as np
-import torch
 import pytest
+import torch
+
 from cerberus.transform import Bin
+
 
 def naive_numpy_bin(arr: np.ndarray, bin_size: int, method: str) -> np.ndarray:
     """

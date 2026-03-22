@@ -1,13 +1,14 @@
 """Coverage tests for cerberus.loss — untested code paths."""
 import pytest
 import torch
+
 from cerberus.loss import (
-    MSEMultinomialLoss,
     CoupledMSEMultinomialLoss,
-    PoissonMultinomialLoss,
-    CoupledPoissonMultinomialLoss,
-    NegativeBinomialMultinomialLoss,
     CoupledNegativeBinomialMultinomialLoss,
+    CoupledPoissonMultinomialLoss,
+    MSEMultinomialLoss,
+    NegativeBinomialMultinomialLoss,
+    PoissonMultinomialLoss,
 )
 from cerberus.output import ProfileCountOutput, ProfileLogRates
 

@@ -4,22 +4,20 @@ import torch
 import torch.nn as nn
 
 from cerberus.loss import (
-    CerberusLoss,
-    ProfilePoissonNLLLoss,
-    MSEMultinomialLoss,
     CoupledMSEMultinomialLoss,
-    PoissonMultinomialLoss,
-    CoupledPoissonMultinomialLoss,
-    NegativeBinomialMultinomialLoss,
     CoupledNegativeBinomialMultinomialLoss,
+    CoupledPoissonMultinomialLoss,
     DalmatianLoss,
+    MSEMultinomialLoss,
+    NegativeBinomialMultinomialLoss,
+    PoissonMultinomialLoss,
+    ProfilePoissonNLLLoss,
 )
 from cerberus.output import (
-    ProfileLogRates,
-    ProfileCountOutput,
     FactorizedProfileCountOutput,
+    ProfileCountOutput,
+    ProfileLogRates,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

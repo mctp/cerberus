@@ -1,12 +1,14 @@
-from pathlib import Path
-from typing import Protocol, Iterable
 import logging
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Protocol
+
 import numpy as np
 import pyfaidx
 import torch
 
-from cerberus.interval import Interval
 from cerberus.complexity import calculate_gc_content
+from cerberus.interval import Interval
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,8 @@
-import time
 import random
-import numpy as np
-from cerberus.complexity import calculate_gc_content, calculate_dust_score
+import time
+
+from cerberus.complexity import calculate_dust_score, calculate_gc_content
+
 
 def generate_random_dna(length):
     return "".join(random.choices("ACGT", k=length))

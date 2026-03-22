@@ -1,8 +1,10 @@
+from typing import Any
+
 import pytest
 import torch
 import torch.nn as nn
-from typing import Any
-from torchmetrics import MetricCollection, MeanSquaredError
+from torchmetrics import MetricCollection
+
 from cerberus.config import ModelConfig
 from cerberus.module import instantiate_metrics_and_loss
 

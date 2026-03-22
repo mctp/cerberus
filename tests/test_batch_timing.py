@@ -1,7 +1,9 @@
 import time
-from cerberus.genome import create_genome_config
+
 from cerberus import CerberusDataModule
 from cerberus.config import DataConfig, SamplerConfig
+from cerberus.genome import create_genome_config
+
 
 def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
     """

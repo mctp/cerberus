@@ -1,16 +1,18 @@
+import dataclasses
+
+import numpy as np
 import pytest
 import torch
-import numpy as np
-import dataclasses
+
+from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.output import (
-    ModelOutput, 
-    unbatch_modeloutput, 
-    aggregate_tensor_track_values, 
-    aggregate_intervals, 
-    aggregate_models
+    ModelOutput,
+    aggregate_intervals,
+    aggregate_models,
+    aggregate_tensor_track_values,
+    unbatch_modeloutput,
 )
-from cerberus.interval import Interval
 
 # --- Fixtures and Helpers ---
 
@@ -373,14 +375,16 @@ def test_aggregate_intervals_no_cls_raises():
 # --- Tests for predict_intervals and predict_output_intervals ---
 
 from unittest.mock import MagicMock, patch
+
 from cerberus.config import (
+    CerberusConfig,
     DataConfig,
     GenomeConfig,
+    ModelConfig,
     SamplerConfig,
     TrainConfig,
-    ModelConfig,
-    CerberusConfig,
 )
+
 
 def _make_data_config(input_len=100, output_len=10, output_bin_size=1):
     return DataConfig.model_construct(
@@ -425,7 +429,7 @@ def mock_dataset():
 
 @pytest.fixture
 def mock_ensemble():
-    with patch("cerberus.model_ensemble._ModelManager") as mock_manager:
+    with patch("cerberus.model_ensemble._ModelManager"):
         def mock_init(self, *args, **kwargs):
             torch.nn.ModuleDict.__init__(self)
 

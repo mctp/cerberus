@@ -1,17 +1,22 @@
+from pathlib import Path
+
 import pytest
 import torch
-from pathlib import Path
+
+from cerberus.interval import Interval
+from cerberus.mask import (
+    BedMaskExtractor,
+    BigBedMaskExtractor,
+    InMemoryBigBedMaskExtractor,
+)
 from cerberus.signal import (
     _EXTRACTOR_REGISTRY,
+    InMemorySignalExtractor,
+    SignalExtractor,
+    UniversalExtractor,
     _resolve_extractor_cls,
     register_extractor,
-    SignalExtractor,
-    InMemorySignalExtractor,
-    UniversalExtractor,
-    BaseSignalExtractor,
 )
-from cerberus.mask import BigBedMaskExtractor, InMemoryBigBedMaskExtractor, BedMaskExtractor
-from cerberus.interval import Interval
 
 
 class TestResolveExtractorCls:

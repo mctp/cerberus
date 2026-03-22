@@ -1,11 +1,13 @@
 
+import pybigtools
 import pytest
 import torch
+
+from cerberus.config import DataConfig, GenomeConfig
+from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
 from cerberus.mask import BedMaskExtractor
-from cerberus.dataset import CerberusDataset
-from cerberus.config import GenomeConfig, DataConfig
-import pybigtools
+
 
 @pytest.fixture
 def dummy_bed(tmp_path):
@@ -27,9 +29,8 @@ def dummy_bigbed(tmp_path):
 @pytest.fixture
 def dummy_bigwig(tmp_path):
     path = tmp_path / "test.bw"
-    chroms = {"chr1": 1000}
     # Create a simple bigwig
-    bb = pybigtools.open(str(path), "w") # type: ignore
+    pybigtools.open(str(path), "w") # type: ignore
     # Need to check pybigtools API for bigwig creation, but let's assume this works or skip if complex
     # Usually easier to just mock or assume it exists. 
     # For now, I'll trust existing tests know how to make bigwigs or just skip the BW part if it's hard.

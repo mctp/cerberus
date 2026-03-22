@@ -1,11 +1,13 @@
 """
 Regression tests for log_counts_include_pseudocount propagation through MetricCollections.
 """
+from typing import Any
+
 import pytest
 import torch
-from typing import Any
 from torchmetrics import MetricCollection
 
+from cerberus.config import ModelConfig
 from cerberus.metrics import (
     DefaultMetricCollection,
     LogCountsMeanSquaredError,
@@ -13,10 +15,8 @@ from cerberus.metrics import (
 )
 from cerberus.models.bpnet import BPNetMetricCollection
 from cerberus.models.pomeranian import PomeranianMetricCollection
-from cerberus.config import ModelConfig
 from cerberus.module import instantiate_metrics_and_loss
 from cerberus.output import ProfileCountOutput
-
 
 # ---------------------------------------------------------------------------
 # Helpers

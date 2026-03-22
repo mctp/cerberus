@@ -10,12 +10,11 @@ import pytest
 import torch
 
 from cerberus.metrics import (
-    ProfilePearsonCorrCoef,
     CountProfilePearsonCorrCoef,
     LogCountsPearsonCorrCoef,
+    ProfilePearsonCorrCoef,
 )
 from cerberus.output import ProfileCountOutput, ProfileLogRates
-
 
 # ---------------------------------------------------------------------------
 # Helpers

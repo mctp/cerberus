@@ -1,8 +1,10 @@
 
 import unittest
-from cerberus.samplers import RandomSampler
+
 from interlap import InterLap
-import random
+
+from cerberus.samplers import RandomSampler
+
 
 class TestRandomSamplerInconsistency(unittest.TestCase):
     def test_split_folds_stuck_seed(self):

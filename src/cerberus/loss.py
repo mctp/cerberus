@@ -4,8 +4,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from cerberus.output import (
+    FactorizedProfileCountOutput,
+    ProfileCountOutput,
+    ProfileLogRates,
+)
 from cerberus.utils import import_class
-from cerberus.output import FactorizedProfileCountOutput, ProfileCountOutput, ProfileLogRates
 
 
 class CerberusLoss(Protocol):

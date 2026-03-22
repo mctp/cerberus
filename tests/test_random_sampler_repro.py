@@ -1,7 +1,8 @@
 
 import unittest
-from interlap import InterLap
-from cerberus.samplers import RandomSampler, MultiSampler, ScaledSampler
+
+from cerberus.samplers import MultiSampler, RandomSampler, ScaledSampler
+
 
 class TestRandomSamplerInconsistencies(unittest.TestCase):
     def test_random_sampler_resample_none_behavior(self):

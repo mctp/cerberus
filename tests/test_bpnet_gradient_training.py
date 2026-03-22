@@ -22,7 +22,6 @@ import torch.nn.functional as F
 
 from cerberus.models.bpnet import BPNet, BPNetLoss
 
-
 SEED = 0
 BATCH_SIZE = 2
 INPUT_LEN = 200

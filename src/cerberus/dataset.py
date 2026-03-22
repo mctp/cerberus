@@ -1,21 +1,27 @@
+import logging
 from typing import Any
+
 import numpy as np
 import torch
-import logging
-from torch.utils.data import Dataset
 from interlap import InterLap
+from torch.utils.data import Dataset
+
 from .config import (
     DataConfig,
-    SamplerConfig,
     GenomeConfig,
+    SamplerConfig,
 )
 from .exclude import get_exclude_intervals
-from .samplers import Sampler, create_sampler
-from .genome import GenomeConfig, create_genome_folds
-from .sequence import SequenceExtractor, InMemorySequenceExtractor, BaseSequenceExtractor
-from .signal import BaseSignalExtractor, UniversalExtractor
-from .transform import DataTransform, Compose, create_default_transforms
+from .genome import create_genome_folds
 from .interval import Interval, resolve_interval
+from .samplers import Sampler, create_sampler
+from .sequence import (
+    BaseSequenceExtractor,
+    InMemorySequenceExtractor,
+    SequenceExtractor,
+)
+from .signal import BaseSignalExtractor, UniversalExtractor
+from .transform import Compose, DataTransform, create_default_transforms
 
 logger = logging.getLogger(__name__)
 

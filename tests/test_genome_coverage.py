@@ -1,7 +1,7 @@
 """Coverage tests for cerberus.genome — untested code paths."""
 import pytest
-from cerberus.genome import create_genome_folds, _create_folds_chrom_partition
 
+from cerberus.genome import _create_folds_chrom_partition, create_genome_folds
 
 # ---------------------------------------------------------------------------
 # create_genome_folds

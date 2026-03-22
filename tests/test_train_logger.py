@@ -1,7 +1,9 @@
 from unittest.mock import MagicMock, patch
-from cerberus.train import _train as train
-from cerberus.config import TrainConfig, ModelConfig, DataConfig
+
 import pytorch_lightning as pl
+
+from cerberus.config import DataConfig, ModelConfig, TrainConfig
+from cerberus.train import _train as train
 
 
 def _make_configs():
@@ -77,7 +79,7 @@ def test_train_wrapper_logger_setup_default_dir():
     datamodule = MagicMock()
     train_config, model_config, data_config = _make_configs()
 
-    with patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
+    with patch("pytorch_lightning.Trainer"), \
          patch("pytorch_lightning.loggers.CSVLogger") as mock_csv_logger_cls, \
          patch("cerberus.train.instantiate", return_value=mock_module), \
          patch("cerberus.train.resolve_adaptive_loss_args", side_effect=lambda mc, dm, **kw: mc):

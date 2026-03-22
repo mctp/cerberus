@@ -14,21 +14,26 @@ Usage:
 """
 
 import argparse
-import os
 import logging
-import torch
+import os
 from pathlib import Path
 from pprint import pformat
 
+import torch
+
 # Cerberus imports
 import cerberus
-from cerberus.download import download_human_reference
 from cerberus.config import (
-    GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig,
+    DataConfig,
+    ModelConfig,
     PretrainedConfig,
+    SamplerConfig,
+    TrainConfig,
 )
+from cerberus.download import download_human_reference
 from cerberus.genome import create_genome_config
-from cerberus.train import train_single, train_multi
+from cerberus.train import train_multi, train_single
+
 
 def _parse_alpha(value: str) -> "float | str":
     """Accept a float or the literal string 'adaptive' for --alpha."""
@@ -39,7 +44,7 @@ def _parse_alpha(value: str) -> "float | str":
     except ValueError:
         raise argparse.ArgumentTypeError(
             f"--alpha must be a float or 'adaptive', got: {value!r}"
-        )
+        ) from None
 
 
 def get_args():
@@ -220,7 +225,7 @@ def main():
 
     # Model Config
     if args.k5:
-        logging.info(f"Using PomeranianK5 (Medium Kernel) Model...")
+        logging.info("Using PomeranianK5 (Medium Kernel) Model...")
         model_args = {
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],
@@ -239,7 +244,7 @@ def main():
         model_name = "PomeranianK5"
     else:
         # Default to Pomeranian (K9 Config)
-        logging.info(f"Using Pomeranian (Default) Model...")
+        logging.info("Using Pomeranian (Default) Model...")
         model_args = {
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": ["signal"],

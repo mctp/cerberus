@@ -7,27 +7,30 @@ Covers:
   3. target_scale and output_bin_size normalization.
 """
 import math
+from dataclasses import dataclass
+from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+import pybigtools
 import pytest
 import torch
 import torch.nn as nn
-import numpy as np
 import yaml
-import pybigtools
-from pathlib import Path
-from dataclasses import dataclass
-from unittest.mock import patch
 
-from cerberus.interval import Interval
-from cerberus.model_ensemble import ModelEnsemble
+from cerberus.config import (
+    CerberusConfig,
+    DataConfig,
+    ModelConfig,
+    SamplerConfig,
+    TrainConfig,
+)
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
-from cerberus.config import (
-    CerberusConfig, GenomeConfig, DataConfig, ModelConfig,
-    TrainConfig, SamplerConfig,
-)
+from cerberus.interval import Interval
+from cerberus.model_ensemble import ModelEnsemble
 from cerberus.output import ModelOutput, ProfileCountOutput, ProfileLogRates
-from cerberus.predict_bigwig import predict_to_bigwig, _process_island
-
+from cerberus.predict_bigwig import _process_island, predict_to_bigwig
 
 # ---------------------------------------------------------------------------
 # Dummy models returning different ModelOutput types
@@ -338,7 +341,7 @@ def test_bpnet_target_scale_halves_values(tmp_path):
     # Same genome → same number of entries
     assert len(vals1) == len(vals2)
     # Each value in scale=2 should be half of scale=1
-    for v1, v2 in zip(vals1, vals2):
+    for v1, v2 in zip(vals1, vals2, strict=True):
         assert abs(v2 - v1 / 2.0) < 1e-5, f"scale=2 value {v2} != {v1}/2"
 
 
@@ -419,7 +422,7 @@ def test_process_island_profile_count_output_types(bpnet_setup):
     )
 
     assert len(results) > 0
-    for chrom, start, end, val in results:
+    for _chrom, _start, _end, val in results:
         assert isinstance(val, float), f"Expected float, got {type(val)}"
         assert np.isfinite(val), f"Non-finite value: {val}"
 
@@ -441,7 +444,7 @@ def test_process_island_logrates_output_types(logrates_setup):
     )
 
     assert len(results) > 0
-    for chrom, start, end, val in results:
+    for _chrom, _start, _end, val in results:
         assert isinstance(val, float), f"Expected float, got {type(val)}"
         assert np.isfinite(val), f"Non-finite value: {val}"
 

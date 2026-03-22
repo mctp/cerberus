@@ -1,10 +1,8 @@
-import pytest
-import sys
 from pathlib import Path
-import random
-from cerberus.sequence import compute_intervals_gc
+
 from cerberus.interval import Interval
-from cerberus.samplers import ComplexityMatchedSampler  # Ensure this imports without error
+from cerberus.sequence import compute_intervals_gc
+
 
 def create_dummy_fasta(path: Path, chroms: dict[str, str]):
     """Creates a dummy FASTA file."""
@@ -52,7 +50,7 @@ def test_compute_intervals_gc(tmp_path):
     expected = [0.5, 0.0, 1.0, 0.75, 0.5, 0.5]
     
     assert len(gc_values) == len(expected)
-    for v, e in zip(gc_values, expected):
+    for v, e in zip(gc_values, expected, strict=True):
         assert abs(v - e) < 1e-6
 
 def test_compute_intervals_gc_invalid_chrom(tmp_path):
@@ -73,7 +71,7 @@ def test_samplers_no_pyfaidx_dependency():
     Note: pyfaidx is already imported by sequence.py, so it will be in sys.modules.
     But we can inspect the source code of samplers.py to ensure 'import pyfaidx' is absent.
     """
-    with open("src/cerberus/samplers.py", "r") as f:
+    with open("src/cerberus/samplers.py") as f:
         content = f.read()
     
     assert "import pyfaidx" not in content, "samplers.py should not import pyfaidx directly"

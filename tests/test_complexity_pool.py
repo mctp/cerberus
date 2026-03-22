@@ -1,9 +1,9 @@
 
-import pytest
-from pathlib import Path
 import numpy as np
-from cerberus.samplers import ComplexityMatchedSampler, RandomSampler, IntervalSampler
-from cerberus.complexity import compute_intervals_complexity
+import pytest
+
+from cerberus.samplers import ComplexityMatchedSampler, IntervalSampler, RandomSampler
+
 
 @pytest.fixture
 def mock_fasta(tmp_path):
@@ -86,7 +86,7 @@ def test_lazy_pool_initialization(mock_fasta, tmp_path):
     padded_size = 50
     target_bed = tmp_path / "target.bed"
     with open(target_bed, "w") as f:
-        f.write(f"chr1\t0\t50\n")
+        f.write("chr1\t0\t50\n")
     target_sampler = IntervalSampler(target_bed, chrom_sizes, padded_size)
     candidate_sampler = MockRandomSampler(chrom_sizes, padded_size, num_intervals=100, generate_on_init=False)
     

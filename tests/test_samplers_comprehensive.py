@@ -1,17 +1,18 @@
-import pytest
 import gzip
-from pathlib import Path
+
+import pytest
 from interlap import InterLap
-from cerberus.samplers import (
-    IntervalSampler,
-    RandomSampler,
-    ComplexityMatchedSampler,
-    PeakSampler,
-    MultiSampler,
-    Sampler
-)
-from cerberus.interval import Interval
+
 from cerberus.genome import create_genome_folds
+from cerberus.interval import Interval
+from cerberus.samplers import (
+    ComplexityMatchedSampler,
+    IntervalSampler,
+    MultiSampler,
+    PeakSampler,
+    RandomSampler,
+    Sampler,
+)
 
 # --- IntervalSampler Tests ---
 

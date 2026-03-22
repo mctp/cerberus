@@ -85,7 +85,7 @@ def generate_random_intervals(
     sizes = np.array([chrom_sizes[c] for c in chroms], dtype=np.int64)
     # Only chromosomes large enough for the context
     valid = sizes >= context_length
-    chroms = [c for c, v in zip(chroms, valid) if v]
+    chroms = [c for c, v in zip(chroms, valid, strict=True) if v]
     sizes = sizes[valid]
     weights = sizes / sizes.sum()
 
@@ -187,9 +187,9 @@ def run_benchmark(num_intervals: int, seed: int) -> None:
         }
         results.append(row)
 
-        def _throughput(elapsed: float) -> tuple[float, float]:
-            its = n / elapsed if elapsed > 0 else float("inf")
-            bps = n * ctx_len / elapsed if elapsed > 0 else float("inf")
+        def _throughput(elapsed: float, _n: int = n, _ctx_len: int = ctx_len) -> tuple[float, float]:
+            its = _n / elapsed if elapsed > 0 else float("inf")
+            bps = _n * _ctx_len / elapsed if elapsed > 0 else float("inf")
             return its, bps
 
         f_its, f_bps = _throughput(t_fasta)

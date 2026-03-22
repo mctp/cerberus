@@ -1,9 +1,10 @@
 
 import gzip
-import pytest
-from cerberus.samplers import PeakSampler
-from cerberus.genome import create_human_genome_config, create_genome_folds
+
 from cerberus.exclude import get_exclude_intervals
+from cerberus.genome import create_genome_folds, create_human_genome_config
+from cerberus.samplers import PeakSampler
+
 
 def test_peak_sampler_real_data(human_genome, mdapca2b_ar_dataset, tmp_path):
     """

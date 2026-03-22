@@ -1,7 +1,8 @@
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+from cerberus.config import GenomeConfig, ModelConfig, TrainConfig
 from cerberus.train import train_multi
-from cerberus.config import TrainConfig, GenomeConfig, ModelConfig
+
 
 def _make_genome_config(k: int = 3) -> MagicMock:
     gc = MagicMock(spec=GenomeConfig)
@@ -45,10 +46,9 @@ def test_train_multi_loop():
     with patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
          patch("cerberus.train.instantiate") as mock_instantiate, \
          patch("pytorch_lightning.Trainer") as mock_trainer_cls, \
-         patch("pathlib.Path.mkdir") as mock_mkdir, \
-         patch("cerberus.train.update_ensemble_metadata") as mock_metadata:
+         patch("pathlib.Path.mkdir"), \
+         patch("cerberus.train.update_ensemble_metadata"):
 
-        mock_trainer_instance = mock_trainer_cls.return_value
 
         trainers = train_multi(
             genome_config,

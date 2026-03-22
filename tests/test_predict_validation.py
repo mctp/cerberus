@@ -1,21 +1,24 @@
 
+from dataclasses import dataclass
+from unittest.mock import MagicMock
+
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import MagicMock
-from cerberus.model_ensemble import ModelEnsemble
-from cerberus.dataset import CerberusDataset
-from cerberus.interval import Interval
-from dataclasses import dataclass
-from cerberus.output import ModelOutput
+
 from cerberus.config import (
+    CerberusConfig,
     DataConfig,
     GenomeConfig,
+    ModelConfig,
     SamplerConfig,
     TrainConfig,
-    ModelConfig,
-    CerberusConfig,
 )
+from cerberus.dataset import CerberusDataset
+from cerberus.interval import Interval
+from cerberus.model_ensemble import ModelEnsemble
+from cerberus.output import ModelOutput
+
 
 @dataclass
 class MockOutput(ModelOutput):

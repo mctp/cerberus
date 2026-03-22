@@ -1,13 +1,19 @@
 """Tests for the Dalmatian architecture (end-to-end bias-factorized model)."""
 
 import os
+
 import pytest
 import torch
-from cerberus.models.biasnet import BiasNet
-from cerberus.output import FactorizedProfileCountOutput, ProfileCountOutput, unbatch_modeloutput, compute_total_log_counts
-from cerberus.loss import DalmatianLoss
-from cerberus.models.dalmatian import Dalmatian
 
+from cerberus.loss import DalmatianLoss
+from cerberus.models.biasnet import BiasNet
+from cerberus.models.dalmatian import Dalmatian
+from cerberus.output import (
+    FactorizedProfileCountOutput,
+    ProfileCountOutput,
+    compute_total_log_counts,
+    unbatch_modeloutput,
+)
 
 # --- Step 1: FactorizedProfileCountOutput tests ---
 
@@ -497,11 +503,13 @@ def test_dalmatian_cerberus_module_training_step():
     """Full training step through CerberusModule with Dalmatian + DalmatianLoss."""
     import tempfile
     import warnings
+
     import pytorch_lightning as pl
     from torch.utils.data import DataLoader, Dataset
-    from cerberus.module import CerberusModule
+
     from cerberus.config import TrainConfig
     from cerberus.models.pomeranian import PomeranianMetricCollection
+    from cerberus.module import CerberusModule
 
     class DalmatianDataset(Dataset):
         def __init__(self, n=8):
@@ -620,7 +628,7 @@ def test_dalmatian_state_dict_roundtrip(tmp_path):
 
     # Verify parameters match
     for (n1, p1), (n2, p2) in zip(
-        model.named_parameters(), model2.named_parameters()
+        model.named_parameters(), model2.named_parameters(), strict=True
     ):
         assert n1 == n2
         assert torch.equal(p1, p2), f"Parameter {n1} mismatch after load"
@@ -698,8 +706,9 @@ def test_dalmatian_optimization_reduces_loss():
 # --- Step 8: Pretrained weight loading tests ---
 
 
-from cerberus.pretrained import load_pretrained_weights
 from cerberus.config import PretrainedConfig
+from cerberus.pretrained import load_pretrained_weights
+
 
 def _pc(weights_path, source=None, target=None, freeze=False):
     """Helper to build PretrainedConfig for tests."""
@@ -718,7 +727,7 @@ def test_load_pretrained_biasnet_standalone(tmp_path):
         _pc(tmp_path / "biasnet.pt"),
     ])
 
-    for (n1, p1), (n2, p2) in zip(model1.named_parameters(), model2.named_parameters()):
+    for (n1, p1), (n2, p2) in zip(model1.named_parameters(), model2.named_parameters(), strict=True):
         assert n1 == n2
         assert torch.equal(p1, p2), f"Parameter {n1} mismatch after loading"
 
@@ -738,7 +747,7 @@ def test_load_pretrained_biasnet_into_dalmatian(tmp_path):
     ])
 
     # Bias model should match the saved weights
-    for (n1, p1), (n2, p2) in zip(bias.named_parameters(), dalmatian.bias_model.named_parameters()):
+    for (n1, p1), (_n2, p2) in zip(bias.named_parameters(), dalmatian.bias_model.named_parameters(), strict=True):
         assert torch.equal(p1, p2), f"bias_model.{n1} not loaded correctly"
 
     # Signal model should be unchanged
@@ -758,9 +767,9 @@ def test_load_dalmatian_bias_from_dalmatian_checkpoint(tmp_path):
     ])
 
     # bias_model should match
-    for (n1, p1), (n2, p2) in zip(
+    for (n1, p1), (_n2, p2) in zip(
         dalmatian1.bias_model.named_parameters(),
-        dalmatian2.bias_model.named_parameters(),
+        dalmatian2.bias_model.named_parameters(), strict=True,
     ):
         assert torch.equal(p1, p2), f"bias_model.{n1} mismatch"
 
@@ -776,8 +785,8 @@ def test_load_full_dalmatian_checkpoint(tmp_path):
         _pc(tmp_path / "dalmatian.pt"),
     ])
 
-    for (n1, p1), (n2, p2) in zip(
-        dalmatian1.named_parameters(), dalmatian2.named_parameters()
+    for (n1, p1), (_n2, p2) in zip(
+        dalmatian1.named_parameters(), dalmatian2.named_parameters(), strict=True
     ):
         assert torch.equal(p1, p2), f"{n1} mismatch"
 
@@ -798,12 +807,12 @@ def test_load_multiple_submodules(tmp_path):
     ])
 
     # Bias should match and be frozen
-    for (n1, p1), (n2, p2) in zip(bias.named_parameters(), dalmatian.bias_model.named_parameters()):
+    for (n1, p1), (n2, p2) in zip(bias.named_parameters(), dalmatian.bias_model.named_parameters(), strict=True):
         assert torch.equal(p1, p2), f"bias_model.{n1} mismatch"
         assert not p2.requires_grad, f"bias_model.{n2} should be frozen"
 
     # Signal should match and NOT be frozen
-    for (n1, p1), (n2, p2) in zip(signal.named_parameters(), dalmatian.signal_model.named_parameters()):
+    for (n1, p1), (n2, p2) in zip(signal.named_parameters(), dalmatian.signal_model.named_parameters(), strict=True):
         assert torch.equal(p1, p2), f"signal_model.{n1} mismatch"
         assert p2.requires_grad, f"signal_model.{n2} should not be frozen"
 

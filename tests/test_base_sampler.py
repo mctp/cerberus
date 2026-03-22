@@ -1,7 +1,8 @@
-import pytest
-from cerberus.samplers import BaseSampler, ListSampler
-from cerberus.interval import Interval
 from interlap import InterLap
+
+from cerberus.interval import Interval
+from cerberus.samplers import BaseSampler, ListSampler
+
 
 def test_list_sampler_init_iteration():
     intervals = [

@@ -1,7 +1,13 @@
-import pytest
 import numpy as np
 import pyfaidx
-from cerberus.complexity import calculate_gc_content, calculate_dust_score, calculate_log_cpg_ratio, compute_intervals_complexity
+import pytest
+
+from cerberus.complexity import (
+    calculate_dust_score,
+    calculate_gc_content,
+    calculate_log_cpg_ratio,
+    compute_intervals_complexity,
+)
 from cerberus.interval import Interval
 
 # --- Test Data ---

@@ -1,10 +1,13 @@
 from typing import Protocol
+
 import numpy as np
 import torch
+
 from cerberus.interval import Interval
-from cerberus.samplers import BaseSampler, ListSampler
+from cerberus.samplers import ListSampler
 from cerberus.sequence import BaseSequenceExtractor, SequenceExtractor
 from cerberus.signal import BaseSignalExtractor
+
 
 class MotifInserter(Protocol):
     """Protocol for inserting motifs into a sequence tensor."""
@@ -21,17 +24,17 @@ class MockSampler(ListSampler):
     def __init__(
         self,
         num_samples: int = 1000,
-        chroms: list[str] = ["chr1"],
+        chroms: list[str] | None = None,
         chrom_size: int = 1_000_000,
         interval_length: int = 200,
         seed: int = 42
     ):
         self.num_samples = num_samples
-        self.chroms = chroms
+        self.chroms = chroms if chroms is not None else ["chr1"]
         self.chrom_size = chrom_size
         self.interval_length = interval_length
         self.seed = seed
-        self.chrom_sizes = {chrom: chrom_size for chrom in chroms}
+        self.chrom_sizes = {chrom: chrom_size for chrom in self.chroms}
         self.folds = [] # Not used by MockSampler's custom split_folds
         self.exclude_intervals = {} # Not used
         

@@ -1,11 +1,13 @@
 """Coverage tests for cerberus.interval — untested code paths."""
 import pytest
-import tempfile
-from pathlib import Path
-from typing import cast
-from cerberus.config import GenomeConfig
-from cerberus.interval import Interval, resolve_interval, merge_intervals, parse_intervals
 
+from cerberus.config import GenomeConfig
+from cerberus.interval import (
+    Interval,
+    merge_intervals,
+    parse_intervals,
+    resolve_interval,
+)
 
 # ---------------------------------------------------------------------------
 # Interval methods

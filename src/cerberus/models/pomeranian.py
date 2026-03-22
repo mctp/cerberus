@@ -1,11 +1,15 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchmetrics import MetricCollection
 
-from cerberus.output import ProfileCountOutput
-from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, LogCountsPearsonCorrCoef
 from cerberus.layers import ConvNeXtV2Block, PGCBlock
+from cerberus.metrics import (
+    CountProfileMeanSquaredError,
+    CountProfilePearsonCorrCoef,
+    LogCountsMeanSquaredError,
+    LogCountsPearsonCorrCoef,
+)
+from cerberus.output import ProfileCountOutput
 
 _UNSET = object()
 
@@ -135,7 +139,7 @@ class Pomeranian(nn.Module):
             if len(kernel_schedule) != len(dilation_schedule):
                 raise ValueError(f"Kernel schedule length {len(kernel_schedule)} != Dilation schedule length {len(dilation_schedule)}")
 
-        for dilation, k_size in zip(dilation_schedule, kernel_schedule):
+        for dilation, k_size in zip(dilation_schedule, kernel_schedule, strict=True):
             self.layers.append(
                 PGCBlock(
                     dim=filters,

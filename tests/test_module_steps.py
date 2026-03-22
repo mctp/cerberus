@@ -1,13 +1,16 @@
 import tempfile
+from unittest.mock import MagicMock
+
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import MagicMock
-from cerberus.module import CerberusModule
+
+from cerberus.config import TrainConfig
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.metrics import DefaultMetricCollection
+from cerberus.module import CerberusModule
 from cerberus.output import ProfileLogRates
-from cerberus.config import TrainConfig
+
 
 class DummyModel(nn.Module):
     def __init__(self):

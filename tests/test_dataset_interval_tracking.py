@@ -1,8 +1,10 @@
 import pytest
 import torch
-from cerberus.transform import Jitter, ReverseComplement
+
 from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.dataset import CerberusDataset
+from cerberus.transform import Jitter, ReverseComplement
+
 
 # Mocking helpers
 class MockSequenceExtractor:

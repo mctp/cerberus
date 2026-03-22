@@ -27,7 +27,6 @@ from cerberus.config import (
     ModelConfig
 )
 from cerberus.genome import create_genome_config
-from cerberus.models.bpnet import BPNet, BPNetMetricCollection, BPNetLoss
 from cerberus.dataset import CerberusDataset
 from cerberus.model_ensemble import ModelEnsemble
 

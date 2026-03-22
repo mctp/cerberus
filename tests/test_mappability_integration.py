@@ -1,15 +1,18 @@
 
 import os
+
 import pytest
 import torch
+
 from cerberus.config import DataConfig, SamplerConfig
-from cerberus.signal import SignalExtractor
-from cerberus.sequence import SequenceExtractor
-from cerberus.interval import Interval
-from cerberus.transform import Bin, Jitter
 from cerberus.dataset import CerberusDataset
-from cerberus.samplers import BaseSampler, ListSampler
 from cerberus.genome import create_human_genome_config
+from cerberus.interval import Interval
+from cerberus.samplers import ListSampler
+from cerberus.sequence import SequenceExtractor
+from cerberus.signal import SignalExtractor
+from cerberus.transform import Bin, Jitter
+
 
 @pytest.fixture
 def mappability_file(human_genome):

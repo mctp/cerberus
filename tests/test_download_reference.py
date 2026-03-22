@@ -1,8 +1,8 @@
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-from cerberus.download import download_reference_genome, GENOME_RESOURCES
+from unittest.mock import patch
+
+from cerberus.download import GENOME_RESOURCES, download_reference_genome
+
 
 @patch("cerberus.download._download_file")
 @patch("gzip.open")
@@ -24,7 +24,7 @@ def test_download_mouse_reference(mock_unlink, mock_fasta, mock_copy, mock_gzip,
     assert "mappability" not in results  # Should be optional/missing for mm10 currently
 
     # Check that correct URLs were used
-    mm10_resources = GENOME_RESOURCES["mm10"]
+    GENOME_RESOURCES["mm10"]
     # We can't easily check call args order due to dict iteration order, but we can check count
     assert mock_download.call_count == 4
 
@@ -48,5 +48,5 @@ def test_download_human_reference(mock_unlink, mock_fasta, mock_copy, mock_gzip,
     assert results["mappability"].name == "mappability.bw"
 
     # Check that correct URLs were used
-    hg38_resources = GENOME_RESOURCES["hg38"]
+    GENOME_RESOURCES["hg38"]
     assert mock_download.call_count == 5

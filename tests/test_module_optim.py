@@ -1,12 +1,14 @@
 import pytest
 import torch
 import torch.nn as nn
-from cerberus.module import CerberusModule
+from timm.scheduler.cosine_lr import CosineLRScheduler
+
 from cerberus.config import TrainConfig
 from cerberus.loss import ProfilePoissonNLLLoss
 from cerberus.metrics import DefaultMetricCollection
+from cerberus.module import CerberusModule
 from cerberus.output import ProfileLogits
-from timm.scheduler.cosine_lr import CosineLRScheduler
+
 
 class DummyModel(nn.Module):
     def __init__(self):

@@ -1,7 +1,8 @@
 import pytest
-from pydantic import ValidationError
-from cerberus.samplers import create_sampler, Sampler
+
 from cerberus.config import SamplerConfig
+from cerberus.samplers import create_sampler
+
 
 def test_create_sampler_unknown_type():
     """Unknown sampler type raises ValueError from create_sampler."""

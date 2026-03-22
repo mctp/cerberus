@@ -1,10 +1,11 @@
 import logging
 import math
-from typing import Iterable
+from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
+
 import numpy as np
 import pyfaidx
-from collections import defaultdict
 
 from cerberus.interval import Interval
 

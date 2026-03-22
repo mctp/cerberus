@@ -3,12 +3,14 @@ import importlib
 import inspect
 import pkgutil
 import sys
+from dataclasses import is_dataclass
+
 import torch
 import torch.nn as nn
-from dataclasses import is_dataclass
 
 # Import cerberus.models to inspect available models
 import cerberus.models
+
 
 def find_model_class(model_name):
     """
@@ -120,7 +122,6 @@ def print_model_dims(model_name, input_len=None, output_len=None, verbose=False)
     # We register on named children to get a high-level view (Stem, Body, Heads)
     # If a child is a container (Sequential/ModuleList), we optionally inspect inside.
     
-    hooks = []
     
     # Heuristic: 
     # Register on all immediate named children.
@@ -157,7 +158,7 @@ def print_model_dims(model_name, input_len=None, output_len=None, verbose=False)
         child.register_forward_hook(get_shape_hook(name))
         
         if isinstance(child, (nn.ModuleList, nn.Sequential)):
-            for i, (sub_name, sub_child) in enumerate(child.named_children()):
+            for _i, (sub_name, sub_child) in enumerate(child.named_children()):
                 # named_children for list/sequential returns "0", "1", etc.
                 child_name = f"{name}.{sub_name}"
                 sub_child.register_forward_hook(get_shape_hook(child_name))

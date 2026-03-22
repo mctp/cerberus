@@ -1,11 +1,12 @@
 
+import gzip
 import logging
-from pathlib import Path
+import shutil
 import subprocess
 import urllib.error
 import urllib.request
-import shutil
-import gzip
+from pathlib import Path
+
 import pyfaidx
 
 logger = logging.getLogger(__name__)

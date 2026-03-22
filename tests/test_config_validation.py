@@ -1,14 +1,15 @@
-import logging
+from pathlib import Path
+
 import pytest
 import torch.nn as nn
-from pathlib import Path
 from pydantic import ValidationError
+
 from cerberus.config import (
-    SamplerConfig,
-    ModelConfig,
-    DataConfig,
     CerberusConfig,
+    DataConfig,
     GenomeConfig,
+    ModelConfig,
+    SamplerConfig,
     TrainConfig,
 )
 from cerberus.output import get_log_count_params

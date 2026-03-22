@@ -1,9 +1,10 @@
 
-import time
+import os
 import random
 import sys
-import os
+import time
 from pathlib import Path
+
 import pyfaidx
 
 # Add src to path
@@ -11,6 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../s
 
 from cerberus.interval import Interval
 from cerberus.sequence import compute_intervals_gc
+
 
 def generate_random_intervals(chrom_sizes, num_intervals, width=2048, seed=42):
     rng = random.Random(seed)

@@ -1,14 +1,14 @@
+import pytest
 import torch
 import torch.nn.functional as F
-import pytest
+
 from cerberus.metrics import (
-    _per_example_pearson,
-    ProfilePearsonCorrCoef,
     CountProfilePearsonCorrCoef,
     LogCountsPearsonCorrCoef,
+    ProfilePearsonCorrCoef,
+    _per_example_pearson,
 )
-from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
-
+from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
 
 # ---------------------------------------------------------------------------
 # _per_example_pearson

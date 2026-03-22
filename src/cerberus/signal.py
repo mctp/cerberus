@@ -1,11 +1,17 @@
+import logging
 from pathlib import Path
 from typing import Protocol
-import logging
+
 import numpy as np
 import pybigtools
 import torch
+
 from cerberus.interval import Interval
-from cerberus.mask import BigBedMaskExtractor, InMemoryBigBedMaskExtractor, BedMaskExtractor
+from cerberus.mask import (
+    BedMaskExtractor,
+    BigBedMaskExtractor,
+    InMemoryBigBedMaskExtractor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +90,7 @@ class SignalExtractor(BaseSignalExtractor):
             try:
                 self._bigwig_files[name] = pybigtools.open(path)  # type: ignore
             except Exception as e:
-                raise RuntimeError(f"Failed to open BigWig file {path}: {e}")
+                raise RuntimeError(f"Failed to open BigWig file {path}: {e}") from e
 
     def __getstate__(self):
         """Pickle support: exclude file handles to allow safe multiprocessing."""
@@ -242,7 +248,7 @@ class InMemorySignalExtractor(BaseSignalExtractor):
                     self._cache[name][chrom] = tensor
 
             except Exception as e:
-                raise RuntimeError(f"Failed to load BigWig file {path}: {e}")
+                raise RuntimeError(f"Failed to load BigWig file {path}: {e}") from e
 
     def extract(self, interval: Interval) -> torch.Tensor:
         """

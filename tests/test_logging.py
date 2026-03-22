@@ -1,6 +1,7 @@
 import logging
-import pytest
+
 from cerberus.logging import setup_logging
+
 
 def test_setup_logging_basic():
     """Test that setup_logging configures the cerberus logger."""

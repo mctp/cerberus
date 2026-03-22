@@ -1,29 +1,30 @@
-from pathlib import Path
-import torch
-from torch import nn
-import re
 import dataclasses
-from typing import Iterable, Iterator
 import itertools
-import yaml
 import logging
+import re
+from collections.abc import Iterable, Iterator
+from pathlib import Path
+
+import torch
+import yaml
+from torch import nn
 
 from cerberus.config import (
     CerberusConfig,
-    GenomeConfig,
     DataConfig,
+    GenomeConfig,
     ModelConfig,
 )
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_folds
+from cerberus.interval import Interval
 from cerberus.module import instantiate_model
 from cerberus.output import (
-    ModelOutput, 
-    unbatch_modeloutput, 
-    aggregate_intervals, 
-    aggregate_models
+    ModelOutput,
+    aggregate_intervals,
+    aggregate_models,
+    unbatch_modeloutput,
 )
-from cerberus.interval import Interval
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def parse_hparams_config(path: str | Path) -> CerberusConfig:
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"hparams file not found at: {p}")
-    with open(p, "r") as f:
+    with open(p) as f:
         data = yaml.safe_load(f)
     return CerberusConfig.model_validate(data)
 
@@ -399,7 +400,7 @@ class ModelEnsemble(nn.ModuleDict):
             else:
                 # Result is batched
                 unbatched = unbatch_modeloutput(batched_output, len(batch_intervals))
-                for interval, output in zip(batch_intervals, unbatched):
+                for interval, output in zip(batch_intervals, unbatched, strict=True):
                     output_interval = interval.center(output_len)
                     results.append((output, output_interval))
 
@@ -651,7 +652,7 @@ def update_ensemble_metadata(root_dir: Path | str, fold: int):
     
     existing_folds: set[int] = set()
     if meta_path.exists():
-        with open(meta_path, "r") as f:
+        with open(meta_path) as f:
             try:
                 meta = yaml.safe_load(f)
                 if meta and "folds" in meta:

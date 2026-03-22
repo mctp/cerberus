@@ -1,7 +1,9 @@
-import torch
 import pytest
+import torch
+
+from cerberus.layers import PGCBlock
 from cerberus.models.pomeranian import Pomeranian, PomeranianK5
-from cerberus.layers import ConvNeXtV2Block, PGCBlock
+
 
 def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)

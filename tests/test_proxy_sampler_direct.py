@@ -1,5 +1,7 @@
 import pytest
+
 from cerberus.samplers import ProxySampler
+
 
 class MockProxy(ProxySampler):
     """Trivial subclass of ProxySampler for testing purposes."""

@@ -1,10 +1,13 @@
 
 import unittest
-from unittest.mock import MagicMock, patch
 from pathlib import Path
-from cerberus.samplers import PeakSampler, IntervalSampler, RandomSampler, ComplexityMatchedSampler, create_sampler
-from cerberus.interval import Interval
+from unittest.mock import MagicMock, patch
+
 from interlap import InterLap
+
+from cerberus.interval import Interval
+from cerberus.samplers import IntervalSampler, PeakSampler, create_sampler
+
 
 class TestPeakSamplerNoBackground(unittest.TestCase):
     def test_zero_background_ratio(self):

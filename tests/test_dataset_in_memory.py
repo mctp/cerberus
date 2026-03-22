@@ -1,14 +1,15 @@
 from cerberus.config import DataConfig, SamplerConfig
+from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
 from cerberus.sequence import InMemorySequenceExtractor, SequenceExtractor
-from cerberus.dataset import CerberusDataset
+
 
 def test_dataset_in_memory_extractor(tmp_path):
     # Setup
     genome = tmp_path / "genome.fa"
     genome.write_text(">chr1\n" + "N" * 100 + "\n")
     fai = tmp_path / "genome.fa.fai"
-    fai.write_text(f"chr1\t100\t6\t100\t101\n")
+    fai.write_text("chr1\t100\t6\t100\t101\n")
 
     # Dummy bed
     (tmp_path / "dummy.bed").write_text("chr1\t10\t20\n")

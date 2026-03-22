@@ -1,11 +1,13 @@
+import gzip
+import logging
 from pathlib import Path
 from typing import Protocol
-import logging
+
 import numpy as np
 import pybigtools
 import torch
-import gzip
 from interlap import InterLap
+
 from cerberus.interval import Interval
 
 logger = logging.getLogger(__name__)
@@ -50,7 +52,7 @@ class BigBedMaskExtractor(BaseMaskExtractor):
             try:
                 self._bigbed_files[name] = pybigtools.open(path)  # type: ignore
             except Exception as e:
-                raise RuntimeError(f"Failed to open BigBed file {path}: {e}")
+                raise RuntimeError(f"Failed to open BigBed file {path}: {e}") from e
 
     def __getstate__(self) -> dict[str, object]:
         """Pickle support: exclude file handles."""
@@ -145,7 +147,7 @@ class InMemoryBigBedMaskExtractor(BaseMaskExtractor):
                     self._cache[name][chrom] = tensor
 
             except Exception as e:
-                raise RuntimeError(f"Failed to load BigBed file {path}: {e}")
+                raise RuntimeError(f"Failed to load BigBed file {path}: {e}") from e
 
     def extract(self, interval: Interval) -> torch.Tensor:
         """
@@ -203,7 +205,7 @@ class BedMaskExtractor(BaseMaskExtractor):
             if path.suffix == ".gz":
                 f = gzip.open(path, "rt")
             else:
-                f = open(path, "r")
+                f = open(path)
                 
             with f:
                 for line in f:
@@ -228,7 +230,7 @@ class BedMaskExtractor(BaseMaskExtractor):
                         intervals_by_chrom[chrom].append((start, end - 1))
                     
         except Exception as e:
-            raise RuntimeError(f"Failed to load BED file {path}: {e}")
+            raise RuntimeError(f"Failed to load BED file {path}: {e}") from e
             
         # Build InterLap objects
         interlaps = {}

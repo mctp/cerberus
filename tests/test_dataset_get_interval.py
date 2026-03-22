@@ -1,9 +1,11 @@
 import pytest
 import torch
-from cerberus.dataset import CerberusDataset
-from cerberus.interval import Interval
-from cerberus.genome import create_genome_config
+
 from cerberus.config import DataConfig, SamplerConfig
+from cerberus.dataset import CerberusDataset
+from cerberus.genome import create_genome_config
+from cerberus.interval import Interval
+
 
 def test_get_interval_with_arbitrary_interval(tmp_path):
     """
@@ -13,7 +15,7 @@ def test_get_interval_with_arbitrary_interval(tmp_path):
     genome = tmp_path / "genome.fa"
     genome.write_text(">chr1\n" + "A" * 1000 + "\n")
     fai = tmp_path / "genome.fa.fai"
-    fai.write_text(f"chr1\t1000\t6\t1000\t1001\n")
+    fai.write_text("chr1\t1000\t6\t1000\t1001\n")
 
     peaks = tmp_path / "peaks.bed"
     peaks.write_text("chr1\t100\t200\n")
@@ -70,7 +72,7 @@ def test_get_interval_equivalence_to_getitem(tmp_path):
     genome = tmp_path / "genome.fa"
     genome.write_text(">chr1\n" + "C" * 1000 + "\n")
     fai = tmp_path / "genome.fa.fai"
-    fai.write_text(f"chr1\t1000\t6\t1000\t1001\n")
+    fai.write_text("chr1\t1000\t6\t1000\t1001\n")
 
     peaks = tmp_path / "peaks.bed"
     peaks.write_text("chr1\t100\t110\n")
@@ -122,7 +124,7 @@ def test_no_sampler_and_parsing(tmp_path):
     genome = tmp_path / "genome.fa"
     genome.write_text(">chr1\n" + "T" * 1000 + "\n")
     fai = tmp_path / "genome.fa.fai"
-    fai.write_text(f"chr1\t1000\t6\t1000\t1001\n")
+    fai.write_text("chr1\t1000\t6\t1000\t1001\n")
 
     genome_config = create_genome_config(
         name="test_genome",

@@ -1,9 +1,9 @@
-import pytest
-from pathlib import Path
 import numpy as np
-import random
-from cerberus.samplers import ComplexityMatchedSampler
+import pytest
+
 from cerberus.interval import Interval
+from cerberus.samplers import ComplexityMatchedSampler
+
 
 class MockSampler:
     def __init__(self, intervals):

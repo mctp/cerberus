@@ -1,8 +1,10 @@
-import pytest
-import yaml
 from pathlib import Path
-from cerberus.model_ensemble import parse_hparams_config
+
+import yaml
+
 from cerberus.config import CerberusConfig
+from cerberus.model_ensemble import parse_hparams_config
+
 
 def test_parse_hparams_config_generated_success(tmp_path):
     # create a mock hparams.yaml content with strings instead of paths

@@ -1,7 +1,9 @@
 
+import time
+
 import torch
 import torch.nn as nn
-import time
+
 
 def benchmark():
     N = 32
@@ -29,7 +31,7 @@ def benchmark():
     
     start = time.time()
     for _ in range(iterations):
-        y_conv = conv(x)
+        conv(x)
     if device.type == 'cuda': torch.cuda.synchronize()
     conv_time = (time.time() - start) / iterations
     
@@ -38,7 +40,7 @@ def benchmark():
         # Emulate original sequence: Transpose -> Linear -> Transpose
         # Original: x (N, C, L) -> pool -> (N, C, L/2) -> Transpose -> (N, L/2, C) -> Linear -> (N, L/2, Tracks) -> Transpose -> (N, Tracks, L/2)
         # We test just the op
-        y_linear = linear(x.transpose(1, 2)).transpose(1, 2)
+        linear(x.transpose(1, 2)).transpose(1, 2)
     if device.type == 'cuda': torch.cuda.synchronize()
     linear_time = (time.time() - start) / iterations
     

@@ -20,7 +20,6 @@ import argparse
 import csv
 import gzip
 import logging
-import yaml
 from itertools import combinations
 from pathlib import Path
 
@@ -29,6 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyfaidx
 import torch
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +218,7 @@ def get_background_sequences(
 ) -> list[np.ndarray]:
     """Extract random genomic sequences outside peak regions."""
     from interlap import InterLap
+
     from cerberus.samplers import IntervalSampler, RandomSampler
 
     peak_sampler = IntervalSampler(
@@ -339,7 +340,7 @@ def compute_pairwise_ism(
     epistasis_sum = np.zeros((window, 4, window, 4), dtype=np.float64)
     n = 0
 
-    for seq_idx, seq in enumerate(sequences):
+    for _seq_idx, seq in enumerate(sequences):
         x_ref = torch.tensor(seq, device=device).unsqueeze(0)  # (1, 4, L)
 
         # Reference value

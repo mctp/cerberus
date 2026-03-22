@@ -1,6 +1,8 @@
-import pytest
 from pathlib import Path
+
+import pytest
 from pydantic import ValidationError
+
 from cerberus.config import DataConfig
 
 

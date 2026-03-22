@@ -7,19 +7,23 @@ Covers:
   3. target_scale applied to raw observed counts before the log transform.
 """
 import math
-import torch
+
 import pytest
+import torch
 
-from cerberus.output import ProfileCountOutput, ProfileLogRates, compute_total_log_counts
 from cerberus.loss import (
-    MSEMultinomialLoss,
     CoupledMSEMultinomialLoss,
-    PoissonMultinomialLoss,
-    NegativeBinomialMultinomialLoss,
-    CoupledPoissonMultinomialLoss,
     CoupledNegativeBinomialMultinomialLoss,
+    CoupledPoissonMultinomialLoss,
+    MSEMultinomialLoss,
+    NegativeBinomialMultinomialLoss,
+    PoissonMultinomialLoss,
 )
-
+from cerberus.output import (
+    ProfileCountOutput,
+    ProfileLogRates,
+    compute_total_log_counts,
+)
 
 # ---------------------------------------------------------------------------
 # Helper — replicates the obs_log_count_fn selection from export_predictions.py

@@ -1,16 +1,18 @@
+import time
+from unittest.mock import patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-from cerberus.model_ensemble import ModelEnsemble
+
 from cerberus.config import (
-    ModelConfig,
+    CerberusConfig,
     DataConfig,
     GenomeConfig,
+    ModelConfig,
     SamplerConfig,
     TrainConfig,
-    CerberusConfig,
 )
-import time
+from cerberus.model_ensemble import ModelEnsemble
+
 
 def _make_cerberus_config(**overrides):
     """Create a minimal CerberusConfig for hparams tests."""
@@ -91,7 +93,7 @@ def test_init_resolves_configs(tmp_path, mock_model_manager):
     with patch("cerberus.model_ensemble.parse_hparams_config") as mock_parse:
         mock_parse.return_value = cerberus_config
 
-        ens = ModelEnsemble(checkpoint_path=tmp_path)
+        ModelEnsemble(checkpoint_path=tmp_path)
 
         mock_parse.assert_called_once()
         args, _ = mock_parse.call_args
@@ -118,7 +120,7 @@ def test_init_overrides_configs(tmp_path, mock_model_manager):
             model_args={}, pretrained=[], count_pseudocount=0.0,
         )
 
-        ens = ModelEnsemble(
+        ModelEnsemble(
             checkpoint_path=tmp_path,
             model_config=user_model_config,
         )

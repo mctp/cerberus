@@ -1,10 +1,13 @@
 import os
-import pytest
-import torch
+
 import numpy as np
 import pysam
-from cerberus.sequence import SequenceExtractor, encode_dna
+import pytest
+import torch
+
 from cerberus.interval import Interval
+from cerberus.sequence import SequenceExtractor, encode_dna
+
 
 @pytest.mark.skipif(os.environ.get("RUN_SLOW_TESTS") is None, reason="Skipping slow tests")
 def test_sequence_extraction_correctness_vs_pysam(human_genome):
@@ -23,7 +26,7 @@ def test_sequence_extraction_correctness_vs_pysam(human_genome):
     # pysam.FastaFile attributes: references (list of names), lengths (list of lengths)
     chroms = pysam_fasta.references
     lengths = pysam_fasta.lengths
-    chrom_sizes = dict(zip(chroms, lengths))
+    chrom_sizes = dict(zip(chroms, lengths, strict=True))
     
     # Generate intervals
     num_intervals = 20

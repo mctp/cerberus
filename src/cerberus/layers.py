@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
 
+
 class GRN1d(nn.Module):
     """ 
     ConvNeXt v2 GRN (Global Response Normalization) layer, adapted for 1d.

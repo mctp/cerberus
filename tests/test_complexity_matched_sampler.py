@@ -1,10 +1,15 @@
-import pytest
-from pathlib import Path
-import random
 import numpy as np
-from cerberus.samplers import create_sampler, ComplexityMatchedSampler, ListSampler, Interval
-from cerberus.config import SamplerConfig
+import pytest
 from interlap import InterLap
+
+from cerberus.config import SamplerConfig
+from cerberus.samplers import (
+    ComplexityMatchedSampler,
+    Interval,
+    ListSampler,
+    create_sampler,
+)
+
 
 @pytest.fixture
 def mock_fasta(tmp_path):

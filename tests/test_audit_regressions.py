@@ -1,7 +1,6 @@
 """Regression tests for code quality audit issues #2 and #3."""
 
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 import torch
@@ -14,7 +13,6 @@ from cerberus.loss import (
 )
 from cerberus.output import ProfileCountOutput, ProfileLogRates
 from cerberus.signal import UniversalExtractor
-
 
 # ---------------------------------------------------------------------------
 # Issue #2: .bed.gz suffix detection

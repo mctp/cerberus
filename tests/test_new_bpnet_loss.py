@@ -1,8 +1,10 @@
 import torch
+import torch.nn.functional as F
+
 from cerberus.loss import MSEMultinomialLoss, PoissonMultinomialLoss
 from cerberus.models.bpnet import BPNetLoss
 from cerberus.output import ProfileCountOutput
-import torch.nn.functional as F
+
 
 def test_mse_multinomial_loss_average_channels():
     # Setup: 2 Channels

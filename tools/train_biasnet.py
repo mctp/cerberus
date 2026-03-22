@@ -31,20 +31,24 @@ Usage:
 """
 
 import argparse
-import os
 import logging
-import torch
+import os
 from pathlib import Path
 from pprint import pformat
 
+import torch
+
 import cerberus
-from cerberus.download import download_human_reference
 from cerberus.config import (
-    GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig,
+    DataConfig,
+    ModelConfig,
     PretrainedConfig,
+    SamplerConfig,
+    TrainConfig,
 )
+from cerberus.download import download_human_reference
 from cerberus.genome import create_genome_config
-from cerberus.train import train_single, train_multi
+from cerberus.train import train_multi, train_single
 
 
 def _parse_count_weight(value: str) -> "float | str":
@@ -56,7 +60,7 @@ def _parse_count_weight(value: str) -> "float | str":
     except ValueError:
         raise argparse.ArgumentTypeError(
             f"--count-weight must be a float or 'adaptive', got: {value!r}"
-        )
+        ) from None
 
 
 def get_args():

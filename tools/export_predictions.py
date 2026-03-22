@@ -1,23 +1,27 @@
 #!/usr/bin/env python
 import argparse
-import logging
-from pathlib import Path
-import torch
 import csv
 import gzip
-import re
 import json
+import logging
+import re
+from pathlib import Path
+
+import torch
 
 import cerberus
-from cerberus.model_ensemble import ModelEnsemble
-from cerberus.dataset import CerberusDataset
-from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
-from cerberus.genome import create_genome_folds
-from cerberus.exclude import get_exclude_intervals
-from cerberus.output import compute_total_log_counts, compute_obs_log_counts
-from cerberus.output import get_log_count_params
 from cerberus.config import SamplerConfig
+from cerberus.dataset import CerberusDataset
+from cerberus.exclude import get_exclude_intervals
+from cerberus.genome import create_genome_folds
+from cerberus.model_ensemble import ModelEnsemble
 from cerberus.module import instantiate_metrics_and_loss
+from cerberus.output import (
+    compute_obs_log_counts,
+    compute_total_log_counts,
+    get_log_count_params,
+)
+from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +68,7 @@ def main():
     # We include tests/data as a likely location for test resources relative to project root
     script_dir = Path(__file__).resolve().parent
     project_root = script_dir.parent
-    tests_data = project_root / "tests/data"
+    project_root / "tests/data"
     ensemble = ModelEnsemble(args.model_path, device=device)
 
     # Configure use_folds
@@ -193,7 +197,7 @@ def main():
             train_s, val_s, test_s = combined_sampler.split_folds(test_fold_idx, val_fold_idx)
             split_sampler: MultiSampler = {"test": test_s, "val": val_s, "train": train_s}[args.eval_split]
             if not isinstance(split_sampler, MultiSampler):
-                raise RuntimeError(f"Expected split sampler to be a MultiSampler.")
+                raise RuntimeError("Expected split sampler to be a MultiSampler.")
             combined_sampler = split_sampler
 
         n_combined = len(combined_sampler)

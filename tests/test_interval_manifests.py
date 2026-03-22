@@ -3,13 +3,12 @@ and CerberusDataModule.save_interval_manifests."""
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from cerberus.interval import Interval, load_intervals_bed, write_intervals_bed
 from cerberus.samplers import MultiSampler
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -317,7 +316,7 @@ def test_round_trip_with_real_multisampler(tmp_path: Path) -> None:
     # Same intervals (order may differ due to shuffle, but sets must match)
     assert sorted(loaded_iv, key=str) == sorted(intervals, key=str)
     # For each loaded interval, its source matches what the sampler reported
-    for iv, src in zip(loaded_iv, loaded_src):
+    for iv, src in zip(loaded_iv, loaded_src, strict=True):
         original_idx = intervals.index(iv)
         assert src == sources[original_idx]
 
@@ -478,9 +477,10 @@ def _build_peak_sampler_and_write_manifest(
     Defined at module level so it is picklable by multiprocessing.
     """
     from pathlib import Path as _Path
-    from cerberus.interval import write_intervals_bed
-    from cerberus.samplers import PeakSampler, MultiSampler
+
     from cerberus.genome import create_genome_folds
+    from cerberus.interval import write_intervals_bed
+    from cerberus.samplers import MultiSampler, PeakSampler
 
     chrom_sizes = {
         "chr1": 5000,
@@ -544,6 +544,7 @@ def test_peak_sampler_multiprocess_determinism(tmp_path: Path) -> None:
 
     import multiprocessing
     import random
+
     import pyfaidx
     ctx = multiprocessing.get_context("spawn")
 

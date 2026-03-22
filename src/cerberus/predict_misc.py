@@ -10,13 +10,12 @@ import logging
 from pathlib import Path
 
 from cerberus.config import CerberusConfig
-from cerberus.output import get_log_count_params
 from cerberus.dataset import CerberusDataset
 from cerberus.exclude import get_exclude_intervals
 from cerberus.genome import create_genome_folds
 from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.output import compute_total_log_counts
+from cerberus.output import compute_total_log_counts, get_log_count_params
 from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
 
 logger = logging.getLogger(__name__)
@@ -133,12 +132,12 @@ def get_eval_intervals(
     intervals = [split_sampler[i] for i in range(n)]
     sources = [split_sampler.get_interval_source(i) for i in range(n)]
 
-    peak_intervals = [iv for iv, s in zip(intervals, sources) if s == "IntervalSampler"]
+    peak_intervals = [iv for iv, s in zip(intervals, sources, strict=True) if s == "IntervalSampler"]
 
     if not include_background:
         return peak_intervals
 
-    bg_intervals = [iv for iv, s in zip(intervals, sources) if s != "IntervalSampler"]
+    bg_intervals = [iv for iv, s in zip(intervals, sources, strict=True) if s != "IntervalSampler"]
     return peak_intervals, bg_intervals
 
 

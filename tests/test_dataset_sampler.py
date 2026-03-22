@@ -1,8 +1,10 @@
 import pytest
+
+from cerberus.config import DataConfig, SamplerConfig
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
 from cerberus.samplers import IntervalSampler
-from cerberus.config import DataConfig, SamplerConfig
+
 
 def test_dataset_instantiates_interval_sampler(tmp_path):
     # 1. Setup Files
@@ -10,7 +12,7 @@ def test_dataset_instantiates_interval_sampler(tmp_path):
     # Write valid content so SequenceExtractor works
     genome.write_text(">chr1\n" + "N" * 1000 + "\n")
     fai = tmp_path / "genome.fa.fai"
-    fai.write_text(f"chr1\t1000\t6\t1000\t1001\n")
+    fai.write_text("chr1\t1000\t6\t1000\t1001\n")
 
     peaks = tmp_path / "peaks.bed"
     peaks.write_text("chr1\t100\t200\nchr1\t500\t600\n")

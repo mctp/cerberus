@@ -1,6 +1,6 @@
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-import logging
 
 from cerberus.config import GenomeConfig
 
@@ -73,7 +73,7 @@ def write_intervals_bed(
         )
     with open(path, "w") as f:
         f.write("chrom\tstart\tend\tstrand\tinterval_source\n")
-        for iv, src in zip(intervals, sources):
+        for iv, src in zip(intervals, sources, strict=True):
             f.write(f"{iv.to_bed_row()}\t{src}\n")
     logger.info("Wrote %d intervals to %s", len(intervals), path)
 
@@ -122,7 +122,7 @@ def resolve_interval(query: str | tuple | list | Interval) -> Interval:
             start, end = map(int, coords.split("-"))
             return Interval(chrom, start, end)
         except ValueError:
-            raise ValueError(f"Invalid interval string format: {query}. Expected 'chrom:start-end'.")
+            raise ValueError(f"Invalid interval string format: {query}. Expected 'chrom:start-end'.") from None
 
     if isinstance(query, (tuple, list)):
         if len(query) < 3:
@@ -167,7 +167,7 @@ def parse_intervals(
             except ValueError:
                 raise ValueError(
                     f"Invalid interval format: {item}. Expected 'chr:start-end'."
-                )
+                ) from None
         else:
             chrom = item
             if chrom not in chrom_sizes:

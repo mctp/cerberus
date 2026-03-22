@@ -25,19 +25,22 @@ Key invariants tested:
 """
 
 import math
-import torch
-import torch.nn.functional as F
-import pytest
 
-from cerberus.output import ProfileCountOutput, ProfileLogRates, compute_total_log_counts
-from cerberus.loss import MSEMultinomialLoss, CoupledMSEMultinomialLoss
+import pytest
+import torch
+
+from cerberus.loss import CoupledMSEMultinomialLoss, MSEMultinomialLoss
 from cerberus.metrics import (
+    CountProfileMeanSquaredError,
+    CountProfilePearsonCorrCoef,
     LogCountsMeanSquaredError,
     LogCountsPearsonCorrCoef,
-    CountProfilePearsonCorrCoef,
-    CountProfileMeanSquaredError,
 )
-
+from cerberus.output import (
+    ProfileCountOutput,
+    ProfileLogRates,
+    compute_total_log_counts,
+)
 
 # ---------------------------------------------------------------------------
 # 1. Forward/inverse round-trip: log(count + p) → exp(...) - p == count
@@ -160,7 +163,7 @@ class TestLogCountsMetricsPseudocount:
     def test_pearson_perfect_correlation(self, pseudocount):
         """Perfectly correlated predictions → Pearson ≈ 1."""
         counts = [10.0, 50.0, 100.0, 500.0, 1000.0]
-        B = len(counts)
+        len(counts)
         L = 4
 
         metric = LogCountsPearsonCorrCoef(count_pseudocount=pseudocount)
@@ -208,7 +211,7 @@ class TestCountReconstructionPseudocount:
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 50.0])
     def test_count_profile_pearson_perfect(self, pseudocount):
         """Perfect reconstruction → Pearson ≈ 1."""
-        B, C, L = 1, 1, 16
+        _B, _C, L = 1, 1, 16
         target = torch.arange(1, float(L + 1)).unsqueeze(0).unsqueeze(0)  # (1, 1, L)
         total = target.sum()
 
@@ -227,7 +230,7 @@ class TestCountReconstructionPseudocount:
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 50.0])
     def test_count_profile_mse_perfect(self, pseudocount):
         """Perfect reconstruction → MSE ≈ 0."""
-        B, C, L = 1, 1, 16
+        _B, _C, L = 1, 1, 16
         target = torch.arange(1, float(L + 1)).unsqueeze(0).unsqueeze(0)
         total = target.sum()
 
@@ -245,7 +248,7 @@ class TestCountReconstructionPseudocount:
     @pytest.mark.parametrize("pseudocount", [1.0, 10.0, 50.0])
     def test_per_example_count_profile_pearson_perfect(self, pseudocount):
         """Per-example count profile Pearson with correct pseudocount."""
-        B, C, L = 1, 1, 16
+        _B, _C, L = 1, 1, 16
         target = torch.arange(1, float(L + 1)).unsqueeze(0).unsqueeze(0)
         total = target.sum()
 

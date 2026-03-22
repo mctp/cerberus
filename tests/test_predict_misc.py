@@ -1,15 +1,19 @@
 """Tests for cerberus.predict_misc — high-level inference utilities."""
 import math
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 import torch
 import torch.nn as nn
 import yaml
-from pathlib import Path
-from unittest.mock import patch
 
 from cerberus.config import (
-    CerberusConfig, GenomeConfig, DataConfig, ModelConfig, TrainConfig,
+    CerberusConfig,
+    DataConfig,
+    ModelConfig,
     SamplerConfig,
+    TrainConfig,
 )
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
@@ -21,7 +25,6 @@ from cerberus.predict_misc import (
     load_bed_intervals,
     predict_log_counts,
 )
-
 
 # ---------------------------------------------------------------------------
 # Dummy model — returns ProfileCountOutput with known log_counts

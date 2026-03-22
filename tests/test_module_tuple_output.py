@@ -1,11 +1,14 @@
+import warnings
+
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import warnings
-import pytorch_lightning as pl
 from torch.utils.data import DataLoader, Dataset
 from torchmetrics import Metric, MetricCollection
-from cerberus.module import CerberusModule
+
 from cerberus.config import TrainConfig
+from cerberus.module import CerberusModule
+
 
 class MockTupleModel(nn.Module):
     def __init__(self):

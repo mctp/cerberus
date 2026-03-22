@@ -1,17 +1,17 @@
 """Coverage tests for cerberus.output — untested code paths."""
 import pytest
 import torch
+
+from cerberus.interval import Interval
 from cerberus.output import (
     ModelOutput,
+    ProfileCountOutput,
     ProfileLogits,
     ProfileLogRates,
-    ProfileCountOutput,
-    compute_total_log_counts,
     aggregate_models,
+    compute_total_log_counts,
     unbatch_modeloutput,
 )
-from cerberus.interval import Interval
-
 
 # ---------------------------------------------------------------------------
 # compute_total_log_counts

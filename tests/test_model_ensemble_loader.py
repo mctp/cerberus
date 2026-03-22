@@ -1,16 +1,18 @@
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import torch.nn as nn
-import torch
 
-from cerberus.model_ensemble import _ModelManager as ModelManager, ModelEnsemble
+import pytest
+import torch
+import torch.nn as nn
+
 from cerberus.config import (
-    ModelConfig,
     DataConfig,
-    TrainConfig,
     GenomeConfig,
+    ModelConfig,
+    TrainConfig,
 )
+from cerberus.model_ensemble import _ModelManager as ModelManager
+
 
 # Dummy Configs
 @pytest.fixture

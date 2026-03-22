@@ -58,7 +58,7 @@ def bench_load_h5ad():
     with timed("load h5ad (backed=r)"):
         adata = ad.read_h5ad(H5AD, backed="r")
         groups: dict[str, set[str]] = {}
-        for barcode, group in zip(adata.obs_names, adata.obs["cell_type"]):
+        for barcode, group in zip(adata.obs_names, adata.obs["cell_type"], strict=True):
             groups.setdefault(str(group), set()).add(str(barcode))
         adata.file.close()
     logger.info(f"  {sum(len(v) for v in groups.values())} barcodes, {len(groups)} groups")

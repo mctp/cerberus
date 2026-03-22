@@ -1,9 +1,12 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
 import numpy as np
+import pytest
 import torch
-from cerberus.signal import SignalExtractor
+
 from cerberus.interval import Interval
+from cerberus.signal import SignalExtractor
+
 
 @pytest.fixture
 def mock_pybigtools():

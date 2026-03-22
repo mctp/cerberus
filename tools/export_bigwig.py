@@ -19,10 +19,10 @@ from pathlib import Path
 import torch
 
 import cerberus
-from cerberus.model_ensemble import ModelEnsemble
 from cerberus.dataset import CerberusDataset
-from cerberus.predict_bigwig import predict_to_bigwig
 from cerberus.interval import Interval
+from cerberus.model_ensemble import ModelEnsemble
+from cerberus.predict_bigwig import predict_to_bigwig
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ def main():
     logger.info(f"Loading model from {args.model_path}...")
     script_dir = Path(__file__).resolve().parent
     project_root = script_dir.parent
-    tests_data = project_root / "tests/data"
+    project_root / "tests/data"
     ensemble = ModelEnsemble(args.model_path, device=device)
 
     # 3. Parse use_folds

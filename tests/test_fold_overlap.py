@@ -1,6 +1,7 @@
 
-from cerberus.samplers import IntervalSampler
 from cerberus.genome import create_genome_folds
+from cerberus.samplers import IntervalSampler
+
 
 def test_sampler_split_folds_overlap(tmp_path):
     # Create a mock BED file

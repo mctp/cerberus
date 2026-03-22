@@ -1,8 +1,8 @@
 
 import torch
-import torch.nn as nn
-import pytest
-from cerberus.layers import GRN1d, ConvNeXtV2Block, PGCBlock, DilatedResidualBlock
+
+from cerberus.layers import ConvNeXtV2Block, DilatedResidualBlock, GRN1d, PGCBlock
+
 
 def test_dilated_residual_block_shape():
     filters = 16

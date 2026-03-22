@@ -1,12 +1,11 @@
 """Tests for cerberus.predict_bigwig — BigWig prediction generation."""
 
 import math
-import pytest
-import numpy as np
-import torch
-import torch.nn as nn
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
+import torch
 
 from cerberus.config import (
     CerberusConfig,
@@ -21,11 +20,10 @@ from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.output import ProfileCountOutput, ProfileLogRates
 from cerberus.predict_bigwig import (
-    _reconstruct_linear_signal,
     _process_island,
+    _reconstruct_linear_signal,
     predict_to_bigwig,
 )
-
 
 # ---------------------------------------------------------------------------
 # _reconstruct_linear_signal
@@ -107,6 +105,7 @@ class TestReconstructLinearSignal:
     def test_fallback_logits_only(self):
         """Output with logits but no log_counts or log_rates → raw logits."""
         from dataclasses import dataclass
+
         from cerberus.output import ModelOutput
 
         @dataclass
@@ -121,6 +120,7 @@ class TestReconstructLinearSignal:
 
     def test_unsupported_output_raises(self):
         from dataclasses import dataclass
+
         from cerberus.output import ModelOutput
 
         @dataclass
@@ -266,7 +266,7 @@ class TestProcessIsland:
 
         assert len(result) == n_bins
         # Each bin should be (chrom, start, end, value)
-        for chrom, start, end, val in result:
+        for chrom, start, end, _val in result:
             assert chrom == "chr1"
             assert end - start == output_bin_size
 
@@ -461,7 +461,7 @@ class TestPredictToBigwig:
 
         # Verify records were written
         assert len(written_records) == n_bins
-        for chrom, start, end, val in written_records:
+        for chrom, _start, _end, val in written_records:
             assert chrom == "chr1"
             assert isinstance(val, float)
             assert val >= 0
@@ -517,7 +517,7 @@ class TestPredictToBigwig:
 
         # Verify that written records are within the region's output area
         assert len(written_records) > 0
-        for chrom, start, end, val in written_records:
+        for chrom, _start, _end, _val in written_records:
             assert chrom == "chr1"
 
     def test_stride_defaults_to_half_output_len(self, tmp_path):

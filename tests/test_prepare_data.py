@@ -7,21 +7,21 @@ This test file grows incrementally across commits:
 - Commit 3: prepare_data() + setup() integration
 """
 
-import numpy as np
-import pytest
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pytest
+
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.interval import Interval
 from cerberus.samplers import (
     ComplexityMatchedSampler,
     IntervalSampler,
-    ListSampler,
     PeakSampler,
     RandomSampler,
     create_sampler,
 )
-from cerberus.config import SamplerConfig, GenomeConfig, DataConfig
-from interlap import InterLap
+
 
 def _cm_config(target_n: int = 5, candidate_n: int = 10) -> SamplerConfig:
     """Helper: build a complexity_matched SamplerConfig for tests."""
@@ -331,10 +331,12 @@ from pathlib import Path
 
 from cerberus.cache import (
     get_default_cache_dir,
+    load_prepare_cache,
     resolve_cache_dir,
     save_prepare_cache,
-    load_prepare_cache,
 )
+
+
 class TestGetDefaultCacheDir:
     """Tests for default cache directory resolution."""
 

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import dataclasses
 import logging
-import torch
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
-from typing import Any, Sequence, TYPE_CHECKING
+import torch
+
 from cerberus.interval import Interval
 from cerberus.utils import import_class
 
@@ -41,7 +44,7 @@ class ModelOutput:
     """Base class for model outputs."""
     out_interval: Interval | None = None
 
-    def detach(self) -> "ModelOutput":
+    def detach(self) -> ModelOutput:
         """Returns a new instance with all tensors detached from the graph."""
         raise NotImplementedError
 
@@ -53,7 +56,7 @@ class ProfileLogits(ModelOutput):
     """
     logits: torch.Tensor # (Batch, Channels, Length)
 
-    def detach(self) -> "ProfileLogits":
+    def detach(self) -> ProfileLogits:
         return ProfileLogits(logits=self.logits.detach(), out_interval=self.out_interval)
 
 @dataclass
@@ -64,7 +67,7 @@ class ProfileLogRates(ModelOutput):
     """
     log_rates: torch.Tensor # (Batch, Channels, Length)
 
-    def detach(self) -> "ProfileLogRates":
+    def detach(self) -> ProfileLogRates:
         return ProfileLogRates(log_rates=self.log_rates.detach(), out_interval=self.out_interval)
 
 @dataclass
@@ -76,7 +79,7 @@ class ProfileCountOutput(ProfileLogits):
     """
     log_counts: torch.Tensor # (Batch, Channels)
 
-    def detach(self) -> "ProfileCountOutput":
+    def detach(self) -> ProfileCountOutput:
         return ProfileCountOutput(
             logits=self.logits.detach(),
             log_counts=self.log_counts.detach(),
@@ -96,7 +99,7 @@ class FactorizedProfileCountOutput(ProfileCountOutput):
     signal_logits: torch.Tensor     # (B, C, L) -- signal model profile logits
     signal_log_counts: torch.Tensor # (B, C)   -- signal model log counts
 
-    def detach(self) -> "FactorizedProfileCountOutput":
+    def detach(self) -> FactorizedProfileCountOutput:
         return FactorizedProfileCountOutput(
             logits=self.logits.detach(),
             log_counts=self.log_counts.detach(),
@@ -177,7 +180,7 @@ def aggregate_tensor_track_values(
     counts = np.zeros((1, n_bins), dtype=np.float32)
     has_scalar = False
 
-    for out_tensor, interval in zip(outputs, intervals):
+    for out_tensor, interval in zip(outputs, intervals, strict=True):
         val = out_tensor.cpu().numpy()  # (C, L) or (C,)
 
         rel_start_bp = interval.start - min_start

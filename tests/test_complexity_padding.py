@@ -1,9 +1,8 @@
 
 import pytest
-from pathlib import Path
-import numpy as np
-from cerberus.samplers import create_sampler, ComplexityMatchedSampler
-from cerberus.interval import Interval
+
+from cerberus.samplers import ComplexityMatchedSampler
+
 
 @pytest.fixture
 def mock_fasta(tmp_path):
@@ -48,7 +47,7 @@ def test_complexity_sampler_padding(mock_fasta):
     # Bins: 5. 100% falls in bin 4. 0% falls in bin 0.
     # So bin 4 will have 10 targets, 0 candidates.
     
-    config = {
+    {
         "sampler_type": "complexity_matched",
         "padded_size": 50,
         "sampler_args": {
@@ -70,6 +69,7 @@ def test_complexity_sampler_padding(mock_fasta):
     
     # Create samplers manually to control exclusions
     from interlap import InterLap
+
     from cerberus.samplers import IntervalSampler, RandomSampler
     
     # 1. Target Sampler (No exclusions, reads from chr1)

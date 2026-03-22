@@ -2,6 +2,7 @@
 
 import pytest
 import torch
+
 from cerberus.models.biasnet import BiasNet
 from cerberus.output import ProfileCountOutput
 
@@ -119,7 +120,7 @@ def test_biasnet_state_dict_roundtrip(tmp_path):
     model2.load_state_dict(torch.load(path, weights_only=True))
 
     for (n1, p1), (n2, p2) in zip(
-        model.named_parameters(), model2.named_parameters()
+        model.named_parameters(), model2.named_parameters(), strict=True
     ):
         assert n1 == n2
         assert torch.equal(p1, p2), f"Parameter {n1} mismatch after load"

@@ -7,14 +7,14 @@ Covers:
   - resolve_adaptive_loss_args()
 """
 
-import pytest
-import torch
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from cerberus.train import compute_counts_loss_weight, resolve_adaptive_loss_args
-from cerberus.config import ModelConfig, DataConfig
+import pytest
+import torch
 
+from cerberus.config import DataConfig, ModelConfig
+from cerberus.train import compute_counts_loss_weight, resolve_adaptive_loss_args
 
 # ---------------------------------------------------------------------------
 # compute_counts_loss_weight
@@ -179,8 +179,9 @@ def test_compute_median_counts_applies_target_scale():
 
 
 def test_compute_median_counts_uses_median_not_mean():
-    from cerberus.datamodule import CerberusDataModule
     import numpy as np
+
+    from cerberus.datamodule import CerberusDataModule
 
     dm = MagicMock(spec=CerberusDataModule)
     dm._is_initialized = True
@@ -211,9 +212,10 @@ def test_compute_median_counts_does_not_open_dataset_extractor():
     """Fork-safety: compute_median_counts must not open handles on the dataset's
     own target_signal_extractor.  If it did, forked DataLoader workers would
     inherit the shared file descriptor and produce BadData panics."""
+    from pathlib import Path
+
     from cerberus.datamodule import CerberusDataModule
     from cerberus.signal import SignalExtractor
-    from pathlib import Path
 
     dm = MagicMock(spec=CerberusDataModule)
     dm._is_initialized = True

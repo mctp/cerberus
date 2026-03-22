@@ -1,9 +1,11 @@
-import pytest
 import numpy as np
 import pyBigWig
+import pytest
+
 from cerberus.interval import Interval
 from cerberus.samplers import IntervalSampler
 from cerberus.signal import SignalExtractor
+
 
 @pytest.fixture
 def temp_dir(tmp_path):

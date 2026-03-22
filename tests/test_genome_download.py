@@ -1,8 +1,11 @@
 import os
-import pytest
 from pathlib import Path
+
+import pytest
+
 from cerberus.download import download_human_reference
 from cerberus.genome import create_human_genome_config
+
 
 @pytest.mark.skipif(os.environ.get("RUN_SLOW_TESTS") is None, reason="Skipping slow download tests")
 def test_download_human_reference():
@@ -31,7 +34,7 @@ def test_download_human_reference():
     assert results["encode_cre"].stat().st_size > 0
 
     # Verify filtering (length > 3)
-    with open(results["gaps"], "r") as f:
+    with open(results["gaps"]) as f:
         for line in f:
             parts = line.split()
             start, end = int(parts[1]), int(parts[2])

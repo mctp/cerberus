@@ -1,13 +1,25 @@
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, call
-import torch
-import json
-from cerberus.train import _train as train, _save_model_pt, train_single
-from cerberus.config import TrainConfig, ModelConfig, DataConfig, GenomeConfig, SamplerConfig
+from unittest.mock import MagicMock, patch
+
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
+import torch
+from pytorch_lightning.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
+
+from cerberus.config import (
+    DataConfig,
+    GenomeConfig,
+    ModelConfig,
+    SamplerConfig,
+    TrainConfig,
+)
+from cerberus.train import _save_model_pt, train_single
+from cerberus.train import _train as train
+
 
 def _make_train_config() -> TrainConfig:
     return TrainConfig(

@@ -1,7 +1,6 @@
 """Pretrained weight loading utilities for cerberus models."""
 
 import logging
-from pathlib import Path
 
 import torch
 import torch.nn as nn

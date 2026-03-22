@@ -3,8 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from cerberus.output import ProfileLogRates
 from cerberus.layers import ConvNeXtV2Block
+from cerberus.output import ProfileLogRates
+
 
 class _ConvBlock(nn.Module):
     """

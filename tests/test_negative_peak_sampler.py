@@ -1,8 +1,17 @@
-import pytest
 from unittest.mock import MagicMock, patch
-from cerberus.samplers import NegativePeakSampler, IntervalSampler, RandomSampler, ComplexityMatchedSampler, create_sampler
-from cerberus.interval import Interval
+
+import pytest
 from interlap import InterLap
+
+from cerberus.interval import Interval
+from cerberus.samplers import (
+    ComplexityMatchedSampler,
+    IntervalSampler,
+    NegativePeakSampler,
+    RandomSampler,
+    create_sampler,
+)
+
 
 @pytest.fixture
 def mock_dependencies():
@@ -208,8 +217,9 @@ def test_negative_peak_sampler_multi_chrom(mock_dependencies):
 
 def test_create_sampler_negative_peak():
     """Verify create_sampler dispatches to NegativePeakSampler."""
-    from cerberus.config import SamplerConfig
     from pathlib import Path
+
+    from cerberus.config import SamplerConfig
 
     config = SamplerConfig.model_construct(
         sampler_type="negative_peak",
@@ -234,8 +244,9 @@ def test_create_sampler_negative_peak():
 
 def test_create_sampler_negative_peak_requires_fasta():
     """Verify create_sampler raises if fasta_path is None for negative_peak."""
-    from cerberus.config import SamplerConfig
     from pathlib import Path
+
+    from cerberus.config import SamplerConfig
 
     config = SamplerConfig.model_construct(
         sampler_type="negative_peak",

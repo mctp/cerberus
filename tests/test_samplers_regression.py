@@ -1,17 +1,17 @@
 import pytest
-import random
-from pathlib import Path
 from interlap import InterLap
+
+from cerberus.config import SamplerConfig
+from cerberus.genome import create_genome_folds
 from cerberus.samplers import (
-    create_sampler,
-    MultiSampler,
     IntervalSampler,
+    MultiSampler,
     PeakSampler,
     RandomSampler,
     ScaledSampler,
+    create_sampler,
 )
-from cerberus.config import SamplerConfig
-from cerberus.genome import create_genome_folds
+
 
 @pytest.fixture
 def chrom_sizes():
@@ -74,7 +74,7 @@ def test_peak_sampler_end_to_end(mock_fasta, peaks_bed, chrom_sizes, folds):
     intervals = list(sampler)
     
     # Peaks are on chr1: 0-100, 1000-1100, ...
-    peak_intervals = [i for i in intervals if i.chrom == "chr1" and i.start % 1000 == 0]
+    [i for i in intervals if i.chrom == "chr1" and i.start % 1000 == 0]
     # Note: Negatives might also be on chr1 (since it matches GC), so we need to be careful identifying them.
     # But negatives should NOT overlap peaks.
     

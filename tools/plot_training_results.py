@@ -15,7 +15,6 @@ Usage:
 import argparse
 import logging
 import os
-import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -305,7 +304,7 @@ def main():
     if (base_path / "metrics.csv").exists():
         metrics_files.append(base_path / "metrics.csv")
     else:
-        for root, dirs, files in os.walk(base_path):
+        for root, _dirs, files in os.walk(base_path):
             if "metrics.csv" in files:
                 metrics_files.append(Path(root) / "metrics.csv")
 

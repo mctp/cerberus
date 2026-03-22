@@ -1,11 +1,10 @@
 
-import pytest
-import numpy as np
 from pathlib import Path
-from cerberus.samplers import PeakSampler, Interval, IntervalSampler, ComplexityMatchedSampler
+
 from interlap import InterLap
-import random
-import torch
+
+from cerberus.samplers import ComplexityMatchedSampler, PeakSampler
+
 
 # Create a dummy fasta file
 def create_dummy_fasta(path):
@@ -60,7 +59,7 @@ def test_peak_sampler_resampling_behavior(tmp_path):
     
     # 1. Get initial state
     train_intervals_1 = list(train_sampler)
-    train_bg_1 = [iv for iv in train_intervals_1 if "peak" not in str(iv)] # We can't distinguish easily by name unless we track it.
+    [iv for iv in train_intervals_1 if "peak" not in str(iv)] # We can't distinguish easily by name unless we track it.
     # Actually, PeakSampler mixes them.
     # Positives are from IntervalSampler. Negatives are from ComplexityMatchedSampler -> RandomSampler.
     # RandomSampler intervals don't have special names, they are just intervals.

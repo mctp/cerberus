@@ -47,10 +47,10 @@ Usage:
 import argparse
 import gzip
 import logging
+import multiprocessing
 import os
 import shutil
 import statistics
-import multiprocessing
 import warnings
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
@@ -642,7 +642,7 @@ def main() -> None:
     adata_meta = ad.read_h5ad(args.h5ad, backed="r")
     meta_barcodes = list(adata_meta.obs_names)
     groupby_series = adata_meta.obs[args.groupby]
-    barcode_to_group = dict(zip(meta_barcodes, groupby_series))
+    barcode_to_group = dict(zip(meta_barcodes, groupby_series, strict=True))
     adata_meta.file.close()
     logger.info(f"Loaded {len(meta_barcodes)} barcodes from metadata")
 

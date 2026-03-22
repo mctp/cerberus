@@ -1,8 +1,10 @@
 
 import unittest
 from unittest.mock import MagicMock
+
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.datamodule import CerberusDataModule
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
+
 
 class TestDataModuleSeeding(unittest.TestCase):
     def setUp(self):

@@ -1,7 +1,9 @@
 from unittest.mock import MagicMock, patch
-from cerberus.train import _train as train
-from cerberus.config import TrainConfig, ModelConfig, DataConfig
+
 import pytorch_lightning as pl
+
+from cerberus.config import DataConfig, ModelConfig, TrainConfig
+from cerberus.train import _train as train
 
 
 def _make_configs():

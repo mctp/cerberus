@@ -1,9 +1,12 @@
-import pytest
 from pathlib import Path
+
+import pytest
 from pydantic import ValidationError
+
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.dataset import CerberusDataset
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 from cerberus.genome import create_genome_config
+
 
 def test_create_genome_config_valid(tmp_path):
     genome = tmp_path / "genome.fa"

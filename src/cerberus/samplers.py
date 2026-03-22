@@ -1,16 +1,19 @@
-from typing import Iterator, Iterable, Protocol
-from pathlib import Path
+import copy
 import gzip
 import logging
-import numpy as np
 import random
-import copy
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
+from pathlib import Path
+from typing import Protocol
+
+import numpy as np
 from interlap import InterLap
-from .interval import Interval
+
+from .complexity import compute_hist, compute_intervals_complexity, get_bin_index
 from .config import SamplerConfig
 from .exclude import is_excluded
-from .complexity import compute_intervals_complexity, compute_hist, get_bin_index
+from .interval import Interval
 
 logger = logging.getLogger(__name__)
 
@@ -359,7 +362,7 @@ class MultiSampler(BaseSampler):
 
         # Propagate resample to sub-samplers (e.g. ComplexityMatchedSampler needs to pick new candidates)
         sub_seeds = generate_sub_seeds(self.seed, len(self.samplers))
-        for sampler, sub_seed in zip(self.samplers, sub_seeds):
+        for sampler, sub_seed in zip(self.samplers, sub_seeds, strict=True):
             sampler.resample(sub_seed)
 
         self._indices = []
@@ -465,8 +468,7 @@ class ListSampler(BaseSampler):
         self._intervals = intervals if intervals is not None else []
 
     def __iter__(self) -> Iterator[Interval]:
-        for interval in self._intervals:
-            yield interval
+        yield from self._intervals
 
     def __len__(self) -> int:
         return len(self._intervals)
@@ -532,8 +534,7 @@ class RandomSampler(BaseSampler):
             self.resample(seed)
 
     def __iter__(self) -> Iterator[Interval]:
-        for interval in self._intervals:
-            yield interval
+        yield from self._intervals
 
     def __len__(self) -> int:
         return len(self._intervals)
@@ -721,7 +722,7 @@ class IntervalSampler(ListSampler):
                         continue
                     yield line.split()
         else:
-            with open(self.file_path, "r") as f:
+            with open(self.file_path) as f:
                 for line in f:
                     line = line.strip()
                     if not line or line.startswith(("#", "track", "browser")):
@@ -1055,7 +1056,7 @@ class ComplexityMatchedSampler(ProxySampler):
             new_metrics = compute_intervals_complexity(
                 missing, self.fasta_path, self.metrics, center_size=self.center_size
             )
-            for iv, row in zip(missing, new_metrics):
+            for iv, row in zip(missing, new_metrics, strict=True):
                 self.metrics_cache[self._cache_key(iv)] = row
 
         if not intervals:

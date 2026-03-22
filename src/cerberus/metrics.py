@@ -1,8 +1,10 @@
+from typing import Any, cast
+
 import torch
 import torch.nn.functional as F
-from typing import Any, cast
-from torchmetrics import Metric, MeanSquaredError, MetricCollection
-from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
+from torchmetrics import MeanSquaredError, Metric, MetricCollection
+
+from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
 
 
 def _per_example_pearson(preds: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:

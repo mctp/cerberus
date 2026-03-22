@@ -1,9 +1,9 @@
 import pytest
-from pathlib import Path
-import random
-from cerberus.samplers import create_sampler, RandomSampler, ComplexityMatchedSampler
-from cerberus.sequence import calculate_gc_content
+
 from cerberus.config import SamplerConfig
+from cerberus.samplers import ComplexityMatchedSampler, RandomSampler, create_sampler
+from cerberus.sequence import calculate_gc_content
+
 
 @pytest.fixture
 def mock_fasta(tmp_path):
@@ -47,7 +47,6 @@ def test_random_sampler():
 
 def test_complexity_matched_sampler_gc_only(mock_fasta):
     chrom_sizes = {"chr1": 1000, "chr2": 1000, "chr3": 1000}
-    padded_size = 10
 
     target_bed = mock_fasta.parent / "target.bed"
     with open(target_bed, "w") as f:

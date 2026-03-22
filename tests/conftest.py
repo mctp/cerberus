@@ -1,8 +1,11 @@
-import pytest
 import os
 import shutil
 from pathlib import Path
+
+import pytest
+
 from cerberus.download import download_dataset, download_reference_genome
+
 
 def pytest_sessionfinish(session, exitstatus):
     if os.environ.get("CERBERUS_PRUNE_DOWNLOADS"):

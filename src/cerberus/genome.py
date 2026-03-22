@@ -1,7 +1,8 @@
-from pathlib import Path
-from typing import Callable, Any
-import logging
 import heapq
+import logging
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 from interlap import InterLap
 

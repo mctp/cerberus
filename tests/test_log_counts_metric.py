@@ -1,8 +1,9 @@
-import torch
-import torch.nn.functional as F
 import pytest
+import torch
+
 from cerberus.metrics import LogCountsMeanSquaredError
-from cerberus.output import ProfileCountOutput, ProfileLogRates, ProfileLogits
+from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
+
 
 def test_log_counts_mse_basic():
     """Test LogCountsMeanSquaredError with simple inputs."""

@@ -1,7 +1,10 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.datamodule import CerberusDataModule
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
+
 
 @pytest.fixture
 def mock_dataset_cls():

@@ -1,11 +1,14 @@
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 import torch
-from unittest.mock import patch, MagicMock
-from pytorch_lightning import LightningModule, LightningDataModule
+from pytorch_lightning import LightningDataModule, LightningModule
 from pytorch_lightning.callbacks import ModelCheckpoint
+
+from cerberus.config import DataConfig, ModelConfig, TrainConfig
 from cerberus.train import _train as train
-from cerberus.config import TrainConfig, ModelConfig, DataConfig
+
 
 class MockDataModule(LightningDataModule):
     def __init__(self):

@@ -1,24 +1,24 @@
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import numpy as np
 import pytest
 import torch
 import torch.nn as nn
-import numpy as np
-from unittest.mock import MagicMock, patch
-from dataclasses import dataclass, asdict
-from torchmetrics import MetricCollection
-from pathlib import Path
 
-from cerberus.interval import parse_intervals, merge_intervals, Interval
-from cerberus.model_ensemble import ModelEnsemble
-from cerberus.dataset import CerberusDataset
-from cerberus.genome import create_genome_config
 from cerberus.config import (
     CerberusConfig,
-    GenomeConfig,
     DataConfig,
-    TrainConfig,
+    GenomeConfig,
     ModelConfig,
     SamplerConfig,
+    TrainConfig,
 )
+from cerberus.dataset import CerberusDataset
+from cerberus.genome import create_genome_config
+from cerberus.interval import Interval, merge_intervals, parse_intervals
+from cerberus.model_ensemble import ModelEnsemble
 from cerberus.output import ModelOutput
 
 # --- Fixtures and Helpers for Integration Tests ---
@@ -46,7 +46,7 @@ def integration_setup(tmp_path):
     with open(genome, "w") as f:
         f.write(">chr1\n" + "A" * 2000 + "\n")
     with open(tmp_path / "genome.fa.fai", "w") as f:
-        f.write(f"chr1\t2000\t6\t2000\t2001\n")
+        f.write("chr1\t2000\t6\t2000\t2001\n")
 
     genome_config = create_genome_config(
         name="test", fasta_path=genome, species="human", allowed_chroms=["chr1"], exclude_intervals={}
@@ -452,7 +452,6 @@ def test_predict_intervals_batching(integration_setup):
     assert merged_interval is not None
     assert merged_interval.start == 1025
     assert merged_interval.end == 1375
-    span = 1375 - 1025 # 350
     assert isinstance(values, dict)
     assert values['logits'].shape == (1, 350)
     
@@ -523,7 +522,6 @@ def test_predict_interval_tuple_output(mock_dataset):
         [interval], mock_dataset, use_folds=["test"], aggregation="model"
     )
     output = asdict(res)
-    out_interval = res.out_interval
     
     assert isinstance(output, dict)
     assert output['out1'].shape[-1] == 60
@@ -691,7 +689,7 @@ def test_merged_interval_is_multiple_of_bin_size(mock_dataset):
     output = ensemble.predict_intervals(
         intervals, mock_dataset, use_folds=["test"], aggregation="model"
     )
-    values = asdict(output)
+    asdict(output)
     merged_interval = output.out_interval
     
     assert merged_interval is not None

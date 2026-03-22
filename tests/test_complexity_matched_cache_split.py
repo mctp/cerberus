@@ -1,10 +1,14 @@
 
 import pytest
-from pathlib import Path
-import random
-import numpy as np
-from cerberus.samplers import create_sampler, ComplexityMatchedSampler, ListSampler, Interval, RandomSampler
 from interlap import InterLap
+
+from cerberus.samplers import (
+    ComplexityMatchedSampler,
+    Interval,
+    ListSampler,
+    RandomSampler,
+)
+
 
 def test_cache_reuse_across_splits(tmp_path):
     # Mock FASTA
@@ -54,7 +58,7 @@ def test_cache_reuse_across_splits(tmp_path):
     parent_cache_size = len(metrics_cache)
     
     # Collect parent candidate intervals
-    parent_candidates = set(str(iv) for iv in sampler.candidate_sampler)
+    set(str(iv) for iv in sampler.candidate_sampler)
     # assert len(parent_candidates) == 100 # Might have duplicates
     
     # Split folds
@@ -129,5 +133,4 @@ def test_cache_reuse_across_splits(tmp_path):
 
 if __name__ == "__main__":
     import sys
-    from pytest import ExitCode
     sys.exit(pytest.main(["-v", __file__]))

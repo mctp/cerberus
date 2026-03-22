@@ -1,20 +1,23 @@
+from pathlib import Path
+from typing import cast
+from unittest.mock import patch
+
 import pytest
 import torch
 import torch.nn as nn
-from pathlib import Path
-from unittest.mock import patch
 import yaml
-from typing import cast
-from cerberus.model_ensemble import ModelEnsemble
+
 from cerberus.config import (
-    ModelConfig,
+    CerberusConfig,
     DataConfig,
     GenomeConfig,
+    ModelConfig,
     SamplerConfig,
     TrainConfig,
-    CerberusConfig,
 )
+from cerberus.model_ensemble import ModelEnsemble
 from cerberus.module import CerberusModule
+
 
 # Define a simple dummy model for testing
 class SimpleModel(nn.Module):

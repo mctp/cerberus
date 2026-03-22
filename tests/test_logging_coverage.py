@@ -1,5 +1,6 @@
 """Coverage tests for cerberus.logging — untested code paths."""
 import logging
+
 from cerberus.logging import setup_logging
 
 

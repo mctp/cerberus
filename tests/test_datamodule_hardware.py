@@ -1,8 +1,10 @@
-import torch
-import pytest
 from unittest.mock import MagicMock, patch
+
+import torch
+
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.datamodule import CerberusDataModule
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
+
 
 def test_datamodule_hardware_settings():
     """

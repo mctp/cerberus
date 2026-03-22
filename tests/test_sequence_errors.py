@@ -1,7 +1,10 @@
-import pytest
 from unittest.mock import MagicMock, patch
-from cerberus.sequence import SequenceExtractor, encode_dna
+
+import pytest
+
 from cerberus.interval import Interval
+from cerberus.sequence import SequenceExtractor, encode_dna
+
 
 def test_encode_dna_invalid_encoding():
     with pytest.raises(ValueError, match="Unsupported encoding"):

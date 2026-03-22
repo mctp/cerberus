@@ -1,5 +1,6 @@
 from cerberus.interval import Interval
 
+
 def test_interval_init():
     i = Interval("chr1", 100, 200)
     assert i.chrom == "chr1"

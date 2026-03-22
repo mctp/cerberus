@@ -1,8 +1,9 @@
 import pytest
 import torch
-from cerberus.transform import Scale, Compose, create_default_transforms
+
 from cerberus.config import DataConfig
 from cerberus.interval import Interval
+from cerberus.transform import Compose, Scale, create_default_transforms
 
 
 @pytest.fixture

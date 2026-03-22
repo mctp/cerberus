@@ -8,9 +8,14 @@ from torchmetrics import MetricCollection
 from cerberus.loss import MSEMultinomialLoss
 
 logger = logging.getLogger(__name__)
-from cerberus.output import ProfileCountOutput
-from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError, LogCountsMeanSquaredError, LogCountsPearsonCorrCoef
 from cerberus.layers import DilatedResidualBlock
+from cerberus.metrics import (
+    CountProfileMeanSquaredError,
+    CountProfilePearsonCorrCoef,
+    LogCountsMeanSquaredError,
+    LogCountsPearsonCorrCoef,
+)
+from cerberus.output import ProfileCountOutput
 
 
 class BPNet(nn.Module):

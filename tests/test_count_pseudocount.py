@@ -16,23 +16,23 @@ offset set once in ``DataConfig`` and automatically propagated (after scaling by
 """
 
 import math
-import torch
-import pytest
 
-from cerberus.loss import MSEMultinomialLoss, CoupledMSEMultinomialLoss
+import pytest
+import torch
+
+from cerberus.loss import CoupledMSEMultinomialLoss, MSEMultinomialLoss
 from cerberus.metrics import (
+    DefaultMetricCollection,
     LogCountsMeanSquaredError,
     LogCountsPearsonCorrCoef,
-    DefaultMetricCollection,
 )
+from cerberus.models.bpnet import BPNetLoss, BPNetMetricCollection
+from cerberus.models.pomeranian import PomeranianMetricCollection
 from cerberus.output import (
     ProfileCountOutput,
     ProfileLogRates,
     compute_total_log_counts,
 )
-from cerberus.models.bpnet import BPNetLoss, BPNetMetricCollection
-from cerberus.models.pomeranian import PomeranianMetricCollection
-
 
 # ---------------------------------------------------------------------------
 # Helpers

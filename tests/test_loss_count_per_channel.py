@@ -1,10 +1,14 @@
 
 import torch
+
 from cerberus.loss import (
-    MSEMultinomialLoss, CoupledMSEMultinomialLoss, 
-    PoissonMultinomialLoss, CoupledPoissonMultinomialLoss
+    CoupledMSEMultinomialLoss,
+    CoupledPoissonMultinomialLoss,
+    MSEMultinomialLoss,
+    PoissonMultinomialLoss,
 )
-from cerberus.output import ProfileLogits, ProfileCountOutput, ProfileLogRates
+from cerberus.output import ProfileCountOutput, ProfileLogRates
+
 
 def test_bpnet_loss_count_per_channel():
     """Test BPNetLoss with count_per_channel=True"""

@@ -1,9 +1,11 @@
 import pytest
 import torch
-from cerberus.dataset import CerberusDataset
-from cerberus.interval import Interval
-from cerberus.genome import create_genome_config
+
 from cerberus.config import DataConfig, SamplerConfig
+from cerberus.dataset import CerberusDataset
+from cerberus.genome import create_genome_config
+from cerberus.interval import Interval
+
 
 class MockTargetExtractor:
     """Returns a deterministic signal based on interval coordinates for testing."""

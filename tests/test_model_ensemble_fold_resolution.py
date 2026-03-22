@@ -1,9 +1,9 @@
 
-import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import MagicMock
+
 from cerberus.model_ensemble import ModelEnsemble
+
 
 class MockModel(nn.Module):
     def __init__(self):

@@ -3,11 +3,10 @@
 import pytest
 import torch
 
-from cerberus.models.pomeranian import Pomeranian
+from cerberus.models.asap import ConvNeXtDCNN
 from cerberus.models.bpnet import BPNet
 from cerberus.models.gopher import GlobalProfileCNN
-from cerberus.models.asap import ConvNeXtDCNN
-
+from cerberus.models.pomeranian import Pomeranian
 
 # --- Pomeranian ---
 

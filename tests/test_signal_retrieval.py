@@ -1,9 +1,12 @@
 import os
-import pytest
+
 import numpy as np
 import pyBigWig as pybigwig
-from cerberus.signal import SignalExtractor
+import pytest
+
 from cerberus.interval import Interval
+from cerberus.signal import SignalExtractor
+
 
 @pytest.mark.skipif(os.environ.get("RUN_SLOW_TESTS") is None, reason="Skipping slow tests")
 def test_compare_signal_extraction_with_pybigwig(mdapca2b_ar_dataset):

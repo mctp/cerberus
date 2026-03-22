@@ -1,6 +1,7 @@
 import numpy as np
-import pytest
-from cerberus.complexity import get_bin_index, compute_hist
+
+from cerberus.complexity import compute_hist, get_bin_index
+
 
 def test_get_bin_index_1d():
     """Test get_bin_index with 1D input (single metric)."""

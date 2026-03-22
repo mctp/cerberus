@@ -9,25 +9,16 @@ instantiate_metrics_and_loss().
 """
 
 import math
-from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
-import pytorch_lightning as pl
 
 from cerberus.config import (
-    DataConfig,
     ModelConfig,
-    TrainConfig,
-    GenomeConfig,
-    SamplerConfig,
 )
-from cerberus.output import get_log_count_params
-from cerberus.module import instantiate_metrics_and_loss
-from cerberus.loss import MSEMultinomialLoss
 from cerberus.models.bpnet import BPNetLoss
-from cerberus.output import ProfileCountOutput
-
+from cerberus.module import instantiate_metrics_and_loss
+from cerberus.output import ProfileCountOutput, get_log_count_params
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -104,7 +95,7 @@ class TestInstantiateMetricsAndLoss:
         """Loss receives count_pseudocount from ModelConfig."""
         cfg = _model_config(count_pseudocount=150.0)
         metrics, criterion = instantiate_metrics_and_loss(cfg)
-        assert getattr(criterion, "count_pseudocount") == 150.0
+        assert getattr(criterion, "count_pseudocount") == 150.0  # noqa: B009
 
     def test_injects_pseudocount_into_metrics(self):
         """Metrics sub-metrics receive count_pseudocount from ModelConfig."""
@@ -118,7 +109,7 @@ class TestInstantiateMetricsAndLoss:
         """count_pseudocount=0 is still injected."""
         cfg = _model_config(count_pseudocount=0.0)
         metrics, criterion = instantiate_metrics_and_loss(cfg)
-        assert getattr(criterion, "count_pseudocount") == 0.0
+        assert getattr(criterion, "count_pseudocount") == 0.0  # noqa: B009
 
     def test_model_config_loss_args_not_mutated(self):
         """The original model_config.loss_args dict should not be mutated."""
@@ -141,7 +132,7 @@ class TestBPNetLossReceivesPseudocount:
         cfg = _model_config(count_pseudocount=150.0)
         _metrics, criterion = instantiate_metrics_and_loss(cfg)
 
-        assert getattr(criterion, "count_pseudocount") == 150.0
+        assert getattr(criterion, "count_pseudocount") == 150.0  # noqa: B009
 
         # Verify forward: count target should be log(total + 150)
         total = 500.0

@@ -1,7 +1,14 @@
 
 import pytest
-from cerberus.samplers import MultiSampler, IntervalSampler, ScaledSampler, create_sampler
+
 from cerberus.genome import create_genome_folds
+from cerberus.samplers import (
+    IntervalSampler,
+    MultiSampler,
+    ScaledSampler,
+    create_sampler,
+)
+
 
 @pytest.fixture
 def peaks_bed(tmp_path):

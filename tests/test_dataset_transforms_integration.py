@@ -1,8 +1,17 @@
 import pytest
-from cerberus.dataset import CerberusDataset
-from cerberus.transform import Jitter, TargetCrop, Log1p, Bin, ReverseComplement, Compose
-from cerberus.genome import create_genome_config
+
 from cerberus.config import DataConfig, SamplerConfig
+from cerberus.dataset import CerberusDataset
+from cerberus.genome import create_genome_config
+from cerberus.transform import (
+    Bin,
+    Compose,
+    Jitter,
+    Log1p,
+    ReverseComplement,
+    TargetCrop,
+)
+
 
 @pytest.fixture
 def mock_genome(tmp_path):

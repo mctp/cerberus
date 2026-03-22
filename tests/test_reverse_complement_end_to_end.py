@@ -1,7 +1,9 @@
 import torch
-from cerberus.transform import Compose, ReverseComplement
-from cerberus.sequence import encode_dna
+
 from cerberus.interval import Interval
+from cerberus.sequence import encode_dna
+from cerberus.transform import Compose, ReverseComplement
+
 
 def test_reverse_complement_end_to_end():
     """
@@ -69,7 +71,7 @@ def test_reverse_complement_end_to_end():
     print(f"Actual Signal:\n{targets_rc}")
     
     assert torch.equal(targets_rc, expected_targets), \
-        f"Signal mismatch. Expected reversed signals."
+        "Signal mismatch. Expected reversed signals."
     
     # Verify interval strand flip
     assert out_interval.strand == "-"

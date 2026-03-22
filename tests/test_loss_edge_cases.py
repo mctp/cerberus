@@ -1,13 +1,18 @@
-import torch
 import pytest
+import torch
+
 from cerberus.loss import (
-    MSEMultinomialLoss, PoissonMultinomialLoss, ProfilePoissonNLLLoss
+    MSEMultinomialLoss,
+    PoissonMultinomialLoss,
+    ProfilePoissonNLLLoss,
 )
 from cerberus.metrics import (
-    ProfilePearsonCorrCoef, CountProfilePearsonCorrCoef, 
-    CountProfileMeanSquaredError, ProfileMeanSquaredError
+    CountProfileMeanSquaredError,
+    CountProfilePearsonCorrCoef,
+    ProfileMeanSquaredError,
+    ProfilePearsonCorrCoef,
 )
-from cerberus.output import ProfileLogits, ProfileCountOutput, ProfileLogRates
+from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
 
 # --- Fixtures ---
 

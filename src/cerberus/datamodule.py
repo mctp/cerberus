@@ -1,18 +1,25 @@
+import logging
 import random
 from pathlib import Path
+
+import numpy as np
 import pytorch_lightning as pl
 import torch
-import numpy as np
-import logging
 from torch.utils.data import DataLoader
-from .cache import get_default_cache_dir, resolve_cache_dir, load_prepare_cache, save_prepare_cache
-from .dataset import CerberusDataset
-from .signal import UniversalExtractor
+
+from .cache import (
+    get_default_cache_dir,
+    load_prepare_cache,
+    resolve_cache_dir,
+    save_prepare_cache,
+)
 from .config import (
-    GenomeConfig,
     DataConfig,
+    GenomeConfig,
     SamplerConfig,
 )
+from .dataset import CerberusDataset
+from .signal import UniversalExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +211,9 @@ class CerberusDataModule(pl.LightningDataModule):
                     raise FileNotFoundError(
                         f"Data {label} channel '{channel}' file not found: {path_val}"
                     )
+        intervals_path = self.sampler_config.sampler_args.get("intervals_path")
+        if intervals_path and not Path(intervals_path).exists():
+            raise FileNotFoundError(f"Sampler intervals file not found: {intervals_path}")
 
     def setup(
         self,

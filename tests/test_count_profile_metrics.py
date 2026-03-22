@@ -1,13 +1,12 @@
 
 import torch
-import pytest
-from cerberus.metrics import CountProfilePearsonCorrCoef, CountProfileMeanSquaredError
+
+from cerberus.metrics import CountProfileMeanSquaredError, CountProfilePearsonCorrCoef
 from cerberus.output import ProfileCountOutput
+
 
 def test_count_profile_pearson_expm1():
     # Setup
-    batch_size = 1
-    channels = 1
     length = 10
     
     # Create fake preds
@@ -20,7 +19,7 @@ def test_count_profile_pearson_expm1():
     
     # Logits: non-uniform to ensure variance for Pearson
     logits = torch.arange(float(length)).unsqueeze(0).unsqueeze(0) # 0, 1, ..., 9
-    probs = torch.softmax(logits, dim=-1)
+    torch.softmax(logits, dim=-1)
     
     preds = ProfileCountOutput(logits=logits, log_counts=log_counts)
     
@@ -37,7 +36,6 @@ def test_count_profile_pearson_expm1():
     # This test function is mostly a placeholder to ensure no crash
     # and we rely on the MSE test for value correctness.
     
-    target_counts_per_pos = 1.0 # arbitrary
     # Use arange to ensure variance in target
     target = torch.arange(float(length)).unsqueeze(0).unsqueeze(0) + 1.0
     

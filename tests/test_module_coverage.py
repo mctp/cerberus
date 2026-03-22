@@ -1,17 +1,20 @@
 """Coverage tests for cerberus.module -- untested code paths."""
-import pytest
+from unittest.mock import MagicMock
+
 import torch
 import torch.nn as nn
-from unittest.mock import MagicMock
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-
-from cerberus.config import TrainConfig, ModelConfig
-from cerberus.module import (
-    configure_callbacks,
-    instantiate_metrics_and_loss,
-    CerberusModule,
+from pytorch_lightning.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
 )
 
+from cerberus.config import ModelConfig, TrainConfig
+from cerberus.module import (
+    CerberusModule,
+    configure_callbacks,
+    instantiate_metrics_and_loss,
+)
 
 # ---------------------------------------------------------------------------
 # configure_callbacks

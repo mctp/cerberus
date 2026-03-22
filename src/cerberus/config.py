@@ -11,8 +11,8 @@ construction time.
 
 from __future__ import annotations
 
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -43,7 +43,7 @@ class GenomeConfig(BaseModel):
     fold_args: dict[str, Any]
 
     @model_validator(mode="after")
-    def check_chrom_sizes_complete(self) -> "GenomeConfig":
+    def check_chrom_sizes_complete(self) -> GenomeConfig:
         """Every allowed_chrom must have an entry in chrom_sizes."""
         missing = set(self.allowed_chroms) - set(self.chrom_sizes)
         if missing:
@@ -104,7 +104,7 @@ class DataConfig(BaseModel):
     target_scale: float = Field(gt=0)
 
     @model_validator(mode="after")
-    def check_rc_requires_sequence(self) -> "DataConfig":
+    def check_rc_requires_sequence(self) -> DataConfig:
         if self.reverse_complement and not self.use_sequence:
             raise ValueError(
                 "reverse_complement=True requires use_sequence=True. "
@@ -223,7 +223,7 @@ class CerberusConfig(BaseModel):
     model_config_: ModelConfig = Field(alias="model_config")
 
     @model_validator(mode="after")
-    def cross_validate(self) -> "CerberusConfig":
+    def cross_validate(self) -> CerberusConfig:
         """Cross-validate data/sampler and data/model compatibility."""
         input_len = self.data_config.input_len
         max_jitter = self.data_config.max_jitter

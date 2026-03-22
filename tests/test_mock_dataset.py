@@ -1,14 +1,16 @@
 import torch
 from torch.utils.data import DataLoader
+
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.dataset import CerberusDataset
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 from tests.mock_utils import (
+    GaussianSignalGenerator,
     MockSampler,
     MockSequenceExtractor,
     MockSignalExtractor,
     insert_ggaa_motifs,
-    GaussianSignalGenerator,
 )
+
 
 def test_mock_dataset_end_to_end(mock_files):
     # 1. Configs
@@ -94,7 +96,6 @@ def test_mock_dataset_end_to_end(mock_files):
     signal = targets[0, :]
 
     # Manually find GGAA in this sequence
-    has_peaks = False
 
     # Simple scan
     for i in range(200 - 4):
@@ -103,7 +104,6 @@ def test_mock_dataset_end_to_end(mock_files):
             center_idx = i + 1
             peak_val = signal[center_idx:center_idx+2].mean()
             assert peak_val > 1.0, f"Expected peak at {center_idx} for GGAA"
-            has_peaks = True
 
     # With 100 samples and prob 0.5, we should see some peaks eventually
     total_peaks = 0

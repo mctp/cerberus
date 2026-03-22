@@ -6,7 +6,6 @@ import torch
 
 from cerberus.sequence import encode_dna
 
-
 # ---------------------------------------------------------------------------
 # Gold-standard reference: the original LUT-scatter implementation
 # ---------------------------------------------------------------------------

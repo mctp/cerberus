@@ -1,8 +1,9 @@
-import pytest
-import numpy as np
 import random
-from collections import Counter
+
+import numpy as np
+
 from cerberus.samplers import match_bin_counts
+
 
 def test_match_bin_counts_1d_perfect_match():
     rng = random.Random(42)

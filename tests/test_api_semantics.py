@@ -1,14 +1,14 @@
-import torch
 import pytest
-import torch.nn.functional as F
-from cerberus.output import ProfileLogits, ProfileCountOutput, ProfileLogRates, ProfileLogits
+import torch
+
 from cerberus.loss import (
-    ProfilePoissonNLLLoss, 
-    CoupledMSEMultinomialLoss, 
+    CoupledMSEMultinomialLoss,
     CoupledPoissonMultinomialLoss,
-    MSEMultinomialLoss
+    MSEMultinomialLoss,
+    ProfilePoissonNLLLoss,
 )
-from cerberus.metrics import ProfilePearsonCorrCoef, ProfileMeanSquaredError
+from cerberus.metrics import ProfileMeanSquaredError, ProfilePearsonCorrCoef
+from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
 
 # --- 1. Output Class Semantics ---
 

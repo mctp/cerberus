@@ -1,18 +1,21 @@
-import numpy as np
-import torch
 import logging
 from collections.abc import Iterable
-import pybigtools
 from pathlib import Path
 
-from cerberus.interval import Interval
+import numpy as np
+import pybigtools
+import torch
+
 from cerberus.dataset import CerberusDataset
+from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.output import (
-    ModelOutput, ProfileCountOutput, ProfileLogRates,
+    ModelOutput,
+    ProfileCountOutput,
+    ProfileLogRates,
+    get_log_count_params,
     unbatch_modeloutput,
 )
-from cerberus.output import get_log_count_params
 from cerberus.samplers import SlidingWindowSampler
 
 logger = logging.getLogger(__name__)
@@ -238,7 +241,7 @@ def _process_island(
         unbatched = unbatch_modeloutput(batched_output, len(batch_intervals))
         output_cls = type(batched_output)
 
-        for interval, out_dict in zip(batch_intervals, unbatched):
+        for interval, out_dict in zip(batch_intervals, unbatched, strict=True):
             single_output = output_cls(**out_dict)
             signal = _reconstruct_linear_signal(single_output, count_pseudocount)
             val = signal.cpu().numpy()  # (C, L)

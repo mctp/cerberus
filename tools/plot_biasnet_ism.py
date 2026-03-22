@@ -19,7 +19,6 @@ import argparse
 import csv
 import gzip
 import logging
-import yaml
 from pathlib import Path
 
 import matplotlib.patheffects as path_effects
@@ -27,6 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyfaidx
 import torch
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -269,6 +269,7 @@ def get_background_sequences(
     (negative-peak sampler).
     """
     from interlap import InterLap
+
     from cerberus.samplers import IntervalSampler, RandomSampler
 
     # Load peaks as exclusion zones

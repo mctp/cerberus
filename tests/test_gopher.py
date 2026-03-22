@@ -1,7 +1,9 @@
 
-import torch
-from cerberus.models import GlobalProfileCNN
 import pytest
+import torch
+
+from cerberus.models import GlobalProfileCNN
+
 
 def test_cnn_default():
     batch_size = 2

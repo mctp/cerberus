@@ -1,10 +1,18 @@
 
 import unittest
-import random
-from cerberus.samplers import RandomSampler, MultiSampler, ScaledSampler, ComplexityMatchedSampler, ListSampler
-from cerberus.interval import Interval
+
 from interlap import InterLap
+
 import cerberus.samplers
+from cerberus.interval import Interval
+from cerberus.samplers import (
+    ComplexityMatchedSampler,
+    ListSampler,
+    MultiSampler,
+    RandomSampler,
+    ScaledSampler,
+)
+
 
 class TestRandomnessConsistency(unittest.TestCase):
     def test_random_sampler_split_folds_idempotency(self):

@@ -1,7 +1,8 @@
-from cerberus.dataset import CerberusDataset
-from cerberus.genome import create_genome_folds, GenomeConfig
 from cerberus.config import DataConfig, SamplerConfig
+from cerberus.dataset import CerberusDataset
+from cerberus.genome import GenomeConfig, create_genome_folds
 from cerberus.samplers import IntervalSampler
+
 
 def test_sampler_split_folds(tmp_path):
     # Create a mock BED file

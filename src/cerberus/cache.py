@@ -11,6 +11,7 @@ import json
 import logging
 import os
 from pathlib import Path
+
 import numpy as np
 
 from .config import SamplerConfig
@@ -105,6 +106,6 @@ def load_prepare_cache(cache_dir: Path) -> dict[str, np.ndarray] | None:
     data = np.load(cache_path, allow_pickle=False)
     keys = data["keys"]
     values = data["values"]
-    cache = {str(k): v for k, v in zip(keys, values)}
+    cache = {str(k): v for k, v in zip(keys, values, strict=True)}
     logger.info(f"Loaded {len(cache)} cached entries")
     return cache

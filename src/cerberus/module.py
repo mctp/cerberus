@@ -1,22 +1,27 @@
-import torch
-import torch.nn as nn
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from torchmetrics import MetricCollection
 import logging
 from typing import Any
+
+import pytorch_lightning as pl
+import torch
+import torch.nn as nn
+from pytorch_lightning.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
 from timm.optim._optim_factory import create_optimizer_v2
 from timm.scheduler.scheduler_factory import create_scheduler_v2
+from torchmetrics import MetricCollection
 
+from cerberus.config import (
+    DataConfig,
+    GenomeConfig,
+    ModelConfig,
+    SamplerConfig,
+    TrainConfig,
+)
 from cerberus.loss import CerberusLoss
 from cerberus.plots import save_count_scatter
-from cerberus.config import (
-    TrainConfig,
-    GenomeConfig,
-    DataConfig,
-    SamplerConfig,
-    ModelConfig,
-)
 from cerberus.utils import import_class
 
 logger = logging.getLogger(__name__)

@@ -1,23 +1,24 @@
+import logging
 import os
 import warnings
-import logging
-import torch
+from pathlib import Path
+from typing import Any
+
 import pytorch_lightning as pl
+import torch
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint
-from typing import Any
-from pathlib import Path
 
-from .datamodule import CerberusDataModule
 from .config import (
-    TrainConfig,
-    ModelConfig,
     DataConfig,
     GenomeConfig,
+    ModelConfig,
     SamplerConfig,
+    TrainConfig,
 )
-from .module import instantiate, configure_callbacks
+from .datamodule import CerberusDataModule
 from .model_ensemble import update_ensemble_metadata
+from .module import configure_callbacks, instantiate
 from .pretrained import load_pretrained_weights
 
 logger = logging.getLogger(__name__)

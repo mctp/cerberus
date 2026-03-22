@@ -1,12 +1,12 @@
 """Coverage tests for cerberus.complexity — untested code paths."""
-import pytest
 import numpy as np
+import pytest
+
 from cerberus.complexity import (
     calculate_dust_score,
     calculate_log_cpg_ratio,
     get_bin_index,
 )
-
 
 # ---------------------------------------------------------------------------
 # calculate_dust_score edge cases

@@ -3,6 +3,7 @@ import torch.nn as nn
 
 from cerberus.output import ProfileLogRates
 
+
 class _Reshape(nn.Module):
     """
     Internal helper module to reshape tensors within an nn.Sequential block.

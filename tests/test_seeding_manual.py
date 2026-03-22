@@ -1,5 +1,6 @@
-from cerberus.samplers import create_sampler, MultiSampler
 from cerberus.config import SamplerConfig
+from cerberus.samplers import MultiSampler, create_sampler
+
 
 def test_random_sampler_seeding():
     chrom_sizes = {"chr1": 10000}
@@ -21,7 +22,7 @@ def test_random_sampler_seeding():
     assert len(intervals2) == 5
 
     # Check strict equality of generated intervals
-    for i1, i2 in zip(intervals1, intervals2):
+    for i1, i2 in zip(intervals1, intervals2, strict=True):
         assert i1.chrom == i2.chrom
         assert i1.start == i2.start
         assert i1.end == i2.end
@@ -34,7 +35,6 @@ def test_random_sampler_seeding():
 def test_multi_sampler_seeding(tmp_path):
     # Manual instantiation of MultiSampler
     from cerberus.samplers import IntervalSampler, RandomSampler, ScaledSampler
-    from interlap import InterLap
 
     chrom_sizes = {"chr1": 10000}
     p = tmp_path / "peaks.bed"

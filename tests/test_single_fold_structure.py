@@ -1,11 +1,20 @@
 
-import pytest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-from pathlib import Path
+
+import pytest
 import yaml
-from cerberus.train import train_single, train_multi
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
+
+from cerberus.config import (
+    DataConfig,
+    GenomeConfig,
+    ModelConfig,
+    SamplerConfig,
+    TrainConfig,
+)
+from cerberus.train import train_multi, train_single
+
 
 def _make_genome_config(k: int = 2) -> MagicMock:
     """Create a MagicMock GenomeConfig with fold_args attribute access."""
@@ -78,8 +87,8 @@ def test_train_single_creates_structure(tmp_path, minimal_configs):
     genome_config, data_config, sampler_config, model_config, train_config = minimal_configs
 
     # Mock dependencies
-    with patch("cerberus.train.CerberusDataModule") as mock_dm_cls, \
-         patch("cerberus.train.instantiate") as mock_instantiate, \
+    with patch("cerberus.train.CerberusDataModule"), \
+         patch("cerberus.train.instantiate"), \
          patch("cerberus.train._train") as mock_train:
 
         root_dir = tmp_path / "output"

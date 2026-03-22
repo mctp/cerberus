@@ -1,16 +1,22 @@
 import torch
 import torch.nn as nn
-from torchmetrics import MeanSquaredError, PearsonCorrCoef
+from torchmetrics import PearsonCorrCoef
+
 from cerberus.loss import (
-    MSEMultinomialLoss, PoissonMultinomialLoss, ProfilePoissonNLLLoss
+    MSEMultinomialLoss,
+    PoissonMultinomialLoss,
+    ProfilePoissonNLLLoss,
 )
 from cerberus.metrics import (
-    ProfilePearsonCorrCoef, DefaultMetricCollection,
-    ProfileMeanSquaredError, CountProfileMeanSquaredError,
-    LogCountsMeanSquaredError
+    CountProfileMeanSquaredError,
+    DefaultMetricCollection,
+    LogCountsMeanSquaredError,
+    ProfileMeanSquaredError,
+    ProfilePearsonCorrCoef,
 )
 from cerberus.models.bpnet import BPNetMetricCollection
-from cerberus.output import ProfileLogits, ProfileCountOutput
+from cerberus.output import ProfileCountOutput, ProfileLogits
+
 
 def test_profile_poisson_nll_loss():
     loss = ProfilePoissonNLLLoss(log_input=True, full=False)
@@ -73,7 +79,7 @@ def test_profile_mse_log1p_targets():
     log_targets = torch.log1p(raw_targets)
     mse_wrong = ProfileMeanSquaredError(log1p_targets=False)
     mse_wrong.update(ProfileLogits(logits=logits), log_targets)
-    val_wrong = mse_wrong.compute()
+    mse_wrong.compute()
     # Log targets: log(11) approx 2.4. Probs: 2.4/4.8 = 0.5.
     # Actually for uniform counts, log counts are also uniform, so probs are still 0.5.
     # We need non-uniform counts to see the difference.
@@ -381,7 +387,6 @@ def test_flattened_pearson_single_channel():
 
 def test_flattened_pearson_multi_channel():
     """Test ProfilePearsonCorrCoef with multiple channels"""
-    num_channels = 2
     metric = ProfilePearsonCorrCoef()
     
     # Batch=1, Len=100
@@ -405,7 +410,7 @@ def test_flattened_pearson_multi_channel():
 def test_flattened_pearson_vs_global():
     """Verify that per-channel mean is NOT equivalent to global correlation"""
     metric_channel = ProfilePearsonCorrCoef()
-    metric_global = PearsonCorrCoef(num_outputs=1) # Treat everything as one vector
+    PearsonCorrCoef(num_outputs=1) # Treat everything as one vector
     
     # Using fixed seed for reproducibility
     torch.manual_seed(42)
@@ -414,7 +419,7 @@ def test_flattened_pearson_vs_global():
     logits = torch.randn(1, 2, 10)
     
     # Probs (what metric uses)
-    probs = nn.functional.softmax(logits, dim=-1)
+    nn.functional.softmax(logits, dim=-1)
     
     # Targets:
     # Ch1: Uncorrelated with probs[0,0]
@@ -517,7 +522,7 @@ def test_mse_multinomial_loss_count_pseudocount_default_equals_log1p():
     perfect_log = torch.log(total + 1.0).reshape(1, 1)
     loss_fn = MSEMultinomialLoss(count_weight=1.0, count_pseudocount=1.0)
     outputs = ProfileCountOutput(logits=torch.zeros(1, 1, 10), log_counts=perfect_log)
-    loss = loss_fn(outputs, targets)
+    loss_fn(outputs, targets)
 
     # Count loss should be 0 (profile loss is non-zero but count part is 0)
     # Verify by checking gradient on log_counts is zero

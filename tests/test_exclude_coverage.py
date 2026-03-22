@@ -1,8 +1,7 @@
 """Coverage tests for cerberus.exclude — untested code paths."""
 import pytest
-from pathlib import Path
-from cerberus.exclude import get_exclude_intervals, is_excluded
 
+from cerberus.exclude import get_exclude_intervals, is_excluded
 
 # ---------------------------------------------------------------------------
 # get_exclude_intervals
