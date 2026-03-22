@@ -8,8 +8,12 @@ from pathlib import Path
 
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.config import (
-    ModelConfig, DataConfig, GenomeConfig, SamplerConfig, TrainConfig,
-    CerberusConfig, FoldArgs, RandomSamplerArgs,
+    ModelConfig,
+    DataConfig,
+    GenomeConfig,
+    SamplerConfig,
+    TrainConfig,
+    CerberusConfig,
 )
 from cerberus.output import ModelOutput
 from cerberus.interval import Interval
@@ -27,7 +31,6 @@ class FixedSizeMockModel(nn.Module):
         batch_size = x.shape[0]
         return MockOutput(logits=torch.ones(batch_size, 1, self.output_len))
 
-
 def _make_cerberus_config(output_len=100, output_bin_size=1):
     return CerberusConfig.model_construct(
         data_config=DataConfig.model_construct(
@@ -38,11 +41,11 @@ def _make_cerberus_config(output_len=100, output_bin_size=1):
         genome_config=GenomeConfig.model_construct(
             name="mock", fasta_path="mock.fa", chrom_sizes={"chr1": 1000000},
             allowed_chroms=["chr1"], exclude_intervals={}, fold_type="chrom_partition",
-            fold_args=FoldArgs.model_construct(k=5, test_fold=None, val_fold=None),
+            fold_args={"k": 5, "test_fold": None, "val_fold": None},
         ),
         sampler_config=SamplerConfig.model_construct(
             sampler_type="random", padded_size=100,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            sampler_args={"num_intervals": 10},
         ),
         train_config=TrainConfig.model_construct(
             batch_size=1, max_epochs=1, learning_rate=1e-3, weight_decay=0.0,

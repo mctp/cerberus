@@ -5,10 +5,9 @@ from unittest.mock import MagicMock, patch, call
 import torch
 import json
 from cerberus.train import _train as train, _save_model_pt, _dump_config, train_single
-from cerberus.config import TrainConfig, ModelConfig, DataConfig, GenomeConfig, SamplerConfig, FoldArgs
+from cerberus.config import TrainConfig, ModelConfig, DataConfig, GenomeConfig, SamplerConfig
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-
 
 def _make_train_config() -> TrainConfig:
     return TrainConfig(
@@ -26,7 +25,6 @@ def _make_train_config() -> TrainConfig:
         gradient_clip_val=None,
     )
 
-
 def _make_model_config(loss_args: dict | None = None) -> ModelConfig:
     return ModelConfig(
         name="TestModel",
@@ -41,7 +39,6 @@ def _make_model_config(loss_args: dict | None = None) -> ModelConfig:
         },
         pretrained=[],
     )
-
 
 def _make_data_config() -> DataConfig:
     """Create a minimal DataConfig for testing.
@@ -69,20 +66,13 @@ def _make_data_config() -> DataConfig:
     }
     return dc
 
-
 def _make_genome_config(k: int = 3) -> MagicMock:
-    """Create a MagicMock GenomeConfig with attribute access for fold_args."""
+    """Create a MagicMock GenomeConfig with fold_args as a plain dict."""
     gc = MagicMock(spec=GenomeConfig)
-    gc.fold_args = SimpleNamespace(k=k, test_fold=None, val_fold=None)
-    gc.fold_args.model_copy = lambda update: SimpleNamespace(
-        k=k,
-        test_fold=update.get("test_fold"),
-        val_fold=update.get("val_fold"),
-    )
+    gc.fold_args = {"k": k, "test_fold": None, "val_fold": None}
     gc.model_copy = lambda update: gc  # fold_args override returns self-like mock
     gc.model_dump.return_value = {"fold_args": {"k": k}}
     return gc
-
 
 def test_train_wrapper_calls_trainer_fit():
     mock_module = MagicMock(spec=pl.LightningModule)
@@ -135,7 +125,6 @@ def test_train_wrapper_calls_trainer_fit():
         # Verify instantiate was called with the resolved model_config
         mock_instantiate.assert_called_once()
 
-
 def test_save_model_pt_strips_prefix():
     """_save_model_pt writes model.pt with 'model.' prefix stripped."""
     fake_state = {
@@ -161,7 +150,6 @@ def test_save_model_pt_strips_prefix():
         assert saved_path == Path(tmp_dir) / "model.pt"
         assert set(saved_sd.keys()) == {"conv.weight", "conv.bias"}
 
-
 def test_save_model_pt_strips_compile_prefix():
     """_save_model_pt strips _orig_mod. prefix when model was torch.compiled."""
     fake_state = {
@@ -184,7 +172,6 @@ def test_save_model_pt_strips_compile_prefix():
         saved_sd, _ = mock_save.call_args[0]
         assert set(saved_sd.keys()) == {"layer.weight", "layer.bias"}
 
-
 def test_save_model_pt_skips_when_no_checkpoint():
     """_save_model_pt logs a warning and exits when best_model_path is empty."""
     ckpt_callback = MagicMock(spec=ModelCheckpoint)
@@ -196,7 +183,6 @@ def test_save_model_pt_skips_when_no_checkpoint():
     with patch("cerberus.train.torch.save") as mock_save:
         _save_model_pt(trainer, "/some/dir")
         mock_save.assert_not_called()
-
 
 def test_dump_config_writes_json():
     """_dump_config writes a readable config.json containing all passed configs."""
@@ -220,7 +206,6 @@ def test_dump_config_writes_json():
     assert loaded["model_config"]["name"] == "TestModel"
     assert "sampler_config" not in loaded
 
-
 def test_dump_config_skips_none_sections():
     """Sections passed as None are omitted from config.json."""
     model_cfg = _make_model_config()
@@ -238,7 +223,6 @@ def test_dump_config_skips_none_sections():
 
     assert "genome_config" not in loaded
     assert "sampler_config" not in loaded
-
 
 def test_train_wrapper_custom_callbacks():
     mock_module = MagicMock(spec=pl.LightningModule)
@@ -265,8 +249,6 @@ def test_train_wrapper_custom_callbacks():
         call_kwargs = mock_trainer_cls.call_args[1]
         assert custom_cb in call_kwargs["callbacks"]
 
-
-
 def test_train_single_run_test_false():
     """run_test=False (default) must NOT call trainer.test()."""
     with patch("cerberus.train._train") as mock_train, \
@@ -289,7 +271,6 @@ def test_train_single_run_test_false():
             )
 
         mock_trainer.test.assert_not_called()
-
 
 def test_train_single_run_test_true():
     """run_test=True calls trainer.test(datamodule=..., ckpt_path='best') when a best checkpoint exists."""
@@ -320,7 +301,6 @@ def test_train_single_run_test_true():
         mock_trainer.test.assert_called_once_with(
             datamodule=mock_datamodule, ckpt_path="best"
         )
-
 
 def test_train_single_run_test_skips_when_no_checkpoint():
     """run_test=True with no best checkpoint logs a warning and does not call trainer.test()."""

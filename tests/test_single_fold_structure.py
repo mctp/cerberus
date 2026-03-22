@@ -5,16 +5,14 @@ from unittest.mock import MagicMock, patch
 from pathlib import Path
 import yaml
 from cerberus.train import train_single, train_multi
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig, FoldArgs
-
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, TrainConfig, ModelConfig
 
 def _make_genome_config(k: int = 2) -> MagicMock:
     """Create a MagicMock GenomeConfig with fold_args attribute access."""
     gc = MagicMock(spec=GenomeConfig)
-    gc.fold_args = FoldArgs(k=k, test_fold=0, val_fold=1)
+    gc.fold_args = {"k": k, "test_fold": 0, "val_fold": 1}
     gc.model_copy.return_value = gc
     return gc
-
 
 def _make_data_config() -> MagicMock:
     dc = MagicMock(spec=DataConfig)
@@ -31,14 +29,12 @@ def _make_data_config() -> MagicMock:
     dc.targets = {}
     return dc
 
-
 def _make_sampler_config() -> MagicMock:
     sc = MagicMock(spec=SamplerConfig)
     sc.sampler_type = "random"
     sc.padded_size = 100
     sc.sampler_args = SimpleNamespace(num_samples=10)
     return sc
-
 
 def _make_model_config() -> ModelConfig:
     return ModelConfig(
@@ -51,7 +47,6 @@ def _make_model_config() -> ModelConfig:
         model_args={},
         pretrained=[],
     )
-
 
 def _make_train_config() -> TrainConfig:
     return TrainConfig(
@@ -68,7 +63,6 @@ def _make_train_config() -> TrainConfig:
         adam_eps=1e-8,
         gradient_clip_val=None,
     )
-
 
 @pytest.fixture
 def minimal_configs():

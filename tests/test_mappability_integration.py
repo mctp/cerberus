@@ -2,7 +2,7 @@
 import os
 import pytest
 import torch
-from cerberus.config import DataConfig, SamplerConfig, SlidingWindowSamplerArgs
+from cerberus.config import DataConfig, SamplerConfig
 from cerberus.signal import SignalExtractor
 from cerberus.sequence import SequenceExtractor
 from cerberus.interval import Interval
@@ -61,7 +61,7 @@ def test_sequence_and_signal_extraction(human_genome, mappability_file, fasta_fi
     sampler_config = SamplerConfig(
         sampler_type="sliding_window",
         padded_size=1000,
-        sampler_args=SlidingWindowSamplerArgs(stride=100),
+        sampler_args={"stride": 100},
     )
     
     # Create ListSampler with our interval

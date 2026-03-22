@@ -9,8 +9,12 @@ from cerberus.interval import Interval
 from dataclasses import dataclass
 from cerberus.output import ModelOutput
 from cerberus.config import (
-    DataConfig, GenomeConfig, SamplerConfig, TrainConfig, ModelConfig,
-    CerberusConfig, FoldArgs, RandomSamplerArgs,
+    DataConfig,
+    GenomeConfig,
+    SamplerConfig,
+    TrainConfig,
+    ModelConfig,
+    CerberusConfig,
 )
 
 @dataclass
@@ -36,7 +40,7 @@ MOCK_GENOME_CONFIG = GenomeConfig.model_construct(
     chrom_sizes={"chr1": 1000000},
     allowed_chroms=["chr1"],
     fold_type="random",
-    fold_args=FoldArgs.model_construct(k=2, test_fold=None, val_fold=None),
+    fold_args={"k": 2, "test_fold": None, "val_fold": None},
     exclude_intervals={},
     fasta_path="mock.fa",
 )
@@ -51,7 +55,7 @@ class MockEnsemble(ModelEnsemble):
             sampler_config=SamplerConfig.model_construct(
                 sampler_type="random",
                 padded_size=1000,
-                sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+                sampler_args={"num_intervals": 10},
             ),
             train_config=TrainConfig.model_construct(
                 batch_size=1,

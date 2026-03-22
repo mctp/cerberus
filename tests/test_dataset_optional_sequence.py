@@ -1,7 +1,7 @@
 import pytest
 import torch
 from cerberus.dataset import CerberusDataset
-from cerberus.config import DataConfig, SamplerConfig, IntervalSamplerArgs
+from cerberus.config import DataConfig, SamplerConfig
 from cerberus.genome import create_genome_config
 
 @pytest.fixture
@@ -55,7 +55,7 @@ def test_dataset_no_sequence_init(genome_setup):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=4,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+        sampler_args={"intervals_path": peaks},
     )
 
     # Initialize with mock signal extractor to bypass file reading
@@ -103,7 +103,7 @@ def test_dataset_no_sequence_default_extractor(genome_setup):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=4,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+        sampler_args={"intervals_path": peaks},
     )
 
     with pytest.raises(ValueError, match="No input sources provided"):
@@ -144,7 +144,7 @@ def test_dataset_split_preserves_no_sequence(genome_setup):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=4,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+        sampler_args={"intervals_path": peaks},
     )
 
     ds = CerberusDataset(
@@ -193,7 +193,7 @@ def test_dataset_use_sequence_true(genome_setup):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=4,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+        sampler_args={"intervals_path": peaks},
     )
 
     # Should initialize sequence extractor

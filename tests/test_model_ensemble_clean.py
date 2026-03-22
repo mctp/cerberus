@@ -228,7 +228,6 @@ def test_aggregate_tensor_track_values_scalar_no_dilution_from_gaps():
         f"Scalar should be 10.0 (no dilution), got {res[0]:.2f}"
     )
 
-
 def test_aggregate_tensor_track_values_single_interval_passthrough():
     """Single interval: profile passes through unchanged (no averaging)."""
     interval = Interval("chr1", 10, 30, "+")
@@ -242,7 +241,6 @@ def test_aggregate_tensor_track_values_single_interval_passthrough():
 
     assert res.shape == (1, 20)
     assert np.allclose(res, values.numpy())
-
 
 def test_aggregate_tensor_track_values_multichannel():
     """Multi-channel profiles are aggregated independently per channel."""
@@ -268,7 +266,6 @@ def test_aggregate_tensor_track_values_multichannel():
     assert np.allclose(res[1, 5:10], 20.0)
     assert np.allclose(res[1, 10:15], 30.0)
 
-
 def test_aggregate_tensor_track_values_bin_size_gt1():
     """output_bin_size > 1: intervals snap to bin grid."""
     # bin_size=4, interval 0-8 → 2 bins, interval 4-12 → 2 bins
@@ -290,7 +287,6 @@ def test_aggregate_tensor_track_values_bin_size_gt1():
     assert np.allclose(res[0, 1], (2.0 + 3.0) / 2)  # overlap
     assert np.allclose(res[0, 2], 4.0)         # only val2
 
-
 def test_aggregate_tensor_track_values_scalar_all_empty():
     """Scalar path with no valid bins returns zeros."""
     # Merged interval has 10 bins but intervals are outside it (edge case)
@@ -310,7 +306,6 @@ def test_aggregate_tensor_track_values_scalar_all_empty():
     assert res.shape == (1,)
     assert np.allclose(res[0], 0.0)
 
-
 def test_aggregate_tensor_track_values_scalar_multichannel():
     """Multi-channel scalars are averaged independently per channel."""
     int1 = Interval("chr1", 0, 10, "+")
@@ -329,7 +324,6 @@ def test_aggregate_tensor_track_values_scalar_multichannel():
     # Same math as single-channel: (5*5 + 10*5 + 15*5)/15 = 10.0
     assert np.allclose(res[0], 10.0)
     assert np.allclose(res[1], 100.0)
-
 
 # --- Tests for _aggregate_intervals ---
 
@@ -380,8 +374,12 @@ def test_aggregate_intervals_no_cls_raises():
 
 from unittest.mock import MagicMock, patch
 from cerberus.config import (
-    DataConfig, GenomeConfig, SamplerConfig, TrainConfig, ModelConfig,
-    CerberusConfig, FoldArgs, RandomSamplerArgs,
+    DataConfig,
+    GenomeConfig,
+    SamplerConfig,
+    TrainConfig,
+    ModelConfig,
+    CerberusConfig,
 )
 
 def _make_data_config(input_len=100, output_len=10, output_bin_size=1):
@@ -397,11 +395,11 @@ def _make_cerberus_config(output_len=10, output_bin_size=1):
         genome_config=GenomeConfig.model_construct(
             name="mock", fasta_path="mock.fa", chrom_sizes={"chr1": 1000000},
             allowed_chroms=["chr1"], exclude_intervals={}, fold_type="chrom_partition",
-            fold_args=FoldArgs.model_construct(k=5, test_fold=None, val_fold=None),
+            fold_args={"k": 5, "test_fold": None, "val_fold": None},
         ),
         sampler_config=SamplerConfig.model_construct(
             sampler_type="random", padded_size=100,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            sampler_args={"num_intervals": 10},
         ),
         train_config=TrainConfig.model_construct(
             batch_size=1, max_epochs=1, learning_rate=1e-3, weight_decay=0.0,

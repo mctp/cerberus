@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import MagicMock
 from cerberus.datamodule import CerberusDataModule
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, FoldArgs, RandomSamplerArgs
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 class TestDataModuleSeeding(unittest.TestCase):
     def setUp(self):
@@ -14,7 +14,7 @@ class TestDataModuleSeeding(unittest.TestCase):
             chrom_sizes={"chr1": 1000},
             exclude_intervals={},
             fold_type="chrom_partition",
-            fold_args=FoldArgs.model_construct(k=5, test_fold=0, val_fold=1),
+            fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
         )
         self.data_config = DataConfig.model_construct(
             inputs={},
@@ -32,7 +32,7 @@ class TestDataModuleSeeding(unittest.TestCase):
         self.sampler_config = SamplerConfig.model_construct(
             sampler_type="random",
             padded_size=100,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            sampler_args={"num_intervals": 10},
         )
 
         # Create DataModule

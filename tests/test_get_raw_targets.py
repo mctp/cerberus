@@ -3,8 +3,7 @@ import torch
 from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
 from cerberus.genome import create_genome_config
-from cerberus.config import DataConfig, SamplerConfig, IntervalSamplerArgs
-
+from cerberus.config import DataConfig, SamplerConfig
 
 class MockTargetExtractor:
     """Returns a deterministic signal based on interval coordinates for testing."""
@@ -13,7 +12,6 @@ class MockTargetExtractor:
         length = interval.end - interval.start
         # Return ascending values [1, 2, ..., length] so we can verify no transforms applied
         return torch.arange(1, length + 1, dtype=torch.float32).unsqueeze(0)  # (1, L)
-
 
 @pytest.fixture
 def dataset_with_targets(tmp_path):
@@ -50,7 +48,7 @@ def dataset_with_targets(tmp_path):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=100,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+        sampler_args={"intervals_path": peaks},
     )
 
     ds = CerberusDataset(
@@ -59,7 +57,6 @@ def dataset_with_targets(tmp_path):
         sequence_extractor=None, sampler=None, exclude_intervals={},
     )
     return ds
-
 
 class TestGetRawTargets:
     def test_bypasses_transforms(self, dataset_with_targets):
@@ -133,7 +130,7 @@ class TestGetRawTargets:
         sampler_config = SamplerConfig.model_construct(
             sampler_type="interval",
             padded_size=50,
-            sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+            sampler_args={"intervals_path": peaks},
         )
 
         ds = CerberusDataset(
@@ -178,7 +175,7 @@ class TestGetRawTargets:
         sampler_config = SamplerConfig.model_construct(
             sampler_type="interval",
             padded_size=50,
-            sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+            sampler_args={"intervals_path": peaks},
         )
 
         ds = CerberusDataset(

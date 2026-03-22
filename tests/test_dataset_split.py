@@ -1,6 +1,6 @@
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_folds, GenomeConfig
-from cerberus.config import DataConfig, SamplerConfig, FoldArgs, IntervalSamplerArgs
+from cerberus.config import DataConfig, SamplerConfig
 from cerberus.samplers import IntervalSampler
 
 def test_sampler_split_folds(tmp_path):
@@ -56,7 +56,7 @@ def test_dataset_split_folds(tmp_path):
         chrom_sizes=chrom_sizes,
         exclude_intervals={},
         fold_type='chrom_partition',
-        fold_args=FoldArgs.model_construct(k=2, test_fold=None, val_fold=None),
+        fold_args={"k": 2, "test_fold": None, "val_fold": None},
     )
 
     # Create dummy fasta
@@ -81,7 +81,7 @@ def test_dataset_split_folds(tmp_path):
     sampler_config = SamplerConfig.model_construct(
         sampler_type='interval',
         padded_size=100,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=bed_path),
+        sampler_args={"intervals_path": bed_path},
     )
 
     dataset = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)

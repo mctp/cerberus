@@ -1,12 +1,12 @@
 from cerberus.samplers import create_sampler, MultiSampler
-from cerberus.config import SamplerConfig, RandomSamplerArgs
+from cerberus.config import SamplerConfig
 
 def test_random_sampler_seeding():
     chrom_sizes = {"chr1": 10000}
     config = SamplerConfig.model_construct(
         sampler_type="random",
         padded_size=100,
-        sampler_args=RandomSamplerArgs.model_construct(num_intervals=5),
+        sampler_args={"num_intervals": 5},
     )
 
     # Test deterministic behavior

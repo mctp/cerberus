@@ -8,10 +8,7 @@ from cerberus.config import (
     ModelConfig,
     TrainConfig,
     GenomeConfig,
-    FoldArgs,
-    SlidingWindowSamplerArgs,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,9 +24,8 @@ def _genome_config(tmp_path: Path) -> GenomeConfig:
         allowed_chroms=["chr1"],
         chrom_sizes={"chr1": 10000},
         fold_type="chrom_partition",
-        fold_args=FoldArgs(k=2),
+        fold_args={"k": 2},
     )
-
 
 def _train_config() -> TrainConfig:
     return TrainConfig(
@@ -47,7 +43,6 @@ def _train_config() -> TrainConfig:
         gradient_clip_val=None,
     )
 
-
 def _model_config() -> ModelConfig:
     return ModelConfig(
         name="m",
@@ -59,7 +54,6 @@ def _model_config() -> ModelConfig:
         model_args={},
         pretrained=[],
     )
-
 
 def _data_config(input_len: int = 100, max_jitter: int = 50) -> DataConfig:
     return DataConfig(
@@ -76,14 +70,12 @@ def _data_config(input_len: int = 100, max_jitter: int = 50) -> DataConfig:
         use_sequence=True,
     )
 
-
 def _sampler_config(padded_size: int) -> SamplerConfig:
     return SamplerConfig(
         sampler_type="sliding_window",
         padded_size=padded_size,
-        sampler_args=SlidingWindowSamplerArgs(stride=50),
+        sampler_args={"stride": 50},
     )
-
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -99,7 +91,6 @@ def test_data_and_sampler_compatibility_valid(tmp_path):
         model_config=_model_config(),
     )
 
-
 def test_data_and_sampler_compatibility_exact_boundary(tmp_path):
     """padded_size exactly at boundary should pass."""
     CerberusConfig(
@@ -109,7 +100,6 @@ def test_data_and_sampler_compatibility_exact_boundary(tmp_path):
         sampler_config=_sampler_config(padded_size=200),
         model_config=_model_config(),
     )
-
 
 def test_data_and_sampler_compatibility_invalid(tmp_path):
     """padded_size < input_len + 2 * max_jitter should raise."""
@@ -121,7 +111,6 @@ def test_data_and_sampler_compatibility_invalid(tmp_path):
             sampler_config=_sampler_config(padded_size=199),
             model_config=_model_config(),
         )
-
 
 def test_data_and_sampler_compatibility_large_jitter(tmp_path):
     """Large jitter: required = 1000 + 2*500 = 2000, padded_size=1500 should fail."""

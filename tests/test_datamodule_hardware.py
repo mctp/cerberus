@@ -2,7 +2,7 @@ import torch
 import pytest
 from unittest.mock import MagicMock, patch
 from cerberus.datamodule import CerberusDataModule
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, FoldArgs, RandomSamplerArgs
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 def test_datamodule_hardware_settings():
     """
@@ -19,7 +19,7 @@ def test_datamodule_hardware_settings():
         allowed_chroms=["chr1"],
         exclude_intervals={},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=5, test_fold=0, val_fold=1),
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
     )
     data_config = DataConfig.model_construct(
         inputs={},
@@ -37,7 +37,7 @@ def test_datamodule_hardware_settings():
     sampler_config = SamplerConfig.model_construct(
         sampler_type="random",
         padded_size=100,
-        sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        sampler_args={"num_intervals": 10},
     )
 
     with patch('cerberus.datamodule.CerberusDataset') as mock_dataset_cls:

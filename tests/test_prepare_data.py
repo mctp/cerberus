@@ -20,43 +20,32 @@ from cerberus.samplers import (
     RandomSampler,
     create_sampler,
 )
-from cerberus.config import (
-    SamplerConfig,
-    ComplexityMatchedSamplerArgs,
-    RandomSamplerArgs,
-    PeakSamplerArgs,
-    GenomeConfig,
-    DataConfig,
-    FoldArgs,
-)
+from cerberus.config import SamplerConfig, GenomeConfig, DataConfig
 from interlap import InterLap
-
 
 def _cm_config(target_n: int = 5, candidate_n: int = 10) -> SamplerConfig:
     """Helper: build a complexity_matched SamplerConfig for tests."""
     return SamplerConfig.model_construct(
         sampler_type="complexity_matched",
         padded_size=100,
-        sampler_args=ComplexityMatchedSamplerArgs.model_construct(
-            target_sampler=SamplerConfig.model_construct(
+        sampler_args={
+            "target_sampler": SamplerConfig.model_construct(
                 sampler_type="random",
                 padded_size=100,
-                sampler_args=RandomSamplerArgs.model_construct(num_intervals=target_n),
+                sampler_args={"num_intervals": target_n},
             ),
-            candidate_sampler=SamplerConfig.model_construct(
+            "candidate_sampler": SamplerConfig.model_construct(
                 sampler_type="random",
                 padded_size=100,
-                sampler_args=RandomSamplerArgs.model_construct(num_intervals=candidate_n),
+                sampler_args={"num_intervals": candidate_n},
             ),
-            bins=10,
-            candidate_ratio=1.0,
-            metrics=["gc"],
-        ),
+            "bins": 10,
+            "candidate_ratio": 1.0,
+            "metrics": ["gc"],
+        },
     )
 
-
 # --- Commit 1: Sampler + dataset plumbing tests ---
-
 
 @pytest.fixture
 def mock_compute():
@@ -66,7 +55,6 @@ def mock_compute():
             return np.random.rand(len(intervals), len(metrics)).astype(np.float32)
         m.side_effect = side_effect
         yield m
-
 
 class TestCreateSamplerPrepareCache:
     """Tests that create_sampler() passes prepare_cache through to ComplexityMatchedSampler."""
@@ -109,7 +97,6 @@ class TestCreateSamplerPrepareCache:
 
         assert isinstance(sampler, ComplexityMatchedSampler)
         assert isinstance(sampler.metrics_cache, dict)
-
 
 class TestPeakSamplerPrepareCache:
     """Tests that PeakSampler passes prepare_cache to its internal ComplexityMatchedSampler."""
@@ -182,7 +169,6 @@ class TestPeakSamplerPrepareCache:
         mock_peak_deps["complexity_matched_sampler"].assert_not_called()
         assert sampler.negatives is None
 
-
 class TestCreateSamplerCacheIgnoredForSimpleSamplers:
     """Tests that prepare_cache is harmlessly ignored for non-complexity samplers."""
 
@@ -193,7 +179,7 @@ class TestCreateSamplerCacheIgnoredForSimpleSamplers:
         config = SamplerConfig.model_construct(
             sampler_type="random",
             padded_size=100,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            sampler_args={"num_intervals": 10},
         )
 
         sampler = create_sampler(
@@ -206,7 +192,6 @@ class TestCreateSamplerCacheIgnoredForSimpleSamplers:
 
         assert not hasattr(sampler, "prepare_cache")
 
-
 class TestDatasetPrepareCache:
     """Tests that CerberusDataset threads prepare_cache through to create_sampler."""
 
@@ -217,7 +202,7 @@ class TestDatasetPrepareCache:
             name="test", fasta_path="mock.fa",
             chrom_sizes={"chr1": 10000}, allowed_chroms=["chr1"],
             exclude_intervals={}, fold_type="chrom_partition",
-            fold_args=FoldArgs.model_construct(k=2, test_fold=None, val_fold=None),
+            fold_args={"k": 2, "test_fold": None, "val_fold": None},
         )
         data_config = DataConfig.model_construct(
             inputs={"sig": "mock.bw"}, targets={},
@@ -229,7 +214,7 @@ class TestDatasetPrepareCache:
         )
         sampler_config = SamplerConfig.model_construct(
             sampler_type="random", padded_size=1000,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            sampler_args={"num_intervals": 10},
         )
 
         patches = [
@@ -288,9 +273,7 @@ class TestDatasetPrepareCache:
         m["create_sampler"].assert_called_once()
         assert m["create_sampler"].call_args.kwargs["prepare_cache"] is None
 
-
 # --- Seed determinism verification ---
-
 
 class TestSeedDeterminism:
     """Verify that explicit seeds produce deterministic sampler intervals."""
@@ -342,7 +325,6 @@ class TestSeedDeterminism:
 
         assert intervals1 == intervals2
 
-
 # --- Commit 2: Cache utilities tests ---
 
 from pathlib import Path
@@ -366,7 +348,6 @@ class TestGetDefaultCacheDir:
         result = get_default_cache_dir()
         assert result == Path.home() / ".cache" / "cerberus"
 
-
 class TestResolveCacheDir:
     """Tests for deterministic cache directory computation."""
 
@@ -377,9 +358,7 @@ class TestResolveCacheDir:
         config = SamplerConfig.model_construct(
             sampler_type="peak",
             padded_size=100,
-            sampler_args=PeakSamplerArgs.model_construct(
-                intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None
-            ),
+            sampler_args={"intervals_path": Path("peaks.bed"), "background_ratio": 1.0, "complexity_center_size": None},
         )
         chrom_sizes = {"chr1": 10000}
 
@@ -394,9 +373,7 @@ class TestResolveCacheDir:
         config = SamplerConfig.model_construct(
             sampler_type="peak",
             padded_size=100,
-            sampler_args=PeakSamplerArgs.model_construct(
-                intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None
-            ),
+            sampler_args={"intervals_path": Path("peaks.bed"), "background_ratio": 1.0, "complexity_center_size": None},
         )
         chrom_sizes = {"chr1": 10000}
 
@@ -411,16 +388,12 @@ class TestResolveCacheDir:
         config_a = SamplerConfig.model_construct(
             sampler_type="peak",
             padded_size=100,
-            sampler_args=PeakSamplerArgs.model_construct(
-                intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None
-            ),
+            sampler_args={"intervals_path": Path("peaks.bed"), "background_ratio": 1.0, "complexity_center_size": None},
         )
         config_b = SamplerConfig.model_construct(
             sampler_type="peak",
             padded_size=100,
-            sampler_args=PeakSamplerArgs.model_construct(
-                intervals_path=Path("peaks.bed"), background_ratio=2.0, complexity_center_size=None
-            ),
+            sampler_args={"intervals_path": Path("peaks.bed"), "background_ratio": 2.0, "complexity_center_size": None},
         )
         chrom_sizes = {"chr1": 10000}
 
@@ -435,13 +408,10 @@ class TestResolveCacheDir:
         config = SamplerConfig.model_construct(
             sampler_type="peak",
             padded_size=100,
-            sampler_args=PeakSamplerArgs.model_construct(
-                intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None
-            ),
+            sampler_args={"intervals_path": Path("peaks.bed"), "background_ratio": 1.0, "complexity_center_size": None},
         )
         result = resolve_cache_dir(tmp_path / "my_cache", fasta, config, seed=0, chrom_sizes={})
         assert result.parent == tmp_path / "my_cache"
-
 
 class TestSaveLoadPrepareCache:
     """Tests for cache serialization round-trip."""
@@ -475,9 +445,7 @@ class TestSaveLoadPrepareCache:
     def test_load_returns_none_when_dir_missing(self, tmp_path):
         assert load_prepare_cache(tmp_path / "nonexistent") is None
 
-
 # --- Commit 3: prepare_data() + setup() integration tests ---
-
 
 class TestPrepareData:
     """Tests for CerberusDataModule.prepare_data() and setup() integration."""
@@ -492,7 +460,7 @@ class TestPrepareData:
             name="test", fasta_path=fasta,
             chrom_sizes={"chr1": 10000}, allowed_chroms=["chr1"],
             exclude_intervals={}, fold_type="chrom_partition",
-            fold_args=FoldArgs.model_construct(k=2, test_fold=0, val_fold=1),
+            fold_args={"k": 2, "test_fold": 0, "val_fold": 1},
         )
         data_config = DataConfig.model_construct(
             inputs={}, targets={},
@@ -505,17 +473,19 @@ class TestPrepareData:
         sampler_config = SamplerConfig.model_construct(
             sampler_type="complexity_matched",
             padded_size=100,
-            sampler_args=ComplexityMatchedSamplerArgs.model_construct(
-                target_sampler=SamplerConfig.model_construct(
+            sampler_args={
+                "target_sampler": SamplerConfig.model_construct(
                     sampler_type="random", padded_size=100,
-                    sampler_args=RandomSamplerArgs.model_construct(num_intervals=5),
+                    sampler_args={"num_intervals": 5},
                 ),
-                candidate_sampler=SamplerConfig.model_construct(
+                "candidate_sampler": SamplerConfig.model_construct(
                     sampler_type="random", padded_size=100,
-                    sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+                    sampler_args={"num_intervals": 10},
                 ),
-                bins=10, candidate_ratio=1.0, metrics=["gc"],
-            ),
+                "bins": 10,
+                "candidate_ratio": 1.0,
+                "metrics": ["gc"],
+            },
         )
 
         # Build a fake metrics_cache the mock sampler will expose
@@ -595,7 +565,7 @@ class TestPrepareData:
         m = _mock_datamodule_deps
         random_config = SamplerConfig.model_construct(
             sampler_type="random", padded_size=100,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            sampler_args={"num_intervals": 10},
         )
         dm = CerberusDataModule(
             genome_config=m["genome_config"],

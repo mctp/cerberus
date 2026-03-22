@@ -1,15 +1,13 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from cerberus.train import train_multi
-from cerberus.config import TrainConfig, GenomeConfig, ModelConfig, FoldArgs
-
+from cerberus.config import TrainConfig, GenomeConfig, ModelConfig
 
 def _make_genome_config(k: int = 3) -> MagicMock:
     gc = MagicMock(spec=GenomeConfig)
-    gc.fold_args = FoldArgs(k=k, test_fold=None, val_fold=None)
+    gc.fold_args = {"k": k, "test_fold": None, "val_fold": None}
     gc.model_copy.return_value = gc
     return gc
-
 
 def test_train_multi_loop():
     # Mocks

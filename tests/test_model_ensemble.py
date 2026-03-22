@@ -8,8 +8,12 @@ from pathlib import Path
 
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.config import (
-    ModelConfig, DataConfig, TrainConfig, GenomeConfig, SamplerConfig,
-    CerberusConfig, FoldArgs, RandomSamplerArgs,
+    ModelConfig,
+    DataConfig,
+    TrainConfig,
+    GenomeConfig,
+    SamplerConfig,
+    CerberusConfig,
 )
 from cerberus.output import ModelOutput, aggregate_models
 from cerberus.interval import Interval
@@ -56,7 +60,6 @@ def create_mock_folds(intervals_per_fold):
         folds.append(fold_map)
     return folds
 
-
 def _make_cerberus_config(output_len=100, output_bin_size=1):
     """Create a minimal CerberusConfig for ensemble tests."""
     return CerberusConfig.model_construct(
@@ -70,11 +73,11 @@ def _make_cerberus_config(output_len=100, output_bin_size=1):
             name="mock", fasta_path="mock.fa",
             chrom_sizes={"chr1": 1000000}, allowed_chroms=["chr1"],
             exclude_intervals={}, fold_type="chrom_partition",
-            fold_args=FoldArgs.model_construct(k=5, test_fold=None, val_fold=None),
+            fold_args={"k": 5, "test_fold": None, "val_fold": None},
         ),
         sampler_config=SamplerConfig.model_construct(
             sampler_type="random", padded_size=100,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            sampler_args={"num_intervals": 10},
         ),
         train_config=TrainConfig.model_construct(
             batch_size=1, max_epochs=1, learning_rate=1e-3,
@@ -90,7 +93,6 @@ def _make_cerberus_config(output_len=100, output_bin_size=1):
             model_args={}, pretrained=[], count_pseudocount=0.0,
         ),
     )
-
 
 def create_ensemble(models, folds, output_len=100, output_bin_size=1):
     cerberus_config = _make_cerberus_config(output_len=output_len, output_bin_size=output_bin_size)

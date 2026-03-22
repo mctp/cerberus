@@ -2,15 +2,8 @@ import pytest
 from pathlib import Path
 from pydantic import ValidationError
 from cerberus.dataset import CerberusDataset
-from cerberus.config import (
-    GenomeConfig,
-    DataConfig,
-    SamplerConfig,
-    FoldArgs,
-    IntervalSamplerArgs,
-)
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 from cerberus.genome import create_genome_config
-
 
 def test_create_genome_config_valid(tmp_path):
     genome = tmp_path / "genome.fa"
@@ -26,12 +19,10 @@ def test_create_genome_config_valid(tmp_path):
     assert config.fasta_path == genome
     assert config.name == "hg38"
 
-
 def test_genome_config_missing_required_fields():
     """GenomeConfig with missing required fields should raise ValidationError."""
     with pytest.raises(ValidationError):
         GenomeConfig(name="test")  # type: ignore[call-arg]
-
 
 def test_genome_config_allowed_chroms_invalid(tmp_path):
     """allowed_chroms must be a list, not a string."""
@@ -47,15 +38,13 @@ def test_genome_config_allowed_chroms_invalid(tmp_path):
             allowed_chroms="chr1",  # type: ignore[arg-type]
             chrom_sizes={"chr1": 1000},
             fold_type="chrom_partition",
-            fold_args=FoldArgs(k=5),
+            fold_args={"k": 5},
         )
-
 
 def test_create_genome_config_missing_file(tmp_path):
     """create_genome_config raises FileNotFoundError for missing FASTA."""
     with pytest.raises(FileNotFoundError):
         create_genome_config(name="test", fasta_path=tmp_path / "missing.fa", species="human")
-
 
 def test_data_config_valid(tmp_path):
     cons = tmp_path / "cons.bw"
@@ -83,7 +72,6 @@ def test_data_config_valid(tmp_path):
     assert config.output_len == 1024
     assert config.input_len == 2048
 
-
 def test_data_config_missing_key():
     """DataConfig with missing required fields should raise ValidationError."""
     with pytest.raises(ValidationError):
@@ -92,7 +80,6 @@ def test_data_config_missing_key():
             output_len=1024,
             use_sequence=True,
         )  # type: ignore[call-arg]
-
 
 def test_dataset_init(tmp_path):
     genome_path = tmp_path / "genome.fa"
@@ -130,7 +117,7 @@ def test_dataset_init(tmp_path):
     sampler_config = SamplerConfig(
         sampler_type="interval",
         padded_size=100,
-        sampler_args=IntervalSamplerArgs(intervals_path=peaks),
+        sampler_args={"intervals_path": peaks},
     )
     ds = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=None, sampler=None, exclude_intervals=None)
 
@@ -141,24 +128,26 @@ def test_dataset_init(tmp_path):
     assert "chr1" in ds.genome_config.chrom_sizes
     assert "chr2" not in ds.genome_config.chrom_sizes
 
+def test_data_config_accepts_missing_file(tmp_path):
+    """DataConfig no longer validates file existence at model level.
 
-def test_data_config_missing_file(tmp_path):
-    """DataConfig raises FileNotFoundError for missing input files."""
-    with pytest.raises(FileNotFoundError, match="inputs file 'cons' not found"):
-        DataConfig(
-            inputs={"cons": tmp_path / "missing.bw"},
-            targets={},
-            input_len=2048,
-            output_len=1024,
-            output_bin_size=1,
-            encoding="ACGT",
-            max_jitter=0,
-            log_transform=False,
-            reverse_complement=False,
-            target_scale=1.0,
-            use_sequence=True,
-        )
-
+    Path validation was removed from Pydantic models and now happens only
+    in parse_hparams_config via _resolve_paths_in_config.
+    """
+    cfg = DataConfig(
+        inputs={"cons": tmp_path / "missing.bw"},
+        targets={},
+        input_len=2048,
+        output_len=1024,
+        output_bin_size=1,
+        encoding="ACGT",
+        max_jitter=0,
+        log_transform=False,
+        reverse_complement=False,
+        target_scale=1.0,
+        use_sequence=True,
+    )
+    assert cfg.inputs["cons"] == tmp_path / "missing.bw"
 
 def test_genome_config_invalid_chrom_sizes(tmp_path):
     """chrom_sizes values must be integers; non-numeric strings should fail."""
@@ -172,36 +161,39 @@ def test_genome_config_invalid_chrom_sizes(tmp_path):
             allowed_chroms=["chr1"],
             exclude_intervals={},
             fold_type="chrom_partition",
-            fold_args=FoldArgs(k=5),
+            fold_args={"k": 5},
             chrom_sizes={"chr1": [1, 2, 3]},  # type: ignore[dict-item]
         )
 
+def test_genome_config_fold_args_accepts_any_dict(tmp_path):
+    """fold_args is now dict[str, Any] — no type validation at model level.
 
-def test_genome_config_invalid_fold_args_types(tmp_path):
-    """fold_args fields must have correct types."""
+    Type checking of fold_args values (e.g. k must be int, test_fold must be
+    non-negative) was removed when FoldArgs was deleted. The plain dict is
+    accepted as-is; runtime consumers use bracket access.
+    """
     genome = tmp_path / "genome.fa"
     genome.touch()
 
-    # val_fold must be an int or None, not a list
-    with pytest.raises(ValidationError):
-        GenomeConfig(
-            name="test",
-            fasta_path=genome,
-            allowed_chroms=["chr1"],
-            exclude_intervals={},
-            fold_type="chrom_partition",
-            fold_args=FoldArgs(k=5, val_fold=[1, 2]),  # type: ignore[arg-type]
-            chrom_sizes={"chr1": 100},
-        )
+    # Extra or unconventional values are accepted at config level
+    cfg = GenomeConfig(
+        name="test",
+        fasta_path=genome,
+        allowed_chroms=["chr1"],
+        exclude_intervals={},
+        fold_type="chrom_partition",
+        fold_args={"k": 5, "val_fold": [1, 2]},
+        chrom_sizes={"chr1": 100},
+    )
+    assert cfg.fold_args["val_fold"] == [1, 2]
 
-    # test_fold must be non-negative
-    with pytest.raises(ValidationError):
-        GenomeConfig(
-            name="test",
-            fasta_path=genome,
-            allowed_chroms=["chr1"],
-            exclude_intervals={},
-            fold_type="chrom_partition",
-            fold_args=FoldArgs(k=5, test_fold=-1),
-            chrom_sizes={"chr1": 100},
-        )
+    cfg2 = GenomeConfig(
+        name="test",
+        fasta_path=genome,
+        allowed_chroms=["chr1"],
+        exclude_intervals={},
+        fold_type="chrom_partition",
+        fold_args={"k": 5, "test_fold": -1},
+        chrom_sizes={"chr1": 100},
+    )
+    assert cfg2.fold_args["test_fold"] == -1

@@ -7,16 +7,14 @@ from unittest.mock import MagicMock, patch
 import yaml
 from cerberus.train import train_single, update_ensemble_metadata
 from cerberus.model_ensemble import update_ensemble_metadata as update_ensemble_metadata_direct
-from cerberus.config import GenomeConfig, FoldArgs
-
+from cerberus.config import GenomeConfig
 
 def _make_genome_config(k: int = 5) -> MagicMock:
     """Create a MagicMock GenomeConfig with fold_args attribute access."""
     gc = MagicMock(spec=GenomeConfig)
-    gc.fold_args = FoldArgs(k=k, test_fold=None, val_fold=None)
+    gc.fold_args = {"k": k, "test_fold": None, "val_fold": None}
     gc.model_copy.return_value = gc
     return gc
-
 
 def test_train_single_updates_metadata(tmp_path):
     """Test that train_single updates ensemble_metadata.yaml correctly."""
@@ -62,7 +60,6 @@ def test_train_single_updates_metadata(tmp_path):
             meta = yaml.safe_load(f)
         assert meta["folds"] == [0, 1]
 
-
 def test_corrupt_metadata_warns_and_recovers(tmp_path, caplog):
     """Regression: corrupt metadata must warn (not silently pass) and still write new fold."""
     meta_path = tmp_path / "ensemble_metadata.yaml"
@@ -76,7 +73,6 @@ def test_corrupt_metadata_warns_and_recovers(tmp_path, caplog):
     with open(meta_path) as f:
         meta = yaml.safe_load(f)
     assert meta["folds"] == [3]
-
 
 def test_corrupt_metadata_preserves_nothing_from_corrupt_file(tmp_path, caplog):
     """After corrupt metadata, only the new fold should be present (old data is lost)."""

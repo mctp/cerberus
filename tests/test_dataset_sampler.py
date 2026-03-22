@@ -2,7 +2,7 @@ import pytest
 from cerberus.dataset import CerberusDataset
 from cerberus.genome import create_genome_config
 from cerberus.samplers import IntervalSampler
-from cerberus.config import DataConfig, SamplerConfig, IntervalSamplerArgs
+from cerberus.config import DataConfig, SamplerConfig
 
 def test_dataset_instantiates_interval_sampler(tmp_path):
     # 1. Setup Files
@@ -44,7 +44,7 @@ def test_dataset_instantiates_interval_sampler(tmp_path):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=200,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+        sampler_args={"intervals_path": peaks},
     )
 
     # 3. Instantiate

@@ -2,7 +2,7 @@ import pytest
 from cerberus.dataset import CerberusDataset
 from cerberus.transform import Jitter, ReverseComplement, DataTransform
 from cerberus.genome import create_genome_config
-from cerberus.config import DataConfig, SamplerConfig, IntervalSamplerArgs
+from cerberus.config import DataConfig, SamplerConfig
 
 @pytest.fixture
 def basic_files(tmp_path):
@@ -44,7 +44,7 @@ def test_deterministic_transforms_auto_generation(basic_files):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=200,  # 100 input + 2*50 jitter
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks_path),
+        sampler_args={"intervals_path": peaks_path},
     )
 
     dataset = CerberusDataset(
@@ -90,7 +90,7 @@ def test_split_folds_deterministic_behavior(basic_files):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=200,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks_path),
+        sampler_args={"intervals_path": peaks_path},
     )
 
     dataset = CerberusDataset(
@@ -139,7 +139,7 @@ def test_manual_transforms_validation(basic_files):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=100,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks_path),
+        sampler_args={"intervals_path": peaks_path},
     )
 
     custom_transforms: list[DataTransform] = [Jitter(input_len=100, max_jitter=50)]

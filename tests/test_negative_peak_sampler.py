@@ -4,7 +4,6 @@ from cerberus.samplers import NegativePeakSampler, IntervalSampler, RandomSample
 from cerberus.interval import Interval
 from interlap import InterLap
 
-
 @pytest.fixture
 def mock_dependencies():
     with patch("cerberus.samplers.IntervalSampler") as mock_interval_sampler, \
@@ -29,7 +28,6 @@ def mock_dependencies():
             "random_sampler": mock_random_sampler,
             "complexity_matched_sampler": mock_complexity_matched_sampler,
         }
-
 
 def test_negative_peak_sampler_init(mock_dependencies):
     chrom_sizes = {"chr1": 10000}
@@ -66,7 +64,6 @@ def test_negative_peak_sampler_init(mock_dependencies):
     # Only one sub-sampler (negatives), not two
     assert len(sampler.samplers) == 1
 
-
 def test_negative_peak_sampler_interval_source_always_complexity_matched(mock_dependencies):
     chrom_sizes = {"chr1": 10000}
 
@@ -81,7 +78,6 @@ def test_negative_peak_sampler_interval_source_always_complexity_matched(mock_de
     for i in range(len(sampler)):
         assert sampler.get_interval_source(i) == "ComplexityMatchedSampler"
 
-
 def test_negative_peak_sampler_no_peaks_in_training(mock_dependencies):
     """Verify that peaks are NOT included as a sub-sampler."""
     chrom_sizes = {"chr1": 10000}
@@ -95,7 +91,6 @@ def test_negative_peak_sampler_no_peaks_in_training(mock_dependencies):
     )
 
     assert sampler.samplers[0] is sampler.negatives
-
 
 def test_negative_peak_sampler_resample(mock_dependencies):
     """Verify that resample propagates to negatives."""
@@ -114,7 +109,6 @@ def test_negative_peak_sampler_resample(mock_dependencies):
     # Negatives resample should have been called
     call_args = sampler.negatives.resample.call_args  # type: ignore[union-attr]
     assert isinstance(call_args.args[0], int)
-
 
 def test_negative_peak_sampler_custom_parameters(mock_dependencies):
     """Verify custom min_candidates and candidate_oversample_factor."""
@@ -149,7 +143,6 @@ def test_negative_peak_sampler_custom_parameters(mock_dependencies):
     # max(100, 100 * 2.0 * 100.0) = 20000
     assert call_args.kwargs["num_intervals"] == 20000
 
-
 def test_negative_peak_sampler_background_ratio_scales_candidates(mock_dependencies):
     """Verify background_ratio is passed to ComplexityMatchedSampler as candidate_ratio."""
     chrom_sizes = {"chr1": 10000}
@@ -164,7 +157,6 @@ def test_negative_peak_sampler_background_ratio_scales_candidates(mock_dependenc
 
     cm_args = mock_dependencies["complexity_matched_sampler"].call_args
     assert cm_args.kwargs["candidate_ratio"] == 3.0
-
 
 def test_negative_peak_sampler_none_exclude_intervals(mock_dependencies):
     """Verify that None exclude_intervals is handled (peaks still excluded from candidates)."""
@@ -185,7 +177,6 @@ def test_negative_peak_sampler_none_exclude_intervals(mock_dependencies):
     assert "chr1" in random_excludes
     assert len(list(random_excludes["chr1"])) == 100
     assert len(sampler.samplers) == 1
-
 
 def test_negative_peak_sampler_multi_chrom(mock_dependencies):
     """Verify peaks on multiple chromosomes are all excluded."""
@@ -215,18 +206,15 @@ def test_negative_peak_sampler_multi_chrom(mock_dependencies):
     assert len(list(random_excludes["chr1"])) == 50
     assert len(list(random_excludes["chr2"])) == 50
 
-
 def test_create_sampler_negative_peak():
     """Verify create_sampler dispatches to NegativePeakSampler."""
-    from cerberus.config import SamplerConfig, NegativePeakSamplerArgs
+    from cerberus.config import SamplerConfig
     from pathlib import Path
 
     config = SamplerConfig.model_construct(
         sampler_type="negative_peak",
         padded_size=50,
-        sampler_args=NegativePeakSamplerArgs.model_construct(
-            intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None,
-        ),
+        sampler_args={"intervals_path": Path("peaks.bed"), "background_ratio": 1.0, "complexity_center_size": None},
     )
 
     with patch("cerberus.samplers.NegativePeakSampler") as MockNPS:
@@ -244,18 +232,15 @@ def test_create_sampler_negative_peak():
         assert call_args.kwargs["background_ratio"] == 1.0
         assert call_args.kwargs["fasta_path"] == "genome.fa"
 
-
 def test_create_sampler_negative_peak_requires_fasta():
     """Verify create_sampler raises if fasta_path is None for negative_peak."""
-    from cerberus.config import SamplerConfig, NegativePeakSamplerArgs
+    from cerberus.config import SamplerConfig
     from pathlib import Path
 
     config = SamplerConfig.model_construct(
         sampler_type="negative_peak",
         padded_size=50,
-        sampler_args=NegativePeakSamplerArgs.model_construct(
-            intervals_path=Path("peaks.bed"), background_ratio=1.0, complexity_center_size=None,
-        ),
+        sampler_args={"intervals_path": Path("peaks.bed"), "background_ratio": 1.0, "complexity_center_size": None},
     )
 
     with pytest.raises(ValueError, match="fasta_path"):

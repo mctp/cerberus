@@ -3,11 +3,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.config import (
-    ModelConfig, DataConfig, GenomeConfig, SamplerConfig, TrainConfig,
-    CerberusConfig, FoldArgs, RandomSamplerArgs,
+    ModelConfig,
+    DataConfig,
+    GenomeConfig,
+    SamplerConfig,
+    TrainConfig,
+    CerberusConfig,
 )
 import time
-
 
 def _make_cerberus_config(**overrides):
     """Create a minimal CerberusConfig for hparams tests."""
@@ -21,11 +24,11 @@ def _make_cerberus_config(**overrides):
         name="parsed_genome", fasta_path="mock.fa",
         chrom_sizes={"chr1": 1000}, allowed_chroms=["chr1"],
         exclude_intervals={}, fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=5, test_fold=None, val_fold=None),
+        fold_args={"k": 5, "test_fold": None, "val_fold": None},
     )
     sc = SamplerConfig.model_construct(
         sampler_type="random", padded_size=100,
-        sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        sampler_args={"num_intervals": 10},
     )
     tc = TrainConfig.model_construct(
         batch_size=1, max_epochs=1, learning_rate=1e-3, weight_decay=0.0,
@@ -43,7 +46,6 @@ def _make_cerberus_config(**overrides):
         data_config=dc, genome_config=gc, sampler_config=sc,
         train_config=tc, model_config_=mc,
     )
-
 
 @pytest.fixture
 def mock_model_manager():

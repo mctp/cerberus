@@ -7,8 +7,12 @@ import yaml
 from typing import cast
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.config import (
-    ModelConfig, DataConfig, GenomeConfig, SamplerConfig, TrainConfig,
-    CerberusConfig, FoldArgs, RandomSamplerArgs,
+    ModelConfig,
+    DataConfig,
+    GenomeConfig,
+    SamplerConfig,
+    TrainConfig,
+    CerberusConfig,
 )
 from cerberus.module import CerberusModule
 
@@ -79,7 +83,7 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
         exclude_intervals={}, allowed_chroms=["chr1"],
         chrom_sizes={"chr1": 1000},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=1, test_fold=None, val_fold=None),
+        fold_args={"k": 1, "test_fold": None, "val_fold": None},
     )
 
     cerberus_config = CerberusConfig.model_construct(
@@ -87,7 +91,7 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
         genome_config=genome_config,
         sampler_config=SamplerConfig.model_construct(
             sampler_type="random", padded_size=10,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+            sampler_args={"num_intervals": 10},
         ),
         train_config=TrainConfig.model_construct(
             batch_size=1, max_epochs=1, learning_rate=1e-3, weight_decay=0.0,

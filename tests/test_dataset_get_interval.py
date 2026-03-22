@@ -3,7 +3,7 @@ import torch
 from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
 from cerberus.genome import create_genome_config
-from cerberus.config import DataConfig, SamplerConfig, IntervalSamplerArgs
+from cerberus.config import DataConfig, SamplerConfig
 
 def test_get_interval_with_arbitrary_interval(tmp_path):
     """
@@ -44,7 +44,7 @@ def test_get_interval_with_arbitrary_interval(tmp_path):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=10,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+        sampler_args={"intervals_path": peaks},
     )
 
     # 3. Instantiate Dataset
@@ -100,7 +100,7 @@ def test_get_interval_equivalence_to_getitem(tmp_path):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=10,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=peaks),
+        sampler_args={"intervals_path": peaks},
     )
 
     ds = CerberusDataset(genome_config, data_config, sampler_config)

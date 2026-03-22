@@ -4,14 +4,13 @@ Comprehensive regression tests for the Pydantic config system.
 Covers:
 1. Model construction — valid data, attribute access, frozen immutability
 2. Validation — missing fields, invalid types, negative values, extra keys
-3. Typed sampler args — discriminated union routing via model_validator
-4. FoldArgs — optional defaults, negative k
-5. Pseudocount on ModelConfig — first-class field, default, negative
-6. Serialization round-trip — model_dump, model_validate, YAML
-7. CerberusConfig cross-validation — padded_size, channel mismatch
-8. model_copy — immutable updates, nested
-9. Backward compatibility — parse_hparams_config legacy migration
-10. model_config_ alias on CerberusConfig
+3. Sampler args — plain dict sampler_args on SamplerConfig
+4. Pseudocount on ModelConfig — first-class field, default, negative
+5. Serialization round-trip — model_dump, model_validate, YAML
+6. CerberusConfig cross-validation — padded_size, channel mismatch
+7. model_copy — immutable updates, nested
+8. Backward compatibility — parse_hparams_config legacy migration
+9. model_config_ alias on CerberusConfig
 """
 
 from __future__ import annotations
@@ -25,18 +24,11 @@ from pydantic import ValidationError
 
 from cerberus.config import (
     CerberusConfig,
-    ComplexityMatchedSamplerArgs,
     DataConfig,
-    FoldArgs,
     GenomeConfig,
-    IntervalSamplerArgs,
     ModelConfig,
-    NegativePeakSamplerArgs,
-    PeakSamplerArgs,
     PretrainedConfig,
-    RandomSamplerArgs,
     SamplerConfig,
-    SlidingWindowSamplerArgs,
     TrainConfig,
     parse_hparams_config,
 )
@@ -47,10 +39,10 @@ from cerberus.config import (
 # ---------------------------------------------------------------------------
 
 
-def _fold_args(**overrides: Any) -> FoldArgs:
+def _fold_args(**overrides: Any) -> dict[str, Any]:
     kw: dict[str, Any] = dict(k=5, test_fold=None, val_fold=None)
     kw.update(overrides)
-    return FoldArgs.model_validate(kw)
+    return kw
 
 
 def _genome_config(**overrides: Any) -> GenomeConfig:
@@ -128,7 +120,7 @@ def _sampler_config(**overrides: Any) -> SamplerConfig:
     kw: dict[str, Any] = dict(
         sampler_type="random",
         padded_size=2048,
-        sampler_args=RandomSamplerArgs.model_construct(num_intervals=100),
+        sampler_args={"num_intervals": 100},
     )
     kw.update(overrides)
     return SamplerConfig.model_construct(_fields_set=None, **kw)
@@ -223,10 +215,10 @@ class TestModelConstruction:
     """Construct each config type with valid data and verify basics."""
 
     def test_fold_args_construction(self):
-        fa = FoldArgs(k=5, test_fold=0, val_fold=1)
-        assert fa.k == 5
-        assert fa.test_fold == 0
-        assert fa.val_fold == 1
+        fa = {"k": 5, "test_fold": 0, "val_fold": 1}
+        assert fa["k"] == 5
+        assert fa["test_fold"] == 0
+        assert fa["val_fold"] == 1
 
     def test_train_config_construction(self):
         tc = _train_config()
@@ -277,11 +269,6 @@ class TestModelConstruction:
         assert cc.data_config.input_len == 1000
         assert cc.model_config_.name == "test_model"
 
-    def test_frozen_fold_args_raises_on_assignment(self):
-        fa = FoldArgs(k=5)
-        with pytest.raises(ValidationError):
-            fa.k = 10  # type: ignore[misc]
-
     def test_frozen_train_config_raises_on_assignment(self):
         tc = TrainConfig(
             batch_size=32, max_epochs=100, learning_rate=0.001,
@@ -311,14 +298,6 @@ class TestModelConstruction:
 
 class TestValidation:
     """Missing required fields, invalid types, negative values, extra keys."""
-
-    def test_fold_args_missing_k_raises(self):
-        with pytest.raises(ValidationError):
-            FoldArgs()  # type: ignore[call-arg]
-
-    def test_fold_args_extra_key_raises(self):
-        with pytest.raises(ValidationError):
-            FoldArgs(k=5, bogus=99)  # type: ignore[call-arg]
 
     def test_train_config_missing_required_raises(self):
         with pytest.raises(ValidationError):
@@ -371,7 +350,7 @@ class TestValidation:
             SamplerConfig(
                 sampler_type="random",
                 padded_size=-100,
-                sampler_args=RandomSamplerArgs(num_intervals=10),
+                sampler_args={"num_intervals": 10},
             )
 
     def test_sampler_config_zero_padded_size_raises(self):
@@ -379,7 +358,7 @@ class TestValidation:
             SamplerConfig(
                 sampler_type="random",
                 padded_size=0,
-                sampler_args=RandomSamplerArgs(num_intervals=10),
+                sampler_args={"num_intervals": 10},
             )
 
     def test_data_config_negative_input_len_raises(self, mock_files):
@@ -439,42 +418,41 @@ class TestValidation:
 
 
 # ===========================================================================
-# 3. Typed Sampler Args
+# 3. Sampler Args (plain dict)
 # ===========================================================================
 
 
-class TestTypedSamplerArgs:
-    """Discriminated union routing via model_validator on SamplerConfig."""
+class TestSamplerArgs:
+    """sampler_args is now a plain dict[str, Any] on SamplerConfig."""
 
     def test_random_sampler_args_constructs(self):
         sc = SamplerConfig(
             sampler_type="random",
             padded_size=1024,
-            sampler_args=RandomSamplerArgs(num_intervals=50),
+            sampler_args={"num_intervals": 50},
         )
-        assert isinstance(sc.sampler_args, RandomSamplerArgs)
-        assert sc.sampler_args.num_intervals == 50
+        assert isinstance(sc.sampler_args, dict)
+        assert sc.sampler_args["num_intervals"] == 50
 
     def test_sliding_window_args_constructs(self):
         sc = SamplerConfig(
             sampler_type="sliding_window",
             padded_size=1024,
-            sampler_args=SlidingWindowSamplerArgs(stride=256),
+            sampler_args={"stride": 256},
         )
-        assert isinstance(sc.sampler_args, SlidingWindowSamplerArgs)
-        assert sc.sampler_args.stride == 256
+        assert isinstance(sc.sampler_args, dict)
+        assert sc.sampler_args["stride"] == 256
 
     def test_interval_sampler_args_from_dict(self, tmp_path):
-        """model_validator routes dict sampler_args to IntervalSamplerArgs."""
+        """sampler_args as a plain dict with intervals_path."""
         bed = tmp_path / "intervals.bed"
         bed.touch()
         sc = SamplerConfig(
             sampler_type="interval",
             padded_size=1024,
-            sampler_args={"intervals_path": str(bed)},  # type: ignore[arg-type]
+            sampler_args={"intervals_path": str(bed)},
         )
-        assert isinstance(sc.sampler_args, IntervalSamplerArgs)
-        assert sc.sampler_args.intervals_path == bed
+        assert isinstance(sc.sampler_args, dict)
 
     def test_peak_sampler_args_from_dict(self, tmp_path):
         bed = tmp_path / "peaks.bed"
@@ -482,9 +460,9 @@ class TestTypedSamplerArgs:
         sc = SamplerConfig(
             sampler_type="peak",
             padded_size=2048,
-            sampler_args={"intervals_path": str(bed)},  # type: ignore[arg-type]
+            sampler_args={"intervals_path": str(bed)},
         )
-        assert isinstance(sc.sampler_args, PeakSamplerArgs)
+        assert isinstance(sc.sampler_args, dict)
 
     def test_negative_peak_sampler_args_from_dict(self, tmp_path):
         bed = tmp_path / "neg_peaks.bed"
@@ -492,126 +470,58 @@ class TestTypedSamplerArgs:
         sc = SamplerConfig(
             sampler_type="negative_peak",
             padded_size=2048,
-            sampler_args={"intervals_path": str(bed)},  # type: ignore[arg-type]
+            sampler_args={"intervals_path": str(bed)},
         )
-        assert isinstance(sc.sampler_args, NegativePeakSamplerArgs)
+        assert isinstance(sc.sampler_args, dict)
 
     def test_random_sampler_args_from_dict(self):
-        """model_validator routes dict to RandomSamplerArgs for 'random' type."""
+        """sampler_args as a plain dict for 'random' type."""
         sc = SamplerConfig(
             sampler_type="random",
             padded_size=1024,
-            sampler_args={"num_intervals": 100},  # type: ignore[arg-type]
+            sampler_args={"num_intervals": 100},
         )
-        assert isinstance(sc.sampler_args, RandomSamplerArgs)
-        assert sc.sampler_args.num_intervals == 100
+        assert isinstance(sc.sampler_args, dict)
+        assert sc.sampler_args["num_intervals"] == 100
 
     def test_sliding_window_args_from_dict(self):
         sc = SamplerConfig(
             sampler_type="sliding_window",
             padded_size=1024,
-            sampler_args={"stride": 128},  # type: ignore[arg-type]
+            sampler_args={"stride": 128},
         )
-        assert isinstance(sc.sampler_args, SlidingWindowSamplerArgs)
+        assert isinstance(sc.sampler_args, dict)
 
     def test_complexity_matched_args_constructs(self):
         target = SamplerConfig.model_construct(
             _fields_set=None,
             sampler_type="random",
             padded_size=1024,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=50),
+            sampler_args={"num_intervals": 50},
         )
         candidate = SamplerConfig.model_construct(
             _fields_set=None,
             sampler_type="random",
             padded_size=1024,
-            sampler_args=RandomSamplerArgs.model_construct(num_intervals=200),
+            sampler_args={"num_intervals": 200},
         )
         sc = SamplerConfig(
             sampler_type="complexity_matched",
             padded_size=1024,
-            sampler_args=ComplexityMatchedSamplerArgs(
-                target_sampler=target,
-                candidate_sampler=candidate,
-                bins=20,
-                candidate_ratio=5.0,
-                metrics=["gc_content"],
-            ),
+            sampler_args={
+                "target_sampler": target,
+                "candidate_sampler": candidate,
+                "bins": 20,
+                "candidate_ratio": 5.0,
+                "metrics": ["gc_content"],
+            },
         )
-        assert isinstance(sc.sampler_args, ComplexityMatchedSamplerArgs)
-        assert sc.sampler_args.bins == 20
-
-    def test_wrong_sampler_type_for_args_raises(self):
-        """Passing RandomSamplerArgs with sampler_type='sliding_window' should fail
-        because the model_validator routes to SlidingWindowSamplerArgs, but the dict
-        keys don't match."""
-        with pytest.raises(ValidationError):
-            SamplerConfig(
-                sampler_type="sliding_window",
-                padded_size=1024,
-                sampler_args={"num_intervals": 100},  # type: ignore[arg-type]  # wrong fields for sliding_window
-            )
-
-    def test_random_sampler_args_negative_num_intervals_raises(self):
-        with pytest.raises(ValidationError):
-            RandomSamplerArgs(num_intervals=-1)
-
-    def test_sliding_window_args_zero_stride_raises(self):
-        with pytest.raises(ValidationError):
-            SlidingWindowSamplerArgs(stride=0)
-
-    def test_peak_sampler_args_negative_background_ratio_raises(self, tmp_path):
-        bed = tmp_path / "p.bed"
-        bed.touch()
-        with pytest.raises(ValidationError):
-            PeakSamplerArgs.model_validate({
-                "intervals_path": str(bed),
-                "background_ratio": -1.0,
-            })
-
-    def test_sampler_args_extra_key_raises(self):
-        with pytest.raises(ValidationError):
-            RandomSamplerArgs(num_intervals=10, extra="bad")  # type: ignore[call-arg]
+        assert isinstance(sc.sampler_args, dict)
+        assert sc.sampler_args["bins"] == 20
 
 
 # ===========================================================================
-# 4. FoldArgs
-# ===========================================================================
-
-
-class TestFoldArgs:
-    """Optional defaults, negative k, ge=0 constraint."""
-
-    def test_defaults_to_none(self):
-        fa = FoldArgs(k=5)
-        assert fa.test_fold is None
-        assert fa.val_fold is None
-
-    def test_negative_k_raises(self):
-        with pytest.raises(ValidationError):
-            FoldArgs(k=-1)
-
-    def test_zero_k_is_valid(self):
-        fa = FoldArgs(k=0)
-        assert fa.k == 0
-
-    def test_negative_test_fold_raises(self):
-        with pytest.raises(ValidationError):
-            FoldArgs(k=5, test_fold=-1)
-
-    def test_negative_val_fold_raises(self):
-        with pytest.raises(ValidationError):
-            FoldArgs(k=5, val_fold=-1)
-
-    def test_all_folds_set(self):
-        fa = FoldArgs(k=10, test_fold=0, val_fold=1)
-        assert fa.k == 10
-        assert fa.test_fold == 0
-        assert fa.val_fold == 1
-
-
-# ===========================================================================
-# 5. Pseudocount on ModelConfig
+# 4. Pseudocount on ModelConfig
 # ===========================================================================
 
 
@@ -662,7 +572,7 @@ class TestModelConfigPseudocount:
 
 
 # ===========================================================================
-# 6. Serialization Round-Trip
+# 5. Serialization Round-Trip
 # ===========================================================================
 
 
@@ -674,12 +584,6 @@ class TestSerializationRoundTrip:
         dumped = dc.model_dump(mode="json")
         assert isinstance(dumped["inputs"]["seq"], str)
         assert isinstance(dumped["targets"]["out"], str)
-
-    def test_fold_args_round_trip(self):
-        fa = FoldArgs(k=5, test_fold=2, val_fold=3)
-        dumped = fa.model_dump()
-        restored = FoldArgs.model_validate(dumped)
-        assert restored == fa
 
     def test_train_config_round_trip(self):
         tc = TrainConfig(
@@ -745,7 +649,7 @@ class TestSerializationRoundTrip:
 
 
 # ===========================================================================
-# 7. CerberusConfig Cross-Validation
+# 6. CerberusConfig Cross-Validation
 # ===========================================================================
 
 
@@ -789,7 +693,7 @@ class TestCerberusConfigCrossValidation:
 
 
 # ===========================================================================
-# 8. model_copy (Immutable Updates)
+# 7. model_copy (Immutable Updates)
 # ===========================================================================
 
 
@@ -797,10 +701,10 @@ class TestModelCopy:
     """model_copy produces new instances; originals unchanged."""
 
     def test_fold_args_copy_update(self):
-        fa = FoldArgs(k=5, test_fold=0, val_fold=1)
-        fa2 = fa.model_copy(update={"k": 10})
-        assert fa2.k == 10
-        assert fa.k == 5  # original unchanged
+        fa = {"k": 5, "test_fold": 0, "val_fold": 1}
+        fa2 = {**fa, "k": 10}
+        assert fa2["k"] == 10
+        assert fa["k"] == 5  # original unchanged
 
     def test_train_config_copy_update(self):
         tc = TrainConfig(
@@ -831,10 +735,10 @@ class TestModelCopy:
 
     def test_nested_fold_args_copy(self):
         gc = _genome_config()
-        new_fa = FoldArgs(k=10, test_fold=2, val_fold=3)
+        new_fa = {"k": 10, "test_fold": 2, "val_fold": 3}
         gc2 = gc.model_copy(update={"fold_args": new_fa})
-        assert gc2.fold_args.k == 10
-        assert gc.fold_args.k == 5  # original unchanged
+        assert gc2.fold_args["k"] == 10
+        assert gc.fold_args["k"] == 5  # original unchanged
 
     def test_cerberus_config_copy_update_sub_config(self):
         cc = _cerberus_config()
@@ -845,7 +749,7 @@ class TestModelCopy:
 
 
 # ===========================================================================
-# 9. Backward Compatibility (parse_hparams_config)
+# 8. Backward Compatibility (parse_hparams_config)
 # ===========================================================================
 
 
@@ -917,7 +821,7 @@ class TestBackwardCompatibility:
 
 
 # ===========================================================================
-# 10. model_config_ alias on CerberusConfig
+# 9. model_config_ alias on CerberusConfig
 # ===========================================================================
 
 

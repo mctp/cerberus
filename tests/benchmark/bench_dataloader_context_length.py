@@ -32,7 +32,7 @@ sys.path.insert(0, str(project_root / "src"))
 
 from torch.utils.data import DataLoader
 
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, RandomSamplerArgs
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 from cerberus.datamodule import CerberusDataModule
 from cerberus.dataset import CerberusDataset
 from cerberus.download import download_dataset, download_reference_genome
@@ -48,7 +48,6 @@ CONTEXT_LENGTHS = [1_024 * (2**i) for i in range(8)]
 SCENARIOS = ["fasta_only", "bigwig_only", "fasta_bigwig"]
 SCENARIO_LABELS = {"fasta_only": "fasta", "bigwig_only": "bigwig", "fasta_bigwig": "both"}
 
-
 def resolve_data_paths() -> tuple[Path, Path]:
     """Locate or download the GRCh38 FASTA and MDA-PCA-2B AR BigWig."""
     base_dir = Path(os.environ.get("CERBERUS_DATA_DIR", "tests/data"))
@@ -62,7 +61,6 @@ def resolve_data_paths() -> tuple[Path, Path]:
     bigwig_path = dataset_files["bigwig"]
 
     return Path(fasta_path), Path(bigwig_path)
-
 
 def make_data_config(
     scenario: str,
@@ -100,16 +98,14 @@ def make_data_config(
         target_scale=1.0,
     )
 
-
 def make_sampler_config(input_len: int, max_jitter: int, num_intervals: int) -> SamplerConfig:
     """Build a SamplerConfig dict."""
     padded_size = input_len + 2 * max_jitter
     return SamplerConfig(
         sampler_type="random",
         padded_size=padded_size,
-        sampler_args=RandomSamplerArgs(num_intervals=num_intervals),
+        sampler_args={"num_intervals": num_intervals},
     )
-
 
 def bench_dataloader(
     genome_config: GenomeConfig,
@@ -164,13 +160,11 @@ def bench_dataloader(
         "it_per_s": batches_consumed / elapsed if elapsed > 0 else float("inf"),
     }
 
-
 def format_length(bp: int) -> str:
     """Format base pairs as human-readable string (e.g. 1kb, 128kb)."""
     if bp >= 1_024:
         return f"{bp // 1_024}kb"
     return f"{bp}bp"
-
 
 def bench_dataloader_inmemory(
     genome_config: GenomeConfig,
@@ -235,7 +229,6 @@ def bench_dataloader_inmemory(
         "it_per_s": batches_consumed / elapsed if elapsed > 0 else float("inf"),
     }
 
-
 def run_disk_pass(
     genome_config: GenomeConfig,
     bigwig_path: Path,
@@ -277,7 +270,6 @@ def run_disk_pass(
         all_results.append(row)
 
     return all_results
-
 
 def run_inmemory_pass(
     genome_config: GenomeConfig,
@@ -329,7 +321,6 @@ def run_inmemory_pass(
         all_results.append(row)
 
     return all_results
-
 
 def print_results_table(
     all_results: list[dict],
@@ -384,7 +375,6 @@ def print_results_table(
                 parts.append(f"{ratio:10.2f}")
             print("  ".join(parts))
 
-
 def print_comparison_table(
     disk_results: list[dict],
     mem_results: list[dict],
@@ -408,7 +398,6 @@ def print_comparison_table(
             parts.extend([f"{d_its:10.1f}", f"{m_its:10.1f}", f"{speedup:8.2f}"])
         print("  ".join(parts))
 
-
 def run_benchmark(args: argparse.Namespace) -> None:
     """Run the full benchmark suite and print results."""
     fasta_path, bigwig_path = resolve_data_paths()
@@ -430,7 +419,6 @@ def run_benchmark(args: argparse.Namespace) -> None:
         mem_results = run_inmemory_pass(genome_config, fasta_path, bigwig_path, args)
         print_results_table(mem_results, "in-memory", args, fasta_path, bigwig_path)
         print_comparison_table(disk_results, mem_results)
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -484,7 +472,6 @@ def main() -> None:
         sys.exit(1)
 
     run_benchmark(args)
-
 
 if __name__ == "__main__":
     main()

@@ -3,10 +3,7 @@ from pathlib import Path
 import random
 from cerberus.samplers import create_sampler, RandomSampler, ComplexityMatchedSampler
 from cerberus.sequence import calculate_gc_content
-from cerberus.config import (
-    SamplerConfig, ComplexityMatchedSamplerArgs, RandomSamplerArgs,
-    IntervalSamplerArgs,
-)
+from cerberus.config import SamplerConfig
 
 @pytest.fixture
 def mock_fasta(tmp_path):
@@ -60,17 +57,19 @@ def test_complexity_matched_sampler_gc_only(mock_fasta):
     config = SamplerConfig.model_construct(
         sampler_type="complexity_matched",
         padded_size=10,
-        sampler_args=ComplexityMatchedSamplerArgs.model_construct(
-            target_sampler=SamplerConfig.model_construct(
+        sampler_args={
+            "target_sampler": SamplerConfig.model_construct(
                 sampler_type="interval", padded_size=10,
-                sampler_args=IntervalSamplerArgs.model_construct(intervals_path=target_bed),
+                sampler_args={"intervals_path": target_bed},
             ),
-            candidate_sampler=SamplerConfig.model_construct(
+            "candidate_sampler": SamplerConfig.model_construct(
                 sampler_type="random", padded_size=10,
-                sampler_args=RandomSamplerArgs.model_construct(num_intervals=300),
+                sampler_args={"num_intervals": 300},
             ),
-            bins=10, candidate_ratio=1.0, metrics=["gc"],
-        ),
+            "bins": 10,
+            "candidate_ratio": 1.0,
+            "metrics": ["gc"],
+        },
     )
 
     sampler = create_sampler(

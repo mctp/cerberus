@@ -2,7 +2,7 @@ import pytest
 from cerberus.dataset import CerberusDataset
 from cerberus.transform import Jitter, TargetCrop, Log1p, Bin, ReverseComplement, Compose
 from cerberus.genome import create_genome_config
-from cerberus.config import DataConfig, SamplerConfig, IntervalSamplerArgs
+from cerberus.config import DataConfig, SamplerConfig
 
 @pytest.fixture
 def mock_genome(tmp_path):
@@ -35,7 +35,7 @@ def test_dataset_auto_transforms(mock_genome):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=120,  # 100 + 2*10
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=dummy_bed),
+        sampler_args={"intervals_path": dummy_bed},
     )
 
     genome_config = create_genome_config(name="test", fasta_path=mock_genome, species="human")
@@ -89,7 +89,7 @@ def test_dataset_no_jitter_defaults(mock_genome):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=100,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=mock_genome.parent / "dummy.bed"),
+        sampler_args={"intervals_path": mock_genome.parent / "dummy.bed"},
     )
 
     genome_config = create_genome_config(name="test", fasta_path=mock_genome, species="human")

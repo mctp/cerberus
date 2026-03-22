@@ -208,25 +208,25 @@ def test_create_sampler_errors(chrom_sizes, folds):
         ),
     )
     # Use a simpler approach: test with a properly formed config
-    from cerberus.config import ComplexityMatchedSamplerArgs, RandomSamplerArgs
+    
     config = SamplerConfig.model_construct(
         sampler_type="complexity_matched",
         padded_size=100,
-        sampler_args=ComplexityMatchedSamplerArgs.model_construct(
-            target_sampler=SamplerConfig.model_construct(
+        sampler_args={
+            "target_sampler": SamplerConfig.model_construct(
                 sampler_type="random",
                 padded_size=100,
-                sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+                sampler_args={"num_intervals": 10},
             ),
-            candidate_sampler=SamplerConfig.model_construct(
+            "candidate_sampler": SamplerConfig.model_construct(
                 sampler_type="random",
                 padded_size=100,
-                sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+                sampler_args={"num_intervals": 10},
             ),
-            bins=20,
-            candidate_ratio=1.0,
-            metrics=["gc"],
-        ),
+            "bins": 20,
+            "candidate_ratio": 1.0,
+            "metrics": ["gc"],
+        },
     )
     with pytest.raises(ValueError, match="ComplexityMatchedSampler requires 'fasta_path'"):
         create_sampler(config, chrom_sizes, folds, {}, fasta_path=None)

@@ -10,12 +10,8 @@ from cerberus.config import (
     CerberusConfig,
     GenomeConfig,
     TrainConfig,
-    FoldArgs,
-    SlidingWindowSamplerArgs,
-    RandomSamplerArgs,
     get_log_count_params,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers — minimal valid configs for cross-validation tests
@@ -35,7 +31,6 @@ def _genome_config(tmp_path: Path) -> dict:
         "fold_args": {"k": 2},
     }
 
-
 def _train_config_dict() -> dict:
     return {
         "batch_size": 32,
@@ -52,7 +47,6 @@ def _train_config_dict() -> dict:
         "gradient_clip_val": None,
     }
 
-
 def _model_config_dict(**overrides) -> dict:
     base = {
         "name": "m",
@@ -66,7 +60,6 @@ def _model_config_dict(**overrides) -> dict:
     }
     base.update(overrides)
     return base
-
 
 # --- Data Config Tests ---
 
@@ -93,18 +86,18 @@ def test_validate_sampler_config_sliding_window():
     cfg = SamplerConfig(
         sampler_type="sliding_window",
         padded_size=1000,
-        sampler_args=SlidingWindowSamplerArgs(stride=50),
+        sampler_args={"stride": 50},
     )
     assert cfg.sampler_type == "sliding_window"
 
-def test_validate_sampler_config_missing_args():
-    """IntervalSampler args missing required intervals_path should raise."""
-    with pytest.raises(ValidationError):
-        SamplerConfig(
-            sampler_type="interval",
-            padded_size=1000,
-            sampler_args={},  # type: ignore[arg-type]
-        )
+def test_validate_sampler_config_accepts_plain_dict():
+    """sampler_args is now a plain dict — empty dict is accepted at config level."""
+    cfg = SamplerConfig(
+        sampler_type="interval",
+        padded_size=1000,
+        sampler_args={},
+    )
+    assert cfg.sampler_args == {}
 
 # --- Model Config Tests ---
 
@@ -178,7 +171,7 @@ def test_data_and_sampler_compatibility_valid(tmp_path):
         ),
         sampler_config=SamplerConfig(
             sampler_type="sliding_window", padded_size=120,
-            sampler_args=SlidingWindowSamplerArgs(stride=50),
+            sampler_args={"stride": 50},
         ),
         model_config=ModelConfig(**_model_config_dict()),
     )
@@ -197,7 +190,7 @@ def test_data_and_sampler_compatibility_invalid(tmp_path):
             ),
             sampler_config=SamplerConfig(
                 sampler_type="sliding_window", padded_size=119,
-                sampler_args=SlidingWindowSamplerArgs(stride=50),
+                sampler_args={"stride": 50},
             ),
             model_config=ModelConfig(**_model_config_dict()),
         )
@@ -219,7 +212,7 @@ def test_data_and_model_compatibility_valid(tmp_path):
         ),
         sampler_config=SamplerConfig(
             sampler_type="sliding_window", padded_size=100,
-            sampler_args=SlidingWindowSamplerArgs(stride=50),
+            sampler_args={"stride": 50},
         ),
         model_config=ModelConfig(**_model_config_dict(
             model_args={
@@ -245,7 +238,7 @@ def test_data_and_model_compatibility_invalid_targets(tmp_path):
             ),
             sampler_config=SamplerConfig(
                 sampler_type="sliding_window", padded_size=100,
-                sampler_args=SlidingWindowSamplerArgs(stride=50),
+                sampler_args={"stride": 50},
             ),
             model_config=ModelConfig(**_model_config_dict(
                 model_args={
@@ -271,7 +264,7 @@ def test_data_and_model_compatibility_invalid_inputs(tmp_path):
             ),
             sampler_config=SamplerConfig(
                 sampler_type="sliding_window", padded_size=100,
-                sampler_args=SlidingWindowSamplerArgs(stride=50),
+                sampler_args={"stride": 50},
             ),
             model_config=ModelConfig(**_model_config_dict(
                 model_args={
@@ -280,7 +273,6 @@ def test_data_and_model_compatibility_invalid_inputs(tmp_path):
                 },
             )),
         )
-
 
 # --- ModelConfig.count_pseudocount (first-class field) ---
 
@@ -311,7 +303,6 @@ def test_model_config_count_pseudocount_coerced_to_float():
     assert cfg.count_pseudocount == 100.0
     assert isinstance(cfg.count_pseudocount, float)
 
-
 # --- get_log_count_params ---
 
 def _model_config_with_loss(loss_cls: str, loss_args: dict | None = None, count_pseudocount: float = 0.0):
@@ -328,7 +319,6 @@ def _model_config_with_loss(loss_cls: str, loss_args: dict | None = None, count_
         count_pseudocount=count_pseudocount,
     )
 
-
 def test_get_log_count_params_mse():
     """MSE loss returns uses_pseudocount=True and reads count_pseudocount from model_config."""
     conf = _model_config_with_loss(
@@ -338,7 +328,6 @@ def test_get_log_count_params_mse():
     includes, pseudocount = get_log_count_params(conf)
     assert includes is True
     assert pseudocount == 50.0
-
 
 def test_get_log_count_params_coupled_mse():
     """CoupledMSEMultinomialLoss inherits uses_count_pseudocount=True."""
@@ -350,7 +339,6 @@ def test_get_log_count_params_coupled_mse():
     assert includes is True
     assert pseudocount == 25.0
 
-
 def test_get_log_count_params_poisson():
     """Poisson loss returns uses_pseudocount=False and pseudocount=0.0."""
     conf = _model_config_with_loss(
@@ -360,7 +348,6 @@ def test_get_log_count_params_poisson():
     includes, pseudocount = get_log_count_params(conf)
     assert includes is False
     assert pseudocount == 0.0
-
 
 def test_get_log_count_params_dalmatian():
     """DalmatianLoss has uses_count_pseudocount=True."""
@@ -372,7 +359,6 @@ def test_get_log_count_params_dalmatian():
     includes, pseudocount = get_log_count_params(conf)
     assert includes is True
     assert pseudocount == 100.0
-
 
 def test_get_log_count_params_negative_binomial():
     """NegativeBinomialMultinomialLoss inherits uses_count_pseudocount=False."""

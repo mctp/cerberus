@@ -10,7 +10,6 @@ from cerberus.config import (
     DataConfig,
     TrainConfig,
     GenomeConfig,
-    FoldArgs,
 )
 
 # Dummy Configs
@@ -61,7 +60,7 @@ def mock_configs():
         allowed_chroms=["chr1"],
         chrom_sizes={"chr1": 1000},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=2),
+        fold_args={"k": 2},
     )
     return model_config, data_config, train_config, genome_config
 

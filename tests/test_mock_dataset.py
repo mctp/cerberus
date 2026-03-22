@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 from cerberus.dataset import CerberusDataset
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, FoldArgs, IntervalSamplerArgs
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 from tests.mock_utils import (
     MockSampler,
     MockSequenceExtractor,
@@ -19,7 +19,7 @@ def test_mock_dataset_end_to_end(mock_files):
         allowed_chroms=["chr1"],
         chrom_sizes={"chr1": 10000},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=5, test_fold=None, val_fold=None),
+        fold_args={"k": 5, "test_fold": None, "val_fold": None},
     )
 
     data_config = DataConfig.model_construct(
@@ -39,7 +39,7 @@ def test_mock_dataset_end_to_end(mock_files):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=200,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=mock_files["exclude"]),
+        sampler_args={"intervals_path": mock_files["exclude"]},
     )
 
     # 2. Components
@@ -140,7 +140,7 @@ def create_mock_dataset(mock_files, num_samples=100) -> CerberusDataset:
         allowed_chroms=["chr1"],
         chrom_sizes={"chr1": 10000},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=5, test_fold=None, val_fold=None),
+        fold_args={"k": 5, "test_fold": None, "val_fold": None},
     )
 
     data_config = DataConfig.model_construct(
@@ -160,7 +160,7 @@ def create_mock_dataset(mock_files, num_samples=100) -> CerberusDataset:
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=200,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=mock_files["exclude"]),
+        sampler_args={"intervals_path": mock_files["exclude"]},
     )
 
     sampler = MockSampler(num_samples=num_samples, chrom_size=10000, interval_length=200)

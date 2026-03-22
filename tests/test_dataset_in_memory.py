@@ -1,4 +1,4 @@
-from cerberus.config import DataConfig, SamplerConfig, IntervalSamplerArgs
+from cerberus.config import DataConfig, SamplerConfig
 from cerberus.genome import create_genome_config
 from cerberus.sequence import InMemorySequenceExtractor, SequenceExtractor
 from cerberus.dataset import CerberusDataset
@@ -30,7 +30,7 @@ def test_dataset_in_memory_extractor(tmp_path):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=10,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=tmp_path / "dummy.bed"),
+        sampler_args={"intervals_path": tmp_path / "dummy.bed"},
     )
 
     # Test 1: in_memory=True

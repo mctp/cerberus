@@ -1,6 +1,6 @@
 
 import pytest
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, FoldArgs, SlidingWindowSamplerArgs
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 from cerberus.dataset import CerberusDataset
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def test_dataset_extractor_sharing(mock_fasta):
         chrom_sizes={"chr1": 1000},
         allowed_chroms=["chr1"],
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=3, test_fold=None, val_fold=None),
+        fold_args={"k": 3, "test_fold": None, "val_fold": None},
         exclude_intervals={},
     )
     data_config = DataConfig.model_construct(
@@ -36,7 +36,7 @@ def test_dataset_extractor_sharing(mock_fasta):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="sliding_window",
         padded_size=10,
-        sampler_args=SlidingWindowSamplerArgs.model_construct(stride=10),
+        sampler_args={"stride": 10},
     )
 
     # Initialize full dataset

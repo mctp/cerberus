@@ -18,7 +18,6 @@ from cerberus.config import (
     TrainConfig,
     ModelConfig,
     SamplerConfig,
-    FoldArgs,
 )
 from cerberus.output import ModelOutput
 
@@ -220,7 +219,7 @@ def create_mock_ensemble(models, output_len=60, output_bin_size=1):
         name="test", fasta_path=Path("test.fa"), exclude_intervals={},
         allowed_chroms=["chr1"], chrom_sizes={"chr1": 1000},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=2),
+        fold_args={"k": 2},
     )
     dummy_train_config = TrainConfig.model_construct(
         batch_size=1, max_epochs=1, learning_rate=1e-3,
@@ -275,7 +274,7 @@ def genome_setup_basic(tmp_path):
         allowed_chroms=["chr1", "chr2"],
         chrom_sizes=chrom_sizes,
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=2),
+        fold_args={"k": 2},
     )
     return genome_config
 
@@ -472,7 +471,6 @@ def test_predict_intervals_batching(integration_setup):
     assert np.allclose(values['logits'][0, 300:350], 1.0)
 
 # --- Unit Tests for Logic (from original test_predict3.py) ---
-
 
 def test_predict_interval_single_model(mock_dataset):
     interval = Interval("chr1", 0, 100)

@@ -3,10 +3,7 @@ from pathlib import Path
 import random
 import numpy as np
 from cerberus.samplers import create_sampler, ComplexityMatchedSampler, ListSampler, Interval
-from cerberus.config import (
-    SamplerConfig, ComplexityMatchedSamplerArgs, RandomSamplerArgs,
-    IntervalSamplerArgs,
-)
+from cerberus.config import SamplerConfig
 from interlap import InterLap
 
 @pytest.fixture
@@ -48,17 +45,19 @@ def test_complexity_matched_sampler(mock_fasta):
     config = SamplerConfig.model_construct(
         sampler_type="complexity_matched",
         padded_size=50,
-        sampler_args=ComplexityMatchedSamplerArgs.model_construct(
-            target_sampler=SamplerConfig.model_construct(
+        sampler_args={
+            "target_sampler": SamplerConfig.model_construct(
                 sampler_type="interval", padded_size=50,
-                sampler_args=IntervalSamplerArgs.model_construct(intervals_path=target_bed),
+                sampler_args={"intervals_path": target_bed},
             ),
-            candidate_sampler=SamplerConfig.model_construct(
+            "candidate_sampler": SamplerConfig.model_construct(
                 sampler_type="random", padded_size=50,
-                sampler_args=RandomSamplerArgs.model_construct(num_intervals=1000),
+                sampler_args={"num_intervals": 1000},
             ),
-            bins=5, candidate_ratio=1.0, metrics=["gc", "dust", "cpg"],
-        ),
+            "bins": 5,
+            "candidate_ratio": 1.0,
+            "metrics": ["gc", "dust", "cpg"],
+        },
     )
 
     sampler = create_sampler(

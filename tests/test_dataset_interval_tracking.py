@@ -1,7 +1,7 @@
 import pytest
 import torch
 from cerberus.transform import Jitter, ReverseComplement
-from cerberus.config import DataConfig, GenomeConfig, SamplerConfig, FoldArgs, IntervalSamplerArgs
+from cerberus.config import DataConfig, GenomeConfig, SamplerConfig
 from cerberus.dataset import CerberusDataset
 
 # Mocking helpers
@@ -26,7 +26,7 @@ def mock_dataset(tmp_path):
         chrom_sizes={"chr1": 1000},
         exclude_intervals={},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=2, test_fold=None, val_fold=None),
+        fold_args={"k": 2, "test_fold": None, "val_fold": None},
     )
 
     data_config = DataConfig.model_construct(
@@ -48,7 +48,7 @@ def mock_dataset(tmp_path):
     sampler_config = SamplerConfig.model_construct(
         sampler_type="interval",
         padded_size=100,
-        sampler_args=IntervalSamplerArgs.model_construct(intervals_path=tmp_path / "dummy.bed"),
+        sampler_args={"intervals_path": tmp_path / "dummy.bed"},
     )
 
     ds = CerberusDataset(genome_config, data_config, sampler_config, sequence_extractor=MockSequenceExtractor())

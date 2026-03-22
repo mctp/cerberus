@@ -1,7 +1,7 @@
 import time
 from cerberus.genome import create_genome_config
 from cerberus import CerberusDataModule
-from cerberus.config import DataConfig, SamplerConfig, FoldArgs, IntervalSamplerArgs
+from cerberus.config import DataConfig, SamplerConfig
 
 def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
     """
@@ -25,14 +25,14 @@ def test_batch_generation_timing(human_genome, mdapca2b_ar_dataset):
         species="human",
         exclude_intervals={"blacklist": blacklist_path},
         fold_type="chrom_partition",
-        fold_args=FoldArgs(k=5, test_fold=0, val_fold=1),
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
     )
 
     # 4. Sampler Configuration
     sampler_config = SamplerConfig(
         sampler_type="interval",
         padded_size=2304,
-        sampler_args=IntervalSamplerArgs(intervals_path=peaks_path),
+        sampler_args={"intervals_path": peaks_path},
     )
 
     batch_sizes = [8, 16, 32, 64, 128]

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from cerberus.datamodule import CerberusDataModule
-from cerberus.config import GenomeConfig, DataConfig, SamplerConfig, FoldArgs, RandomSamplerArgs
+from cerberus.config import GenomeConfig, DataConfig, SamplerConfig
 
 @pytest.fixture
 def mock_dataset_cls():
@@ -29,7 +29,7 @@ def test_datamodule_setup(
         allowed_chroms=["chr1"],
         exclude_intervals={},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=5, test_fold=0, val_fold=1),
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
     )
     data_config = DataConfig.model_construct(
         inputs={},
@@ -47,7 +47,7 @@ def test_datamodule_setup(
     sampler_config = SamplerConfig.model_construct(
         sampler_type="random",
         padded_size=100,
-        sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        sampler_args={"num_intervals": 10},
     )
 
     dm = CerberusDataModule(genome_config, data_config, sampler_config)
@@ -95,7 +95,7 @@ def test_datamodule_dataloaders(
         allowed_chroms=["chr1"],
         exclude_intervals={},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=5, test_fold=0, val_fold=1),
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
     )
     data_config = DataConfig.model_construct(
         inputs={},
@@ -113,7 +113,7 @@ def test_datamodule_dataloaders(
     sampler_config = SamplerConfig.model_construct(
         sampler_type="random",
         padded_size=100,
-        sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        sampler_args={"num_intervals": 10},
     )
 
     dm = CerberusDataModule(genome_config, data_config, sampler_config)
@@ -151,7 +151,7 @@ def test_datamodule_resample_via_dataloader(
         allowed_chroms=["chr1"],
         exclude_intervals={},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=5, test_fold=0, val_fold=1),
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
     )
     data_config = DataConfig.model_construct(
         inputs={},
@@ -169,7 +169,7 @@ def test_datamodule_resample_via_dataloader(
     sampler_config = SamplerConfig.model_construct(
         sampler_type="random",
         padded_size=100,
-        sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        sampler_args={"num_intervals": 10},
     )
 
     dm = CerberusDataModule(genome_config, data_config, sampler_config)
@@ -204,7 +204,7 @@ def test_datamodule_drop_last(
         allowed_chroms=["chr1"],
         exclude_intervals={},
         fold_type="chrom_partition",
-        fold_args=FoldArgs.model_construct(k=5, test_fold=0, val_fold=1),
+        fold_args={"k": 5, "test_fold": 0, "val_fold": 1},
     )
     data_config = DataConfig.model_construct(
         inputs={},
@@ -222,7 +222,7 @@ def test_datamodule_drop_last(
     sampler_config = SamplerConfig.model_construct(
         sampler_type="random",
         padded_size=100,
-        sampler_args=RandomSamplerArgs.model_construct(num_intervals=10),
+        sampler_args={"num_intervals": 10},
     )
 
     # Init with drop_last=True

@@ -4,7 +4,7 @@ import torch
 from cerberus.interval import Interval
 from cerberus.mask import BedMaskExtractor
 from cerberus.dataset import CerberusDataset
-from cerberus.config import GenomeConfig, DataConfig, FoldArgs
+from cerberus.config import GenomeConfig, DataConfig
 import pybigtools
 
 @pytest.fixture
@@ -73,7 +73,7 @@ def test_dataset_bed_support(dummy_bed, tmp_path):
         allowed_chroms=["chr1"],
         chrom_sizes={"chr1": 1000},
         fold_type="chrom_partition",
-        fold_args=FoldArgs(k=2),
+        fold_args={"k": 2},
     )
 
     data_config = DataConfig.model_construct(
@@ -125,7 +125,7 @@ def test_dataset_bigbed_support(dummy_bigbed, tmp_path):
         allowed_chroms=["chr1"],
         chrom_sizes={"chr1": 1000},
         fold_type="chrom_partition",
-        fold_args=FoldArgs(k=2),
+        fold_args={"k": 2},
     )
 
     data_config = DataConfig.model_construct(
