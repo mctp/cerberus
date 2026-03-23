@@ -123,6 +123,13 @@ class CountProfilePearsonCorrCoef(Metric):
         if total_counts.dim() == 1:
             total_counts = total_counts.unsqueeze(1)
 
+        # When log_counts is global (B, 1) but logits has C > 1 channels,
+        # distribute the total count equally across channels so that
+        # sum(preds_counts) = total, not C * total.
+        n_channels = logits.shape[1]
+        if total_counts.shape[1] == 1 and n_channels > 1:
+            total_counts = total_counts / n_channels
+
         preds_counts = probs * total_counts.unsqueeze(-1)  # (B, C, L)
 
         target = target.float()
@@ -172,6 +179,13 @@ class CountProfileMeanSquaredError(MeanSquaredError):
         # Handle (Batch,) edge case
         if total_counts.dim() == 1:
             total_counts = total_counts.unsqueeze(1)
+
+        # When log_counts is global (B, 1) but logits has C > 1 channels,
+        # distribute the total count equally across channels so that
+        # sum(preds_counts) = total, not C * total.
+        n_channels = logits.shape[1]
+        if total_counts.shape[1] == 1 and n_channels > 1:
+            total_counts = total_counts / n_channels
 
         # Broadcasting handles (B, 1, 1) * (B, C, L) -> (B, C, L)
         preds_counts = probs * total_counts.unsqueeze(-1)

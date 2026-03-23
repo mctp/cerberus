@@ -208,7 +208,32 @@ influences the `LogCounts*` validation metrics.  See
 
 ---
 
-## 7. Known Limitations (not bugs, documented intentionally)
+## 7. Multi-Channel Global-Count Reconstruction — fixed in v0.9.5
+
+When `predict_total_count=True` and `n_output_channels > 1`, the count head
+outputs `(B, 1)` — a single global total.  The `CountProfile*` metrics and
+`_reconstruct_linear_signal` multiply each channel's softmax probabilities by
+this total.  Since each channel's softmax sums to 1 over length, the
+reconstructed signal sums to `C * total` instead of `total`.
+
+**Fix:** When `log_counts` has 1 output but there are C > 1 channels, divide
+`total_counts` by C before per-channel multiplication.  Applied in:
+
+- `CountProfilePearsonCorrCoef.update()` (metrics.py) — Pearson is scale-
+  invariant so the fix doesn't change the metric value, but keeps the
+  intermediate reconstruction correct.
+- `CountProfileMeanSquaredError.update()` (metrics.py) — MSE is scale-sensitive;
+  without the fix, MSE is inflated and never reaches 0 for perfect predictions.
+- `_reconstruct_linear_signal()` (predict_bigwig.py) — BigWig signal would be
+  C× too large.
+
+The fix is a no-op when `log_counts` is per-channel `(B, C)` or when C == 1
+(the common case for all current training tools).
+
+---
+
+## 8. Known Limitations (not bugs, documented intentionally)
+
 
 ### Limitation 1: `compute_total_log_counts` ignores flags for ProfileLogRates
 
@@ -239,7 +264,7 @@ inference aggregation.  Not triggered by any current training tool.
 
 ---
 
-## 8. Deprecated Patterns
+## 9. Deprecated Patterns
 
 ### `hasattr(criterion, "count_pseudocount")`
 
@@ -257,7 +282,7 @@ The scatter plot now reads from the metric's state directly.
 
 ---
 
-## 9. Key File Reference
+## 10. Key File Reference
 
 | File | Key lines | Purpose |
 |---|---|---|
@@ -273,7 +298,7 @@ The scatter plot now reads from the metric's state directly.
 
 ---
 
-## 10. Related Documents
+## 11. Related Documents
 
 - `count_log_spaces.md` — defines the two-space framework, naming conventions,
   and pitfalls.  Updated in v0.9.5 to deprecate the `hasattr` dispatch pattern.

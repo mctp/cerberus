@@ -189,14 +189,19 @@ def _reconstruct_linear_signal(
     """
     if isinstance(output, ProfileCountOutput):
         logits = output.logits.float()  # (C, L)
-        log_counts = output.log_counts.float()  # (C,)
+        log_counts = output.log_counts.float()  # (C,) or (1,) if predict_total_count
         # Numerically stable softmax over the length axis
         logits_shifted = logits - logits.max(dim=-1, keepdim=True).values
         exp_logits = torch.exp(logits_shifted)
         probs = exp_logits / exp_logits.sum(dim=-1, keepdim=True)  # (C, L)
         total_counts = (
             (torch.exp(log_counts) - count_pseudocount).clamp_min(0.0).unsqueeze(-1)
-        )  # (C, 1)
+        )  # (C, 1) or (1, 1)
+        # When log_counts is global (1,) but logits has C > 1 channels,
+        # distribute the total count equally across channels.
+        n_channels = logits.shape[0]
+        if total_counts.shape[0] == 1 and n_channels > 1:
+            total_counts = total_counts / n_channels
         return probs * total_counts
     elif isinstance(output, ProfileLogRates):
         return torch.exp(output.log_rates.float())
