@@ -47,41 +47,11 @@ After completing each task, always:
 
 ### Deployment
 
-- **No CI/CD is configured.** Docs deployment is manual.
-- Deploy: `mkdocs gh-deploy --force` (builds site and pushes to `gh-pages` branch).
+- **CI/CD is configured.** Docs auto-deploy when `docs/`, `mkdocs.yml`, or `pyproject.toml` change on `main` (via `.github/workflows/docs.yml`).
+- PRs touching docs get a build check (`mkdocs build --strict`) without deploying.
+- Manual deploy is also possible: `mkdocs gh-deploy` (from any branch).
 - Site URL: `https://mctp.github.io/cerberus/`
-- GitHub Pages source branch must be set to `gh-pages` in repo Settings → Pages.
-- To automate, add `.github/workflows/docs.yml` with the official mkdocs-material workflow:
-
-```yaml
-name: docs
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: write
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure Git Credentials
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-      - uses: actions/setup-python@v5
-        with:
-          python-version: 3.x
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
-      - uses: actions/cache@v4
-        with:
-          key: mkdocs-material-${{ env.cache_id }}
-          path: ~/.cache
-          restore-keys: |
-            mkdocs-material-
-      - run: pip install mkdocs-material mkdocs-git-revision-date-localized-plugin
-      - run: mkdocs gh-deploy --force
-```
+- GitHub Pages source branch is `gh-pages` in repo Settings → Pages.
 
 ## DONT DO EMBARASSING THINGS
 
