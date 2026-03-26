@@ -959,6 +959,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Deploy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#before-pushing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before pushing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-deploy-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual deploy (optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1185,13 +1213,19 @@
 </code></pre></div>
 <p>Opens a live-reloading preview at <code>http://127.0.0.1:8000/cerberus/</code>. The browser refreshes automatically on every save.</p>
 <h2 id="deploy">Deploy<a class="headerlink" href="#deploy" title="Permanent link">&para;</a></h2>
+<p>Documentation is <strong>automatically deployed</strong> by GitHub Actions whenever changes to <code>docs/</code>, <code>mkdocs.yml</code>, or <code>pyproject.toml</code> are pushed to <code>main</code>. The workflow (<code>.github/workflows/docs.yml</code>) builds the site and pushes it to the <code>gh-pages</code> branch. The live site at <code>https://mctp.github.io/cerberus/</code> updates within ~1 minute.</p>
+<p>For pull requests that touch docs, the CI runs a build check (<code>mkdocs build --strict</code>) without deploying.</p>
+<p>You can also trigger a manual deploy from the Actions tab using the "workflow_dispatch" trigger.</p>
+<h3 id="before-pushing">Before pushing<a class="headerlink" href="#before-pushing" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python<span class="w"> </span>tools/generate_llms_txt.py<span class="w">  </span><span class="c1"># regenerate LLM context files</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>mkdocs<span class="w"> </span>gh-deploy
 </code></pre></div>
-<p>This builds the site and pushes it directly to the <code>gh-pages</code> branch on GitHub. The live site at <code>https://mctp.github.io/cerberus/</code> updates within ~1 minute.</p>
+<h3 id="manual-deploy-optional">Manual deploy (optional)<a class="headerlink" href="#manual-deploy-optional" title="Permanent link">&para;</a></h3>
+<p>If you need to deploy without pushing to <code>main</code> (e.g. from a feature branch):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>mkdocs<span class="w"> </span>gh-deploy
+</code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>You need push access to the <code>mctp/cerberus</code> repository to deploy.</p>
+<p>You need push access to the <code>mctp/cerberus</code> repository to deploy (manually or via CI).</p>
 </div>
 
 
@@ -1215,7 +1249,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 3, 2026 04:33:28 UTC">March 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 26, 2026 13:50:05 UTC">March 26, 2026</span>
   </span>
 
     
