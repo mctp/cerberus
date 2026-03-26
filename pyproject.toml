@@ -53,3 +53,11 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 norecursedirs = ["tests/benchmark"]
+filterwarnings = [
+    # PyTorch 2.11: torch/utils/mkldnn.py uses 14 deprecated @torch.jit.script_method
+    # decorators; imported internally by torch.compile(). Remove when fixed upstream.
+    "ignore:`torch.jit.script_method` is deprecated:DeprecationWarning",
+    # PyTorch Lightning 2.6.1 + PyTorch 2.11: pytorch_lightning/utilities/_pytree.py
+    # uses deprecated LeafSpec isinstance check. Remove when PL updates pytree API.
+    "ignore:`isinstance\\(treespec, LeafSpec\\)` is deprecated:FutureWarning",
+]
