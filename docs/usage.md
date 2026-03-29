@@ -437,6 +437,96 @@ python tools/print_model_dims.py BiasNet
 
 Supports case-insensitive model name matching and automatically infers default dimensions from the model class.
 
+## Model Interpretation (TF-MoDISco)
+
+Use `tools/export_tfmodisco_inputs.py` to generate TF-MoDISco inputs from a trained model and run motif discovery end-to-end.
+
+What the script does:
+
+1. Loads model weights from `model.pt` (or best `.ckpt`) and matching `hparams.yaml`.
+2. Rebuilds the matching `CerberusDataModule` and split (`train` / `val` / `test`).
+3. Exports:
+   - `ohe.npz` (DNA one-hot sequence; shape `(N, 4, L)`)
+   - `shap.npz` (attribution scores; shape `(N, 4, L)`)
+4. Runs `modisco motifs` by default, and optionally `modisco report`.
+
+Prerequisites:
+
+```bash
+pip install captum modisco
+```
+
+Basic end-to-end run:
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --split test \
+    --n-examples 2000 \
+    --seed 42 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --target-mode log_counts
+```
+
+Export NPZ only (skip motif discovery):
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --no-run-modisco
+```
+
+Generate HTML report after motifs:
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --run-report \
+    --meme-db motifs.meme
+```
+
+TF-MoDISco recommended motif database for human data:
+
+- Each pattern produced by TF-MoDISco is compared against a motif database using TOMTOM.
+- A good default for human analyses is `MotifCompendium-Database-Human.meme.txt` from MotifCompendium.
+- Source recommendation: https://github.com/kundajelab/tfmodisco?tab=readme-ov-file#generating-reports
+
+```bash
+mkdir -p data/motifs
+curl -L \
+  -o data/motifs/MotifCompendium-Database-Human.meme.txt \
+  https://raw.githubusercontent.com/kundajelab/MotifCompendium/refs/heads/main/pipeline/data/MotifCompendium-Database-Human.meme.txt
+
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --run-report \
+    --meme-db data/motifs/MotifCompendium-Database-Human.meme.txt
+```
+
+Common interpretation target modes (`--target-mode`):
+
+| Mode | Meaning |
+|---|---|
+| `log_counts` | Attribution to predicted log total counts (default) |
+| `profile_bin` | Attribution to one profile-logit bin (`--bin-index`) |
+| `profile_window_sum` | Attribution to summed profile logits in `[start:end)` (`--window-start`, `--window-end`) |
+| `pred_count_bin` | Attribution to one predicted count bin (softmax(logits) × exp(log_counts)) |
+| `pred_count_window_sum` | Attribution to summed predicted counts in a window |
+
+Notes:
+
+1. Use the same `--seed` as training for comparable sampler behavior (`tools/train_*.py` defaults to `42`).
+2. For `peak` samplers, the script defaults to positive intervals only (`IntervalSampler` source).
+3. Attributions use Integrated Gradients (`captum.attr.IntegratedGradients`), which is compatible with Pomeranian.
+4. `modisco motifs` expects NPZ key `arr_0`; this script writes NPZ in that format.
+
 ## Next Steps
 
 Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.
