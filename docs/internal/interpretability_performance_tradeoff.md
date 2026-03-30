@@ -127,6 +127,25 @@ self.profile_spatial = nn.Conv1d(filters, self.n_output_channels,
 
 Unlike BPNet's single linear convolution, Pomeranian interposes a GELU between two convolutions. This means the final profile logit is a *non-linear* function of the tower features, breaking the direct linear readout that makes BPNet's attributions clean.
 
+### Dropout: No Direct Effect, But Shapes the Representation
+
+BPNet has **no dropout anywhere** in its architecture. Pomeranian applies `Dropout(0.1)` in every PGCBlock, after the second normalization and before the residual addition:
+
+```python
+# layers.py:195 — PGCBlock.__init__
+self.dropout = nn.Dropout(dropout)
+
+# layers.py:244 — PGCBlock.forward (after norm2, before residual add)
+x = self.dropout(x)
+return residual + x
+```
+
+Dropout is deterministic at inference time (it becomes an identity), so it does not directly interfere with attribution methods — DeepLIFT, ISM, and integrated gradients all see a clean, dropout-free forward pass. However, dropout has an important **indirect** effect on interpretability through the representation it encourages during training.
+
+During training, dropout randomly zeros 10% of the features before each residual addition. This means no single feature channel can be relied upon — the model must spread predictive information across multiple redundant channels. The result is a more **distributed, redundant encoding** where the same motif's signal is carried by many features rather than concentrated in a few strong detectors. This is precisely why Pomeranian overfits less (redundancy = robustness to noise), but it also means that attribution scores for a motif are spread thinly across many channels rather than concentrated in a sharp, localized pattern.
+
+This is a subtle but important contributor to the interpretability gap. BPNet, with no dropout, is free to develop sharp, specialized motif detectors — individual channels that fire strongly for specific patterns. These produce high-magnitude, spatially localized attribution scores that TF-MoDISco clusters cleanly. Pomeranian's dropout-trained features are more diffuse by construction, producing lower-magnitude, more distributed attributions that fragment during clustering.
+
 ## 2.3 Summary Table
 
 | Mechanism | BPNet | Pomeranian | Effect on Attribution |
@@ -136,7 +155,7 @@ Unlike BPNet's single linear convolution, Pomeranian interposes a GELU between t
 | Convolution structure | Dense Conv1d | Depthwise + pointwise (factored) | Distributes features across more parameters |
 | Profile head | Linear Conv1d | Conv1d → GELU → Conv1d | Non-linear head breaks linear readout |
 | Residual blocks | $x + \text{ReLU}(\text{Conv}(x))$ | $x + \text{Dropout}(\text{Norm}(\text{Proj}((\text{Conv}(X)) \cdot V)))$ | More complex path = noisier backprop |
-| Regularization | None | Dropout (0.1) | Stochastic during training, deterministic at inference (no direct effect) |
+| Regularization | None | Dropout (0.1) in every PGCBlock | No direct effect on attribution (deterministic at inference), but shapes representation toward distributed encoding |
 
 ---
 
@@ -297,7 +316,7 @@ Do not add to BPNet:
 - **Gating / GLU / SwiGLU** — introduces multiplicative non-linearity.
 - **Squeeze-and-excitation / channel attention** — makes attributions channel-context-dependent.
 - **Non-linear profile head** — breaks the linear readout that produces clean motif attributions.
-- **Dropout in the tower** — stochastic during training but not directly harmful to attribution at inference. However, it may encourage more distributed representations, which can reduce motif clarity.
+- **Dropout in the tower** — deterministic at inference, so no direct effect on attribution methods. But dropout during training pushes the model toward distributed, redundant representations where no single channel is a clean motif detector (see Section 2.2, "Dropout: No Direct Effect, But Shapes the Representation"). This is a significant contributor to Pomeranian's interpretability gap that operates entirely through representation geometry, not attribution mechanics.
 
 ## 5.2 Improving Pomeranian's Interpretability Without Sacrificing Performance
 
