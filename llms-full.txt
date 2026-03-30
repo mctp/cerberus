@@ -1814,15 +1814,28 @@ Opens a live-reloading preview at `http://127.0.0.1:8000/cerberus/`. The browser
 
 ## Deploy
 
+Documentation is **automatically deployed** by GitHub Actions whenever changes to `docs/`, `mkdocs.yml`, or `pyproject.toml` are pushed to `main`. The workflow (`.github/workflows/docs.yml`) builds the site and pushes it to the `gh-pages` branch. The live site at `https://mctp.github.io/cerberus/` updates within ~1 minute.
+
+For pull requests that touch docs, the CI runs a build check (`mkdocs build --strict`) without deploying.
+
+You can also trigger a manual deploy from the Actions tab using the "workflow_dispatch" trigger.
+
+### Before pushing
+
 ```bash
 python tools/generate_llms_txt.py  # regenerate LLM context files
+```
+
+### Manual deploy (optional)
+
+If you need to deploy without pushing to `main` (e.g. from a feature branch):
+
+```bash
 mkdocs gh-deploy
 ```
 
-This builds the site and pushes it directly to the `gh-pages` branch on GitHub. The live site at `https://mctp.github.io/cerberus/` updates within ~1 minute.
-
 !!! note
-    You need push access to the `mctp/cerberus` repository to deploy.
+    You need push access to the `mctp/cerberus` repository to deploy (manually or via CI).
 
 ## Models  [models.md]
 
@@ -6668,6 +6681,7 @@ def create_default_transforms(
 
 ## src/cerberus/dataset.py
 
+import copy
 import logging
 from typing import Any
 
@@ -7026,7 +7040,10 @@ class CerberusDataset(Dataset):
             raise TypeError(
                 "Dataset has no sampler configured. Use get_interval() for specific queries."
             )
-        interval = self.sampler[idx]
+        # Copy so that in-place transforms (Jitter) don't mutate the
+        # sampler's stored interval, which would make jitter a no-op on
+        # subsequent accesses to the same index.
+        interval = copy.copy(self.sampler[idx])
         result = self._get_interval(interval)
         result["interval_source"] = self.sampler.get_interval_source(idx)
         return result
@@ -9663,6 +9680,13 @@ class CountProfilePearsonCorrCoef(Metric):
         if total_counts.dim() == 1:
             total_counts = total_counts.unsqueeze(1)
 
+        # When log_counts is global (B, 1) but logits has C > 1 channels,
+        # distribute the total count equally across channels so that
+        # sum(preds_counts) = total, not C * total.
+        n_channels = logits.shape[1]
+        if total_counts.shape[1] == 1 and n_channels > 1:
+            total_counts = total_counts / n_channels
+
         preds_counts = probs * total_counts.unsqueeze(-1)  # (B, C, L)
 
         target = target.float()
@@ -9712,6 +9736,13 @@ class CountProfileMeanSquaredError(MeanSquaredError):
         # Handle (Batch,) edge case
         if total_counts.dim() == 1:
             total_counts = total_counts.unsqueeze(1)
+
+        # When log_counts is global (B, 1) but logits has C > 1 channels,
+        # distribute the total count equally across channels so that
+        # sum(preds_counts) = total, not C * total.
+        n_channels = logits.shape[1]
+        if total_counts.shape[1] == 1 and n_channels > 1:
+            total_counts = total_counts / n_channels
 
         # Broadcasting handles (B, 1, 1) * (B, C, L) -> (B, C, L)
         preds_counts = probs * total_counts.unsqueeze(-1)
@@ -11259,14 +11290,19 @@ def _reconstruct_linear_signal(
     """
     if isinstance(output, ProfileCountOutput):
         logits = output.logits.float()  # (C, L)
-        log_counts = output.log_counts.float()  # (C,)
+        log_counts = output.log_counts.float()  # (C,) or (1,) if predict_total_count
         # Numerically stable softmax over the length axis
         logits_shifted = logits - logits.max(dim=-1, keepdim=True).values
         exp_logits = torch.exp(logits_shifted)
         probs = exp_logits / exp_logits.sum(dim=-1, keepdim=True)  # (C, L)
         total_counts = (
             (torch.exp(log_counts) - count_pseudocount).clamp_min(0.0).unsqueeze(-1)
-        )  # (C, 1)
+        )  # (C, 1) or (1, 1)
+        # When log_counts is global (1,) but logits has C > 1 channels,
+        # distribute the total count equally across channels.
+        n_channels = logits.shape[0]
+        if total_counts.shape[0] == 1 and n_channels > 1:
+            total_counts = total_counts / n_channels
         return probs * total_counts
     elif isinstance(output, ProfileLogRates):
         return torch.exp(output.log_rates.float())
@@ -11357,7 +11393,10 @@ def _process_island(
     track_data = accumulator / counts
 
     # Undo training transforms (Scale then Bin) to recover per-bp signal.
-    # Training: raw * target_scale → binned. Inverse: / target_scale / bin_size.
+    # Training: raw * target_scale → sum-binned. Inverse: / target_scale / bin_size.
+    # NOTE: This inversion assumes sum pooling (create_default_transforms enforces
+    # method="sum"). To support avg or max pooling, make this conditional:
+    # sum → divide by bin_size; avg/max → no division (already per-bp scale).
     track_data = track_data / target_scale / output_bin_size
 
     # Select first channel for BigWig output
