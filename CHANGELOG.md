@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Internal analysis: BPNet vs Pomeranian performance–interpretability tradeoff**
+  (`docs/internal/interpretability_performance_tradeoff.md`): Documents why
+  Pomeranian's higher predictive accuracy produces worse TF-MoDISco motifs,
+  traces the cause to multiplicative gating, GRN, and non-linear profile head,
+  and proposes concrete remediation strategies for both architectures.
+
 ### Fixed
 - **Jitter mutation destroyed after first epoch** (`dataset.py`):
   `__getitem__` passed the sampler's stored `Interval` reference directly to
