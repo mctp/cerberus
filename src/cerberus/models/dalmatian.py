@@ -16,6 +16,7 @@ background regions), preventing it from learning TF footprints.
 """
 
 import logging
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -26,35 +27,19 @@ from cerberus.output import FactorizedProfileCountOutput
 
 logger = logging.getLogger(__name__)
 
-
-def _compute_shrinkage(
-    conv_kernel_size: int | list[int],
-    dilations: list[int],
-    dil_kernel_size: int,
-    profile_kernel_size: int,
-) -> int:
-    """Compute total shrinkage (in bp) for a valid-padding conv stack.
-
-    Shrinkage = stem + tower + profile_head, where each valid-padding layer
-    shrinks by dilation * (kernel_size - 1).
-    """
-    if isinstance(conv_kernel_size, int):
-        stem = conv_kernel_size - 1
-    else:
-        stem = sum(k - 1 for k in conv_kernel_size)
-    tower = sum(d * (dil_kernel_size - 1) for d in dilations)
-    head = profile_kernel_size - 1
-    return stem + tower + head
+# Preset configurations for SignalNet: (filters, expansion)
+_SIGNAL_PRESETS: dict[str, tuple[int, int]] = {
+    "standard": (64, 1),  # ~150K params (matches Pomeranian K9)
+    "large": (256, 2),  # ~3.9M params
+}
 
 
 class Dalmatian(nn.Module):
-    """
-    Dalmatian: End-to-end bias-factorized sequence-to-function model.
+    """End-to-end bias-factorized sequence-to-function model.
 
     Composes a BiasNet (Conv1d+ReLU, short RF) and a SignalNet (Pomeranian,
     long RF) whose outputs are combined via logit addition (profile) and
-    logsumexp (counts). Signal output layers are zero-initialized so that
-    at initialization, the combined output equals the bias-only output.
+    logsumexp (counts).
 
     Gradient separation: bias outputs are ``.detach()``-ed before combining,
     so L_recon gradients train only SignalNet. BiasNet learns exclusively
@@ -71,31 +56,20 @@ class Dalmatian(nn.Module):
         output_bin_size: Output resolution bin size.
         input_channels: List of input channel names.
         output_channels: List of output channel names.
-        bias_filters: BiasNet filter count. Default: 12.
-        bias_n_layers: Number of residual tower layers in BiasNet. Default: 5.
-        bias_dilations: Dilation schedule for BiasNet. Default: all ones (no dilation).
-        bias_dil_kernel_size: Tower conv kernel size for BiasNet. Default: 9.
-        bias_conv_kernel_size: Stem kernel size(s) for BiasNet. Default: [11, 11].
-        bias_profile_kernel_size: Profile head kernel size for BiasNet. Default: 45.
-        bias_dropout: Dropout rate for BiasNet. Default: 0.1.
-        bias_linear_head: If True, BiasNet uses linear profile head. Default: True.
-        bias_residual: If True, BiasNet uses residual connections. Default: True.
+        bias_args: Dict of BiasNet constructor kwargs (native parameter names,
+            e.g. ``{"filters": 12, "dropout": 0.1}``). Shared params
+            (``input_len``, ``output_len``, etc.) are injected automatically.
+        signal_args: Dict of Pomeranian constructor kwargs (native parameter
+            names, e.g. ``{"dropout": 0.1}``). Shared params are injected
+            automatically.
         signal_preset: SignalNet preset. ``"standard"`` (default): f=64,
             expansion=1, ~150K params — matches standalone Pomeranian K9.
             ``"large"``: f=256, expansion=2, ~3.9M params.
-            Individual signal_* args override the preset.
-        signal_filters: SignalNet model dimension.
-        signal_n_layers: Number of dilated layers in SignalNet.
-        signal_dilations: Dilation schedule for SignalNet. Full RF (~1089bp).
-        signal_dil_kernel_size: Dilated conv kernel size for SignalNet.
-        signal_conv_kernel_size: Stem kernel size(s) for SignalNet.
-        signal_profile_kernel_size: Profile head kernel size for SignalNet.
-        signal_expansion: PGC expansion factor for SignalNet.
-        signal_stem_expansion: Stem expansion factor for SignalNet.
-        signal_dropout: Dropout rate for SignalNet.
-        zero_init: If True, zero-initialize signal output layers
-            so combined output equals bias-only at initialization.
-            Default: False (exp20 showed zero-init is harmful with detach).
+            Individual ``signal_args`` entries override the preset.
+        shared_bias: If True, BiasNet uses a single output channel
+            (``["bias"]``) while SignalNet uses the full ``output_channels``
+            list. This enables multi-task training where Tn5 insertion bias
+            is shared across cell types. Default: False.
     """
 
     def __init__(
@@ -105,63 +79,44 @@ class Dalmatian(nn.Module):
         output_bin_size: int = 1,
         input_channels: list[str] | None = None,
         output_channels: list[str] | None = None,
-        # --- BiasNet configuration (RF=105bp, ~9.3K params) ---
-        bias_filters: int = 12,
-        bias_n_layers: int = 5,
-        bias_dilations: list[int] | None = None,
-        bias_dil_kernel_size: int = 9,
-        bias_conv_kernel_size: int | list[int] | None = None,
-        bias_profile_kernel_size: int = 45,
-        bias_dropout: float = 0.1,
-        bias_linear_head: bool = True,
-        bias_residual: bool = True,
-        # --- SignalNet configuration (RF=1089bp) ---
+        bias_args: dict[str, Any] | None = None,
+        signal_args: dict[str, Any] | None = None,
         signal_preset: str = "standard",
-        signal_filters: int | None = None,
-        signal_n_layers: int = 8,
-        signal_dilations: list[int] | None = None,
-        signal_dil_kernel_size: int = 9,
-        signal_conv_kernel_size: int | list[int] | None = None,
-        signal_profile_kernel_size: int = 45,
-        signal_expansion: int | None = None,
-        signal_stem_expansion: int = 2,
-        signal_dropout: float = 0.1,
-        # --- Initialization ---
-        zero_init: bool = False,
+        shared_bias: bool = False,
     ):
         super().__init__()
+        self.shared_bias = shared_bias
 
-        # Resolve signal preset defaults
-        _signal_presets: dict[str, tuple[int, int]] = {
-            "large": (256, 2),  # ~3.9M params
-            "standard": (64, 1),  # ~150K params (matches Pomeranian K9)
-        }
-        if signal_preset not in _signal_presets:
+        # --- Resolve signal preset defaults ---
+        if signal_preset not in _SIGNAL_PRESETS:
             raise ValueError(
                 f"Unknown signal_preset={signal_preset!r}. "
-                f"Choose from {list(_signal_presets.keys())}."
+                f"Choose from {list(_SIGNAL_PRESETS.keys())}."
             )
-        _default_filters, _default_expansion = _signal_presets[signal_preset]
-        if signal_filters is None:
-            signal_filters = _default_filters
-        if signal_expansion is None:
-            signal_expansion = _default_expansion
+        _default_filters, _default_expansion = _SIGNAL_PRESETS[signal_preset]
 
-        if bias_dilations is None:
-            bias_dilations = [1] * bias_n_layers
-        if bias_conv_kernel_size is None:
-            bias_conv_kernel_size = [11, 11]
-        if signal_dilations is None:
-            signal_dilations = [1, 1, 2, 4, 8, 16, 32, 64]
-        if signal_conv_kernel_size is None:
-            signal_conv_kernel_size = [11, 11]
+        # Build sub-model kwargs: start from user overrides, inject shared
+        # params + preset defaults.
+        bias_kw: dict[str, Any] = dict(bias_args) if bias_args else {}
+        signal_kw: dict[str, Any] = dict(signal_args) if signal_args else {}
 
-        # Compute BiasNet shrinkage and derive its input length
-        bias_shrinkage = _compute_shrinkage(
-            bias_conv_kernel_size,
-            bias_dilations,
-            bias_dil_kernel_size,
-            bias_profile_kernel_size,
+        # Apply signal preset defaults (user overrides take precedence)
+        signal_kw.setdefault("filters", _default_filters)
+        signal_kw.setdefault("expansion", _default_expansion)
+
+        # Resolve bias architecture params for shrinkage computation
+        bias_conv_kernel_size = bias_kw.get("conv_kernel_size", [11, 11])
+        bias_n_layers = bias_kw.get("n_layers", 5)
+        bias_dilations = bias_kw.get("dilations")
+        bias_dil_kernel_size = bias_kw.get("dil_kernel_size", 9)
+        bias_profile_kernel_size = bias_kw.get("profile_kernel_size", 45)
+
+        bias_shrinkage = BiasNet.compute_shrinkage(
+            conv_kernel_size=bias_conv_kernel_size,
+            n_layers=bias_n_layers,
+            dilations=bias_dilations,
+            dil_kernel_size=bias_dil_kernel_size,
+            profile_kernel_size=bias_profile_kernel_size,
         )
         self.bias_input_len = output_len + bias_shrinkage
 
@@ -172,12 +127,19 @@ class Dalmatian(nn.Module):
                 f"but got input_len={input_len}"
             )
 
-        # Verify SignalNet shrinkage matches input_len -> output_len exactly
-        signal_shrinkage = _compute_shrinkage(
-            signal_conv_kernel_size,
-            signal_dilations,
-            signal_dil_kernel_size,
-            signal_profile_kernel_size,
+        # Resolve signal architecture params for shrinkage validation
+        signal_conv_kernel_size = signal_kw.get("conv_kernel_size", [11, 11])
+        signal_dilations = signal_kw.get("dilations")
+        signal_n_layers = signal_kw.get("n_dilated_layers", 8)
+        signal_dil_kernel_size = signal_kw.get("dil_kernel_size", 9)
+        signal_profile_kernel_size = signal_kw.get("profile_kernel_size", 45)
+
+        signal_shrinkage = Pomeranian.compute_shrinkage(
+            conv_kernel_size=signal_conv_kernel_size,
+            n_dilated_layers=signal_n_layers,
+            dilations=signal_dilations,
+            dil_kernel_size=signal_dil_kernel_size,
+            profile_kernel_size=signal_profile_kernel_size,
         )
         signal_natural_output = input_len - signal_shrinkage
         if signal_natural_output != output_len:
@@ -190,70 +152,38 @@ class Dalmatian(nn.Module):
         self.input_len = input_len
         self.output_len = output_len
 
-        self.bias_model = BiasNet(
+        # Determine output channels for each sub-model
+        bias_output_channels = ["bias"] if shared_bias else output_channels
+        signal_output_channels = output_channels
+
+        # Inject shared params (override any user-supplied duplicates)
+        bias_kw.update(
             input_len=self.bias_input_len,
             output_len=output_len,
             output_bin_size=output_bin_size,
             input_channels=input_channels,
-            output_channels=output_channels,
-            filters=bias_filters,
-            n_layers=bias_n_layers,
-            dilations=bias_dilations,
-            dil_kernel_size=bias_dil_kernel_size,
-            conv_kernel_size=bias_conv_kernel_size,
-            profile_kernel_size=bias_profile_kernel_size,
-            dropout=bias_dropout,
-            linear_head=bias_linear_head,
-            residual=bias_residual,
+            output_channels=bias_output_channels,
             predict_total_count=False,
         )
-
-        self.signal_model = Pomeranian(
+        signal_kw.update(
             input_len=input_len,
             output_len=output_len,
             output_bin_size=output_bin_size,
             input_channels=input_channels,
-            output_channels=output_channels,
-            filters=signal_filters,
-            n_dilated_layers=signal_n_layers,
-            dilations=signal_dilations,
-            dil_kernel_size=signal_dil_kernel_size,
-            conv_kernel_size=signal_conv_kernel_size,
-            profile_kernel_size=signal_profile_kernel_size,
-            expansion=signal_expansion,
-            stem_expansion=signal_stem_expansion,
-            dropout=signal_dropout,
+            output_channels=signal_output_channels,
             predict_total_count=False,
         )
 
-        if zero_init:
-            self._zero_init_signal_outputs()
+        self.bias_model = BiasNet(**bias_kw)
+        self.signal_model = Pomeranian(**signal_kw)
 
         bias_params = sum(p.numel() for p in self.bias_model.parameters())
         signal_params = sum(p.numel() for p in self.signal_model.parameters())
         logger.info(
             f"Dalmatian initialized: bias_model={bias_params:,} params (RF={bias_shrinkage + 1}bp), "
             f"signal_model={signal_params:,} params (RF={signal_shrinkage + 1}bp), "
-            f"total={bias_params + signal_params:,} params"
+            f"total={bias_params + signal_params:,} params, shared_bias={shared_bias}"
         )
-
-    def _zero_init_signal_outputs(self) -> None:
-        """Zero-initialize signal model output layers for identity-element start.
-
-        Profile head: weight=0, bias=0 -> signal_logits = 0 (identity for addition).
-        Count head final layer: weight=0, bias=-10 -> signal_log_counts ~ -10
-            (identity for logsumexp since exp(-10) ~ 0.000045 phantom reads).
-        """
-        profile_pw = self.signal_model.profile_pointwise
-        profile_sp = self.signal_model.profile_spatial
-        nn.init.zeros_(profile_pw.weight)
-        nn.init.zeros_(profile_pw.bias)  # type: ignore[arg-type]
-        nn.init.zeros_(profile_sp.weight)
-        nn.init.zeros_(profile_sp.bias)  # type: ignore[arg-type]
-
-        final_linear: nn.Linear = self.signal_model.count_mlp[-1]  # type: ignore[assignment]
-        nn.init.zeros_(final_linear.weight)
-        nn.init.constant_(final_linear.bias, -10.0)
 
     def forward(self, x: torch.Tensor) -> FactorizedProfileCountOutput:
         # Both sub-models center-crop to their own input_len automatically
@@ -264,9 +194,19 @@ class Dalmatian(nn.Module):
         # only to signal_model.  The raw (non-detached) bias outputs are
         # returned in the FactorizedProfileCountOutput for L_bias to train
         # the bias model independently on background regions.
-        combined_logits = bias_out.logits.detach() + signal_out.logits
+        bias_logits_detached = bias_out.logits.detach()
+        bias_log_counts_detached = bias_out.log_counts.detach()
+
+        # (B,1,L) + (B,N,L) broadcasts automatically for profile logits
+        combined_logits = bias_logits_detached + signal_out.logits
+
+        # For logsumexp, expand bias counts to match signal shape
+        if self.shared_bias:
+            bias_log_counts_detached = bias_log_counts_detached.expand_as(
+                signal_out.log_counts
+            )
         combined_log_counts = torch.logsumexp(
-            torch.stack([bias_out.log_counts.detach(), signal_out.log_counts], dim=-1),
+            torch.stack([bias_log_counts_detached, signal_out.log_counts], dim=-1),
             dim=-1,
         )
 

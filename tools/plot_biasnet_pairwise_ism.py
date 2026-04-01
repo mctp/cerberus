@@ -83,7 +83,6 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
     Supports standalone BiasNet and Dalmatian (extracts bias_model subnetwork).
     """
     from cerberus.models.biasnet import BiasNet
-    from cerberus.models.dalmatian import _compute_shrinkage
 
     path = Path(path)
     _, model_pt = _resolve_fold_dir(path)
@@ -114,30 +113,57 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
             linear_head=model_args["linear_head"],
         )
     elif model_name == "Dalmatian":
-        bias_filters = model_args.get("bias_filters", 12)
-        bias_n_layers = model_args.get("bias_n_layers", 5)
-        bias_dilations = model_args.get("bias_dilations", [1] * bias_n_layers)
-        bias_dil_kernel_size = model_args.get("bias_dil_kernel_size", 9)
-        bias_conv_kernel_size = model_args.get("bias_conv_kernel_size", [11, 11])
-        bias_profile_kernel_size = model_args.get("bias_profile_kernel_size", 45)
-        bias_dropout = model_args.get("bias_dropout", 0.1)
-        bias_linear_head = model_args.get("bias_linear_head", True)
-        bias_residual = model_args.get("bias_residual", True)
+        # Support both new (bias_args dict) and old (flat bias_* keys) formats
+        ba = model_args.get("bias_args", {})
+        bias_filters = ba.get("filters") or model_args.get("bias_filters", 12)
+        bias_n_layers = ba.get("n_layers") or model_args.get("bias_n_layers", 5)
+        bias_dilations = ba.get("dilations") or model_args.get(
+            "bias_dilations", [1] * bias_n_layers
+        )
+        bias_dil_kernel_size = ba.get("dil_kernel_size") or model_args.get(
+            "bias_dil_kernel_size", 9
+        )
+        bias_conv_kernel_size = ba.get("conv_kernel_size") or model_args.get(
+            "bias_conv_kernel_size", [11, 11]
+        )
+        bias_profile_kernel_size = ba.get("profile_kernel_size") or model_args.get(
+            "bias_profile_kernel_size", 45
+        )
+        bias_dropout = (
+            ba.get("dropout")
+            if ba.get("dropout") is not None
+            else model_args.get("bias_dropout", 0.1)
+        )
+        bias_linear_head = (
+            ba.get("linear_head")
+            if ba.get("linear_head") is not None
+            else model_args.get("bias_linear_head", True)
+        )
+        bias_residual = (
+            ba.get("residual")
+            if ba.get("residual") is not None
+            else model_args.get("bias_residual", True)
+        )
 
-        bias_shrinkage = _compute_shrinkage(
-            bias_conv_kernel_size,
-            bias_dilations,
-            bias_dil_kernel_size,
-            bias_profile_kernel_size,
+        bias_shrinkage = BiasNet.compute_shrinkage(
+            conv_kernel_size=bias_conv_kernel_size,
+            n_layers=bias_n_layers,
+            dilations=bias_dilations,
+            dil_kernel_size=bias_dil_kernel_size,
+            profile_kernel_size=bias_profile_kernel_size,
         )
         bias_input_len = output_len + bias_shrinkage
+
+        bias_output_channels = model_args.get("output_channels", ["signal"])
+        if model_args.get("shared_bias", False):
+            bias_output_channels = ["bias"]
 
         model = BiasNet(
             input_len=bias_input_len,
             output_len=output_len,
             output_bin_size=output_bin_size,
             input_channels=model_args["input_channels"],
-            output_channels=model_args["output_channels"],
+            output_channels=bias_output_channels,
             filters=bias_filters,
             n_layers=bias_n_layers,
             dilations=bias_dilations,
