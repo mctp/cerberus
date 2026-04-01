@@ -175,6 +175,34 @@ class BPNet(nn.Module):
             self._apply_final_tower_relu,
         )
 
+    @staticmethod
+    def compute_shrinkage(
+        conv_kernel_size: int = 21,
+        n_dilated_layers: int = 8,
+        dil_kernel_size: int = 3,
+        profile_kernel_size: int = 75,
+    ) -> int:
+        """Compute total shrinkage (in bp) for BPNet's valid-padding conv stack.
+
+        Shrinkage = stem + tower + profile_head, where each valid-padding layer
+        shrinks by ``dilation * (kernel_size - 1)``.  BPNet uses exponential
+        dilations ``2**i`` for ``i`` in ``1..n_dilated_layers``.
+
+        Args:
+            conv_kernel_size: Initial conv kernel size. Default: ``21``.
+            n_dilated_layers: Number of dilated residual layers. Default: ``8``.
+            dil_kernel_size: Dilated conv kernel size. Default: ``3``.
+            profile_kernel_size: Profile head kernel size. Default: ``75``.
+
+        Returns:
+            Total input-to-output shrinkage in bp.
+        """
+        stem = conv_kernel_size - 1
+        dilations = [2**i for i in range(1, n_dilated_layers + 1)]
+        tower = sum(d * (dil_kernel_size - 1) for d in dilations)
+        head = profile_kernel_size - 1
+        return stem + tower + head
+
     def _tf_style_reinit(self):
         """Re-initialize weights using Xavier uniform (Glorot) and zero biases.
 
