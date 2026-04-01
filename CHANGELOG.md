@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Simplified Dalmatian constructor** (`dalmatian.py`):
+  Replaced 19 prefixed sub-model parameters (`bias_filters`, `signal_dropout`, etc.)
+  with `bias_args`/`signal_args` forwarding dicts that use native sub-model parameter
+  names (e.g. `bias_args={"filters": 12}`). Shared params (`input_len`, `output_len`,
+  etc.) are injected automatically. Reduces constructor from 22 to 9 parameters.
+- **Removed `zero_init` from Dalmatian** (`dalmatian.py`):
+  The `zero_init` parameter and `_zero_init_signal_outputs()` method have been removed.
+  Experiments showed zero-init is harmful with gradient detach.
+- **Removed `_compute_shrinkage()` module-level function** (`dalmatian.py`):
+  Replaced by `compute_shrinkage()` staticmethods on BiasNet, Pomeranian, and BPNet.
+  Each model now owns its own geometry computation.
+
+### Added
+- **`shared_bias` parameter for Dalmatian** (`dalmatian.py`):
+  When `shared_bias=True`, BiasNet has a single output channel (`["bias"]`) while
+  SignalNet has the full N output channels. Enables multi-task training where Tn5
+  insertion bias is shared across cell types (e.g. scATAC-seq pseudobulk).
+- **`DalmatianLoss` shared bias support** (`loss.py`):
+  When bias has fewer channels than targets, automatically sums targets across channels
+  for L_bias computation (equivalent to ChromBPNet bulk training).
+- **`compute_shrinkage()` staticmethod** on BiasNet, Pomeranian, and BPNet:
+  Computes total valid-padding shrinkage in bp from architectural parameters.
+- **Multi-task Dalmatian training tool** (`tools/train_dalmatian_multitask.py`):
+  Accepts `--targets-json` for multi-task training on multiple BigWig targets.
+  Adds `--shared-bias` flag for shared BiasNet across cell types.
+- **Multi-task example files**: `examples/scatac_kidney_multitask_targets.json` and
+  `examples/scatac_kidney_dalmatian_multitask.sh` for 14-cell-type kidney scATAC-seq.
+
 ### Fixed
 - **Jitter mutation destroyed after first epoch** (`dataset.py`):
   `__getitem__` passed the sampler's stored `Interval` reference directly to

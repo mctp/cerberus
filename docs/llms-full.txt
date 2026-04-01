@@ -2139,10 +2139,11 @@ Their outputs are combined:
 
 ### Key Features
 *   **Gradient separation**: Bias outputs are `.detach()`-ed before combining with signal outputs, so the combined reconstruction loss (L_recon) trains only SignalNet. BiasNet receives gradients exclusively from L_bias (background reconstruction). This replicates ChromBPNet's freeze-bias design without requiring a two-stage training procedure.
-*   **Zero-initialized signal outputs** (`zero_init`, default `False`): When enabled, signal outputs are identity elements (logits=0, log_counts=-10) at initialization, so the combined output equals the bias-only output. **Recommended: leave disabled.** Experiments (exp20) show zero-init is harmful with gradient detach — SignalNet wastes epochs "turning on" from zero output. Without detach it served a purpose (soft two-stage training); with detach it's just a bad initialization.
-*   **Signal presets**: `signal_preset="large"` (f=256, expansion=2, ~3.9M params) or `signal_preset="standard"` (default, f=64, expansion=1, ~150K params — matches standalone Pomeranian K9). Individual `signal_*` args override the preset. Experiments (exp20) show the 24x parameter difference buys <0.01 profile Pearson.
+*   **Signal presets**: `signal_preset="large"` (f=256, expansion=2, ~3.9M params) or `signal_preset="standard"` (default, f=64, expansion=1, ~150K params — matches standalone Pomeranian K9). Individual `signal_args` entries override the preset. Experiments (exp20) show the 24x parameter difference buys <0.01 profile Pearson.
+*   **Sub-model configuration via `bias_args`/`signal_args`**: Forwarding dicts that use native sub-model parameter names (e.g. `bias_args={"filters": 24}` instead of `bias_filters=24`). Shared params (`input_len`, `output_len`, etc.) are injected automatically.
+*   **Shared bias** (`shared_bias=False`): When `True`, BiasNet has a single output channel (`["bias"]`) while SignalNet has N channels. This enables multi-task training where Tn5 bias is sequence-dependent (shared across cell types) but regulatory signal is cell-type-specific.
 *   **Per-channel counts**: Both sub-models use `predict_total_count=False` because ATAC-seq channels represent independent samples (not forward/reverse strands).
-*   **Clean geometry**: SignalNet shrinkage exactly maps `input_len` to `output_len` with no excess cropping. BiasNet receives a center-cropped input sized to its own receptive field needs.
+*   **Clean geometry**: SignalNet shrinkage exactly maps `input_len` to `output_len` with no excess cropping. BiasNet receives a center-cropped input sized to its own receptive field needs. Both sub-models own their geometry via `compute_shrinkage()` staticmethods.
 *   **Input validation**: Rejects configurations where SignalNet shrinkage doesn't produce the exact `output_len`.
 *   **DeepLIFT-compatible bias model**: BiasNet uses only Conv1d + ReLU + residual add, all with well-defined captum propagation rules.
 
@@ -2179,6 +2180,7 @@ No explicit signal suppression term is needed — gradient detach already preven
 ```python
 from cerberus.config import ModelConfig
 
+# Single-task Dalmatian
 model_config = ModelConfig(
     name="Dalmatian",
     model_cls="cerberus.models.dalmatian.Dalmatian",
@@ -2191,9 +2193,31 @@ model_config = ModelConfig(
     metrics_cls="cerberus.models.pomeranian.PomeranianMetricCollection",
     metrics_args={},
     model_args={
-        "input_len": 2112,
-        "output_len": 1024,
-        "output_channels": ["sample1"],
+        "input_channels": ["A", "C", "G", "T"],
+        "output_channels": ["signal"],
+        "signal_preset": "standard",
+        "bias_args": {"filters": 12, "dropout": 0.1},
+        "signal_args": {"dropout": 0.1},
+    },
+)
+
+# Multi-task Dalmatian with shared bias (scATAC-seq)
+model_config_multitask = ModelConfig(
+    name="Dalmatian",
+    model_cls="cerberus.models.dalmatian.Dalmatian",
+    loss_cls="cerberus.loss.DalmatianLoss",
+    loss_args={
+        "base_loss_cls": "cerberus.loss.MSEMultinomialLoss",
+        "base_loss_args": {"count_per_channel": True},
+        "bias_weight": 0.0,  # frozen bias, no L_bias needed
+    },
+    metrics_cls="cerberus.models.pomeranian.PomeranianMetricCollection",
+    metrics_args={},
+    model_args={
+        "input_channels": ["A", "C", "G", "T"],
+        "output_channels": ["cell_type_1", "cell_type_2", "cell_type_3"],
+        "signal_preset": "standard",
+        "shared_bias": True,  # 1-channel BiasNet, N-channel SignalNet
     },
 )
 ```
@@ -2203,12 +2227,20 @@ model_config = ModelConfig(
 from cerberus.models import Dalmatian
 from cerberus.loss import DalmatianLoss
 
-# Default: 2112bp -> 1024bp
+# Single-task: 2112bp -> 1024bp
 model = Dalmatian(
     input_len=2112,
     output_len=1024,
     input_channels=["A", "C", "G", "T"],
-    output_channels=["sample1"],
+    output_channels=["signal"],
+)
+
+# Multi-task with shared bias (e.g. 14 scATAC-seq cell types)
+model_mt = Dalmatian(
+    output_channels=["ct1", "ct2", "ct3"],
+    shared_bias=True,  # 1-channel BiasNet, 3-channel SignalNet
+    bias_args={"filters": 12},
+    signal_args={"dropout": 0.1},
 )
 
 loss = DalmatianLoss(
@@ -2236,6 +2268,30 @@ python tools/train_dalmatian.py \
 
 # Or use the example script
 bash examples/scatac_kidney_dalmatian.sh
+```
+
+### Multi-Task Training
+
+Use `tools/train_dalmatian_multitask.py` for multi-task training on multiple BigWig targets (e.g. scATAC-seq cell-type pseudobulk). Targets are specified via a JSON file:
+
+```json
+{
+  "cell_type_1": {"bigwig": "path/to/ct1.bw", "peaks": "path/to/ct1.bed"},
+  "cell_type_2": {"bigwig": "path/to/ct2.bw", "peaks": "path/to/ct2.bed"}
+}
+```
+
+```bash
+python tools/train_dalmatian_multitask.py \
+    --targets-json targets.json \
+    --peaks merged_peaks.bed \
+    --shared-bias \
+    --pretrained-bias bias_model.pt --freeze-bias \
+    --bias-weight 0.0 \
+    --output-dir models/multitask
+
+# Or use the example script
+bash examples/scatac_kidney_dalmatian_multitask.sh
 ```
 
 ### Pretrained Bias Loading
@@ -6668,6 +6724,7 @@ def create_default_transforms(
 
 ## src/cerberus/dataset.py
 
+import copy
 import logging
 from typing import Any
 
@@ -7026,7 +7083,10 @@ class CerberusDataset(Dataset):
             raise TypeError(
                 "Dataset has no sampler configured. Use get_interval() for specific queries."
             )
-        interval = self.sampler[idx]
+        # Copy so that in-place transforms (Jitter) don't mutate the
+        # sampler's stored interval, which would make jitter a no-op on
+        # subsequent accesses to the same index.
+        interval = copy.copy(self.sampler[idx])
         result = self._get_interval(interval)
         result["interval_source"] = self.sampler.get_interval_source(idx)
         return result
@@ -9507,11 +9567,17 @@ class DalmatianLoss(nn.Module):
         l_bias = torch.tensor(0.0, device=targets.device)
 
         if non_peak.any():
+            bias_logits = outputs.bias_logits[non_peak]
+            bias_log_counts = outputs.bias_log_counts[non_peak]
+            bias_targets = targets[non_peak]
+            # shared_bias: 1-channel bias vs N-channel targets — sum targets
+            # to get the bulk signal that BiasNet should reconstruct.
+            if bias_logits.shape[1] < bias_targets.shape[1]:
+                bias_targets = bias_targets.sum(dim=1, keepdim=True)
             bias_out = ProfileCountOutput(
-                logits=outputs.bias_logits[non_peak],
-                log_counts=outputs.bias_log_counts[non_peak],
+                logits=bias_logits, log_counts=bias_log_counts
             )
-            l_bias = self.base_loss(bias_out, targets[non_peak])
+            l_bias = self.base_loss(bias_out, bias_targets)
 
         return {"recon_loss": l_recon, "bias_loss": l_bias}
 
@@ -9663,6 +9729,13 @@ class CountProfilePearsonCorrCoef(Metric):
         if total_counts.dim() == 1:
             total_counts = total_counts.unsqueeze(1)
 
+        # When log_counts is global (B, 1) but logits has C > 1 channels,
+        # distribute the total count equally across channels so that
+        # sum(preds_counts) = total, not C * total.
+        n_channels = logits.shape[1]
+        if total_counts.shape[1] == 1 and n_channels > 1:
+            total_counts = total_counts / n_channels
+
         preds_counts = probs * total_counts.unsqueeze(-1)  # (B, C, L)
 
         target = target.float()
@@ -9712,6 +9785,13 @@ class CountProfileMeanSquaredError(MeanSquaredError):
         # Handle (Batch,) edge case
         if total_counts.dim() == 1:
             total_counts = total_counts.unsqueeze(1)
+
+        # When log_counts is global (B, 1) but logits has C > 1 channels,
+        # distribute the total count equally across channels so that
+        # sum(preds_counts) = total, not C * total.
+        n_channels = logits.shape[1]
+        if total_counts.shape[1] == 1 and n_channels > 1:
+            total_counts = total_counts / n_channels
 
         # Broadcasting handles (B, 1, 1) * (B, C, L) -> (B, C, L)
         preds_counts = probs * total_counts.unsqueeze(-1)
@@ -11259,14 +11339,19 @@ def _reconstruct_linear_signal(
     """
     if isinstance(output, ProfileCountOutput):
         logits = output.logits.float()  # (C, L)
-        log_counts = output.log_counts.float()  # (C,)
+        log_counts = output.log_counts.float()  # (C,) or (1,) if predict_total_count
         # Numerically stable softmax over the length axis
         logits_shifted = logits - logits.max(dim=-1, keepdim=True).values
         exp_logits = torch.exp(logits_shifted)
         probs = exp_logits / exp_logits.sum(dim=-1, keepdim=True)  # (C, L)
         total_counts = (
             (torch.exp(log_counts) - count_pseudocount).clamp_min(0.0).unsqueeze(-1)
-        )  # (C, 1)
+        )  # (C, 1) or (1, 1)
+        # When log_counts is global (1,) but logits has C > 1 channels,
+        # distribute the total count equally across channels.
+        n_channels = logits.shape[0]
+        if total_counts.shape[0] == 1 and n_channels > 1:
+            total_counts = total_counts / n_channels
         return probs * total_counts
     elif isinstance(output, ProfileLogRates):
         return torch.exp(output.log_rates.float())
@@ -11357,7 +11442,10 @@ def _process_island(
     track_data = accumulator / counts
 
     # Undo training transforms (Scale then Bin) to recover per-bp signal.
-    # Training: raw * target_scale → binned. Inverse: / target_scale / bin_size.
+    # Training: raw * target_scale → sum-binned. Inverse: / target_scale / bin_size.
+    # NOTE: This inversion assumes sum pooling (create_default_transforms enforces
+    # method="sum"). To support avg or max pooling, make this conditional:
+    # sum → divide by bin_size; avg/max → no division (already per-bp scale).
     track_data = track_data / target_scale / output_bin_size
 
     # Select first channel for BigWig output
@@ -12106,6 +12194,34 @@ class BPNet(nn.Module):
             self._apply_final_tower_relu,
         )
 
+    @staticmethod
+    def compute_shrinkage(
+        conv_kernel_size: int = 21,
+        n_dilated_layers: int = 8,
+        dil_kernel_size: int = 3,
+        profile_kernel_size: int = 75,
+    ) -> int:
+        """Compute total shrinkage (in bp) for BPNet's valid-padding conv stack.
+
+        Shrinkage = stem + tower + profile_head, where each valid-padding layer
+        shrinks by ``dilation * (kernel_size - 1)``.  BPNet uses exponential
+        dilations ``2**i`` for ``i`` in ``1..n_dilated_layers``.
+
+        Args:
+            conv_kernel_size: Initial conv kernel size. Default: ``21``.
+            n_dilated_layers: Number of dilated residual layers. Default: ``8``.
+            dil_kernel_size: Dilated conv kernel size. Default: ``3``.
+            profile_kernel_size: Profile head kernel size. Default: ``75``.
+
+        Returns:
+            Total input-to-output shrinkage in bp.
+        """
+        stem = conv_kernel_size - 1
+        dilations = [2**i for i in range(1, n_dilated_layers + 1)]
+        tower = sum(d * (dil_kernel_size - 1) for d in dilations)
+        head = profile_kernel_size - 1
+        return stem + tower + head
+
     def _tf_style_reinit(self):
         """Re-initialize weights using Xavier uniform (Glorot) and zero biases.
 
@@ -12538,6 +12654,42 @@ class Pomeranian(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, num_count_outputs),
         )
+
+    @staticmethod
+    def compute_shrinkage(
+        conv_kernel_size: int | list[int] = [11, 11],  # noqa: B006
+        n_dilated_layers: int = 8,
+        dilations: list[int] | None = None,
+        dil_kernel_size: int | list[int] = 9,
+        profile_kernel_size: int = 45,
+    ) -> int:
+        """Compute total shrinkage (in bp) for Pomeranian's valid-padding conv stack.
+
+        Shrinkage = stem + tower + profile_head, where each valid-padding layer
+        shrinks by ``dilation * (kernel_size - 1)``.
+
+        Args:
+            conv_kernel_size: Stem kernel size(s). Default: ``(11, 11)``.
+            n_dilated_layers: Number of dilated PGC layers. Default: ``8``.
+            dilations: Dilation schedule. Default: ``[1, 1, 2, 4, 8, 16, 32, 64]``.
+            dil_kernel_size: Tower conv kernel size(s). Default: ``9``.
+            profile_kernel_size: Profile head kernel size. Default: ``45``.
+
+        Returns:
+            Total input-to-output shrinkage in bp.
+        """
+        if dilations is None:
+            dilations = [1, 1, 2, 4, 8, 16, 32, 64]
+        if isinstance(conv_kernel_size, int):
+            stem = conv_kernel_size - 1
+        else:
+            stem = sum(k - 1 for k in conv_kernel_size)
+        if isinstance(dil_kernel_size, int):
+            tower = sum(d * (dil_kernel_size - 1) for d in dilations)
+        else:
+            tower = sum(d * (k - 1) for d, k in zip(dilations, dil_kernel_size, strict=True))
+        head = profile_kernel_size - 1
+        return stem + tower + head
 
     def forward(self, x) -> ProfileCountOutput:
         # Center-crop or reject input based on expected input_len

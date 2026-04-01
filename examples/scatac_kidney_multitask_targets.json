@@ -1,0 +1,58 @@
+{
+  "connective tissue cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/connective tissue cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/connective tissue cell.narrowPeak.bed.gz"
+  },
+  "epithelial cell of proximal tubule": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/epithelial cell of proximal tubule.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/epithelial cell of proximal tubule.narrowPeak.bed.gz"
+  },
+  "kidney capillary endothelial cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/kidney capillary endothelial cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/kidney capillary endothelial cell.narrowPeak.bed.gz"
+  },
+  "kidney connecting tubule epithelial cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/kidney connecting tubule epithelial cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/kidney connecting tubule epithelial cell.narrowPeak.bed.gz"
+  },
+  "kidney distal convoluted tubule epithelial cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/kidney distal convoluted tubule epithelial cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/kidney distal convoluted tubule epithelial cell.narrowPeak.bed.gz"
+  },
+  "kidney loop of Henle thick ascending limb epithelial cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/kidney loop of Henle thick ascending limb epithelial cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/kidney loop of Henle thick ascending limb epithelial cell.narrowPeak.bed.gz"
+  },
+  "kidney proximal convoluted tubule epithelial cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/kidney proximal convoluted tubule epithelial cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/kidney proximal convoluted tubule epithelial cell.narrowPeak.bed.gz"
+  },
+  "kidney proximal straight tubule epithelial cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/kidney proximal straight tubule epithelial cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/kidney proximal straight tubule epithelial cell.narrowPeak.bed.gz"
+  },
+  "leukocyte": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/leukocyte.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/leukocyte.narrowPeak.bed.gz"
+  },
+  "parietal epithelial cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/parietal epithelial cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/parietal epithelial cell.narrowPeak.bed.gz"
+  },
+  "podocyte": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/podocyte.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/podocyte.narrowPeak.bed.gz"
+  },
+  "renal alpha-intercalated cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/renal alpha-intercalated cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/renal alpha-intercalated cell.narrowPeak.bed.gz"
+  },
+  "renal beta-intercalated cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/renal beta-intercalated cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/renal beta-intercalated cell.narrowPeak.bed.gz"
+  },
+  "renal principal cell": {
+    "bigwig": "tests/data/scatac_kidney_pseudobulk/renal principal cell.bw",
+    "peaks": "tests/data/scatac_kidney_pseudobulk/renal principal cell.narrowPeak.bed.gz"
+  }
+}
