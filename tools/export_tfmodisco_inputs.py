@@ -5,8 +5,9 @@ This script:
 1. Loads a trained Cerberus model (prefer ``model.pt``, fallback ``.ckpt``).
 2. Builds a datamodule from the training ``hparams.yaml``. 
 3. Collects one-hot DNA inputs (``ohe.npz``) and sequence attributions
-   (``shap.npz``) using a Captum method compatible with Pomeranian
-   (default: Integrated Gradients).
+   (``shap.npz``) using either Captum Integrated Gradients (default) or
+   mutation-based in-silico mutagenesis (ISM), with optional off-simplex
+   gradient correction for Integrated Gradients attributions.
 4. Runs ``modisco motifs`` end-to-end, and optionally ``modisco report``.
 
 Notes
@@ -289,9 +290,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--attribution-method",
-        choices=["integrated_gradients"],
+        choices=["integrated_gradients", "ism"],
         default="integrated_gradients",
-        help="Attribution method compatible with Pomeranian.",
+        help=(
+            "Attribution method. 'integrated_gradients' uses Captum; "
+            "'ism' computes mutation deltas via forward passes."
+        ),
     )
     parser.add_argument(
         "--ig-steps",
@@ -304,6 +308,35 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Optional internal batch size for Integrated Gradients.",
+    )
+    parser.add_argument(
+        "--ism-start",
+        type=int,
+        default=None,
+        help=(
+            "Inclusive input-base start index for ISM mutations. "
+            "Default: 0 (full-length ISM)."
+        ),
+    )
+    parser.add_argument(
+        "--ism-end",
+        type=int,
+        default=None,
+        help=(
+            "Exclusive input-base end index for ISM mutations. "
+            "Default: input length (full-length ISM)."
+        ),
+    )
+    parser.add_argument(
+        "--off-simplex-gradient-correction",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Apply off-simplex correction to Integrated Gradients attributions: "
+            "subtract, at each input position, the mean attribution across "
+            "nucleotides (for arrays shaped (N, 4, L): "
+            "attrs -= attrs.mean(axis=1, keepdims=True)). Ignored for ISM."
+        ),
     )
 
     parser.add_argument(
@@ -463,13 +496,81 @@ def _select_loader(datamodule: CerberusDataModule, split: str):
     raise ValueError(f"Unsupported split: {split}")
 
 
+def _resolve_ism_span(
+    seq_len: int, start: int | None, end: int | None
+) -> tuple[int, int]:
+    span_start = 0 if start is None else start
+    span_end = seq_len if end is None else end
+    if not (0 <= span_start < span_end <= seq_len):
+        raise ValueError(
+            f"Invalid ISM span [{span_start}, {span_end}) for input length {seq_len}."
+        )
+    return span_start, span_end
+
+
+def _compute_ism_attributions(
+    target_model: torch.nn.Module,
+    inputs: torch.Tensor,
+    ism_start: int | None,
+    ism_end: int | None,
+) -> torch.Tensor:
+    """Compute single-position ISM deltas as (B, 4, L) attribution scores."""
+    if inputs.shape[1] < 4:
+        raise ValueError(
+            f"ISM requires >=4 DNA channels in inputs, got shape {tuple(inputs.shape)}"
+        )
+
+    batch_size = inputs.shape[0]
+    seq_len = inputs.shape[-1]
+    span_start, span_end = _resolve_ism_span(seq_len, ism_start, ism_end)
+
+    attrs = torch.zeros(
+        (batch_size, 4, seq_len), device=inputs.device, dtype=inputs.dtype
+    )
+    rows = torch.arange(batch_size * 4, device=inputs.device)
+    nuc_idx = torch.arange(4, device=inputs.device).repeat(batch_size)
+    sample_idx = torch.arange(batch_size, device=inputs.device)
+
+    with torch.no_grad():
+        ref_pred = target_model(inputs).reshape(batch_size)
+        for pos in range(span_start, span_end):
+            mutants = inputs.repeat_interleave(4, dim=0)
+            mutants[:, :4, pos] = 0.0
+            mutants[rows, nuc_idx, pos] = 1.0
+
+            mut_pred = target_model(mutants).reshape(batch_size, 4)
+            attrs[:, :, pos] = mut_pred - ref_pred[:, None]
+
+            # For TF-MoDISco compatibility with one_hot * hypothetical_contribs,
+            # fill the observed nucleotide channel with negative of the per-position mean
+            # hypothetical contribution instead of forcing it to zero.
+            ref_base = inputs[:, :4, pos].argmax(dim=1)
+            mean_at_pos = attrs[:, :, pos].mean(dim=1)
+            attrs[sample_idx, ref_base, pos] = -mean_at_pos
+
+    return attrs
+
+
+def _apply_off_simplex_gradient_correction(attrs: np.ndarray) -> np.ndarray:
+    """Subtract per-position mean attribution across nucleotide channels."""
+    if attrs.ndim != 3:
+        raise ValueError(
+            f"Expected 3D attribution array (N, 4, L), got shape {attrs.shape}"
+        )
+    return attrs - attrs.mean(axis=1, keepdims=True)
+
+
 def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
-    try:
-        from captum.attr import IntegratedGradients
-    except ImportError as exc:  # pragma: no cover - import guard
-        raise RuntimeError(
-            "captum is required. Install with: pip install captum"
-        ) from exc
+    IntegratedGradients = None
+    if args.attribution_method == "integrated_gradients":
+        try:
+            from captum.attr import IntegratedGradients as _IntegratedGradients
+        except ImportError as exc:  # pragma: no cover - import guard
+            raise RuntimeError(
+                "captum is required for integrated_gradients. "
+                "Install with: pip install captum"
+            ) from exc
+        IntegratedGradients = _IntegratedGradients
 
     fold_dir = _resolve_fold_dir(args.checkpoint_dir.resolve(), args.fold)
     try:
@@ -536,15 +637,34 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     if include_sources is not None:
         logger.info("Filtering interval_source in: %s", sorted(include_sources))
 
-    if args.attribution_method != "integrated_gradients":
+    attribution = None
+    if args.attribution_method == "integrated_gradients":
+        assert IntegratedGradients is not None
+        attribution = IntegratedGradients(target_model)
+    elif args.attribution_method != "ism":
         raise ValueError(f"Unsupported attribution method: {args.attribution_method}")
-    attribution = IntegratedGradients(target_model)
 
     ohe_batches: list[np.ndarray] = []
     attr_batches: list[np.ndarray] = []
     exported = 0
+    logged_ism_span = False
 
     logger.info("Beginning export: target %d examples", args.n_examples)
+    apply_off_simplex_correction = (
+        args.off_simplex_gradient_correction
+        and args.attribution_method == "integrated_gradients"
+    )
+    if apply_off_simplex_correction:
+        logger.info(
+            "Enabled off-simplex gradient correction (subtract mean across "
+            "nucleotide channels at each position)."
+        )
+    elif args.off_simplex_gradient_correction:
+        logger.info(
+            "Off-simplex gradient correction requested, but attribution method "
+            "is '%s'; skipping correction.",
+            args.attribution_method,
+        )
 
     for batch_idx, batch in enumerate(loader):
         inputs = batch["inputs"].float()
@@ -570,18 +690,44 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
         inputs = inputs.to(device)
 
-        baseline = torch.zeros((1, inputs.shape[1], inputs.shape[2]), device=device)
-
-        attributions = attribution.attribute(
-            inputs,
-            baselines=baseline,
-            n_steps=args.ig_steps,
-            internal_batch_size=args.ig_internal_batch_size,
-        )
+        if args.attribution_method == "integrated_gradients":
+            assert attribution is not None
+            baseline = torch.zeros((1, inputs.shape[1], inputs.shape[2]), device=device)
+            attributions = attribution.attribute(
+                inputs,
+                baselines=baseline,
+                n_steps=args.ig_steps,
+                internal_batch_size=args.ig_internal_batch_size,
+            )
+        else:
+            if not logged_ism_span:
+                span_start, span_end = _resolve_ism_span(
+                    inputs.shape[-1], args.ism_start, args.ism_end
+                )
+                span_len = span_end - span_start
+                logger.info(
+                    "ISM span [%d, %d) over input length %d (%d positions); "
+                    "per batch this runs %d forward passes (%d mutants/position).",
+                    span_start,
+                    span_end,
+                    inputs.shape[-1],
+                    span_len,
+                    span_len + 1,
+                    inputs.shape[0] * 4,
+                )
+                logged_ism_span = True
+            attributions = _compute_ism_attributions(
+                target_model=target_model,
+                inputs=inputs,
+                ism_start=args.ism_start,
+                ism_end=args.ism_end,
+            )
 
         # TF-MoDISco sequences and attribution files should both be (N, 4, L).
         ohe = inputs[:, :4, :].detach().cpu().numpy().astype(np.float32)
         attrs = attributions[:, :4, :].detach().cpu().numpy().astype(np.float32)
+        if apply_off_simplex_correction:
+            attrs = _apply_off_simplex_gradient_correction(attrs)
 
         ohe_batches.append(ohe)
         attr_batches.append(attrs)

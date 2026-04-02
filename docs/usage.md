@@ -453,7 +453,9 @@ What the script does:
 Prerequisites:
 
 ```bash
-pip install captum modisco
+pip install modisco
+# Optional (only for --attribution-method integrated_gradients):
+pip install captum
 ```
 
 Basic end-to-end run:
@@ -476,6 +478,19 @@ python tools/export_tfmodisco_inputs.py \
     --checkpoint-dir models/my_pomeranian/single-fold \
     --fold 0 \
     --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --no-run-modisco
+```
+
+Use ISM attributions instead of Integrated Gradients:
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --attribution-method ism \
+    --ism-start 800 \
+    --ism-end 1200 \
     --no-run-modisco
 ```
 
@@ -524,7 +539,9 @@ Notes:
 
 1. Use the same `--seed` as training for comparable sampler behavior (`tools/train_*.py` defaults to `42`).
 2. For `peak` samplers, the script defaults to positive intervals only (`IntervalSampler` source).
-3. Attributions use Integrated Gradients (`captum.attr.IntegratedGradients`), which is compatible with Pomeranian.
+3. Attribution method is configurable via `--attribution-method`:
+   - `integrated_gradients` (default, requires `captum`)
+   - `ism` (forward-pass mutation deltas; can be expensive over full input length)
 4. `modisco motifs` expects NPZ key `arr_0`; this script writes NPZ in that format.
 
 ## Next Steps
