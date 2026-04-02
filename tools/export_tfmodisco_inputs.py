@@ -254,6 +254,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Dataset split to draw intervals from.",
     )
     parser.add_argument(
+        "--intervals-path",
+        type=Path,
+        default=None,
+        help=(
+            "Optional peak/interval BED(narrowPeak) path override. "
+            "Replaces sampler_config.sampler_args['intervals_path'] from hparams.yaml, "
+            "allowing TF-MoDISco exports on custom interval sets (e.g. shared/unique peaks)."
+        ),
+    )
+    parser.add_argument(
         "--n-examples",
         type=int,
         default=2000,
@@ -584,6 +594,26 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     cfg = parse_hparams_config(hparams_path)
     if not cfg.data_config.use_sequence:
         raise ValueError("data_config.use_sequence is False; sequence attributions unavailable.")
+
+    if args.intervals_path is not None:
+        intervals_path = args.intervals_path.resolve()
+        if not intervals_path.exists():
+            raise FileNotFoundError(f"--intervals-path not found: {intervals_path}")
+        sampler_args = dict(cfg.sampler_config.sampler_args)
+        if "intervals_path" not in sampler_args:
+            raise ValueError(
+                "--intervals-path override is not supported for this sampler config: "
+                "sampler_args does not define 'intervals_path'."
+            )
+        sampler_args["intervals_path"] = intervals_path
+        cfg = cfg.model_copy(
+            update={
+                "sampler_config": cfg.sampler_config.model_copy(
+                    update={"sampler_args": sampler_args}
+                )
+            }
+        )
+        logger.info("Overriding sampler intervals_path with: %s", intervals_path)
 
     device = _resolve_device(args.device)
     logger.info("Using device: %s", device)
