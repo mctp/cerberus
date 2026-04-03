@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Adds `--shared-bias` flag for shared BiasNet across cell types.
 - **Multi-task example files**: `examples/scatac_kidney_multitask_targets.json` and
   `examples/scatac_kidney_dalmatian_multitask.sh` for 14-cell-type kidney scATAC-seq.
+- **Internal analysis: BPNet vs Pomeranian performance–interpretability tradeoff**
+  (`docs/internal/interpretability_performance_tradeoff.md`): Documents why
+  Pomeranian's higher predictive accuracy produces worse TF-MoDISco motifs,
+  traces the cause to multiplicative gating, GRN, and non-linear profile head,
+  and proposes concrete remediation strategies for both architectures.
 
 ### Fixed
 - **Jitter mutation destroyed after first epoch** (`dataset.py`):
