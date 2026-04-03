@@ -238,7 +238,60 @@ This handles non-linearities more faithfully than DeepLIFT (no rule-based decomp
 
 The noisiest option for Pomeranian. Raw gradients through multiplicative gates and normalization layers produce high-variance attribution maps. Not recommended for TF-MoDISco with either architecture.
 
-## 4.4 Summary
+## 4.4 TPCAV: Concept-Based Attribution as an Alternative to TF-MoDISco
+
+A recent method — **TPCAV** (Testing with PCA-projected Concept Activation Vectors; Yang & Mahony, 2025) — sidesteps the entire TF-MoDISco pipeline and its associated bottlenecks. Rather than decomposing the input-output function into per-base scores and clustering them, TPCAV asks a different question: **is a known biological concept linearly separable in the model's internal embedding space?**
+
+### How TPCAV Works
+
+1. **Concept construction:** For a concept of interest (e.g., the GATA motif), generate positive examples by inserting motif instances (sampled from the PWM) into random genomic sequences. Negative examples are unmodified random sequences.
+2. **PCA decorrelation:** Extract hidden-layer activations for both sets. Apply PCA to decorrelate the embedding features — this is critical because models with dropout or redundant encoding (like Pomeranian) spread concept information across many correlated channels.
+3. **Linear classifier:** Train a linear SVM in the decorrelated space to distinguish concept-present from concept-absent. The normal vector to the decision hyperplane is the **Concept Activation Vector (CAV)** — the direction in embedding space that encodes the concept.
+4. **Scoring:** The TPCAV score for each concept is derived from the projection of DeepLIFT layer attributions onto the CAV direction, with sign determined by the classifier boundary.
+
+### Why TPCAV Bypasses the Pomeranian Bottlenecks
+
+The two problems we identified for Pomeranian + TF-MoDISco were:
+
+1. **DeepLIFT cross-term error at multiplicative gates** — TPCAV uses Layer DeepLIFT (attribution computed at a chosen hidden layer, not backpropagated to the input). The attribution only needs to pass through the layers *above* the probed layer (typically just the head). If the probed layer is the final tower output, the multiplicative PGC blocks are upstream and don't affect the attribution computation.
+
+2. **Context-dependent attributions fragmenting during clustering** — TPCAV does not cluster seqlets. It operates globally: one linear classifier per concept, evaluated across many sequences. If the same GATA motif produces different activation patterns in different contexts, the PCA decorrelation + linear classifier can still find the shared concept direction as long as it is linearly separable — a much weaker requirement than "seqlets must look identical."
+
+The PCA step is particularly well-suited to Pomeranian's dropout-induced distributed encoding. If motif signal is spread across 20 correlated channels (because dropout prevented concentration), PCA recovers the principal direction that captures the shared variance — exactly the concept direction.
+
+### What TPCAV Can and Cannot Do
+
+**Strengths relative to TF-MoDISco:**
+
+- **Architecture-agnostic.** Works on CNNs, transformers, foundation models (DNABERT-2, HyenaDNA), multimodal models (sequence + chromatin). The paper demonstrates successful concept recovery on an Enformer-inspired architecture with attention, BatchNorm, and skip connections — all components we flagged as hostile to TF-MoDISco.
+- **Input-format agnostic.** Works with tokenized DNA (k-mer encodings) where TF-MoDISco cannot operate at all (it requires one-hot input).
+- **Handles redundant/correlated features.** The PCA decorrelation step is designed for exactly the scenario that Pomeranian creates.
+- **Global scoring.** Produces a single aggregated score per concept, avoiding the ambiguity where TF-MoDISco can assign the same motif to both positive and negative pattern clusters.
+- **Concept-specific attribution maps.** By projecting activations onto the CAV column space (via QR decomposition) and zeroing the orthogonal component during DeepLIFT, TPCAV can produce per-base attribution maps for a specific concept. This recovers spatial resolution for known motifs even in distributed representations.
+
+**Limitations relative to TF-MoDISco:**
+
+- **Concept-driven, not discovery-driven.** You must define what concepts to test. TPCAV can confirm "does Pomeranian use GATA?" but it cannot discover novel, unanticipated motifs the way TF-MoDISco can. For exploratory analysis on a new system, TF-MoDISco remains essential.
+- **Requires a concept database.** The paper uses the Vierstra non-redundant human motif clustering database, plus repeat and chromatin accessibility concepts. Coverage depends on the completeness of the database.
+- **Linear separability assumption.** If a concept is encoded in a genuinely non-linear manifold in embedding space (not just correlated linear features), the linear SVM will miss it. This is unlikely for well-defined motifs but possible for complex combinatorial concepts.
+
+### Implications for the BPNet/Pomeranian Comparison
+
+TPCAV suggests a **third path** beyond the two remediation strategies in Part V:
+
+- Path 1: Improve BPNet's performance while keeping it interpretable via TF-MoDISco (Section 5.1).
+- Path 2: Make Pomeranian more TF-MoDISco-compatible by linearizing the head and removing GRN (Section 5.2).
+- **Path 3: Keep Pomeranian's full architecture and use TPCAV for concept-level interpretation.**
+
+Path 3 preserves Pomeranian's performance and training robustness entirely — no architectural compromises. The tradeoff is shifting from discovery-driven motif finding (TF-MoDISco) to hypothesis-driven concept testing (TPCAV). In practice, a combined workflow is likely optimal:
+
+1. Use **BPNet + TF-MoDISco** for initial motif discovery (what motifs matter?).
+2. Use **Pomeranian + TPCAV** for concept validation and quantification (how much does each known motif contribute? which peaks use which motifs? are there task-specific differences?).
+3. Use **Pomeranian + concept-specific attribution maps** for spatial visualization of known motifs in individual sequences.
+
+This workflow leverages each model's strength: BPNet's additive structure for discovery, Pomeranian's superior prediction for quantitative concept analysis.
+
+## 4.5 Summary
 
 | Method | BPNet quality | Pomeranian quality | Bottleneck for Pomeranian |
 |---|---|---|---|
@@ -247,8 +300,9 @@ The noisiest option for Pomeranian. Raw gradients through multiplicative gates a
 | ISM → TF-MoDISco | Good | Moderate | Clustering (context-variability) |
 | Integrated Gradients → TF-MoDISco | Good | Moderate | Clustering (context-variability) |
 | Gradient × Input | Fair | Poor | Gradient variance + clustering |
+| TPCAV (concept-level) | Good | Good (expected) | Requires predefined concepts; not discovery-driven |
 
-The pattern is clear: **per-instance** attribution methods work fine on Pomeranian; the problem is **aggregation across instances** via clustering.
+The pattern is clear: **per-instance** attribution methods work fine on Pomeranian; the problem is **aggregation across instances** via clustering. TPCAV avoids clustering entirely by operating at the concept level in embedding space, making it the most promising existing method for interpreting Pomeranian-class architectures with known biological concepts.
 
 ---
 
@@ -421,6 +475,8 @@ To separate *attribution-method incompatibility* from *genuinely distributed rep
 | Per-sequence ISM heatmaps | Can Pomeranian's motifs be seen per-instance? | Visual inspection of top-scoring loci. |
 | Pomeranian with linear head → DeepSHAP → TF-MoDISco | How much does the non-linear head contribute? | Retrain, then run standard interpretation pipeline. |
 | Pomeranian without GRN → DeepSHAP → TF-MoDISco | How much does GRN contribute? | Retrain with `grn=False` in stem blocks. |
+| TPCAV on both models (same concept set) | Does Pomeranian encode known motifs as well as BPNet? | If TPCAV concept scores are comparable, the gap is in the TF-MoDISco pipeline, not the representation. |
+| TPCAV concept-specific attribution maps on Pomeranian | Can known motifs be spatially resolved in Pomeranian? | Extract per-base maps for top concepts; compare sharpness to BPNet TF-MoDISco CWMs. |
 
 ## 6.2 Remediation Experiments
 
@@ -450,3 +506,178 @@ Instead of relying solely on TF-MoDISco clustering, test interpretability via **
 4. **Both models can be improved.** BPNet can adopt training improvements (weight norm, GELU, wider stems) without touching its interpretability. Pomeranian can swap to a linear head and remove GRN to reduce attribution instability while retaining its gated tower.
 
 5. **The cleanest experiment is the linear-head ablation.** A Pomeranian with a linear profile head directly tests how much of the interpretability gap comes from the head (fixable) vs. the tower (fundamental to the architecture's advantage).
+
+6. **Concept-based methods bypass the bottleneck entirely.** TPCAV (Yang & Mahony, 2025) operates in embedding space rather than input space, using PCA decorrelation to handle the distributed representations that Pomeranian creates. It is architecture-agnostic and does not require seqlet clustering. The tradeoff is that it is concept-driven (you must specify what to look for) rather than discovery-driven (TF-MoDISco finds novel motifs). A practical workflow combines BPNet + TF-MoDISco for discovery with Pomeranian + TPCAV for quantitative concept validation.
+
+---
+
+# Part VIII: Design Principles for Interpretability-Friendly Architectures
+
+The preceding analysis focuses on BPNet and Pomeranian specifically. This section generalizes: what architectural properties make a model maximally compatible with TF-MoDISco and gradient-based attribution methods?
+
+## 8.1 What TF-MoDISco Requires from the Model
+
+TF-MoDISco's pipeline — extract seqlets, align, cluster into CWMs — implicitly assumes the model's input-output relationship is approximately decomposable as:
+
+$$f(x) \approx \sum_{i} g_i(\text{motif}_i, \text{position}_i) + \text{baseline}$$
+
+an **additive function of local motif contributions**. When this holds, the attribution for motif $M$ at position $t$ is approximately $g_M$ regardless of what else is in the sequence. Seqlets are stable across instances, clustering works.
+
+This is satisfied when four properties hold simultaneously:
+
+1. **Local features** — each intermediate representation depends on a bounded input window.
+2. **Additive combination** — features combine by summation, not multiplication.
+3. **Linear readout** — the output is a linear function of the final feature map.
+4. **Concentrated encoding** — predictive signal for a motif lives in few channels, not distributed across many.
+
+## 8.2 The Maximally Interpretable Architecture Template
+
+Working backward from these requirements:
+
+```
+one-hot → [Wide Linear Conv] → ReLU → [Additive Residual Tower] → [Linear Conv] → output
+                                        (no norm, no gating,
+                                         no dropout, no attention)
+```
+
+Each component choice is driven by the four properties above.
+
+### Activations: Piecewise-Linear Only
+
+ReLU and LeakyReLU are ideal. Within each linear region, the entire network is a linear function of the input, and DeepLIFT's propagation rules are exact (no approximation error at all). GELU is acceptable — it is smooth and monotonic, so the rescale rule works reasonably well. The critical constraint is: avoid any activation that creates **interactions between different features** (gating, softmax, sigmoid applied to cross-channel combinations).
+
+### Residual Connections: Strictly Additive
+
+$x + f(x)$ is clean. The contribution of layer $\ell$ adds independently to all subsequent layers. DeepLIFT decomposes this trivially. The pre-activation variant $x + \text{Conv}(\text{ReLU}(x))$ is equally clean — same operations, different order.
+
+### No Normalization in the Body
+
+BatchNorm, LayerNorm, RMSNorm, and GRN all create dependencies between features or positions. The Jacobian $\partial y_i / \partial x_j$ becomes non-zero for $i \neq j$, meaning the attribution of position $i$ depends on what is happening at position $j$. This is the mechanism that makes the same motif produce different attributions in different contexts.
+
+If normalization is needed for training stability, **weight normalization** is the safe choice — it is a reparameterization of the weight matrix ($W = g \cdot \hat{v} / \|\hat{v}\|$), not a runtime operation on activations. At inference it folds into a standard linear layer. BPNet already supports this:
+
+```python
+# bpnet.py:159-163
+if weight_norm:
+    _apply_weight_norm(self.iconv)
+    for block in self.res_layers:
+        if isinstance(block, DilatedResidualBlock):
+            _apply_weight_norm(block.conv)
+```
+
+### Linear Profile Head
+
+The single most impactful property for TF-MoDISco quality. If the output is:
+
+$$z_t = \sum_{c,\tau} W_{c,\tau} \, h_c(t+\tau)$$
+
+then the attribution at each position is a direct linear projection of the tower features. There is a clean, interpretable mapping: "this channel detects this pattern, and contributes this much to the output at this position." A non-linear head (Conv → GELU → Conv) breaks this — the same tower feature can contribute differently to the output depending on the activation of other features at the same position.
+
+### No Dropout
+
+As discussed in Section 2.2, dropout does not break attribution methods at inference, but it shapes the representation during training toward distributed, redundant encodings. Without dropout, the model is free to develop sharp, specialized motif detectors — individual channels that fire strongly for specific patterns. Weight decay alone provides sufficient regularization for this architecture class.
+
+### Dense (Not Depthwise) Convolutions
+
+Dense `Conv1d` layers where each filter sees all input channels can learn complete motif detectors in a single filter. Depthwise-separable convolutions force the model to factor pattern detection into per-channel spatial operations + cross-channel mixing, distributing the motif representation across the factorization. Dense convolutions are more parameter-expensive per layer but produce more concentrated features.
+
+## 8.3 Extensions Beyond BPNet
+
+BPNet already satisfies most of the above. To push interpretability *further* while staying within the additive/linear framework:
+
+### 8.3.1 Sparse Activations
+
+If only a few channels are active at each position (most are zero), attributions become even more concentrated. Options:
+
+- **Top-k activation**: After ReLU, keep only the top-k channels per position, zero the rest. Forces the model to encode each motif in a small number of specialist channels.
+- **Grouped sparsity**: Partition channels into groups, enforce that only one group is active per position (like a mixture-of-experts over local patterns). Each group becomes an interpretable "motif slot."
+
+Both stay within the piecewise-linear, additive framework. They don't introduce multiplicative interactions — they just increase the sparsity of the ReLU activation pattern.
+
+### 8.3.2 Explicit Motif-Like First Layer
+
+Instead of learning the initial convolution freely, use a wide first-layer convolution (k=19 to k=25) with **no subsequent non-linearity before the residual tower**. This forces the first layer to act as a bank of linear motif scanners — essentially learned PWMs. The rest of the network combines their outputs additively. Attributions through this layer are trivially interpretable: each first-layer filter's contribution is a linear function of the input one-hot encoding.
+
+BPNet already approximates this (initial Conv → ReLU → tower), but making the first layer wider and keeping it strictly linear (moving the ReLU to after the first residual block) sharpens the motif-detector interpretation:
+
+```python
+# Hypothetical: explicit linear motif bank
+self.motif_bank = nn.Conv1d(4, filters, kernel_size=25, padding="valid")
+# No activation here — first layer is a pure linear scanner
+# ReLU applied inside the first residual block instead
+```
+
+### 8.3.3 Linear Bottleneck Before the Head
+
+A 1×1 convolution that reduces channels (e.g., 64 → 16) before the linear profile head forces the model to compress its representation into fewer dimensions. Fewer active features = sparser attributions = cleaner clustering. The compression must be linear (no activation between the bottleneck and the spatial head) to preserve the linear readout property:
+
+```python
+# Bottleneck before profile head — both layers linear
+self.bottleneck = nn.Conv1d(filters, 16, kernel_size=1)     # compress
+self.profile_conv = nn.Conv1d(16, n_output_channels,
+                              kernel_size=profile_kernel_size, padding="valid")
+# forward:
+profile_logits = self.profile_conv(self.bottleneck(x))       # linear chain
+```
+
+This is equivalent to a single lower-rank convolution, but by making the bottleneck dimension explicit, it provides a tunable knob for the sparsity/capacity tradeoff.
+
+### 8.3.4 Dense Skip Connections
+
+Force the model to be explicitly additive over layer contributions. Instead of only the last layer feeding the head, sum all layers' outputs with learned scalar weights:
+
+$$z = W_{\text{head}} * \left( \sum_{\ell=0}^{L} \alpha_\ell \, h^{(\ell)} \right)$$
+
+This is DenseNet-style aggregation where all layers contribute directly to the output. Each layer can be interpreted independently, and attributions decompose cleanly across layers. The scalar weights $\alpha_\ell$ are interpretable too — they indicate which resolution scale matters most for the task.
+
+```python
+# Dense skip connections — all layers contribute to head
+alphas = nn.Parameter(torch.ones(n_dilated_layers + 1))    # learnable weights
+
+# forward:
+features = [x]                   # x after initial conv
+for layer in self.res_layers:
+    x = layer(x)
+    features.append(center_crop_to_match(x, features))
+
+# Weighted sum (all cropped to same length)
+combined = sum(a * f for a, f in zip(F.softmax(alphas, dim=0), features))
+profile_logits = self.profile_conv(combined)
+```
+
+## 8.4 Architectures That Resist Interpretability
+
+For contrast, these architectural patterns are maximally hostile to TF-MoDISco:
+
+### Self-Attention (Enformer, Borzoi)
+
+- **Multiplicative**: Attention weights are $\text{softmax}(QK^T/\sqrt{d})$, creating the same cross-term problem as gating.
+- **Global**: Every position attends to every other position, making attributions maximally context-dependent.
+- **Dynamic**: The effective "kernel" changes per input, so the same motif gets different attributions in different sequences.
+
+In practice, attention-based genomics models (Enformer, Borzoi) are interpreted via ISM or contribution scores computed on the full attention graph, and TF-MoDISco results are noticeably noisier than for BPNet-class models.
+
+Note: **additive attention** (Bahdanau-style: $a_{ij} = v^T \tanh(W_q q_i + W_k k_j)$) is somewhat better — the query and key contributions are additive before the tanh, reducing (but not eliminating) cross-term issues.
+
+### Gated Architectures (Mamba, Hyena, Pomeranian)
+
+The $x \cdot v$ gating pattern, while powerful for learning, creates the cross-term decomposition problem at every layer. Stacking 8+ gated layers compounds the error.
+
+### Heavy Normalization (any architecture with BatchNorm/LayerNorm in every block)
+
+Each normalization layer redistributes attribution across the features it normalizes. In a tower with 8 blocks, each containing one or more normalization layers, the cumulative effect can substantially blur motif attributions.
+
+## 8.5 Summary: The Interpretability-Friendly Design Space
+
+| Property | Most interpretable | Acceptable | Avoid |
+|---|---|---|---|
+| Activation | ReLU, LeakyReLU | GELU | Gating, Softmax, SiLU on cross-channel |
+| Residual | Additive ($x + f(x)$) | Dense/skip connections | Multiplicative ($x \cdot f(x)$) |
+| Normalization | None, or weight norm | — | BatchNorm, LayerNorm, RMSNorm, GRN |
+| Profile head | Single linear Conv1d | Linear bottleneck → linear Conv1d | Non-linear (Conv → Act → Conv) |
+| Regularization | Weight decay only | Early stopping | Dropout (encourages distributed encoding) |
+| Convolution | Dense Conv1d | — | Depthwise-separable |
+| Feature sparsity | Top-k, grouped | ReLU (natural sparsity) | Dense activations (GELU, SiLU) |
+| Context | Local (dilated conv) | — | Global (attention, global pooling) |
+
+The fundamental insight is that **interpretability through TF-MoDISco is not a free property of any good model — it requires the architecture to be approximately an additive function of local features**. This is a strong inductive bias that limits model capacity. BPNet works well for TF-MoDISco precisely because it enforces this bias. Models that relax it (Pomeranian, Enformer) gain capacity at the cost of clean motif decomposition.
