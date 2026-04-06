@@ -33,6 +33,9 @@ docs = [
   "mkdocs-material>=9.5",
   "mkdocs-git-revision-date-localized-plugin>=1.2",
 ]
+attribution = ["captum"]
+tfmodisco = ["modisco"]
+interpret = ["captum", "modisco"]
 
 [project.urls]
 "Homepage" = "https://github.com/marcincieslik/cerberus"

@@ -439,26 +439,42 @@ Supports case-insensitive model name matching and automatically infers default d
 
 ## Model Interpretation (TF-MoDISco)
 
-Use `tools/export_tfmodisco_inputs.py` to generate TF-MoDISco inputs from a trained model and run motif discovery end-to-end.
+Use a two-step workflow:
 
-What the script does:
+1. `tools/export_tfmodisco_inputs.py` to export attribution inputs (`ohe.npz` + attribution NPZ).
+2. `tools/run_tfmodisco.py` to run TF-MoDISco motifs/report on any compatible NPZ inputs.
+
+What the export script does:
 
 1. Loads model weights from `model.pt` (or best `.ckpt`) and matching `hparams.yaml`.
 2. Rebuilds the matching `CerberusDataModule` and split (`train` / `val` / `test`).
 3. Exports:
    - `ohe.npz` (DNA one-hot sequence; shape `(N, 4, L)`)
    - `shap.npz` (attribution scores; shape `(N, 4, L)`)
-4. Runs `modisco motifs` by default, and optionally `modisco report`.
+
+What the TF-MoDISco runner script does:
+
+1. Validates `ohe` and attribution NPZ inputs (expects key `arr_0`, shape `(N, 4, L)`).
+2. Runs `modisco motifs`.
+3. Optionally runs `modisco report`.
 
 Prerequisites:
 
 ```bash
 pip install modisco
-# Optional (only for --attribution-method integrated_gradients):
+# Optional (only if export uses --attribution-method integrated_gradients):
 pip install captum
+
+# Or install cerberus extras:
+pip install -e ".[tfmodisco]"
+pip install -e ".[attribution]"
+# (combined)
+pip install -e ".[interpret]"
+# (development + attribution)
+pip install -e ".[dev,attribution]"
 ```
 
-Basic end-to-end run:
+Step 1: export attribution NPZ files:
 
 ```bash
 python tools/export_tfmodisco_inputs.py \
@@ -471,17 +487,7 @@ python tools/export_tfmodisco_inputs.py \
     --target-mode log_counts
 ```
 
-Export NPZ only (skip motif discovery):
-
-```bash
-python tools/export_tfmodisco_inputs.py \
-    --checkpoint-dir models/my_pomeranian/single-fold \
-    --fold 0 \
-    --output-dir models/my_pomeranian/single-fold/tfmodisco \
-    --no-run-modisco
-```
-
-Use ISM attributions instead of Integrated Gradients:
+Export with ISM attribution:
 
 ```bash
 python tools/export_tfmodisco_inputs.py \
@@ -490,17 +496,25 @@ python tools/export_tfmodisco_inputs.py \
     --output-dir models/my_pomeranian/single-fold/tfmodisco \
     --attribution-method ism \
     --ism-start 800 \
-    --ism-end 1200 \
-    --no-run-modisco
+    --ism-end 1200
+```
+
+Step 2: run TF-MoDISco motifs on exported NPZ files:
+
+```bash
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5
 ```
 
 Generate HTML report after motifs:
 
 ```bash
-python tools/export_tfmodisco_inputs.py \
-    --checkpoint-dir models/my_pomeranian/single-fold \
-    --fold 0 \
-    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5 \
     --run-report \
     --meme-db motifs.meme
 ```
@@ -521,6 +535,12 @@ python tools/export_tfmodisco_inputs.py \
     --checkpoint-dir models/my_pomeranian/single-fold \
     --fold 0 \
     --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --target-mode log_counts
+
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5 \
     --run-report \
     --meme-db data/motifs/MotifCompendium-Database-Human.meme.txt
 ```
@@ -542,7 +562,8 @@ Notes:
 3. Attribution method is configurable via `--attribution-method`:
    - `integrated_gradients` (default, requires `captum`)
    - `ism` (forward-pass mutation deltas; can be expensive over full input length)
-4. `modisco motifs` expects NPZ key `arr_0`; this script writes NPZ in that format.
+4. `tools/run_tfmodisco.py` can consume any compatible attribution NPZ, not just outputs from `tools/export_tfmodisco_inputs.py`.
+5. `modisco motifs` expects NPZ key `arr_0`; export scripts should write NPZ in that format.
 
 ## Next Steps
 

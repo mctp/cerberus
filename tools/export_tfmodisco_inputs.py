@@ -1,14 +1,13 @@
 #!/usr/bin/env python
-"""Export TF-MoDISco inputs from a trained Cerberus model and run MoDISco.
+"""Export attribution arrays for TF-MoDISco from a trained Cerberus model.
 
 This script:
 1. Loads a trained Cerberus model (prefer ``model.pt``, fallback ``.ckpt``).
-2. Builds a datamodule from the training ``hparams.yaml``. 
+2. Builds a datamodule from the training ``hparams.yaml``.
 3. Collects one-hot DNA inputs (``ohe.npz``) and sequence attributions
    (``shap.npz``) using either Captum Integrated Gradients (default) or
    mutation-based in-silico mutagenesis (ISM), with optional off-simplex
    gradient correction for Integrated Gradients attributions.
-4. Runs ``modisco motifs`` end-to-end, and optionally ``modisco report``.
 
 Notes
 -----
@@ -16,24 +15,32 @@ Notes
   ``modisco motifs`` expectations.
 - For ``peak`` samplers, this tool defaults to positive intervals only
   (``IntervalSampler`` source), which is generally preferred for motif discovery.
-- For ``modisco report`` motif matching, TF-MoDISco recommends using the
-  MotifCompendium human motif database for human datasets.
+- This tool only exports attribution inputs. Run TF-MoDISco separately with
+  ``tools/run_tfmodisco.py`` or the upstream ``modisco`` CLI.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-import re
-import subprocess
 from pathlib import Path
 
 import numpy as np
 import torch
 
 import cerberus
+from cerberus.attribution import (
+    AttributionTarget,
+    apply_off_simplex_gradient_correction,
+    compute_ism_attributions,
+    resolve_ism_span,
+)
 from cerberus.datamodule import CerberusDataModule
-from cerberus.model_ensemble import parse_hparams_config
+from cerberus.model_ensemble import (
+    find_latest_hparams,
+    load_backbone_weights_from_fold_dir,
+    parse_hparams_config,
+)
 from cerberus.module import instantiate_model
 
 logger = logging.getLogger(__name__)
@@ -49,14 +56,6 @@ def _resolve_device(device_arg: str) -> torch.device:
     return torch.device(device_arg)
 
 
-def _find_latest_hparams(search_root: Path) -> Path:
-    candidates = list(search_root.rglob("hparams.yaml"))
-    if not candidates:
-        raise FileNotFoundError(f"No hparams.yaml found under: {search_root}")
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return candidates[0]
-
-
 def _resolve_fold_dir(checkpoint_dir: Path, fold: int) -> Path:
     # Direct fold directory
     if (checkpoint_dir / "model.pt").exists() or list(checkpoint_dir.glob("*.ckpt")):
@@ -68,9 +67,7 @@ def _resolve_fold_dir(checkpoint_dir: Path, fold: int) -> Path:
         return direct
 
     # Recursive fallback
-    recursive = sorted(
-        [p for p in checkpoint_dir.rglob(f"fold_{fold}") if p.is_dir()]
-    )
+    recursive = sorted([p for p in checkpoint_dir.rglob(f"fold_{fold}") if p.is_dir()])
     if recursive:
         return recursive[0]
 
@@ -79,155 +76,11 @@ def _resolve_fold_dir(checkpoint_dir: Path, fold: int) -> Path:
     )
 
 
-def _select_best_checkpoint(checkpoints: list[Path]) -> Path:
-    def val_loss(path: Path) -> float:
-        match = re.search(r"val_loss[=_](\d+\.?\d*)", path.name)
-        if match is None:
-            return float("inf")
-        try:
-            return float(match.group(1))
-        except ValueError:
-            return float("inf")
-
-    return sorted(checkpoints, key=lambda p: (val_loss(p), p.name))[0]
-
-
-def _load_model_weights(model: torch.nn.Module, fold_dir: Path, device: torch.device) -> None:
-    pt_path = fold_dir / "model.pt"
-    if pt_path.exists():
-        logger.info("Loading clean state dict: %s", pt_path)
-        state_dict = torch.load(pt_path, map_location=device, weights_only=True)
-        model.load_state_dict(state_dict, strict=True)
-        return
-
-    checkpoints = list(fold_dir.glob("*.ckpt"))
-    if not checkpoints:
-        checkpoints = list(fold_dir.rglob("*.ckpt"))
-    if not checkpoints:
-        raise FileNotFoundError(
-            f"No model.pt or .ckpt files found in fold directory: {fold_dir}"
-        )
-
-    ckpt_path = _select_best_checkpoint(checkpoints)
-    logger.info("Loading Lightning checkpoint: %s", ckpt_path)
-
-    checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
-    raw_state = checkpoint["state_dict"]
-
-    # Strip CerberusModule prefix and optional torch.compile prefix.
-    state_dict: dict[str, torch.Tensor] = {}
-    for key, value in raw_state.items():
-        if not key.startswith("model."):
-            continue
-        new_key = key[6:]
-        if new_key.startswith("_orig_mod."):
-            new_key = new_key[10:]
-        state_dict[new_key] = value
-
-    model.load_state_dict(state_dict, strict=True)
-
-
-class AttributionTarget(torch.nn.Module):
-    """Wrap Cerberus model output into a single tensor target for Captum."""
-
-    def __init__(
-        self,
-        model: torch.nn.Module,
-        mode: str,
-        channel: int,
-        bin_index: int | None,
-        window_start: int | None,
-        window_end: int | None,
-    ) -> None:
-        super().__init__()
-        self.model = model
-        self.mode = mode
-        self.channel = channel
-        self.bin_index = bin_index
-        self.window_start = window_start
-        self.window_end = window_end
-
-    def _resolve_channel(self, tensor: torch.Tensor) -> int:
-        n_channels = tensor.shape[1]
-        if not (0 <= self.channel < n_channels):
-            raise ValueError(
-                f"Requested channel={self.channel}, but target has {n_channels} channels."
-            )
-        return self.channel
-
-    def _resolve_window(self, length: int) -> tuple[int, int]:
-        start = 0 if self.window_start is None else self.window_start
-        end = length if self.window_end is None else self.window_end
-        if not (0 <= start < end <= length):
-            raise ValueError(
-                f"Invalid window [{start}, {end}) for output length {length}."
-            )
-        return start, end
-
-    def _resolve_bin(self, length: int) -> int:
-        if self.bin_index is None:
-            return length // 2
-        if not (0 <= self.bin_index < length):
-            raise ValueError(
-                f"Invalid bin_index={self.bin_index} for output length {length}."
-            )
-        return self.bin_index
-
-    def _predicted_counts_channel(
-        self, logits: torch.Tensor, log_counts: torch.Tensor, channel: int
-    ) -> torch.Tensor:
-        probs = torch.softmax(logits, dim=-1)
-        # If model predicts a single total count, broadcast to all profile channels.
-        # log_counts is a 2D tensor with shape (batch_size, n_count_outputs)
-        if log_counts.shape[1] == 1:
-            count_scale = torch.exp(log_counts[:, 0]).unsqueeze(-1)
-        else:
-            count_scale = torch.exp(log_counts[:, channel]).unsqueeze(-1)
-        return probs[:, channel, :] * count_scale
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = self.model(x)
-        logits = out.logits
-        log_counts = out.log_counts
-
-        channel = self._resolve_channel(logits)
-
-        if self.mode == "log_counts":
-            if log_counts.shape[1] == 1:
-                return log_counts[:, 0]
-            if channel >= log_counts.shape[1]:
-                raise ValueError(
-                    f"Requested channel={channel}, but log_counts has "
-                    f"{log_counts.shape[1]} channels."
-                )
-            return log_counts[:, channel]
-
-        if self.mode == "profile_bin":
-            bin_index = self._resolve_bin(logits.shape[-1])
-            return logits[:, channel, bin_index]
-
-        if self.mode == "profile_window_sum":
-            start, end = self._resolve_window(logits.shape[-1])
-            return logits[:, channel, start:end].sum(dim=-1)
-
-        if self.mode == "pred_count_bin":
-            pred_counts = self._predicted_counts_channel(logits, log_counts, channel)
-            bin_index = self._resolve_bin(pred_counts.shape[-1])
-            return pred_counts[:, bin_index]
-
-        if self.mode == "pred_count_window_sum":
-            pred_counts = self._predicted_counts_channel(logits, log_counts, channel)
-            start, end = self._resolve_window(pred_counts.shape[-1])
-            return pred_counts[:, start:end].sum(dim=-1)
-
-        raise ValueError(f"Unsupported mode: {self.mode}")
-
-
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Export TF-MoDISco inputs (ohe.npz + shap.npz) from a trained Cerberus "
-            "model and optionally run modisco motifs/report."
+            "Export TF-MoDISco-compatible inputs (ohe.npz + shap.npz) from a trained "
+            "Cerberus model."
         )
     )
 
@@ -401,7 +254,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--output-dir",
         type=Path,
         required=True,
-        help="Directory to write ohe.npz, shap.npz, and MoDISco outputs.",
+        help="Directory to write ohe.npz and shap.npz.",
     )
     parser.add_argument(
         "--ohe-name",
@@ -414,52 +267,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         default="shap.npz",
         help="Output filename for attributions.",
-    )
-
-    parser.add_argument(
-        "--run-modisco",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Whether to run `modisco motifs` after exporting NPZ files.",
-    )
-    parser.add_argument(
-        "--max-seqlets",
-        type=int,
-        default=2000,
-        help="`modisco motifs -n` max seqlets per metacluster.",
-    )
-    parser.add_argument(
-        "--modisco-window",
-        type=int,
-        default=400,
-        help="`modisco motifs -w` window size around center.",
-    )
-    parser.add_argument(
-        "--modisco-output",
-        type=str,
-        default="modisco_results.h5",
-        help="Output filename for `modisco motifs` HDF5 result.",
-    )
-
-    parser.add_argument(
-        "--run-report",
-        action="store_true",
-        help="Run `modisco report` after motifs step.",
-    )
-    parser.add_argument(
-        "--meme-db",
-        type=Path,
-        default=None,
-        help=(
-            "Motif DB (.meme) for `modisco report -m`. For human data, "
-            "TF-MoDISco recommends MotifCompendium-Database-Human.meme.txt."
-        ),
-    )
-    parser.add_argument(
-        "--report-dir",
-        type=str,
-        default="report",
-        help="Output directory name for `modisco report`.",
     )
 
     return parser
@@ -506,70 +313,6 @@ def _select_loader(datamodule: CerberusDataModule, split: str):
     raise ValueError(f"Unsupported split: {split}")
 
 
-def _resolve_ism_span(
-    seq_len: int, start: int | None, end: int | None
-) -> tuple[int, int]:
-    span_start = 0 if start is None else start
-    span_end = seq_len if end is None else end
-    if not (0 <= span_start < span_end <= seq_len):
-        raise ValueError(
-            f"Invalid ISM span [{span_start}, {span_end}) for input length {seq_len}."
-        )
-    return span_start, span_end
-
-
-def _compute_ism_attributions(
-    target_model: torch.nn.Module,
-    inputs: torch.Tensor,
-    ism_start: int | None,
-    ism_end: int | None,
-) -> torch.Tensor:
-    """Compute single-position ISM deltas as (B, 4, L) attribution scores."""
-    if inputs.shape[1] < 4:
-        raise ValueError(
-            f"ISM requires >=4 DNA channels in inputs, got shape {tuple(inputs.shape)}"
-        )
-
-    batch_size = inputs.shape[0]
-    seq_len = inputs.shape[-1]
-    span_start, span_end = _resolve_ism_span(seq_len, ism_start, ism_end)
-
-    attrs = torch.zeros(
-        (batch_size, 4, seq_len), device=inputs.device, dtype=inputs.dtype
-    )
-    rows = torch.arange(batch_size * 4, device=inputs.device)
-    nuc_idx = torch.arange(4, device=inputs.device).repeat(batch_size)
-    sample_idx = torch.arange(batch_size, device=inputs.device)
-
-    with torch.no_grad():
-        ref_pred = target_model(inputs).reshape(batch_size)
-        for pos in range(span_start, span_end):
-            mutants = inputs.repeat_interleave(4, dim=0)
-            mutants[:, :4, pos] = 0.0
-            mutants[rows, nuc_idx, pos] = 1.0
-
-            mut_pred = target_model(mutants).reshape(batch_size, 4)
-            attrs[:, :, pos] = mut_pred - ref_pred[:, None]
-
-            # For TF-MoDISco compatibility with one_hot * hypothetical_contribs,
-            # fill the observed nucleotide channel with negative of the per-position mean
-            # hypothetical contribution instead of forcing it to zero.
-            ref_base = inputs[:, :4, pos].argmax(dim=1)
-            mean_at_pos = attrs[:, :, pos].mean(dim=1)
-            attrs[sample_idx, ref_base, pos] = -mean_at_pos
-
-    return attrs
-
-
-def _apply_off_simplex_gradient_correction(attrs: np.ndarray) -> np.ndarray:
-    """Subtract per-position mean attribution across nucleotide channels."""
-    if attrs.ndim != 3:
-        raise ValueError(
-            f"Expected 3D attribution array (N, 4, L), got shape {attrs.shape}"
-        )
-    return attrs - attrs.mean(axis=1, keepdims=True)
-
-
 def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     IntegratedGradients = None
     if args.attribution_method == "integrated_gradients":
@@ -578,16 +321,16 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         except ImportError as exc:  # pragma: no cover - import guard
             raise RuntimeError(
                 "captum is required for integrated_gradients. "
-                "Install with: pip install captum"
+                "Install with: pip install captum or pip install -e .[attribution]"
             ) from exc
         IntegratedGradients = _IntegratedGradients
 
     fold_dir = _resolve_fold_dir(args.checkpoint_dir.resolve(), args.fold)
     try:
-        hparams_path = _find_latest_hparams(fold_dir)
+        hparams_path = find_latest_hparams(fold_dir)
     except FileNotFoundError:
         # Fallback for custom checkpoint layouts where hparams live above fold_dir.
-        hparams_path = _find_latest_hparams(args.checkpoint_dir.resolve())
+        hparams_path = find_latest_hparams(args.checkpoint_dir.resolve())
     logger.info("Using fold dir: %s", fold_dir)
     logger.info("Using hparams: %s", hparams_path)
 
@@ -619,7 +362,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     logger.info("Using device: %s", device)
 
     model = instantiate_model(cfg.model_config_, cfg.data_config, compile=False)
-    _load_model_weights(model, fold_dir, device)
+    load_backbone_weights_from_fold_dir(model, fold_dir, device, strict=True)
     model.to(device)
     model.eval()
 
@@ -731,7 +474,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
             )
         else:
             if not logged_ism_span:
-                span_start, span_end = _resolve_ism_span(
+                span_start, span_end = resolve_ism_span(
                     inputs.shape[-1], args.ism_start, args.ism_end
                 )
                 span_len = span_end - span_start
@@ -746,7 +489,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
                     inputs.shape[0] * 4,
                 )
                 logged_ism_span = True
-            attributions = _compute_ism_attributions(
+            attributions = compute_ism_attributions(
                 target_model=target_model,
                 inputs=inputs,
                 ism_start=args.ism_start,
@@ -757,7 +500,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         ohe = inputs[:, :4, :].detach().cpu().numpy().astype(np.float32)
         attrs = attributions[:, :4, :].detach().cpu().numpy().astype(np.float32)
         if apply_off_simplex_correction:
-            attrs = _apply_off_simplex_gradient_correction(attrs)
+            attrs = apply_off_simplex_gradient_correction(attrs)
 
         ohe_batches.append(ohe)
         attr_batches.append(attrs)
@@ -778,9 +521,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     attr_all = np.concatenate(attr_batches, axis=0)
 
     if ohe_all.shape != attr_all.shape:
-        raise RuntimeError(
-            f"Shape mismatch: ohe {ohe_all.shape} vs attrs {attr_all.shape}"
-        )
+        raise RuntimeError(f"Shape mismatch: ohe {ohe_all.shape} vs attrs {attr_all.shape}")
 
     output_dir: Path = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -798,84 +539,15 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     return output_dir, ohe_path, attr_path
 
 
-def _run_modisco_motifs(
-    ohe_path: Path,
-    attr_path: Path,
-    output_h5: Path,
-    max_seqlets: int,
-    window: int,
-) -> None:
-    cmd = [
-        "modisco",
-        "motifs",
-        "-s",
-        str(ohe_path),
-        "-a",
-        str(attr_path),
-        "-n",
-        str(max_seqlets),
-        "-w",
-        str(window),
-        "-o",
-        str(output_h5),
-    ]
-    logger.info("Running: %s", " ".join(cmd))
-    subprocess.run(cmd, check=True)
-
-
-def _run_modisco_report(
-    modisco_h5: Path, report_dir: Path, meme_db: Path | None
-) -> None:
-    cmd = [
-        "modisco",
-        "report",
-        "-i",
-        str(modisco_h5),
-        "-o",
-        str(report_dir),
-        "-s",
-        str(report_dir),
-    ]
-    if meme_db is not None:
-        cmd.extend(["-m", str(meme_db)])
-
-    logger.info("Running: %s", " ".join(cmd))
-    subprocess.run(cmd, check=True)
-
-
 def main() -> None:
     cerberus.setup_logging()
     parser = _build_arg_parser()
     args = parser.parse_args()
 
-    output_dir, ohe_path, attr_path = _export_arrays(args)
-
-    modisco_h5 = output_dir / args.modisco_output
-
-    if args.run_modisco:
-        try:
-            _run_modisco_motifs(
-                ohe_path=ohe_path,
-                attr_path=attr_path,
-                output_h5=modisco_h5,
-                max_seqlets=args.max_seqlets,
-                window=args.modisco_window,
-            )
-        except FileNotFoundError as exc:
-            raise RuntimeError(
-                "`modisco` command not found. Install TF-MoDISco CLI first, e.g. `pip install modisco`."
-            ) from exc
-
-    if args.run_report:
-        if not args.run_modisco and not modisco_h5.exists():
-            raise FileNotFoundError(
-                f"Cannot run report: MoDISco output not found at {modisco_h5}. "
-                "Run with --run-modisco first or provide existing output path via --modisco-output."
-            )
-
-        report_dir = output_dir / args.report_dir
-        report_dir.mkdir(parents=True, exist_ok=True)
-        _run_modisco_report(modisco_h5, report_dir, args.meme_db)
+    _, ohe_path, attr_path = _export_arrays(args)
+    logger.info("Attribution export complete. Use tools/run_tfmodisco.py for aggregation.")
+    logger.info("ohe:  %s", ohe_path)
+    logger.info("attr: %s", attr_path)
 
 
 if __name__ == "__main__":
