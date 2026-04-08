@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a2] - 2026-04-08
+
 ### Changed
 - **Simplified Dalmatian constructor** (`dalmatian.py`):
   Replaced 19 prefixed sub-model parameters (`bias_filters`, `signal_dropout`, etc.)
