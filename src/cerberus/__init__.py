@@ -18,7 +18,7 @@ from .genome import (
     create_human_genome_config,
 )
 from .interval import Interval, load_intervals_bed, write_intervals_bed
-from .variants import Variant, compute_variant_effects, load_vcf, variant_to_ref_alt
+from .variants import Variant, compute_variant_effects, load_variants, load_vcf, variant_to_ref_alt
 from .logging import setup_logging
 from .module import CerberusModule, instantiate, instantiate_model
 from .signal import register_extractor
@@ -35,6 +35,7 @@ __all__ = [
     "write_intervals_bed",
     "load_intervals_bed",
     "Variant",
+    "load_variants",
     "load_vcf",
     "variant_to_ref_alt",
     "compute_variant_effects",

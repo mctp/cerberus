@@ -14,6 +14,7 @@ from cerberus.variants import (
     Variant,
     _interval_to_region,
     compute_variant_effects,
+    load_variants,
     load_vcf,
     variant_to_ref_alt,
 )
@@ -21,6 +22,9 @@ from cerberus.variants import (
 FIXTURES = Path(__file__).parent / "data" / "fixtures"
 VCF_PATH = FIXTURES / "test_variants.vcf"
 VCF_GZ_PATH = FIXTURES / "test_variants.vcf.gz"
+TSV_PATH = FIXTURES / "test_variants.tsv"
+TSV_NOID_PATH = FIXTURES / "test_variants_noid.tsv"
+TSV_0BASED_PATH = FIXTURES / "test_variants_0based.tsv"
 FASTA_PATH = FIXTURES / "test_variants.fa"
 
 
@@ -735,6 +739,146 @@ class TestLoadVcf:
         variants = list(load_vcf(VCF_PATH))
         chroms = {v.chrom for v in variants}
         assert chroms == {"chr1", "chr2"}
+
+
+# ── load_variants ───────────────────────────────────────────────────
+
+
+class TestLoadVariants:
+    """Tests for load_variants using tests/data/fixtures/test_variants*.tsv.
+
+    test_variants.tsv (1-based, with id column):
+      chr1:100 rs001 A>G, chr1:200 rs002 C>T, chr1:300 rs003 ACGT>A,
+      chr1:400 rs004 A>ACGT, chr2:100 rs007 T>C
+
+    test_variants_noid.tsv (1-based, no id column):
+      chr1:100 A>G, chr1:200 C>T
+
+    test_variants_0based.tsv (0-based, with id column):
+      chr1:99 rs001 A>G, chr1:199 rs002 C>T, chr2:99 rs007 T>C
+    """
+
+    def test_load_all(self):
+        """Loads all 5 variants from the TSV."""
+        variants = list(load_variants(TSV_PATH))
+        assert len(variants) == 5
+
+    def test_coordinates_are_zero_based(self):
+        """1-based TSV pos is converted to 0-based Variant.pos."""
+        variants = list(load_variants(TSV_PATH))
+        first = variants[0]
+        assert first.pos == 99  # TSV pos=100 → 0-based 99
+        assert first.chrom == "chr1"
+        assert first.ref == "A"
+        assert first.alt == "G"
+        assert first.id == "rs001"
+
+    def test_variant_types(self):
+        """SNPs, deletions, and insertions are parsed correctly."""
+        variants = list(load_variants(TSV_PATH))
+        snp = variants[0]
+        deletion = variants[2]
+        insertion = variants[3]
+
+        assert snp.is_snp
+        assert deletion.is_deletion
+        assert deletion.ref == "ACGT"
+        assert deletion.alt == "A"
+        assert insertion.is_insertion
+        assert insertion.ref == "A"
+        assert insertion.alt == "ACGT"
+
+    def test_id_column_captured(self):
+        """The id column is captured into Variant.id."""
+        variants = list(load_variants(TSV_PATH))
+        assert variants[0].id == "rs001"
+        assert variants[4].id == "rs007"
+
+    def test_no_id_column(self):
+        """Without an id column, Variant.id defaults to '.'."""
+        variants = list(load_variants(TSV_NOID_PATH))
+        assert len(variants) == 2
+        assert variants[0].id == "."
+        assert variants[1].id == "."
+
+    def test_zero_based_flag(self):
+        """zero_based=True skips the subtraction."""
+        variants = list(load_variants(TSV_0BASED_PATH, zero_based=True))
+        assert variants[0].pos == 99
+        assert variants[1].pos == 199
+        assert variants[2].pos == 99
+
+    def test_zero_based_matches_default(self):
+        """0-based file with zero_based=True gives same result as 1-based default."""
+        from_1based = list(load_variants(TSV_PATH))
+        from_0based = list(load_variants(TSV_0BASED_PATH, zero_based=True))
+        # Compare just the first variant (rs001)
+        assert from_1based[0].pos == from_0based[0].pos
+        assert from_1based[0].chrom == from_0based[0].chrom
+        assert from_1based[0].ref == from_0based[0].ref
+        assert from_1based[0].alt == from_0based[0].alt
+
+    def test_different_chroms(self):
+        """Variants from different chromosomes are both yielded."""
+        variants = list(load_variants(TSV_PATH))
+        chroms = {v.chrom for v in variants}
+        assert chroms == {"chr1", "chr2"}
+
+    def test_is_generator(self):
+        """load_variants returns a generator, not a list."""
+        result = load_variants(TSV_PATH)
+        assert hasattr(result, "__next__")
+
+    def test_comment_lines_skipped(self, tmp_path):
+        """Lines starting with # in the body are skipped."""
+        f = tmp_path / "commented.tsv"
+        f.write_text("chrom\tpos\tref\talt\n# this is a comment\nchr1\t100\tA\tG\n")
+        variants = list(load_variants(f))
+        assert len(variants) == 1
+
+    def test_empty_lines_skipped(self, tmp_path):
+        """Empty lines in the body are skipped."""
+        f = tmp_path / "blanks.tsv"
+        f.write_text("chrom\tpos\tref\talt\nchr1\t100\tA\tG\n\nchr1\t200\tC\tT\n")
+        variants = list(load_variants(f))
+        assert len(variants) == 2
+
+    def test_hash_header(self, tmp_path):
+        """Header starting with '#' is accepted (leading '#' stripped)."""
+        f = tmp_path / "hash_header.tsv"
+        f.write_text("#chrom\tpos\tref\talt\nchr1\t100\tA\tG\n")
+        variants = list(load_variants(f))
+        assert len(variants) == 1
+        assert variants[0].pos == 99
+
+    def test_missing_column_raises(self, tmp_path):
+        """Missing required columns raise ValueError."""
+        f = tmp_path / "bad.tsv"
+        f.write_text("chrom\tpos\tref\n")
+        with pytest.raises(ValueError, match="Missing required column"):
+            list(load_variants(f))
+
+    def test_columns_any_order(self, tmp_path):
+        """Columns can appear in any order."""
+        f = tmp_path / "reordered.tsv"
+        f.write_text("alt\tref\tpos\tchrom\nchr1\tG\tA\t100\n")
+        # With this reordering: alt=chr1, ref=G, pos=A, chrom=100 — wrong!
+        # Let me fix the test data to match the column order
+        f.write_text("alt\tref\tpos\tchrom\nG\tA\t100\tchr1\n")
+        variants = list(load_variants(f))
+        assert len(variants) == 1
+        assert variants[0].chrom == "chr1"
+        assert variants[0].pos == 99
+        assert variants[0].ref == "A"
+        assert variants[0].alt == "G"
+
+    def test_extra_columns_ignored(self, tmp_path):
+        """Extra columns beyond the required ones are silently ignored."""
+        f = tmp_path / "extra.tsv"
+        f.write_text("chrom\tpos\tref\talt\tAF\tDP\nchr1\t100\tA\tG\t0.05\t100\n")
+        variants = list(load_variants(f))
+        assert len(variants) == 1
+        assert variants[0] == Variant("chr1", 99, "A", "G")
 
 
 # ── compute_variant_effects ──────────────────────────────────────────

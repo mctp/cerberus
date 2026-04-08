@@ -1,0 +1,4 @@
+chrom	pos	ref	alt	id
+chr1	99	A	G	rs001
+chr1	199	C	T	rs002
+chr2	99	T	C	rs007

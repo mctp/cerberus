@@ -58,7 +58,7 @@ These are the main entry points.
 *   `predict_misc.py`: High-level inference utilities — `create_eval_dataset`, `load_bed_intervals`, `get_eval_intervals`, `predict_log_counts`.
 
 ### Variant Effect Prediction (`variants.py`)
-*   `variants.py`: Variant representation (`Variant` dataclass), VCF loading (`load_vcf`), ref/alt sequence construction (`variant_to_ref_alt`), and effect size computation (`compute_variant_effects`). See the [Variant Effect Prediction](variants.md) guide.
+*   `variants.py`: Variant representation (`Variant` dataclass), VCF loading (`load_vcf`), TSV loading (`load_variants`), ref/alt sequence construction (`variant_to_ref_alt`), and effect size computation (`compute_variant_effects`). See the [Variant Effect Prediction](variants.md) guide.
 
 ### Sampling (`samplers.py`)
 Contains the logic for generating lists of `Interval` objects. This is decoupled from data reading, allowing lightweight iteration and manipulation of genomic regions before any heavy I/O occurs.

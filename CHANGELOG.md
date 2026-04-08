@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`load_variants()` function** (`variants.py`):
+  Lightweight alternative to `load_vcf()` for loading variants from
+  tab-separated files with `chrom`, `pos`, `ref`, `alt` columns.
+  Positions are 1-based by default (matching VCF/dbSNP/ClinVar convention);
+  set `zero_based=True` for 0-based input. Supports optional `id` column,
+  flexible column ordering, `#` comment lines, and extra columns.
+
 ## [1.0.0a2] - 2026-04-08
 
 ### Changed

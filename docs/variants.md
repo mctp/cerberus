@@ -7,10 +7,10 @@ Cerberus supports scoring the predicted effect of genomic variants (SNPs, indels
 The variant scoring workflow compares model predictions on a **reference** sequence versus an **alternative** sequence containing the variant. The pipeline is:
 
 ```
-VCF + FASTA
+VCF / TSV + FASTA
     |
     v
-load_vcf()          Parse variants, convert to 0-based coordinates
+load_vcf() / load_variants()   Parse variants, convert to 0-based coordinates
     |
     v
 variant_to_ref_alt()  Construct paired one-hot tensors centered on the variant
@@ -87,6 +87,33 @@ The `info` field stores VCF INFO values as a dict:
 v = Variant("chr1", 99, "A", "G", info={"AF": 0.05, "DP": 100})
 v.info["AF"]  # 0.05
 ```
+
+### load_variants
+
+Parses a simple tab-separated file with `chrom`, `pos`, `ref`, `alt` columns:
+
+```python
+from cerberus.variants import load_variants
+
+# Load from a TSV (1-based pos by default, like VCF/dbSNP/ClinVar)
+variants = list(load_variants("my_variants.tsv"))
+
+# If positions are 0-based (BED-derived data)
+variants = list(load_variants("my_variants.tsv", zero_based=True))
+```
+
+The file format is tab-delimited with a header row. Required columns: `chrom`, `pos`, `ref`, `alt` (in any order). An optional `id` column populates `Variant.id`. Extra columns are ignored. Lines starting with `#` (other than the header) are skipped.
+
+Example TSV file:
+
+```
+#chrom	pos	ref	alt	id
+chr1	100	A	G	rs001
+chr1	200	C	T	rs002
+chr1	300	ACGT	A	rs003
+```
+
+**Coordinate convention**: By default, `pos` is interpreted as **1-based** — the convention used by VCF, dbSNP, ClinVar, HGVS, and most variant databases. The loader subtracts 1 to convert to cerberus's 0-based system. Set `zero_based=True` for 0-based input.
 
 ### load_vcf
 

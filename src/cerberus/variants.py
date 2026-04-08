@@ -307,6 +307,79 @@ def load_vcf(
 
 
 # ----------------------------------------------------------------------
+# TSV loading (pos/ref/alt)
+# ----------------------------------------------------------------------
+
+
+def load_variants(
+    path: str | Path,
+    zero_based: bool = False,
+) -> Iterator[Variant]:
+    """Parse variants from a tab-separated file with ``chrom``, ``pos``, ``ref``, ``alt`` columns.
+
+    This provides a lightweight alternative to :func:`load_vcf` for simple
+    variant lists.  The file must be tab-delimited with a header row.
+    Required columns (in any order): ``chrom``, ``pos``, ``ref``, ``alt``.
+    An optional ``id`` column is used for :attr:`Variant.id`; if absent,
+    each variant gets ``id='.'``.  Extra columns are silently ignored.
+    Lines starting with ``#`` (other than the header) are skipped.
+
+    By default, ``pos`` is interpreted as **1-based** (the convention used by
+    VCF, dbSNP, ClinVar, HGVS, and most variant databases).  The loader
+    subtracts 1 to convert to cerberus's 0-based coordinate system.
+    Set ``zero_based=True`` if the file already uses 0-based positions
+    (e.g. data derived from BED or 0-based interval pipelines).
+
+    Args:
+        path: Path to the TSV file.
+        zero_based: If ``True``, ``pos`` values are already 0-based and
+            no conversion is applied.  Default ``False`` (1-based input,
+            subtract 1).
+
+    Yields:
+        :class:`Variant` objects in file order.
+
+    Raises:
+        ValueError: If required columns are missing from the header.
+    """
+    path = Path(path)
+    offset = 0 if zero_based else 1
+    n_variants = 0
+
+    with open(path) as fh:
+        header = next(fh).rstrip("\n")
+        if header.startswith("#"):
+            header = header[1:]
+        cols = {name.strip().lower(): i for i, name in enumerate(header.split("\t"))}
+
+        missing = {"chrom", "pos", "ref", "alt"} - cols.keys()
+        if missing:
+            raise ValueError(
+                f"Missing required column(s) in {path}: {', '.join(sorted(missing))}"
+            )
+
+        ic, ip, ir, ia = cols["chrom"], cols["pos"], cols["ref"], cols["alt"]
+        ii = cols.get("id")
+
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#"):
+                continue
+            p = line.split("\t")
+
+            yield Variant(
+                chrom=p[ic],
+                pos=int(p[ip]) - offset,
+                ref=p[ir],
+                alt=p[ia],
+                id=p[ii] if ii is not None and ii < len(p) else ".",
+            )
+            n_variants += 1
+
+    logger.info("Loaded %d variants from %s", n_variants, path)
+
+
+# ----------------------------------------------------------------------
 # Ref / alt sequence construction
 # ----------------------------------------------------------------------
 
