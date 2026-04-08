@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -136,7 +137,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Optional motif DB (.meme) for `modisco report -m`. "
-            "For human data, TF-MoDISco recommends MotifCompendium."
+            "For human data, TF-MoDISco recommends MotifCompendium. "
+            "Requires external MEME Suite (`tomtom`) on PATH."
         ),
     )
     parser.add_argument(
@@ -199,7 +201,21 @@ def main() -> None:
         if not report_dir.is_absolute():
             report_dir = output_h5.parent / report_dir
         report_dir.mkdir(parents=True, exist_ok=True)
-        _run_modisco_report(output_h5, report_dir, args.meme_db)
+
+        meme_db = args.meme_db
+        if meme_db is not None:
+            meme_db = meme_db.resolve()
+            if not meme_db.exists():
+                raise FileNotFoundError(f"Motif database not found: {meme_db}")
+            if shutil.which("tomtom") is None:
+                raise RuntimeError(
+                    "`--meme-db` was provided, but `tomtom` is not available on PATH. "
+                    "MEME Suite is treated as an external system dependency (not a pip package dependency). "
+                    "Install MEME Suite (for example: `conda install -c conda-forge -c bioconda meme`) "
+                    "or run report without --meme-db."
+                )
+
+        _run_modisco_report(output_h5, report_dir, meme_db)
 
 
 if __name__ == "__main__":

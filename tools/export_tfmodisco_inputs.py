@@ -5,9 +5,9 @@ This script:
 1. Loads a trained Cerberus model (prefer ``model.pt``, fallback ``.ckpt``).
 2. Builds a datamodule from the training ``hparams.yaml``.
 3. Collects one-hot DNA inputs (``ohe.npz``) and sequence attributions
-   (``shap.npz``) using either Captum Integrated Gradients (default) or
-   mutation-based in-silico mutagenesis (ISM), with optional off-simplex
-   gradient correction for Integrated Gradients attributions.
+   (``shap.npz``) using Captum Integrated Gradients (default), Captum
+   DeepLiftShap, or mutation-based in-silico mutagenesis (ISM), with optional
+   off-simplex gradient correction for Integrated Gradients attributions.
 
 Notes
 -----
@@ -153,10 +153,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--attribution-method",
-        choices=["integrated_gradients", "ism"],
+        choices=["integrated_gradients", "deep_lift_shap", "ism"],
         default="integrated_gradients",
         help=(
             "Attribution method. 'integrated_gradients' uses Captum; "
+            "'deep_lift_shap' uses Captum DeepLiftShap; "
             "'ism' computes mutation deltas via forward passes."
         ),
     )
@@ -171,6 +172,24 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Optional internal batch size for Integrated Gradients.",
+    )
+    parser.add_argument(
+        "--dls-n-baselines",
+        type=int,
+        default=20,
+        help="Number of baselines per sequence for DeepLiftShap.",
+    )
+    parser.add_argument(
+        "--dls-baseline-strategy",
+        choices=["shuffle", "zero"],
+        default="shuffle",
+        help="DeepLiftShap baseline strategy: mononucleotide shuffle or all-zero baselines.",
+    )
+    parser.add_argument(
+        "--dls-warning-threshold",
+        type=float,
+        default=1e-3,
+        help="Warn when DeepLiftShap max |convergence delta| exceeds this threshold.",
     )
     parser.add_argument(
         "--ism-start",
@@ -313,8 +332,38 @@ def _select_loader(datamodule: CerberusDataModule, split: str):
     raise ValueError(f"Unsupported split: {split}")
 
 
+def _generate_dls_baselines(
+    x: torch.Tensor, n_baselines: int, strategy: str, rng: np.random.Generator
+) -> torch.Tensor:
+    """Generate DeepLiftShap baselines for a single sample x (shape: 1 x C x L)."""
+    if x.ndim != 3 or x.shape[0] != 1:
+        raise ValueError(
+            f"Expected x shape (1, C, L) for DeepLiftShap baselines, got {tuple(x.shape)}"
+        )
+    if n_baselines < 2:
+        raise ValueError(
+            f"DeepLiftShap requires >=2 baselines; got dls_n_baselines={n_baselines}"
+        )
+
+    _, n_channels, seq_len = x.shape
+    if strategy == "zero":
+        return torch.zeros(
+            (n_baselines, n_channels, seq_len), device=x.device, dtype=x.dtype
+        )
+
+    if strategy == "shuffle":
+        refs: list[torch.Tensor] = []
+        for _ in range(n_baselines):
+            perm = torch.as_tensor(rng.permutation(seq_len), device=x.device, dtype=torch.long)
+            refs.append(x[0, :, perm])
+        return torch.stack(refs, dim=0)
+
+    raise ValueError(f"Unsupported DeepLiftShap baseline strategy: {strategy}")
+
+
 def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     IntegratedGradients = None
+    DeepLiftShap = None
     if args.attribution_method == "integrated_gradients":
         try:
             from captum.attr import IntegratedGradients as _IntegratedGradients
@@ -324,6 +373,15 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
                 "Install with: pip install captum or pip install -e .[attribution]"
             ) from exc
         IntegratedGradients = _IntegratedGradients
+    elif args.attribution_method == "deep_lift_shap":
+        try:
+            from captum.attr import DeepLiftShap as _DeepLiftShap
+        except ImportError as exc:  # pragma: no cover - import guard
+            raise RuntimeError(
+                "captum is required for deep_lift_shap. "
+                "Install with: pip install captum or pip install -e .[attribution]"
+            ) from exc
+        DeepLiftShap = _DeepLiftShap
 
     fold_dir = _resolve_fold_dir(args.checkpoint_dir.resolve(), args.fold)
     try:
@@ -414,6 +472,31 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     if args.attribution_method == "integrated_gradients":
         assert IntegratedGradients is not None
         attribution = IntegratedGradients(target_model)
+    elif args.attribution_method == "deep_lift_shap":
+        assert DeepLiftShap is not None
+        if args.target_mode in {"pred_count_bin", "pred_count_window_sum"}:
+            raise ValueError(
+                "target-mode pred_count_* is not supported with deep_lift_shap yet. "
+                "Use log_counts/profile_* target modes or integrated_gradients."
+            )
+        if args.dls_n_baselines < 2:
+            raise ValueError("--dls-n-baselines must be >= 2 for deep_lift_shap.")
+        model_name = model.__class__.__name__.lower()
+        if "bpnet" not in model_name:
+            raise ValueError(
+                f"deep_lift_shap is currently limited to BPNet models; got {model.__class__.__name__}."
+            )
+        if any(isinstance(m, torch.nn.GELU) for m in model.modules()):
+            raise ValueError(
+                "deep_lift_shap currently requires ReLU-only BPNet paths. "
+                "Detected GELU modules; use integrated_gradients instead."
+            )
+        attribution = DeepLiftShap(target_model)
+        logger.info(
+            "DeepLiftShap enabled with baseline strategy '%s' and %d baselines per sequence.",
+            args.dls_baseline_strategy,
+            args.dls_n_baselines,
+        )
     elif args.attribution_method != "ism":
         raise ValueError(f"Unsupported attribution method: {args.attribution_method}")
 
@@ -421,6 +504,10 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     attr_batches: list[np.ndarray] = []
     exported = 0
     logged_ism_span = False
+    dls_rng = np.random.default_rng(args.seed)
+    dls_delta_abs_sum = 0.0
+    dls_delta_abs_max = 0.0
+    dls_delta_count = 0
 
     logger.info("Beginning export: target %d examples", args.n_examples)
     apply_off_simplex_correction = (
@@ -472,6 +559,28 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
                 n_steps=args.ig_steps,
                 internal_batch_size=args.ig_internal_batch_size,
             )
+        elif args.attribution_method == "deep_lift_shap":
+            assert attribution is not None
+            attrs_per_example: list[torch.Tensor] = []
+            for i in range(inputs.shape[0]):
+                x_i = inputs[i : i + 1]
+                baselines = _generate_dls_baselines(
+                    x_i,
+                    n_baselines=args.dls_n_baselines,
+                    strategy=args.dls_baseline_strategy,
+                    rng=dls_rng,
+                )
+                attr_i, delta_i = attribution.attribute(
+                    x_i,
+                    baselines=baselines,
+                    return_convergence_delta=True,
+                )
+                attrs_per_example.append(attr_i)
+                delta_abs = delta_i.detach().abs()
+                dls_delta_abs_sum += float(delta_abs.sum().item())
+                dls_delta_abs_max = max(dls_delta_abs_max, float(delta_abs.max().item()))
+                dls_delta_count += int(delta_abs.numel())
+            attributions = torch.cat(attrs_per_example, dim=0)
         else:
             if not logged_ism_span:
                 span_start, span_end = resolve_ism_span(
@@ -508,6 +617,12 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
         if (batch_idx + 1) % 5 == 0 or exported >= args.n_examples:
             logger.info("Exported %d / %d examples", exported, args.n_examples)
+            if args.attribution_method == "deep_lift_shap" and dls_delta_count > 0:
+                logger.info(
+                    "DeepLiftShap |delta| so far: mean=%.3e max=%.3e",
+                    dls_delta_abs_sum / dls_delta_count,
+                    dls_delta_abs_max,
+                )
 
         if exported >= args.n_examples:
             break
@@ -522,6 +637,22 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
     if ohe_all.shape != attr_all.shape:
         raise RuntimeError(f"Shape mismatch: ohe {ohe_all.shape} vs attrs {attr_all.shape}")
+
+    if args.attribution_method == "deep_lift_shap" and dls_delta_count > 0:
+        dls_delta_abs_mean = dls_delta_abs_sum / dls_delta_count
+        logger.info(
+            "DeepLiftShap convergence |delta| summary: mean=%.3e max=%.3e n=%d",
+            dls_delta_abs_mean,
+            dls_delta_abs_max,
+            dls_delta_count,
+        )
+        if dls_delta_abs_max > args.dls_warning_threshold:
+            logger.warning(
+                "DeepLiftShap max |delta| (%.3e) exceeded warning threshold (%.3e). "
+                "Interpret attributions cautiously or prefer integrated_gradients.",
+                dls_delta_abs_max,
+                args.dls_warning_threshold,
+            )
 
     output_dir: Path = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -99,6 +99,9 @@ class BPNet(nn.Module):
             "residual_pre-activation_conv",
             "activated_residual_pre-activation_conv",
         }
+        # Use an nn.Module activation (instead of functional F.relu) so hook-based
+        # attribution methods can register on this operation.
+        self.final_tower_relu = nn.ReLU()
 
         # 1. Initial Convolution (plain — weight_norm applied after reinit if requested)
         self.iconv: nn.Module = nn.Conv1d(
@@ -229,7 +232,7 @@ class BPNet(nn.Module):
         # bpnet-refactor applies a final ReLU after the dilated tower for both
         # pre-activation variants (syntax_module final activation).
         if self._apply_final_tower_relu:
-            x = F.relu(x)
+            x = self.final_tower_relu(x)
 
         # --- Profile Head ---
         profile_logits = self.profile_conv(x)  # (B, Out_Channels, Length)
