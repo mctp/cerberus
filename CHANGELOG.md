@@ -105,6 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now applied before the loop so the stride grid stays regular, and a warning is
   logged about the coverage gap.
 
+## [1.0.0a1] - 2026-03-22
+
 ### Added
 - **Ruff linter and formatter** configured in `pyproject.toml`: rules F (Pyflakes),
   I (isort), UP (pyupgrade), B (bugbear) enforced via `ruff check`; `ruff format`
