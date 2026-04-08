@@ -372,7 +372,185 @@ def compute_total_log_counts(
     )
 
 
-def compute_obs_log_counts(
+def compute_signal(
+    output: ModelOutput,
+    log_counts_include_pseudocount: bool = False,
+    pseudocount: float = 1.0,
+) -> torch.Tensor:
+    """Convert a model output to predicted signal in linear space.
+
+    Combines the model's profile shape and magnitude heads into a single
+    linear-scale tensor (predicted counts per bin for profile+count models,
+    predicted rates for log-rate models).
+
+    Supports both batched ``(B, C, L)`` and unbatched ``(C, L)`` inputs.
+
+    Reconstruction depends on the output type:
+
+    - :class:`ProfileCountOutput` (BPNet / Pomeranian / Dalmatian):
+      ``softmax(logits, dim=-1) * total_counts``, where total_counts is
+      ``exp(log_counts) - pseudocount`` when ``log_counts_include_pseudocount``
+      is True, or ``exp(log_counts)`` otherwise.
+    - :class:`ProfileLogRates`: ``exp(log_rates)``
+    - :class:`ProfileLogits` (fallback): raw logits (no absolute scale).
+
+    Args:
+        output: Model output with profile tensors.
+        log_counts_include_pseudocount: If True, ``log_counts`` are in
+            ``log(count + pseudocount)`` space (MSE-family losses) and the
+            pseudocount is subtracted during reconstruction.  If False
+            (default, Poisson / NB losses), ``log_counts`` are in
+            ``log(count)`` space and ``pseudocount`` is ignored.
+            Obtain from ``get_log_count_params(model_config)``.
+        pseudocount: Offset for the pseudocount inversion.  Must match the
+            count_pseudocount used during training.  Default 1.0.
+            Only used when ``log_counts_include_pseudocount`` is True.
+
+    Returns:
+        Tensor matching the shape of the profile tensor: ``(B, C, L)`` if
+        batched, ``(C, L)`` if unbatched.
+    """
+    if isinstance(output, ProfileCountOutput):
+        logits = output.logits.float()
+        log_counts = output.log_counts.float()
+
+        # Numerically stable softmax over the length axis (last dim)
+        logits_shifted = logits - logits.max(dim=-1, keepdim=True).values
+        exp_logits = torch.exp(logits_shifted)
+        probs = exp_logits / exp_logits.sum(dim=-1, keepdim=True)
+
+        if log_counts_include_pseudocount:
+            total_counts = (torch.exp(log_counts) - pseudocount).clamp_min(0.0)
+        else:
+            total_counts = torch.exp(log_counts)
+
+        if logits.ndim == 3:
+            # Batched: logits (B, C, L), log_counts (B, C) or (B, 1)
+            total_counts = total_counts.unsqueeze(-1)  # (B, C, 1)
+            n_channels = logits.shape[1]
+            if total_counts.shape[1] == 1 and n_channels > 1:
+                total_counts = total_counts / n_channels
+        else:
+            # Unbatched: logits (C, L), log_counts (C,) or (1,)
+            total_counts = total_counts.unsqueeze(-1)  # (C, 1)
+            n_channels = logits.shape[0]
+            if total_counts.shape[0] == 1 and n_channels > 1:
+                total_counts = total_counts / n_channels
+
+        return probs * total_counts
+
+    if isinstance(output, ProfileLogRates):
+        return torch.exp(output.log_rates.float())
+
+    if hasattr(output, "logits"):
+        logger.warning(
+            "Model output has logits but no log_counts or log_rates. "
+            "Returning raw logits — values have no absolute scale."
+        )
+        return output.logits  # type: ignore[union-attr]
+
+    raise ValueError(
+        f"Cannot reconstruct signal from output type {type(output).__name__}"
+    )
+
+
+def compute_profile_probs(
+    output: ModelOutput,
+) -> torch.Tensor:
+    """Compute the normalized profile probability distribution.
+
+    Returns the per-position probability distribution (sums to 1 along L)
+    from any profile-producing model output.
+
+    Supports both batched ``(B, C, L)`` and unbatched ``(C, L)`` inputs.
+
+    - :class:`ProfileCountOutput` / :class:`ProfileLogits`:
+      ``softmax(logits, dim=-1)``
+    - :class:`ProfileLogRates`:
+      ``exp(log_rates) / exp(log_rates).sum(dim=-1, keepdim=True)``
+
+    Args:
+        output: Model output with profile tensors.
+
+    Returns:
+        Tensor matching the shape of the profile tensor: ``(B, C, L)`` if
+        batched, ``(C, L)`` if unbatched.  Sums to 1.0 along the last
+        dimension.
+    """
+    if isinstance(output, ProfileCountOutput) or isinstance(output, ProfileLogits):
+        return torch.softmax(output.logits.float(), dim=-1)
+
+    if isinstance(output, ProfileLogRates):
+        rates = torch.exp(output.log_rates.float())
+        return rates / rates.sum(dim=-1, keepdim=True)
+
+    raise ValueError(
+        f"Cannot compute profile probs from output type {type(output).__name__}"
+    )
+
+
+def compute_channel_log_counts(
+    output: ModelOutput,
+    log_counts_include_pseudocount: bool = False,
+    pseudocount: float = 1.0,
+) -> torch.Tensor:
+    """Compute per-channel total counts in log space.
+
+    Returns the per-channel predicted total count, keeping each channel
+    separate (unlike :func:`compute_total_log_counts` which aggregates
+    across channels).
+
+    Supports both batched and unbatched inputs.
+
+    - :class:`ProfileCountOutput`: returns ``log_counts`` directly (already
+      per-channel log-space).  If ``log_counts`` is global ``(B, 1)`` with
+      multi-channel logits, distributes equally and returns ``(B, C)``.
+    - :class:`ProfileLogRates`:
+      ``logsumexp(log_rates, dim=-1)`` → ``(B, C)``
+
+    Args:
+        output: Model output.
+        log_counts_include_pseudocount: If True, ``log_counts`` are in
+            ``log(count + pseudocount)`` space.  Currently passed through
+            unchanged since the return value is in the same space as the
+            model's ``log_counts``.  Provided for API consistency.
+        pseudocount: The pseudocount value.  Currently unused (reserved
+            for API consistency with other ``compute_*`` functions).
+
+    Returns:
+        Tensor of shape ``(B, C)`` if batched, ``(C,)`` if unbatched.
+    """
+    if isinstance(output, ProfileCountOutput):
+        log_counts = output.log_counts.float()
+        logits = output.logits.float()
+
+        # Determine number of channels from logits
+        if logits.ndim == 3:
+            n_channels = logits.shape[1]
+        else:
+            n_channels = logits.shape[0]
+
+        # If log_counts is global (1 channel) but model has C > 1 channels,
+        # distribute equally: log(total/C) = log(total) - log(C)
+        if log_counts.shape[-1] == 1 and n_channels > 1:
+            import math
+
+            log_counts = log_counts.expand(*log_counts.shape[:-1], n_channels) - math.log(
+                n_channels
+            )
+
+        return log_counts
+
+    if isinstance(output, ProfileLogRates):
+        # Sum rates along length axis in log-space
+        return torch.logsumexp(output.log_rates.float(), dim=-1)
+
+    raise ValueError(
+        f"Cannot compute channel log counts from output type {type(output).__name__}"
+    )
+
+
+def compute_obs_total_log_counts(
     raw_counts: torch.Tensor,
     target_scale: float,
     log_counts_include_pseudocount: bool,

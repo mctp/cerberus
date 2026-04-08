@@ -27,7 +27,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pybigwig", "pysam", "matplotlib", "jupyter", "ipywidgets", "snapatac2", "ruff", "pre-commit"]
+variants = ["cyvcf2"]
+dev = ["pytest", "pybigwig", "pysam", "cyvcf2", "matplotlib", "jupyter", "ipywidgets", "snapatac2", "ruff", "pre-commit"]
 docs = [
   "mkdocs>=1.6",
   "mkdocs-material>=9.5",

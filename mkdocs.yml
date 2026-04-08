@@ -79,6 +79,7 @@ nav:
     - Samplers: samplers.md
     - Core Components: components.md
     - Prediction: prediction.md
+    - Variant Effect Prediction: variants.md
     - Multi-GPU: multi_gpu.md
   - Contributing:
     - Developing: developing.md

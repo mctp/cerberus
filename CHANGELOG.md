@@ -21,6 +21,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each model now owns its own geometry computation.
 
 ### Added
+- **`Variant` dataclass** (`variants.py`):
+  Frozen dataclass for genomic variants (SNPs, insertions, deletions) using
+  0-based coordinates consistent with `Interval`.  Includes `ref_center` for
+  symmetric window placement, `to_interval()` for fold routing, type
+  classification properties (`is_snp`, `is_insertion`, `is_deletion`), and
+  an `info` dict for VCF INFO fields.  First building block toward variant
+  effect prediction support.
+- **`load_vcf()` generator** (`variants.py`):
+  Parses VCF/BCF files via cyvcf2 (optional dependency) and yields `Variant`
+  objects with 0-based coordinates.  Supports region filtering (Interval or
+  tabix string), PASS-only filtering, and selective INFO field capture.
+  Requires biallelic, normalized input; multi-allelic records are skipped
+  with a warning.
+- **`variant_to_ref_alt()` function** (`variants.py`):
+  Constructs one-hot ref and alt sequence tensors `(4, input_len)` from a
+  `Variant` and a pyfaidx FASTA.  Window centered on `ref_center` (midpoint
+  of ref allele footprint).  Indels handled via symmetric trimming from both
+  flanks.  Validates ref allele against FASTA and rejects out-of-bounds
+  windows.
+- **`compute_signal()` function** (`output.py`):
+  Converts any `ModelOutput` to linear-space predicted signal `(B, C, L)`.
+  Handles `ProfileCountOutput` (softmax * counts), `ProfileLogRates`
+  (exp), and `ProfileLogits` (raw fallback).  Supports batched and
+  unbatched inputs with consistent pseudocount handling matching
+  `compute_total_log_counts`.
+- **`compute_profile_probs()` function** (`output.py`):
+  Returns the normalized profile probability distribution `(B, C, L)` from
+  any profile-producing model output.  Sums to 1 along the length axis.
+- **`compute_channel_log_counts()` function** (`output.py`):
+  Returns per-channel total counts in log space `(B, C)`.  Complements
+  `compute_total_log_counts` which aggregates across channels to `(B,)`.
+- **`compute_variant_effects()` function** (`variants.py`):
+  Computes per-channel variant effect metrics (SAD, log fold change,
+  Jensen-Shannon divergence, Pearson correlation, max absolute difference)
+  between ref and alt model outputs.  Automatically adds `signal_*` metrics
+  for `FactorizedProfileCountOutput` (Dalmatian) using the decomposed
+  signal sub-model.
 - **`shared_bias` parameter for Dalmatian** (`dalmatian.py`):
   When `shared_bias=True`, BiasNet has a single output channel (`["bias"]`) while
   SignalNet has the full N output channels. Enables multi-task training where Tn5

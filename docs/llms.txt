@@ -150,7 +150,10 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`aggregate_intervals()`** — Merges predictions from multiple genomic intervals into a single ModelOutput.
 - **`aggregate_models()`** — Ensembles outputs from multiple models by reducing each tensor field.
 - **`compute_total_log_counts()`** — Computes total log counts across all channels, returning shape (B,).
-- **`compute_obs_log_counts()`** — Computes observed total log-counts from raw target counts.
+- **`compute_signal()`** — Convert a model output to predicted signal in linear space.
+- **`compute_profile_probs()`** — Compute the normalized profile probability distribution.
+- **`compute_channel_log_counts()`** — Compute per-channel total counts in log space.
+- **`compute_obs_total_log_counts()`** — Computes observed total log-counts from raw target counts.
 
 ### `cerberus.loss`
 

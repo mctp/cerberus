@@ -22,14 +22,15 @@ src/cerberus/
 ├── metrics.py          # Evaluation metrics (Pearson, MSE, log counts)
 ├── model_ensemble.py   # Model loading and ensemble prediction logic
 ├── module.py           # PyTorch Lightning Module wrapper (CerberusModule)
-├── output.py           # Model output dataclasses (ProfileLogits, ProfileLogRates, ProfileCountOutput)
+├── output.py           # Model output dataclasses and compute_* functions (signal, probs, counts)
 ├── predict_bigwig.py   # Genome-wide BigWig generation
 ├── predict_misc.py     # High-level inference utilities (dataset, intervals, log-count prediction)
 ├── samplers.py         # Sampling logic (IntervalSampler, SlidingWindowSampler, PeakSampler, etc.)
 ├── sequence.py         # DNA sequence extraction from FASTA files
 ├── signal.py           # Signal extraction from BigWig files
 ├── train.py            # High-level training workflows (train_single, train_multi)
-└── transform.py        # Data augmentation transforms (Jitter, ReverseComplement, Scale, etc.)
+├── transform.py        # Data augmentation transforms (Jitter, ReverseComplement, Scale, etc.)
+└── variants.py         # Variant representation, VCF loading, ref/alt construction, effect scoring
 ```
 
 ## Module Responsibilities
@@ -47,7 +48,7 @@ These are the main entry points.
 ### Model & Training (`loss.py`, `metrics.py`, `module.py`, `output.py`, `layers.py`)
 *   `loss.py`: Domain-specific loss functions (e.g., `MSEMultinomialLoss`, `PoissonMultinomialLoss` for profile prediction).
 *   `metrics.py`: Metrics for evaluation (Pearson Correlation, MSE, log-count metrics).
-*   `output.py`: Standardized data structures for model outputs and logic for aggregating/unbatching them.
+*   `output.py`: Standardized data structures for model outputs, aggregation/unbatching logic, and `compute_*` functions for deriving signal, profile probabilities, and counts from model outputs.
 *   `module.py`: `CerberusModule` (PL wrapper), optimization configuration, and model factory logic (`instantiate`).
 *   `layers.py`: Reusable neural network blocks (PGC, ConvNeXtV2, GRN).
 
@@ -55,6 +56,9 @@ These are the main entry points.
 *   `model_ensemble.py`: Manages loading models (single or multi-fold) and selecting models for intervals. Delegates aggregation to `output.py`.
 *   `predict_bigwig.py`: Streamlines genome-wide prediction generation into BigWig files.
 *   `predict_misc.py`: High-level inference utilities — `create_eval_dataset`, `load_bed_intervals`, `get_eval_intervals`, `predict_log_counts`.
+
+### Variant Effect Prediction (`variants.py`)
+*   `variants.py`: Variant representation (`Variant` dataclass), VCF loading (`load_vcf`), ref/alt sequence construction (`variant_to_ref_alt`), and effect size computation (`compute_variant_effects`). See the [Variant Effect Prediction](variants.md) guide.
 
 ### Sampling (`samplers.py`)
 Contains the logic for generating lists of `Interval` objects. This is decoupled from data reading, allowing lightweight iteration and manipulation of genomic regions before any heavy I/O occurs.
