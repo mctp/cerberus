@@ -725,6 +725,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#model-interpretation-tf-modisco" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model Interpretation (TF-MoDISco)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#next-steps" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -958,6 +969,34 @@
     
   
     Prediction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../variants/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variant Effect Prediction
   
 
     
@@ -1860,6 +1899,137 @@
 <a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>BiasNet
 </code></pre></div>
 <p>Supports case-insensitive model name matching and automatically infers default dimensions from the model class.</p>
+<h2 id="model-interpretation-tf-modisco">Model Interpretation (TF-MoDISco)<a class="headerlink" href="#model-interpretation-tf-modisco" title="Permanent link">&para;</a></h2>
+<p>Use a two-step workflow:</p>
+<ol>
+<li><code>tools/export_tfmodisco_inputs.py</code> to export attribution inputs (<code>ohe.npz</code> + attribution NPZ).</li>
+<li><code>tools/run_tfmodisco.py</code> to run TF-MoDISco motifs/report on any compatible NPZ inputs.</li>
+</ol>
+<p>What the export script does:</p>
+<ol>
+<li>Loads model weights from <code>model.pt</code> (or best <code>.ckpt</code>) and matching <code>hparams.yaml</code>.</li>
+<li>Rebuilds the matching <code>CerberusDataModule</code> and split (<code>train</code> / <code>val</code> / <code>test</code>).</li>
+<li>Exports:</li>
+<li><code>ohe.npz</code> (DNA one-hot sequence; shape <code>(N, 4, L)</code>)</li>
+<li><code>shap.npz</code> (attribution scores; shape <code>(N, 4, L)</code>)</li>
+</ol>
+<p>What the TF-MoDISco runner script does:</p>
+<ol>
+<li>Validates <code>ohe</code> and attribution NPZ inputs (expects key <code>arr_0</code>, shape <code>(N, 4, L)</code>).</li>
+<li>Runs <code>modisco motifs</code>.</li>
+<li>Optionally runs <code>modisco report</code>.</li>
+</ol>
+<p>Prerequisites:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>pip<span class="w"> </span>install<span class="w"> </span>modisco
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="c1"># Optional (only if export uses --attribution-method integrated_gradients):</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>pip<span class="w"> </span>install<span class="w"> </span>captum
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="c1"># Or install cerberus extras:</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[tfmodisco]&quot;</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[attribution]&quot;</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="c1"># (combined)</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[interpret]&quot;</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="c1"># (development + attribution)</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev,attribution]&quot;</span>
+</code></pre></div>
+<p>Step 1: export attribution NPZ files:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">    </span>--split<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">    </span>--n-examples<span class="w"> </span><span class="m">2000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="w">    </span>--seed<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="w">    </span>--target-mode<span class="w"> </span>log_counts
+</code></pre></div>
+<p>Export with ISM attribution:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">    </span>--attribution-method<span class="w"> </span>ism<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">    </span>--ism-start<span class="w"> </span><span class="m">800</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">    </span>--ism-end<span class="w"> </span><span class="m">1200</span>
+</code></pre></div>
+<p>Step 2: run TF-MoDISco motifs on exported NPZ files:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>python<span class="w"> </span>tools/run_tfmodisco.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">    </span>--modisco-output<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5
+</code></pre></div>
+<p>Generate HTML report after motifs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>python<span class="w"> </span>tools/run_tfmodisco.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">    </span>--modisco-output<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">    </span>--run-report<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">    </span>--meme-db<span class="w"> </span>motifs.meme
+</code></pre></div>
+<p>TF-MoDISco recommended motif database for human data:</p>
+<ul>
+<li>Each pattern produced by TF-MoDISco is compared against a motif database using TOMTOM.</li>
+<li>A good default for human analyses is <code>MotifCompendium-Database-Human.meme.txt</code> from MotifCompendium.</li>
+<li>Source recommendation: https://github.com/kundajelab/tfmodisco?tab=readme-ov-file#generating-reports</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>data/motifs
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>curl<span class="w"> </span>-L<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">  </span>-o<span class="w"> </span>data/motifs/MotifCompendium-Database-Human.meme.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">  </span>https://raw.githubusercontent.com/kundajelab/MotifCompendium/refs/heads/main/pipeline/data/MotifCompendium-Database-Human.meme.txt
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a><span class="w">    </span>--target-mode<span class="w"> </span>log_counts
+<a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a>
+<a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>python<span class="w"> </span>tools/run_tfmodisco.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-14" name="__codelineno-24-14" href="#__codelineno-24-14"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-15" name="__codelineno-24-15" href="#__codelineno-24-15"></a><span class="w">    </span>--modisco-output<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-16" name="__codelineno-24-16" href="#__codelineno-24-16"></a><span class="w">    </span>--run-report<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-17" name="__codelineno-24-17" href="#__codelineno-24-17"></a><span class="w">    </span>--meme-db<span class="w"> </span>data/motifs/MotifCompendium-Database-Human.meme.txt
+</code></pre></div>
+<p>Common interpretation target modes (<code>--target-mode</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>log_counts</code></td>
+<td>Attribution to predicted log total counts (default)</td>
+</tr>
+<tr>
+<td><code>profile_bin</code></td>
+<td>Attribution to one profile-logit bin (<code>--bin-index</code>)</td>
+</tr>
+<tr>
+<td><code>profile_window_sum</code></td>
+<td>Attribution to summed profile logits in <code>[start:end)</code> (<code>--window-start</code>, <code>--window-end</code>)</td>
+</tr>
+<tr>
+<td><code>pred_count_bin</code></td>
+<td>Attribution to one predicted count bin (softmax(logits) × exp(log_counts))</td>
+</tr>
+<tr>
+<td><code>pred_count_window_sum</code></td>
+<td>Attribution to summed predicted counts in a window</td>
+</tr>
+</tbody>
+</table>
+<p>Notes:</p>
+<ol>
+<li>Use the same <code>--seed</code> as training for comparable sampler behavior (<code>tools/train_*.py</code> defaults to <code>42</code>).</li>
+<li>For <code>peak</code> samplers, the script defaults to positive intervals only (<code>IntervalSampler</code> source).</li>
+<li>Attribution method is configurable via <code>--attribution-method</code>:</li>
+<li><code>integrated_gradients</code> (default, requires <code>captum</code>)</li>
+<li><code>ism</code> (forward-pass mutation deltas; can be expensive over full input length)</li>
+<li><code>tools/run_tfmodisco.py</code> can consume any compatible attribution NPZ, not just outputs from <code>tools/export_tfmodisco_inputs.py</code>.</li>
+<li><code>modisco motifs</code> expects NPZ key <code>arr_0</code>; export scripts should write NPZ in that format.</li>
+</ol>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <p>Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.
 See <a href="../prediction/">Prediction (Inference)</a> for details on <code>ModelEnsemble</code>, <code>predict_intervals_batched</code>, and CLI tools like <code>tools/export_predictions.py</code>.</p>
@@ -1885,7 +2055,7 @@ See <a href="../prediction/">Prediction (Inference)</a> for details on <code>Mod
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 05:08:24 UTC">March 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 6, 2026 07:21:50 UTC">April 6, 2026</span>
   </span>
 
     

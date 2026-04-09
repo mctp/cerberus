@@ -150,7 +150,10 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`aggregate_intervals()`** — Merges predictions from multiple genomic intervals into a single ModelOutput.
 - **`aggregate_models()`** — Ensembles outputs from multiple models by reducing each tensor field.
 - **`compute_total_log_counts()`** — Computes total log counts across all channels, returning shape (B,).
-- **`compute_obs_log_counts()`** — Computes observed total log-counts from raw target counts.
+- **`compute_signal()`** — Convert a model output to predicted signal in linear space.
+- **`compute_profile_probs()`** — Compute the normalized profile probability distribution.
+- **`compute_channel_log_counts()`** — Compute per-channel total counts in log space.
+- **`compute_obs_total_log_counts()`** — Computes observed total log-counts from raw target counts.
 
 ### `cerberus.loss`
 
@@ -185,6 +188,10 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 ### `cerberus.model_ensemble`
 
 - **`parse_hparams_config()`** — Parse a ``hparams.yaml`` file into a validated :class:`CerberusConfig`.
+- **`find_latest_hparams()`** — Find the most recently modified ``hparams.yaml`` under ``search_root``.
+- **`select_best_checkpoint()`** — Select the best checkpoint by lowest val_loss in filename.
+- **`load_backbone_weights_from_checkpoint()`** — Load backbone weights from either a clean ``model.pt`` or Lightning ``.ckpt``.
+- **`load_backbone_weights_from_fold_dir()`** — Load a model from ``fold_dir`` by preferring ``model.pt`` then best ``.ckpt``.
 - **`class ModelEnsemble(nn.ModuleDict)`** — Wraps a dictionary of models (fold_idx -> model) and manages
 - **`update_ensemble_metadata()`** — Updates or creates ensemble_metadata.yaml in the root directory
 
