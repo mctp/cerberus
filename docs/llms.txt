@@ -188,6 +188,10 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 ### `cerberus.model_ensemble`
 
 - **`parse_hparams_config()`** — Parse a ``hparams.yaml`` file into a validated :class:`CerberusConfig`.
+- **`find_latest_hparams()`** — Find the most recently modified ``hparams.yaml`` under ``search_root``.
+- **`select_best_checkpoint()`** — Select the best checkpoint by lowest val_loss in filename.
+- **`load_backbone_weights_from_checkpoint()`** — Load backbone weights from either a clean ``model.pt`` or Lightning ``.ckpt``.
+- **`load_backbone_weights_from_fold_dir()`** — Load a model from ``fold_dir`` by preferring ``model.pt`` then best ``.ckpt``.
 - **`class ModelEnsemble(nn.ModuleDict)`** — Wraps a dictionary of models (fold_idx -> model) and manages
 - **`update_ensemble_metadata()`** — Updates or creates ensemble_metadata.yaml in the root directory
 

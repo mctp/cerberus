@@ -519,6 +519,134 @@ python tools/print_model_dims.py BiasNet
 
 Supports case-insensitive model name matching and automatically infers default dimensions from the model class.
 
+## Model Interpretation (TF-MoDISco)
+
+Use a two-step workflow:
+
+1. `tools/export_tfmodisco_inputs.py` to export attribution inputs (`ohe.npz` + attribution NPZ).
+2. `tools/run_tfmodisco.py` to run TF-MoDISco motifs/report on any compatible NPZ inputs.
+
+What the export script does:
+
+1. Loads model weights from `model.pt` (or best `.ckpt`) and matching `hparams.yaml`.
+2. Rebuilds the matching `CerberusDataModule` and split (`train` / `val` / `test`).
+3. Exports:
+   - `ohe.npz` (DNA one-hot sequence; shape `(N, 4, L)`)
+   - `shap.npz` (attribution scores; shape `(N, 4, L)`)
+
+What the TF-MoDISco runner script does:
+
+1. Validates `ohe` and attribution NPZ inputs (expects key `arr_0`, shape `(N, 4, L)`).
+2. Runs `modisco motifs`.
+3. Optionally runs `modisco report`.
+
+Prerequisites:
+
+```bash
+pip install modisco
+# Optional (only if export uses --attribution-method integrated_gradients):
+pip install captum
+
+# Or install cerberus extras:
+pip install -e ".[tfmodisco]"
+pip install -e ".[attribution]"
+# (combined)
+pip install -e ".[interpret]"
+# (development + attribution)
+pip install -e ".[dev,attribution]"
+```
+
+Step 1: export attribution NPZ files:
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --split test \
+    --n-examples 2000 \
+    --seed 42 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --target-mode log_counts
+```
+
+Export with ISM attribution:
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --attribution-method ism \
+    --ism-start 800 \
+    --ism-end 1200
+```
+
+Step 2: run TF-MoDISco motifs on exported NPZ files:
+
+```bash
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5
+```
+
+Generate HTML report after motifs:
+
+```bash
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5 \
+    --run-report \
+    --meme-db motifs.meme
+```
+
+TF-MoDISco recommended motif database for human data:
+
+- Each pattern produced by TF-MoDISco is compared against a motif database using TOMTOM.
+- A good default for human analyses is `MotifCompendium-Database-Human.meme.txt` from MotifCompendium.
+- Source recommendation: https://github.com/kundajelab/tfmodisco?tab=readme-ov-file#generating-reports
+
+```bash
+mkdir -p data/motifs
+curl -L \
+  -o data/motifs/MotifCompendium-Database-Human.meme.txt \
+  https://raw.githubusercontent.com/kundajelab/MotifCompendium/refs/heads/main/pipeline/data/MotifCompendium-Database-Human.meme.txt
+
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --target-mode log_counts
+
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5 \
+    --run-report \
+    --meme-db data/motifs/MotifCompendium-Database-Human.meme.txt
+```
+
+Common interpretation target modes (`--target-mode`):
+
+| Mode | Meaning |
+|---|---|
+| `log_counts` | Attribution to predicted log total counts (default) |
+| `profile_bin` | Attribution to one profile-logit bin (`--bin-index`) |
+| `profile_window_sum` | Attribution to summed profile logits in `[start:end)` (`--window-start`, `--window-end`) |
+| `pred_count_bin` | Attribution to one predicted count bin (softmax(logits) × exp(log_counts)) |
+| `pred_count_window_sum` | Attribution to summed predicted counts in a window |
+
+Notes:
+
+1. Use the same `--seed` as training for comparable sampler behavior (`tools/train_*.py` defaults to `42`).
+2. For `peak` samplers, the script defaults to positive intervals only (`IntervalSampler` source).
+3. Attribution method is configurable via `--attribution-method`:
+   - `integrated_gradients` (default, requires `captum`)
+   - `ism` (forward-pass mutation deltas; can be expensive over full input length)
+4. `tools/run_tfmodisco.py` can consume any compatible attribution NPZ, not just outputs from `tools/export_tfmodisco_inputs.py`.
+5. `modisco motifs` expects NPZ key `arr_0`; export scripts should write NPZ in that format.
+
 ## Next Steps
 
 Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.
@@ -1864,7 +1992,7 @@ A lightweight, efficient model (~150k params) mirroring BPNet's valid-padding pa
 **Implementation**: `cerberus.models.BPNet` (Standard) / `BPNet1024`
 **Source**: `src/cerberus/models/bpnet.py`
 
-An implementation of the BPNet architecture (Avsec et al., 2021) following the "Consensus" specification (Post-Activation Residual Blocks). It is designed for base-resolution profile prediction. Weights are initialized with Xavier uniform (Glorot) to match the TensorFlow/Keras defaults used by the original BPNet and chrombpnet-pytorch.
+An implementation of the BPNet architecture (Avsec et al., 2021) for base-resolution profile prediction. The default residual formulation is pre-activation (`x + conv(act(x))`), matching BasePairNet/bpnet-refactor. All activations are `nn.Module`-based (no `F.relu`) for full compatibility with hook-based attribution methods (Captum DeepLiftShap). Weights are initialized with Xavier uniform (Glorot) to match the TensorFlow/Keras defaults used by the original BPNet and chrombpnet-pytorch.
 
 ### Key Features
 *   **Valid Padding**: Uses `'valid'` padding throughout; excess length is center-cropped at the profile head.
@@ -1929,11 +2057,11 @@ The `residual_architecture` parameter controls the residual block formulation in
 
 | Variant | Formula | Description |
 |---|---|---|
-| `residual_post-activation_conv` (default) | `x + act(conv(x))` | Current Cerberus/BPNet-lite style. Initial conv output is activated before the tower. |
-| `residual_pre-activation_conv` | `x + conv(act(x))` | BasePairNet/bpnet-refactor pre-activation style. Initial conv is *not* activated before the tower; a final ReLU is applied after the tower. |
+| `residual_post-activation_conv` | `x + act(conv(x))` | Current Cerberus/BPNet-lite style. Initial conv output is activated before the tower. |
+| `residual_pre-activation_conv` (default) | `x + conv(act(x))` | BasePairNet/bpnet-refactor pre-activation style. Initial conv is *not* activated before the tower; a final ReLU is applied after the tower. |
 | `activated_residual_pre-activation_conv` | `act(x) + conv(act(x))` | bpnet-refactor post-activation style. Both the residual and conv branch are activated. Final ReLU after the tower. |
 
-The default (`residual_post-activation_conv`) preserves existing behavior. From the training script:
+The default is `residual_pre-activation_conv`. To override it from the training script:
 ```bash
 python tools/train_bpnet.py --residual-architecture residual_pre-activation_conv \
     --bigwig signal.bw --peaks peaks.bed --output-dir models/my_model
@@ -2747,6 +2875,13 @@ We recommend setting `Pomeranian` (K9) as the default configuration for future e
 
 ## src/cerberus/__init__.py
 
+from .attribution import (
+    ATTRIBUTION_MODES,
+    AttributionTarget,
+    apply_off_simplex_gradient_correction,
+    compute_ism_attributions,
+    resolve_ism_span,
+)
 from .config import (
     CerberusConfig,
     DataConfig,
@@ -2814,6 +2949,12 @@ __all__ = [
     "setup_logging",
     # Signal Extraction
     "register_extractor",
+    # Attribution utilities
+    "ATTRIBUTION_MODES",
+    "AttributionTarget",
+    "resolve_ism_span",
+    "compute_ism_attributions",
+    "apply_off_simplex_gradient_correction",
     # Training utilities
     "compute_counts_loss_weight",
     "resolve_adaptive_loss_args",
@@ -10676,6 +10817,7 @@ import logging
 import re
 from collections.abc import Iterable, Iterator
 from pathlib import Path
+from typing import Any
 
 import torch
 import yaml
@@ -10720,6 +10862,123 @@ def parse_hparams_config(path: str | Path) -> CerberusConfig:
     return CerberusConfig.model_validate(data)
 
 
+def find_latest_hparams(search_root: Path | str) -> Path:
+    """Find the most recently modified ``hparams.yaml`` under ``search_root``."""
+    root = Path(search_root)
+    candidates = list(root.rglob("hparams.yaml"))
+    if not candidates:
+        raise FileNotFoundError(f"No hparams.yaml found in {root}")
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+def _parse_val_loss(path: Path) -> float:
+    match = re.search(r"val_loss[=_](\d+\.?\d*)", path.name)
+    if match is None:
+        return float("inf")
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return float("inf")
+
+
+def select_best_checkpoint(checkpoints: list[Path]) -> Path:
+    """Select the best checkpoint by lowest val_loss in filename."""
+    if not checkpoints:
+        raise ValueError("No checkpoints provided.")
+    return sorted(checkpoints, key=lambda p: (_parse_val_loss(p), p.name))[0]
+
+
+def _extract_backbone_state_dict_from_lightning(
+    raw_state: dict[str, Any],
+) -> dict[str, torch.Tensor]:
+    """Strip Lightning/Cerberus prefixes and keep only backbone weights."""
+    state_dict: dict[str, torch.Tensor] = {}
+    for key, value in raw_state.items():
+        if not key.startswith("model."):
+            continue
+        new_key = key[6:]
+        if new_key.startswith("_orig_mod."):
+            new_key = new_key[10:]
+        state_dict[new_key] = value
+    return state_dict
+
+
+def load_backbone_weights_from_checkpoint(
+    model: nn.Module,
+    checkpoint_path: Path | str,
+    device: torch.device | str,
+    strict: bool = True,
+) -> None:
+    """Load backbone weights from either a clean ``model.pt`` or Lightning ``.ckpt``."""
+    if isinstance(device, str):
+        device = torch.device(device)
+    checkpoint_path = Path(checkpoint_path)
+
+    if checkpoint_path.suffix == ".pt":
+        logger.info("Loading clean state dict: %s", checkpoint_path)
+        state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
+        model.load_state_dict(state_dict, strict=strict)
+        return
+
+    if checkpoint_path.suffix != ".ckpt":
+        raise ValueError(
+            f"Unsupported checkpoint format '{checkpoint_path.suffix}' for {checkpoint_path}"
+        )
+
+    logger.info("Loading Lightning checkpoint: %s", checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    raw_state = checkpoint.get("state_dict")
+    if not isinstance(raw_state, dict):
+        raise ValueError(
+            f"Checkpoint missing 'state_dict' mapping: {checkpoint_path}"
+        )
+
+    state_dict = _extract_backbone_state_dict_from_lightning(raw_state)
+    if not state_dict:
+        raise ValueError(
+            f"No 'model.'-prefixed weights found in checkpoint: {checkpoint_path}"
+        )
+
+    model.load_state_dict(state_dict, strict=strict)
+
+
+def load_backbone_weights_from_fold_dir(
+    model: nn.Module,
+    fold_dir: Path | str,
+    device: torch.device | str,
+    strict: bool = True,
+) -> Path:
+    """Load a model from ``fold_dir`` by preferring ``model.pt`` then best ``.ckpt``."""
+    fold_dir = Path(fold_dir)
+    pt_path = fold_dir / "model.pt"
+    if pt_path.exists():
+        load_backbone_weights_from_checkpoint(
+            model=model,
+            checkpoint_path=pt_path,
+            device=device,
+            strict=strict,
+        )
+        return pt_path
+
+    checkpoints = list(fold_dir.glob("*.ckpt"))
+    if not checkpoints:
+        checkpoints = list(fold_dir.rglob("*.ckpt"))
+    if not checkpoints:
+        raise FileNotFoundError(
+            f"No model.pt or .ckpt files found in fold directory: {fold_dir}"
+        )
+
+    ckpt_path = select_best_checkpoint(checkpoints)
+    load_backbone_weights_from_checkpoint(
+        model=model,
+        checkpoint_path=ckpt_path,
+        device=device,
+        strict=strict,
+    )
+    return ckpt_path
+
+
 class ModelEnsemble(nn.ModuleDict):
     """
     Wraps a dictionary of models (fold_idx -> model) and manages
@@ -10744,7 +11003,7 @@ class ModelEnsemble(nn.ModuleDict):
             raise ValueError(f"checkpoint_path must be a directory: {path}")
 
         # Resolve configuration
-        hparams_path = self._find_hparams(path)
+        hparams_path = find_latest_hparams(path)
         self.cerberus_config: CerberusConfig = parse_hparams_config(hparams_path)
 
         overrides = {}
@@ -10767,19 +11026,6 @@ class ModelEnsemble(nn.ModuleDict):
         super().__init__(models)
         self.folds = folds
         self.device = device
-
-    def _find_hparams(self, checkpoint_dir: Path) -> Path:
-        """
-        Recursively searches for hparams.yaml in the checkpoint directory.
-        Returns the most recently modified one.
-        """
-        candidates = list(checkpoint_dir.rglob("hparams.yaml"))
-        if not candidates:
-            raise FileNotFoundError(f"No hparams.yaml found in {checkpoint_dir}")
-
-        # Sort by modification time (newest first)
-        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        return candidates[0]
 
     def _resolve_use_folds(self, use_folds: list[str] | None) -> list[str]:
         """
@@ -11203,25 +11449,6 @@ class _ModelManager:
             genome_config.fold_args,
         )
 
-    def _select_best_checkpoint(self, checkpoints: list[Path]) -> Path:
-        """
-        Selects the best checkpoint from a list based on validation loss.
-        """
-
-        def get_val_loss(p: Path) -> float:
-            # Pattern to match val_loss=0.1234
-            match = re.search(r"val_loss[=_](\d+\.?\d*)", p.name)
-            if match:
-                try:
-                    return float(match.group(1))
-                except ValueError:
-                    pass
-            return float("inf")
-
-        # Sort by val_loss ascending, then by name (for determinism)
-        sorted_ckpts = sorted(checkpoints, key=lambda p: (get_val_loss(p), p.name))
-        return sorted_ckpts[0]
-
     def load_models_and_folds(self) -> tuple[dict[str, nn.Module], list]:
         """
         Loads models and fold configuration.
@@ -11234,85 +11461,34 @@ class _ModelManager:
         for fold_idx in self.fold_indices:
             fold_dir = self.checkpoint_path / f"fold_{fold_idx}"
             key = f"fold_{fold_idx}"
-
-            # Prefer clean model.pt state dict
-            pt_path = fold_dir / "model.pt"
-            if pt_path.exists():
-                models_dict[str(fold_idx)] = self._load_model_pt(key, pt_path)
+            if not fold_dir.is_dir():
+                logger.warning("Fold directory missing for fold %s: %s", fold_idx, fold_dir)
                 continue
-
-            # Fallback: find best Lightning checkpoint
-            logger.debug(
-                "model.pt not found for fold %s, falling back to .ckpt", fold_idx
-            )
-            checkpoints = list(fold_dir.glob("*.ckpt"))
-            if not checkpoints:
-                checkpoints = list(fold_dir.rglob("*.ckpt"))
-
-            if checkpoints:
-                ckpt_path = self._select_best_checkpoint(checkpoints)
-                models_dict[str(fold_idx)] = self._load_model_ckpt(key, ckpt_path)
-            else:
-                logger.warning(f"No checkpoint found for fold {fold_idx} in {fold_dir}")
+            try:
+                models_dict[str(fold_idx)] = self._load_model_from_fold(key, fold_dir)
+            except FileNotFoundError:
+                logger.warning("No checkpoint found for fold %s in %s", fold_idx, fold_dir)
 
         return models_dict, self.folds
 
-    def _load_model_pt(self, key: str, pt_file: Path) -> nn.Module:
+    def _load_model_from_fold(self, key: str, fold_dir: Path) -> nn.Module:
         """
-        Loads a model from a clean ``.pt`` state dict file.
-
-        These files are produced by ``_save_model_pt`` during training and
-        contain a plain state dict with no ``model.`` or ``_orig_mod.``
-        prefixes, so no stripping is needed.
+        Load one fold model, caching by key for repeated use.
         """
         if key in self.cache:
             return self.cache[key]
 
-        logger.info(f"Loading model from {pt_file} for {key}...")
         model = instantiate_model(
             model_config=self.model_config,
             data_config=self.data_config,
         )
-        state_dict = torch.load(pt_file, map_location=self.device, weights_only=True)
-        model.load_state_dict(state_dict, strict=True)
-        model.to(self.device)
-        model.eval()
-
-        self.cache[key] = model
-        return model
-
-    def _load_model_ckpt(self, key: str, ckpt_file: Path) -> nn.Module:
-        """
-        Loads a model from a Lightning ``.ckpt`` checkpoint (fallback path).
-
-        Strips the ``model.`` prefix added by CerberusModule and the
-        ``_orig_mod.`` prefix added by ``torch.compile``.
-        """
-        if key in self.cache:
-            return self.cache[key]
-
-        logger.info(f"Loading model from {ckpt_file} for {key}...")
-        model = instantiate_model(
-            model_config=self.model_config,
-            data_config=self.data_config,
+        checkpoint_path = load_backbone_weights_from_fold_dir(
+            model=model,
+            fold_dir=fold_dir,
+            device=self.device,
+            strict=True,
         )
-        checkpoint = torch.load(ckpt_file, map_location=self.device, weights_only=False)
-        state_dict = checkpoint["state_dict"]
-
-        # Strip "model." prefix from state_dict keys because we are loading into the backbone model directly,
-        # not the CerberusModule wrapper where these weights were originally saved under 'self.model'.
-        new_state_dict = {}
-        for k, v in state_dict.items():
-            if k.startswith("model."):
-                weight_key = k[6:]
-                # Handle torch.compile prefix:
-                # If the model was compiled during training, keys will have "_orig_mod." prefix.
-                # Since we are loading into an uncompiled model here, we must strip this prefix.
-                if weight_key.startswith("_orig_mod."):
-                    weight_key = weight_key[10:]
-                new_state_dict[weight_key] = v
-
-        model.load_state_dict(new_state_dict)
+        logger.info("Loaded model for %s from %s", key, checkpoint_path)
         model.to(self.device)
         model.eval()
 
@@ -12273,8 +12449,8 @@ class BPNet(nn.Module):
             normalisation is a weight reparameterisation, not an activation nonlinearity.
             Default: ``False``.
         residual_architecture (str): Residual block formulation. One of:
-            ``"residual_post-activation_conv"`` (``x + act(conv(x))``, default),
-            ``"residual_pre-activation_conv"`` (``x + conv(act(x))``),
+            ``"residual_pre-activation_conv"`` (``x + conv(act(x))``, default),
+            ``"residual_post-activation_conv"`` (``x + act(conv(x))``),
             ``"activated_residual_pre-activation_conv"`` (``act(x) + conv(act(x))``).
             The initial convolution output is activated before entering the tower
             only for ``"residual_post-activation_conv"``.
@@ -12297,7 +12473,7 @@ class BPNet(nn.Module):
         predict_total_count: bool = True,
         activation: str = "relu",
         weight_norm: bool = False,
-        residual_architecture: str = "residual_post-activation_conv",
+        residual_architecture: str = "residual_pre-activation_conv",
     ):
         super().__init__()
         if input_channels is None:
@@ -12319,6 +12495,9 @@ class BPNet(nn.Module):
             "residual_pre-activation_conv",
             "activated_residual_pre-activation_conv",
         }
+        # Use an nn.Module activation (instead of functional F.relu) so hook-based
+        # attribution methods can register on this operation.
+        self.final_tower_relu = nn.ReLU()
 
         # 1. Initial Convolution (plain — weight_norm applied after reinit if requested)
         self.iconv: nn.Module = nn.Conv1d(
@@ -12477,7 +12656,7 @@ class BPNet(nn.Module):
         # bpnet-refactor applies a final ReLU after the dilated tower for both
         # pre-activation variants (syntax_module final activation).
         if self._apply_final_tower_relu:
-            x = F.relu(x)
+            x = self.final_tower_relu(x)
 
         # --- Profile Head ---
         profile_logits = self.profile_conv(x)  # (B, Out_Channels, Length)
@@ -12548,7 +12727,7 @@ class BPNet1024(BPNet):
         predict_total_count: bool = True,
         activation: str = "relu",
         weight_norm: bool = False,
-        residual_architecture: str = "residual_post-activation_conv",
+        residual_architecture: str = "residual_pre-activation_conv",
     ):
         super().__init__(
             input_len=input_len,

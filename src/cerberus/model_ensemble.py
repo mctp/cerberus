@@ -648,10 +648,13 @@ class _ModelManager:
         for fold_idx in self.fold_indices:
             fold_dir = self.checkpoint_path / f"fold_{fold_idx}"
             key = f"fold_{fold_idx}"
+            if not fold_dir.is_dir():
+                logger.warning("Fold directory missing for fold %s: %s", fold_idx, fold_dir)
+                continue
             try:
                 models_dict[str(fold_idx)] = self._load_model_from_fold(key, fold_dir)
             except FileNotFoundError:
-                logger.warning(f"No checkpoint found for fold {fold_idx} in {fold_dir}")
+                logger.warning("No checkpoint found for fold %s in %s", fold_idx, fold_dir)
 
         return models_dict, self.folds
 

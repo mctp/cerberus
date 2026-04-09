@@ -23,7 +23,7 @@ A lightweight, efficient model (~150k params) mirroring BPNet's valid-padding pa
 **Implementation**: `cerberus.models.BPNet` (Standard) / `BPNet1024`
 **Source**: `src/cerberus/models/bpnet.py`
 
-An implementation of the BPNet architecture (Avsec et al., 2021) following the "Consensus" specification (Post-Activation Residual Blocks). It is designed for base-resolution profile prediction. Weights are initialized with Xavier uniform (Glorot) to match the TensorFlow/Keras defaults used by the original BPNet and chrombpnet-pytorch.
+An implementation of the BPNet architecture (Avsec et al., 2021) for base-resolution profile prediction. The default residual formulation is pre-activation (`x + conv(act(x))`), matching BasePairNet/bpnet-refactor. All activations are `nn.Module`-based (no `F.relu`) for full compatibility with hook-based attribution methods (Captum DeepLiftShap). Weights are initialized with Xavier uniform (Glorot) to match the TensorFlow/Keras defaults used by the original BPNet and chrombpnet-pytorch.
 
 ### Key Features
 *   **Valid Padding**: Uses `'valid'` padding throughout; excess length is center-cropped at the profile head.

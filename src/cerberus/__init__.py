@@ -1,4 +1,5 @@
 from .attribution import (
+    ATTRIBUTION_MODES,
     AttributionTarget,
     apply_off_simplex_gradient_correction,
     compute_ism_attributions,
@@ -72,6 +73,7 @@ __all__ = [
     # Signal Extraction
     "register_extractor",
     # Attribution utilities
+    "ATTRIBUTION_MODES",
     "AttributionTarget",
     "resolve_ism_span",
     "compute_ism_attributions",

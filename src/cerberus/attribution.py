@@ -6,6 +6,15 @@ import numpy as np
 import torch
 
 
+ATTRIBUTION_MODES = {
+    "log_counts",
+    "profile_bin",
+    "profile_window_sum",
+    "pred_count_bin",
+    "pred_count_window_sum",
+}
+
+
 class AttributionTarget(torch.nn.Module):
     """Wrap Cerberus model output into a scalar target tensor."""
 
@@ -19,6 +28,10 @@ class AttributionTarget(torch.nn.Module):
         window_end: int | None,
     ) -> None:
         super().__init__()
+        if mode not in ATTRIBUTION_MODES:
+            raise ValueError(
+                f"Unsupported mode: {mode!r}. Must be one of {sorted(ATTRIBUTION_MODES)}."
+            )
         self.model = model
         self.mode = mode
         self.channel = channel
@@ -115,7 +128,13 @@ def compute_ism_attributions(
     ism_start: int | None,
     ism_end: int | None,
 ) -> torch.Tensor:
-    """Compute single-position ISM deltas as (B, 4, L) attribution scores."""
+    """Compute single-position ISM deltas as ``(B, 4, L)`` attribution scores.
+
+    Positions outside ``[ism_start, ism_end)`` are left as zeros.  At each
+    mutated position the observed-nucleotide channel is set to the negative
+    per-position mean (TF-MoDISco ``one_hot * hypothetical_contribs``
+    convention) rather than the raw zero delta.
+    """
     if inputs.shape[1] < 4:
         raise ValueError(
             f"ISM requires >=4 DNA channels in inputs, got shape {tuple(inputs.shape)}"

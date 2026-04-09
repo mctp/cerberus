@@ -5,6 +5,7 @@ import pytest
 import torch
 
 from cerberus.attribution import (
+    ATTRIBUTION_MODES,
     AttributionTarget,
     apply_off_simplex_gradient_correction,
     compute_ism_attributions,
@@ -20,12 +21,33 @@ class _ToyCerberusModel(torch.nn.Module):
 
 
 class _WeightedScalarTarget(torch.nn.Module):
+    weights: torch.Tensor
+
     def __init__(self) -> None:
         super().__init__()
         self.register_buffer("weights", torch.tensor([1.0, 2.0, 3.0, 4.0]).view(1, 4, 1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return (x[:, :4, :] * self.weights).sum(dim=(1, 2))
+
+
+def test_attribution_target_invalid_mode_raises() -> None:
+    model = _ToyCerberusModel()
+    with pytest.raises(ValueError, match="Unsupported mode"):
+        AttributionTarget(
+            model=model,
+            mode="bad_mode",
+            channel=0,
+            bin_index=None,
+            window_start=None,
+            window_end=None,
+        )
+
+
+def test_attribution_modes_constant() -> None:
+    assert "log_counts" in ATTRIBUTION_MODES
+    assert "profile_bin" in ATTRIBUTION_MODES
+    assert len(ATTRIBUTION_MODES) == 5
 
 
 def test_attribution_target_log_counts_channel() -> None:

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a3] - 2026-04-08
+
 ### Added
 - **`load_variants()` function** (`variants.py`):
   Lightweight alternative to `load_vcf()` for loading variants from
@@ -14,6 +16,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Positions are 1-based by default (matching VCF/dbSNP/ClinVar convention);
   set `zero_based=True` for 0-based input. Supports optional `id` column,
   flexible column ordering, `#` comment lines, and extra columns.
+- **Attribution module** (`attribution.py`):
+  `AttributionTarget` wraps model output as a scalar for Captum attribution
+  methods. `compute_ism_attributions()` computes single-position ISM deltas.
+  `apply_off_simplex_gradient_correction()` subtracts per-position mean.
+  Mode is validated at construction time via `ATTRIBUTION_MODES`.
+- **TF-MoDISco interpretation tools** (`tools/export_tfmodisco_inputs.py`,
+  `tools/run_tfmodisco.py`): Two-step workflow for exporting attribution
+  arrays (Captum IG, DeepLiftShap, or ISM) and running TF-MoDISco motif
+  discovery.
+- **Internal analysis: attribution methods comparison**
+  (`docs/internal/attribution_methods_tangermeme_vs_captum.md`): Technical
+  reference comparing tangermeme and Captum attribution implementations.
+- **Internal analysis: BPNet vs Pomeranian performance-interpretability tradeoff**
+  (`docs/internal/interpretability_performance_tradeoff.md`): Documents why
+  Pomeranian's higher predictive accuracy produces worse TF-MoDISco motifs,
+  traces the cause to multiplicative gating, GRN, and non-linear profile head,
+  and proposes concrete remediation strategies for both architectures.
+
+### Changed
+- **BPNet default residual architecture** (`bpnet.py`):
+  Changed from `residual_post-activation_conv` to
+  `residual_pre-activation_conv`.  Existing checkpoints trained with the old
+  default are unaffected if `residual_architecture` is recorded in
+  `hparams.yaml` (which it is for all cerberus-trained models).
+- **BPNet final tower ReLU is now an `nn.Module`** (`bpnet.py`):
+  Replaced `F.relu()` with `self.final_tower_relu = nn.ReLU()` so
+  hook-based attribution methods (Captum DeepLiftShap) can register on the
+  activation.  No effect on forward-pass numerics or checkpoint loading.
+- **Refactored model-loading helpers** (`model_ensemble.py`):
+  Extracted `find_latest_hparams()`, `select_best_checkpoint()`,
+  `load_backbone_weights_from_checkpoint()`, and
+  `load_backbone_weights_from_fold_dir()` as public module-level functions
+  for reuse by interpretation tools.
+
+### Fixed
+- **Jitter mutation destroyed after first epoch** (`dataset.py`):
 
 ## [1.0.0a2] - 2026-04-08
 
