@@ -83,8 +83,8 @@ def integration_setup(tmp_path):
     # Create fold_0 and save model there
     fold_dir = tmp_path / "fold_0"
     fold_dir.mkdir()
-    ckpt_path = fold_dir / "model.ckpt"
-    torch.save({"state_dict": model.state_dict()}, ckpt_path)
+    pt_path = fold_dir / "model.pt"
+    torch.save(model.state_dict(), pt_path)
 
     model_config = ModelConfig.model_construct(
         name="dummy",
@@ -136,7 +136,7 @@ def integration_setup(tmp_path):
 
     with (
         patch(
-            "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+            "cerberus.model_ensemble.find_latest_hparams",
             return_value=Path("hparams.yaml"),
         ),
         patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config),
@@ -302,7 +302,7 @@ def create_mock_ensemble(models, output_len=60, output_bin_size=1):
     with (
         patch("cerberus.model_ensemble._ModelManager") as mock_loader_cls,
         patch(
-            "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+            "cerberus.model_ensemble.find_latest_hparams",
             return_value=Path("hparams.yaml"),
         ),
         patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config),

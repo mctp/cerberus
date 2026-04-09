@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cerberus"
-version = "1.0.0a1"
+version = "1.0.0a3"
 description = "Attentive multi-headed and highly trained companion to sequence-to-function deep-learning models"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -27,12 +27,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pybigwig", "pysam", "matplotlib", "jupyter", "ipywidgets", "snapatac2", "ruff", "pre-commit"]
+variants = ["cyvcf2"]
+dev = ["pytest", "pybigwig", "pysam", "cyvcf2", "matplotlib", "jupyter", "ipywidgets", "snapatac2", "ruff", "pre-commit"]
 docs = [
   "mkdocs>=1.6",
   "mkdocs-material>=9.5",
   "mkdocs-git-revision-date-localized-plugin>=1.2",
 ]
+attribution = ["captum"]
+tfmodisco = ["modisco"]
+interpret = ["captum", "modisco"]
 
 [project.urls]
 "Homepage" = "https://github.com/marcincieslik/cerberus"
@@ -53,3 +57,11 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 norecursedirs = ["tests/benchmark"]
+filterwarnings = [
+    # PyTorch 2.11: torch/utils/mkldnn.py uses 14 deprecated @torch.jit.script_method
+    # decorators; imported internally by torch.compile(). Remove when fixed upstream.
+    "ignore:`torch.jit.script_method` is deprecated:DeprecationWarning",
+    # PyTorch Lightning 2.6.1 + PyTorch 2.11: pytorch_lightning/utilities/_pytree.py
+    # uses deprecated LeafSpec isinstance check. Remove when PL updates pytree API.
+    "ignore:`isinstance\\(treespec, LeafSpec\\)` is deprecated:FutureWarning",
+]

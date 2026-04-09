@@ -10,6 +10,9 @@ from cerberus.output import (
     ProfileLogits,
     ProfileLogRates,
     aggregate_models,
+    compute_channel_log_counts,
+    compute_profile_probs,
+    compute_signal,
     compute_total_log_counts,
     unbatch_modeloutput,
 )
@@ -242,3 +245,251 @@ class TestDetach:
         out = ProfileLogRates(log_rates=torch.randn(1, 1, 5), out_interval=iv)
         detached = out.detach()
         assert detached.out_interval == iv
+
+
+# ---------------------------------------------------------------------------
+# compute_signal
+# ---------------------------------------------------------------------------
+
+
+class TestComputePredictedSignal:
+    def test_profile_count_batched_shape(self):
+        """ProfileCountOutput batched: returns (B, C, L)."""
+        out = ProfileCountOutput(
+            logits=torch.randn(2, 3, 100),
+            log_counts=torch.ones(2, 3),
+        )
+        signal = compute_signal(out)
+        assert signal.shape == (2, 3, 100)
+
+    def test_profile_count_unbatched_shape(self):
+        """ProfileCountOutput unbatched: returns (C, L)."""
+        out = ProfileCountOutput(
+            logits=torch.randn(3, 100),
+            log_counts=torch.ones(3),
+        )
+        signal = compute_signal(out)
+        assert signal.shape == (3, 100)
+
+    def test_profile_count_non_negative(self):
+        """Reconstructed signal is non-negative."""
+        out = ProfileCountOutput(
+            logits=torch.randn(2, 1, 50),
+            log_counts=torch.tensor([[3.0]]),
+        )
+        signal = compute_signal(out)
+        assert (signal >= 0).all()
+
+    def test_profile_count_sums_to_total(self):
+        """Signal sums approximately to exp(log_counts) per channel."""
+        log_c = torch.tensor([[4.0]])
+        out = ProfileCountOutput(
+            logits=torch.randn(1, 1, 100),
+            log_counts=log_c,
+        )
+        signal = compute_signal(out)
+        expected_total = torch.exp(log_c).item()
+        assert signal.sum().item() == pytest.approx(expected_total, rel=1e-4)
+
+    def test_profile_count_with_pseudocount(self):
+        """With pseudocount, total is exp(log_counts) - pseudocount."""
+        log_c = torch.tensor([[4.0]])
+        out = ProfileCountOutput(
+            logits=torch.randn(1, 1, 100),
+            log_counts=log_c,
+        )
+        signal = compute_signal(
+            out, log_counts_include_pseudocount=True, pseudocount=1.0
+        )
+        expected_total = (torch.exp(log_c) - 1.0).item()
+        assert signal.sum().item() == pytest.approx(expected_total, rel=1e-4)
+
+    def test_profile_count_pseudocount_clamped(self):
+        """Pseudocount larger than exp(log_counts) clamps to zero."""
+        log_c = torch.tensor([[0.0]])  # exp(0) = 1.0
+        out = ProfileCountOutput(
+            logits=torch.randn(1, 1, 50),
+            log_counts=log_c,
+        )
+        signal = compute_signal(
+            out, log_counts_include_pseudocount=True, pseudocount=2.0
+        )
+        assert signal.sum().item() == pytest.approx(0.0, abs=1e-6)
+
+    def test_profile_log_rates_shape(self):
+        """ProfileLogRates: returns exp(log_rates)."""
+        log_rates = torch.randn(2, 1, 50)
+        out = ProfileLogRates(log_rates=log_rates)
+        signal = compute_signal(out)
+        assert signal.shape == (2, 1, 50)
+        assert torch.allclose(signal, torch.exp(log_rates))
+
+    def test_profile_logits_fallback(self):
+        """ProfileLogits fallback: returns raw logits with warning."""
+        logits = torch.randn(2, 1, 50)
+        out = ProfileLogits(logits=logits)
+        signal = compute_signal(out)
+        assert torch.allclose(signal, logits)
+
+    def test_global_log_counts_multichannel(self):
+        """Global log_counts (B, 1) with multi-channel logits (B, C, L)."""
+        out = ProfileCountOutput(
+            logits=torch.randn(1, 4, 100),
+            log_counts=torch.tensor([[5.0]]),
+        )
+        signal = compute_signal(out)
+        assert signal.shape == (1, 4, 100)
+        # Total should be exp(5.0) distributed across 4 channels
+        expected_per_channel = torch.exp(torch.tensor(5.0)).item() / 4
+        for c in range(4):
+            assert signal[0, c].sum().item() == pytest.approx(
+                expected_per_channel, rel=1e-4
+            )
+
+
+# ---------------------------------------------------------------------------
+# compute_profile_probs
+# ---------------------------------------------------------------------------
+
+
+class TestComputeProfileProbs:
+    def test_profile_count_shape(self):
+        out = ProfileCountOutput(
+            logits=torch.randn(2, 3, 100), log_counts=torch.ones(2, 3)
+        )
+        probs = compute_profile_probs(out)
+        assert probs.shape == (2, 3, 100)
+
+    def test_sums_to_one(self):
+        out = ProfileCountOutput(
+            logits=torch.randn(4, 2, 50), log_counts=torch.ones(4, 2)
+        )
+        probs = compute_profile_probs(out)
+        sums = probs.sum(dim=-1)
+        assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5)
+
+    def test_non_negative(self):
+        out = ProfileCountOutput(
+            logits=torch.randn(2, 1, 100), log_counts=torch.ones(2, 1)
+        )
+        probs = compute_profile_probs(out)
+        assert (probs >= 0).all()
+
+    def test_unbatched(self):
+        out = ProfileCountOutput(
+            logits=torch.randn(3, 100), log_counts=torch.ones(3)
+        )
+        probs = compute_profile_probs(out)
+        assert probs.shape == (3, 100)
+        assert torch.allclose(probs.sum(dim=-1), torch.ones(3), atol=1e-5)
+
+    def test_profile_logits(self):
+        """ProfileLogits also works (parent class of ProfileCountOutput)."""
+        out = ProfileLogits(logits=torch.randn(2, 1, 50))
+        probs = compute_profile_probs(out)
+        assert probs.shape == (2, 1, 50)
+        assert torch.allclose(
+            probs.sum(dim=-1), torch.ones(2, 1), atol=1e-5
+        )
+
+    def test_profile_log_rates(self):
+        """ProfileLogRates: normalized exp(log_rates)."""
+        log_rates = torch.randn(2, 1, 50)
+        out = ProfileLogRates(log_rates=log_rates)
+        probs = compute_profile_probs(out)
+        assert probs.shape == (2, 1, 50)
+        assert torch.allclose(
+            probs.sum(dim=-1), torch.ones(2, 1), atol=1e-5
+        )
+
+    def test_uniform_logits(self):
+        """Uniform logits → uniform probabilities."""
+        out = ProfileCountOutput(
+            logits=torch.zeros(1, 1, 10), log_counts=torch.ones(1, 1)
+        )
+        probs = compute_profile_probs(out)
+        assert torch.allclose(probs, torch.full_like(probs, 0.1), atol=1e-5)
+
+    def test_spike_logits(self):
+        """Large logit at one position → probability concentrated there."""
+        logits = torch.full((1, 1, 100), -100.0)
+        logits[0, 0, 42] = 0.0
+        out = ProfileCountOutput(logits=logits, log_counts=torch.ones(1, 1))
+        probs = compute_profile_probs(out)
+        assert probs[0, 0, 42].item() > 0.99
+
+
+# ---------------------------------------------------------------------------
+# compute_channel_log_counts
+# ---------------------------------------------------------------------------
+
+
+class TestComputeChannelLogCounts:
+    def test_profile_count_passthrough(self):
+        """Per-channel log_counts are returned directly."""
+        log_c = torch.tensor([[2.0, 3.0, 4.0]])
+        out = ProfileCountOutput(
+            logits=torch.randn(1, 3, 50), log_counts=log_c
+        )
+        result = compute_channel_log_counts(out)
+        assert torch.allclose(result, log_c)
+
+    def test_shape_batched(self):
+        out = ProfileCountOutput(
+            logits=torch.randn(4, 3, 50), log_counts=torch.randn(4, 3)
+        )
+        result = compute_channel_log_counts(out)
+        assert result.shape == (4, 3)
+
+    def test_shape_unbatched(self):
+        out = ProfileCountOutput(
+            logits=torch.randn(3, 50), log_counts=torch.randn(3)
+        )
+        result = compute_channel_log_counts(out)
+        assert result.shape == (3,)
+
+    def test_global_log_counts_distributed(self):
+        """Global (B,1) log_counts with C>1 channels → log(total/C) per channel."""
+        import math
+
+        log_c = torch.tensor([[6.0]])  # total = exp(6)
+        out = ProfileCountOutput(
+            logits=torch.randn(1, 4, 50), log_counts=log_c
+        )
+        result = compute_channel_log_counts(out)
+        assert result.shape == (1, 4)
+        expected = 6.0 - math.log(4)
+        assert result[0, 0].item() == pytest.approx(expected, rel=1e-5)
+        assert result[0, 3].item() == pytest.approx(expected, rel=1e-5)
+
+    def test_single_channel_unchanged(self):
+        """Single channel: no distribution needed."""
+        log_c = torch.tensor([[5.0]])
+        out = ProfileCountOutput(
+            logits=torch.randn(1, 1, 50), log_counts=log_c
+        )
+        result = compute_channel_log_counts(out)
+        assert result.item() == pytest.approx(5.0, rel=1e-5)
+
+    def test_profile_log_rates(self):
+        """ProfileLogRates: logsumexp along length axis."""
+        log_rates = torch.zeros(1, 2, 100)  # rates = 1.0 everywhere
+        out = ProfileLogRates(log_rates=log_rates)
+        result = compute_channel_log_counts(out)
+        assert result.shape == (1, 2)
+        # logsumexp of 100 zeros = log(100)
+        import math
+
+        assert result[0, 0].item() == pytest.approx(math.log(100), rel=1e-4)
+
+    def test_consistency_with_total(self):
+        """Sum of exp(channel_log_counts) ≈ exp(total_log_counts)."""
+        out = ProfileCountOutput(
+            logits=torch.randn(2, 3, 50),
+            log_counts=torch.randn(2, 3),
+        )
+        channel = compute_channel_log_counts(out)
+        total = compute_total_log_counts(out)
+        channel_sum = torch.exp(channel).sum(dim=-1)
+        total_linear = torch.exp(total)
+        assert torch.allclose(channel_sum, total_linear, rtol=1e-4)

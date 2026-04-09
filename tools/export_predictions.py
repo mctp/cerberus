@@ -17,7 +17,7 @@ from cerberus.genome import create_genome_folds
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.module import instantiate_metrics_and_loss
 from cerberus.output import (
-    compute_obs_log_counts,
+    compute_obs_total_log_counts,
     compute_total_log_counts,
     get_log_count_params,
 )
@@ -365,7 +365,7 @@ def main():
 
         # Calculate observed total from RAW counts, in the same log-space as the loss.
         raw_obs = torch.stack(raw_obs_list)
-        obs_log_total = compute_obs_log_counts(
+        obs_log_total = compute_obs_total_log_counts(
             raw_obs,
             target_scale=data_config.target_scale,
             log_counts_include_pseudocount=log_counts_include_pseudocount,

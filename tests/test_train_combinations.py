@@ -148,8 +148,10 @@ def test_train_combinations(
     # Check checkpointing
     # trainer.checkpoint_callback (deprecated?) -> trainer.checkpoint_callbacks (list) or check callbacks list
     checkpoint_callbacks = [
-        c for c in trainer.callbacks if isinstance(c, ModelCheckpoint)
-    ]  # type: ignore
+        c
+        for c in trainer.callbacks  # type: ignore[union-attr]
+        if isinstance(c, ModelCheckpoint)
+    ]
 
     if enable_checkpointing:
         assert len(checkpoint_callbacks) > 0, (

@@ -1,0 +1,178 @@
+"""Attribution utilities shared across interpretation tools."""
+
+from __future__ import annotations
+
+import numpy as np
+import torch
+
+
+ATTRIBUTION_MODES = {
+    "log_counts",
+    "profile_bin",
+    "profile_window_sum",
+    "pred_count_bin",
+    "pred_count_window_sum",
+}
+
+
+class AttributionTarget(torch.nn.Module):
+    """Wrap Cerberus model output into a scalar target tensor."""
+
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        mode: str,
+        channel: int,
+        bin_index: int | None,
+        window_start: int | None,
+        window_end: int | None,
+    ) -> None:
+        super().__init__()
+        if mode not in ATTRIBUTION_MODES:
+            raise ValueError(
+                f"Unsupported mode: {mode!r}. Must be one of {sorted(ATTRIBUTION_MODES)}."
+            )
+        self.model = model
+        self.mode = mode
+        self.channel = channel
+        self.bin_index = bin_index
+        self.window_start = window_start
+        self.window_end = window_end
+
+    def _resolve_channel(self, tensor: torch.Tensor) -> int:
+        n_channels = tensor.shape[1]
+        if not (0 <= self.channel < n_channels):
+            raise ValueError(
+                f"Requested channel={self.channel}, but target has {n_channels} channels."
+            )
+        return self.channel
+
+    def _resolve_window(self, length: int) -> tuple[int, int]:
+        start = 0 if self.window_start is None else self.window_start
+        end = length if self.window_end is None else self.window_end
+        if not (0 <= start < end <= length):
+            raise ValueError(f"Invalid window [{start}, {end}) for output length {length}.")
+        return start, end
+
+    def _resolve_bin(self, length: int) -> int:
+        if self.bin_index is None:
+            return length // 2
+        if not (0 <= self.bin_index < length):
+            raise ValueError(
+                f"Invalid bin_index={self.bin_index} for output length {length}."
+            )
+        return self.bin_index
+
+    def _predicted_counts_channel(
+        self, logits: torch.Tensor, log_counts: torch.Tensor, channel: int
+    ) -> torch.Tensor:
+        probs = torch.softmax(logits, dim=-1)
+        if log_counts.shape[1] == 1:
+            count_scale = torch.exp(log_counts[:, 0]).unsqueeze(-1)
+        else:
+            count_scale = torch.exp(log_counts[:, channel]).unsqueeze(-1)
+        return probs[:, channel, :] * count_scale
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.model(x)
+        logits = out.logits
+        log_counts = out.log_counts
+
+        channel = self._resolve_channel(logits)
+
+        if self.mode == "log_counts":
+            if log_counts.shape[1] == 1:
+                return log_counts[:, 0]
+            if channel >= log_counts.shape[1]:
+                raise ValueError(
+                    f"Requested channel={channel}, but log_counts has "
+                    f"{log_counts.shape[1]} channels."
+                )
+            return log_counts[:, channel]
+
+        if self.mode == "profile_bin":
+            bin_index = self._resolve_bin(logits.shape[-1])
+            return logits[:, channel, bin_index]
+
+        if self.mode == "profile_window_sum":
+            start, end = self._resolve_window(logits.shape[-1])
+            return logits[:, channel, start:end].sum(dim=-1)
+
+        if self.mode == "pred_count_bin":
+            pred_counts = self._predicted_counts_channel(logits, log_counts, channel)
+            bin_index = self._resolve_bin(pred_counts.shape[-1])
+            return pred_counts[:, bin_index]
+
+        if self.mode == "pred_count_window_sum":
+            pred_counts = self._predicted_counts_channel(logits, log_counts, channel)
+            start, end = self._resolve_window(pred_counts.shape[-1])
+            return pred_counts[:, start:end].sum(dim=-1)
+
+        raise ValueError(f"Unsupported mode: {self.mode}")
+
+
+def resolve_ism_span(seq_len: int, start: int | None, end: int | None) -> tuple[int, int]:
+    """Resolve and validate the inclusive/exclusive ISM mutation window."""
+    span_start = 0 if start is None else start
+    span_end = seq_len if end is None else end
+    if not (0 <= span_start < span_end <= seq_len):
+        raise ValueError(
+            f"Invalid ISM span [{span_start}, {span_end}) for input length {seq_len}."
+        )
+    return span_start, span_end
+
+
+def compute_ism_attributions(
+    target_model: torch.nn.Module,
+    inputs: torch.Tensor,
+    ism_start: int | None,
+    ism_end: int | None,
+) -> torch.Tensor:
+    """Compute single-position ISM deltas as ``(B, 4, L)`` attribution scores.
+
+    Positions outside ``[ism_start, ism_end)`` are left as zeros.  At each
+    mutated position the observed-nucleotide channel is set to the negative
+    per-position mean (TF-MoDISco ``one_hot * hypothetical_contribs``
+    convention) rather than the raw zero delta.
+    """
+    if inputs.shape[1] < 4:
+        raise ValueError(
+            f"ISM requires >=4 DNA channels in inputs, got shape {tuple(inputs.shape)}"
+        )
+
+    batch_size = inputs.shape[0]
+    seq_len = inputs.shape[-1]
+    span_start, span_end = resolve_ism_span(seq_len, ism_start, ism_end)
+
+    attrs = torch.zeros((batch_size, 4, seq_len), device=inputs.device, dtype=inputs.dtype)
+    rows = torch.arange(batch_size * 4, device=inputs.device)
+    nuc_idx = torch.arange(4, device=inputs.device).repeat(batch_size)
+    sample_idx = torch.arange(batch_size, device=inputs.device)
+
+    with torch.no_grad():
+        ref_pred = target_model(inputs).reshape(batch_size)
+        for pos in range(span_start, span_end):
+            mutants = inputs.repeat_interleave(4, dim=0)
+            mutants[:, :4, pos] = 0.0
+            mutants[rows, nuc_idx, pos] = 1.0
+
+            mut_pred = target_model(mutants).reshape(batch_size, 4)
+            attrs[:, :, pos] = mut_pred - ref_pred[:, None]
+
+            # For TF-MoDISco compatibility with one_hot * hypothetical_contribs,
+            # fill the observed nucleotide channel with negative of the per-position
+            # mean hypothetical contribution instead of forcing it to zero.
+            ref_base = inputs[:, :4, pos].argmax(dim=1)
+            mean_at_pos = attrs[:, :, pos].mean(dim=1)
+            attrs[sample_idx, ref_base, pos] = -mean_at_pos
+
+    return attrs
+
+
+def apply_off_simplex_gradient_correction(attrs: np.ndarray) -> np.ndarray:
+    """Subtract per-position mean attribution across nucleotide channels."""
+    if attrs.ndim != 3:
+        raise ValueError(
+            f"Expected 3D attribution array (N, 4, L), got shape {attrs.shape}"
+        )
+    return attrs - attrs.mean(axis=1, keepdims=True)

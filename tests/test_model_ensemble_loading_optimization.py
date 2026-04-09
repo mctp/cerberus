@@ -137,7 +137,7 @@ def test_model_ensemble_loads_stripped_weights(mock_ensemble_dir):
     try:
         with (
             patch(
-                "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+                "cerberus.model_ensemble.find_latest_hparams",
                 return_value=Path("hparams.yaml"),
             ),
             patch(

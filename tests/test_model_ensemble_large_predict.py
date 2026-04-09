@@ -105,7 +105,7 @@ def create_ensemble(models, folds, output_len=100, output_bin_size=1):
     with (
         patch("cerberus.model_ensemble._ModelManager") as mock_cls,
         patch(
-            "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+            "cerberus.model_ensemble.find_latest_hparams",
             return_value=Path("hparams.yaml"),
         ),
         patch(

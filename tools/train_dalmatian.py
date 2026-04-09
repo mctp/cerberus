@@ -194,13 +194,6 @@ def get_args():
         "--signal-dropout", type=float, default=0.1, help="SignalNet dropout rate"
     )
 
-    # Initialization
-    parser.add_argument(
-        "--zero-init",
-        action="store_true",
-        help="Enable zero-initialization of signal output layers (not recommended with gradient detach)",
-    )
-
     # Pretrained weights
     parser.add_argument(
         "--pretrained-bias",
@@ -384,17 +377,23 @@ def main():
     logging.info("Using Dalmatian (bias-factorized) Model...")
 
     # input_len, output_len, output_bin_size are injected by instantiate_model
+    bias_args: dict[str, object] = {
+        "filters": args.bias_filters,
+        "dropout": args.bias_dropout,
+    }
+    signal_args: dict[str, object] = {
+        "dropout": args.signal_dropout,
+    }
+    if args.signal_filters is not None:
+        signal_args["filters"] = args.signal_filters
+
     model_args: dict[str, object] = {
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],
-        "bias_filters": args.bias_filters,
-        "bias_dropout": args.bias_dropout,
         "signal_preset": args.signal_preset,
-        "signal_dropout": args.signal_dropout,
-        "zero_init": args.zero_init,
+        "bias_args": bias_args,
+        "signal_args": signal_args,
     }
-    if args.signal_filters is not None:
-        model_args["signal_filters"] = args.signal_filters
 
     # DalmatianLoss configuration
     if args.base_loss == "poisson":

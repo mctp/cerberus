@@ -621,11 +621,17 @@ class DalmatianLoss(nn.Module):
         l_bias = torch.tensor(0.0, device=targets.device)
 
         if non_peak.any():
+            bias_logits = outputs.bias_logits[non_peak]
+            bias_log_counts = outputs.bias_log_counts[non_peak]
+            bias_targets = targets[non_peak]
+            # shared_bias: 1-channel bias vs N-channel targets — sum targets
+            # to get the bulk signal that BiasNet should reconstruct.
+            if bias_logits.shape[1] < bias_targets.shape[1]:
+                bias_targets = bias_targets.sum(dim=1, keepdim=True)
             bias_out = ProfileCountOutput(
-                logits=outputs.bias_logits[non_peak],
-                log_counts=outputs.bias_log_counts[non_peak],
+                logits=bias_logits, log_counts=bias_log_counts
             )
-            l_bias = self.base_loss(bias_out, targets[non_peak])
+            l_bias = self.base_loss(bias_out, bias_targets)
 
         return {"recon_loss": l_recon, "bias_loss": l_bias}
 

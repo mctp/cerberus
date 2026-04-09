@@ -53,5 +53,12 @@ After completing each task, always:
 - Site URL: `https://mctp.github.io/cerberus/`
 - GitHub Pages source branch is `gh-pages` in repo Settings → Pages.
 
+## Versioning
+
+- Format follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH` with `aN` alpha suffixes (e.g. `1.0.0a2`).
+- **Convention A**: `version` in `pyproject.toml` always matches the latest released version in `CHANGELOG.md`. Do **not** bump it ahead of the changelog.
+- Between releases, new changes accumulate under `## [Unreleased]` in `CHANGELOG.md`. The version in `pyproject.toml` stays unchanged.
+- At release time, in a single commit: rename `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD`, add a fresh empty `[Unreleased]` above it, and update `version` in `pyproject.toml` to match.
+
 ## DONT DO EMBARASSING THINGS
 

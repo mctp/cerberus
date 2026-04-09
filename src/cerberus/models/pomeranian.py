@@ -178,6 +178,44 @@ class Pomeranian(nn.Module):
             nn.Linear(hidden_dim, num_count_outputs),
         )
 
+    @staticmethod
+    def compute_shrinkage(
+        conv_kernel_size: int | list[int] = [11, 11],  # noqa: B006
+        n_dilated_layers: int = 8,
+        dilations: list[int] | None = None,
+        dil_kernel_size: int | list[int] = 9,
+        profile_kernel_size: int = 45,
+    ) -> int:
+        """Compute total shrinkage (in bp) for Pomeranian's valid-padding conv stack.
+
+        Shrinkage = stem + tower + profile_head, where each valid-padding layer
+        shrinks by ``dilation * (kernel_size - 1)``.
+
+        Args:
+            conv_kernel_size: Stem kernel size(s). Default: ``(11, 11)``.
+            n_dilated_layers: Number of dilated PGC layers. Default: ``8``.
+            dilations: Dilation schedule. Default: ``[1, 1, 2, 4, 8, 16, 32, 64]``.
+            dil_kernel_size: Tower conv kernel size(s). Default: ``9``.
+            profile_kernel_size: Profile head kernel size. Default: ``45``.
+
+        Returns:
+            Total input-to-output shrinkage in bp.
+        """
+        if dilations is None:
+            dilations = [1, 1, 2, 4, 8, 16, 32, 64]
+        if isinstance(conv_kernel_size, int):
+            stem = conv_kernel_size - 1
+        else:
+            stem = sum(k - 1 for k in conv_kernel_size)
+        if isinstance(dil_kernel_size, int):
+            tower = sum(d * (dil_kernel_size - 1) for d in dilations)
+        else:
+            tower = sum(
+                d * (k - 1) for d, k in zip(dilations, dil_kernel_size, strict=True)
+            )
+        head = profile_kernel_size - 1
+        return stem + tower + head
+
     def forward(self, x) -> ProfileCountOutput:
         # Center-crop or reject input based on expected input_len
         if x.shape[-1] > self.input_len:

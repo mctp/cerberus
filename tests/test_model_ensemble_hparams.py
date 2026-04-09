@@ -11,7 +11,7 @@ from cerberus.config import (
     SamplerConfig,
     TrainConfig,
 )
-from cerberus.model_ensemble import ModelEnsemble
+from cerberus.model_ensemble import ModelEnsemble, find_latest_hparams
 
 
 def _make_cerberus_config(**overrides):
@@ -104,19 +104,7 @@ def test_find_hparams(tmp_path):
     time.sleep(0.1)
     p2.touch()
 
-    cerberus_config = _make_cerberus_config()
-    with (
-        patch("cerberus.model_ensemble._ModelManager") as mock_mgr,
-        patch(
-            "cerberus.model_ensemble.parse_hparams_config", return_value=cerberus_config
-        ),
-    ):
-        instance = mock_mgr.return_value
-        instance.load_models_and_folds.return_value = ({}, [])
-
-        ens = ModelEnsemble(checkpoint_path=tmp_path)
-        found = ens._find_hparams(root)
-
+    found = find_latest_hparams(root)
     assert found.resolve() == p2.resolve()
 
 

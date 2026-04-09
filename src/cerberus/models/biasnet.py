@@ -158,6 +158,39 @@ class BiasNet(nn.Module):
             f"params={params:,}"
         )
 
+    @staticmethod
+    def compute_shrinkage(
+        conv_kernel_size: int | list[int] = [11, 11],  # noqa: B006
+        n_layers: int = 5,
+        dilations: list[int] | None = None,
+        dil_kernel_size: int = 9,
+        profile_kernel_size: int = 45,
+    ) -> int:
+        """Compute total shrinkage (in bp) for BiasNet's valid-padding conv stack.
+
+        Shrinkage = stem + tower + profile_head, where each valid-padding layer
+        shrinks by ``dilation * (kernel_size - 1)``.
+
+        Args:
+            conv_kernel_size: Stem kernel size(s). Default: ``(11, 11)``.
+            n_layers: Number of residual tower layers. Default: ``5``.
+            dilations: Dilation schedule. Default: all ones (no dilation).
+            dil_kernel_size: Tower conv kernel size. Default: ``9``.
+            profile_kernel_size: Profile head kernel size. Default: ``45``.
+
+        Returns:
+            Total input-to-output shrinkage in bp.
+        """
+        if dilations is None:
+            dilations = [1] * n_layers
+        if isinstance(conv_kernel_size, int):
+            stem = conv_kernel_size - 1
+        else:
+            stem = sum(k - 1 for k in conv_kernel_size)
+        tower = sum(d * (dil_kernel_size - 1) for d in dilations)
+        head = profile_kernel_size - 1
+        return stem + tower + head
+
     def forward(self, x: torch.Tensor) -> ProfileCountOutput:
         # Center-crop or reject input based on expected input_len
         if x.shape[-1] > self.input_len:

@@ -105,45 +105,6 @@ def test_dalmatian_forward_shape():
     assert out.signal_log_counts.shape == (2, 1)
 
 
-def test_dalmatian_zero_init():
-    """Signal model outputs are zero/negligible at initialization when zero_init=True."""
-    model = Dalmatian(zero_init=True)
-    x = torch.randn(2, 4, 2112)
-    with torch.no_grad():
-        out = model(x)
-    # Signal logits should be exactly 0
-    assert torch.allclose(
-        out.signal_logits, torch.zeros_like(out.signal_logits), atol=1e-6
-    )
-    # Signal log_counts should be ~ -10
-    assert (out.signal_log_counts < -9.0).all()
-
-
-def test_dalmatian_no_zero_init_default():
-    """Default Dalmatian does NOT zero-initialize signal outputs."""
-    model = Dalmatian()
-    x = torch.randn(2, 4, 2112)
-    with torch.no_grad():
-        out = model(x)
-    # Signal logits should NOT be all zeros (random init)
-    assert not torch.allclose(
-        out.signal_logits, torch.zeros_like(out.signal_logits), atol=1e-6
-    )
-
-
-def test_dalmatian_combined_equals_bias_at_init():
-    """At initialization with zero_init, combined output ~ bias-only output."""
-    model = Dalmatian(zero_init=True)
-    x = torch.randn(2, 4, 2112)
-    with torch.no_grad():
-        out = model(x)
-    # Profile: combined = bias + 0 = bias
-    assert torch.allclose(out.logits, out.bias_logits, atol=1e-6)
-    # Counts: logsumexp(bias, -10) ~ bias (when bias >> -10)
-    diff = (out.log_counts - out.bias_log_counts).abs()
-    assert diff.max() < 0.01
-
-
 def test_dalmatian_backward():
     """Gradients flow through both sub-models (via their respective loss paths)."""
     model = Dalmatian()
@@ -260,7 +221,7 @@ def test_dalmatian_shrinkage_validation():
         Dalmatian(
             input_len=2112,
             output_len=1024,
-            signal_dilations=[1, 1, 2, 4],  # too little shrinkage
+            signal_args={"dilations": [1, 1, 2, 4]},  # too little shrinkage
         )
 
 
@@ -521,8 +482,8 @@ def test_dalmatian_signal_preset_large():
 
 
 def test_dalmatian_signal_preset_override():
-    """Explicit signal_filters overrides preset default."""
-    model = Dalmatian(signal_preset="standard", signal_filters=128)
+    """Explicit signal_args filters overrides preset default."""
+    model = Dalmatian(signal_preset="standard", signal_args={"filters": 128})
     signal_params = sum(p.numel() for p in model.signal_model.parameters())
     # f=128 with expansion=1 (from standard preset) should be between standard and large
     assert 400_000 < signal_params < 1_000_000, (
@@ -534,18 +495,6 @@ def test_dalmatian_signal_preset_invalid():
     """Invalid signal_preset raises ValueError."""
     with pytest.raises(ValueError, match="Unknown signal_preset"):
         Dalmatian(signal_preset="tiny")
-
-
-def test_dalmatian_no_zero_init():
-    """zero_init=False skips signal output zero-initialization."""
-    model = Dalmatian(zero_init=False)
-    x = torch.randn(2, 4, 2112)
-    with torch.no_grad():
-        out = model(x)
-    # Signal logits should NOT be all zeros (random init)
-    assert not torch.allclose(
-        out.signal_logits, torch.zeros_like(out.signal_logits), atol=1e-6
-    )
 
 
 # --- Step 6: End-to-end integration and additional tests ---
@@ -757,13 +706,11 @@ def test_dalmatian_optimization_reduces_loss():
     assert bias_moved, "BiasNet parameters did not change during training"
     assert signal_moved, "SignalNet parameters did not change during training"
 
-    # 3. After training, signal count head should have moved far from -10 init
-    #    (Profile logits stay near zero longer due to two zero-init conv layers
-    #    in series, but the count MLP head moves quickly)
+    # 3. Signal count head should produce reasonable values after training
     with torch.no_grad():
         out = model(inputs[:2])
-    assert (out.signal_log_counts > -5.0).all(), (
-        f"Signal log_counts still near -10 init: {out.signal_log_counts}"
+    assert torch.isfinite(out.signal_log_counts).all(), (
+        f"Signal log_counts not finite: {out.signal_log_counts}"
     )
 
 
@@ -1055,3 +1002,426 @@ def test_pretrained_empty_list_is_noop():
 
     for name, param in model.named_parameters():
         assert torch.equal(param, params_before[name])
+
+
+# --- Step 9: bias_args / signal_args forwarding tests ---
+
+
+def test_dalmatian_bias_args_forwarding():
+    """bias_args dict is forwarded to BiasNet with native parameter names."""
+    model = Dalmatian(bias_args={"filters": 24, "dropout": 0.2})
+    # Verify the bias model was created with the specified filters
+    bias_params = sum(p.numel() for p in model.bias_model.parameters())
+    default_model = Dalmatian()
+    default_bias_params = sum(p.numel() for p in default_model.bias_model.parameters())
+    assert bias_params > default_bias_params  # 24 filters > 12 filters
+
+
+def test_dalmatian_signal_args_forwarding():
+    """signal_args dict is forwarded to Pomeranian with native parameter names."""
+    model = Dalmatian(signal_args={"dropout": 0.3})
+    x = torch.randn(1, 4, 2112)
+    out = model(x)
+    assert out.logits.shape == (1, 1, 1024)
+
+
+def test_dalmatian_bias_args_none_uses_defaults():
+    """bias_args=None uses BiasNet defaults (same as no override)."""
+    model_default = Dalmatian()
+    model_none = Dalmatian(bias_args=None)
+    p1 = sum(p.numel() for p in model_default.bias_model.parameters())
+    p2 = sum(p.numel() for p in model_none.bias_model.parameters())
+    assert p1 == p2
+
+
+# --- Step 10: compute_shrinkage() tests ---
+
+
+def test_biasnet_compute_shrinkage_default():
+    """BiasNet.compute_shrinkage() with defaults matches known value."""
+    # stem: (11-1)+(11-1)=20, tower: 5*1*(9-1)=40, head: 45-1=44 → 104
+    assert BiasNet.compute_shrinkage() == 104
+
+
+def test_pomeranian_compute_shrinkage_default():
+    """Pomeranian.compute_shrinkage() with defaults matches known value."""
+    from cerberus.models.pomeranian import Pomeranian
+
+    # stem: 20, tower: (1+1+2+4+8+16+32+64)*(9-1) = 128*8 = 1024, head: 44 → 1088
+    assert Pomeranian.compute_shrinkage() == 1088
+
+
+def test_bpnet_compute_shrinkage_default():
+    """BPNet.compute_shrinkage() with defaults matches known value."""
+    from cerberus.models.bpnet import BPNet
+
+    # stem: 20, tower: sum(2^i*(3-1) for i=1..8) = 2*510 = 1020, head: 74 → 1114
+    assert BPNet.compute_shrinkage() == 1114
+
+
+def test_bpnet1024_compute_shrinkage():
+    """BPNet1024 shrinkage matches its documented 1088."""
+    from cerberus.models.bpnet import BPNet
+
+    # stem: 20, tower: 2*510=1020, head: 48 → but BPNet1024 uses k=49, dil_k=3
+    shrinkage = BPNet.compute_shrinkage(
+        conv_kernel_size=21,
+        n_dilated_layers=8,
+        dil_kernel_size=3,
+        profile_kernel_size=49,
+    )
+    assert shrinkage == 1088
+
+
+def test_compute_shrinkage_matches_model_geometry():
+    """compute_shrinkage() matches actual input_len - output_len for Dalmatian."""
+    model = Dalmatian(input_len=2112, output_len=1024)
+    # BiasNet: input_len = output_len + shrinkage
+    assert model.bias_input_len == 1024 + BiasNet.compute_shrinkage()
+
+
+# --- Step 11: shared_bias tests ---
+
+
+def test_dalmatian_shared_bias_shapes():
+    """shared_bias=True: bias has 1 channel, signal has N channels, combined has N."""
+    model = Dalmatian(
+        input_len=2112,
+        output_len=1024,
+        output_channels=["ct1", "ct2", "ct3"],
+        shared_bias=True,
+    )
+    x = torch.randn(2, 4, 2112)
+    out = model(x)
+    # Combined output has N channels
+    assert out.logits.shape == (2, 3, 1024)
+    assert out.log_counts.shape == (2, 3)
+    # Bias has 1 channel
+    assert out.bias_logits.shape == (2, 1, 1024)
+    assert out.bias_log_counts.shape == (2, 1)
+    # Signal has N channels
+    assert out.signal_logits.shape == (2, 3, 1024)
+    assert out.signal_log_counts.shape == (2, 3)
+
+
+def test_dalmatian_shared_bias_backward():
+    """Gradients flow through both sub-models with shared_bias=True."""
+    model = Dalmatian(
+        output_channels=["ct1", "ct2"],
+        shared_bias=True,
+    )
+    x = torch.randn(2, 4, 2112)
+    out = model(x)
+    loss = (
+        out.logits.sum()
+        + out.log_counts.sum()
+        + out.bias_logits.sum()
+        + out.bias_log_counts.sum()
+    )
+    loss.backward()
+    for name, p in model.bias_model.named_parameters():
+        if p.requires_grad:
+            assert p.grad is not None, f"bias_model.{name} has no gradient"
+    for name, p in model.signal_model.named_parameters():
+        if p.requires_grad:
+            assert p.grad is not None, f"signal_model.{name} has no gradient"
+
+
+def test_dalmatian_shared_bias_loss():
+    """DalmatianLoss sums targets across channels when bias has fewer channels."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        base_loss_args={"count_per_channel": True},
+        bias_weight=1.0,
+    )
+    # 1-channel bias, 3-channel signal/combined
+    output = FactorizedProfileCountOutput(
+        logits=torch.randn(4, 3, 100, requires_grad=True),
+        log_counts=torch.randn(4, 3, requires_grad=True),
+        bias_logits=torch.randn(4, 1, 100, requires_grad=True),
+        bias_log_counts=torch.randn(4, 1, requires_grad=True),
+        signal_logits=torch.randn(4, 3, 100, requires_grad=True),
+        signal_log_counts=torch.randn(4, 3, requires_grad=True),
+    )
+    target = torch.rand(4, 3, 100).abs() + 0.1
+    interval_source = [
+        "IntervalSampler",
+        "ComplexityMatchedSampler",
+        "IntervalSampler",
+        "ComplexityMatchedSampler",
+    ]
+    loss = loss_fn(output, target, interval_source=interval_source)
+    assert loss.shape == ()
+    assert loss.requires_grad
+    # Verify gradients flow to bias
+    loss.backward()
+    assert output.bias_logits.grad is not None
+    assert output.bias_log_counts.grad is not None
+
+
+def test_dalmatian_shared_bias_loss_zero_weight():
+    """bias_weight=0.0 skips L_bias entirely (no bias gradients from loss)."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        base_loss_args={"count_per_channel": True},
+        bias_weight=0.0,
+    )
+    output = FactorizedProfileCountOutput(
+        logits=torch.randn(4, 3, 100, requires_grad=True),
+        log_counts=torch.randn(4, 3, requires_grad=True),
+        bias_logits=torch.randn(4, 1, 100, requires_grad=True),
+        bias_log_counts=torch.randn(4, 1, requires_grad=True),
+        signal_logits=torch.randn(4, 3, 100, requires_grad=True),
+        signal_log_counts=torch.randn(4, 3, requires_grad=True),
+    )
+    target = torch.rand(4, 3, 100).abs() + 0.1
+    interval_source = ["ComplexityMatchedSampler"] * 4
+
+    components = loss_fn.loss_components(
+        output, target, interval_source=interval_source
+    )
+    loss = loss_fn(output, target, interval_source=interval_source)
+    # Total loss should equal recon_loss (bias_weight=0)
+    assert torch.allclose(loss, components["recon_loss"])
+
+
+def test_dalmatian_shared_bias_broadcast_math():
+    """Verify broadcasting and expand_as produce mathematically correct combined outputs.
+
+    Profile: combined[:, c, :] == bias[:, 0, :] + signal[:, c, :]  for each channel c
+    Counts:  combined[:, c]    == logsumexp(bias[:, 0], signal[:, c])  for each channel c
+    """
+    model = Dalmatian(
+        output_channels=["ct1", "ct2", "ct3"],
+        shared_bias=True,
+    )
+    x = torch.randn(2, 4, 2112)
+    with torch.no_grad():
+        out = model(x)
+
+    n_channels = 3
+    for c in range(n_channels):
+        # Profile: each channel should be bias[:,0,:] + signal[:,c,:]
+        expected_logits = out.bias_logits[:, 0, :].detach() + out.signal_logits[:, c, :]
+        assert torch.allclose(out.logits[:, c, :], expected_logits, atol=1e-6), (
+            f"Profile broadcast wrong for channel {c}"
+        )
+
+        # Counts: each channel should be logsumexp(bias[:,0], signal[:,c])
+        stacked = torch.stack(
+            [out.bias_log_counts[:, 0].detach(), out.signal_log_counts[:, c]], dim=-1
+        )
+        expected_counts = torch.logsumexp(stacked, dim=-1)
+        assert torch.allclose(out.log_counts[:, c], expected_counts, atol=1e-6), (
+            f"Count logsumexp wrong for channel {c}"
+        )
+
+
+def test_dalmatian_shared_bias_default_false():
+    """Default shared_bias=False preserves existing single-channel behavior."""
+    model = Dalmatian()
+    assert not model.shared_bias
+    x = torch.randn(1, 4, 2112)
+    out = model(x)
+    # Both sub-models should have the same number of channels
+    assert out.bias_logits.shape[1] == out.signal_logits.shape[1]
+
+
+# --- Step 12: Additional coverage tests ---
+
+
+def test_pomeranian_compute_shrinkage_list_dil_kernel_size():
+    """Pomeranian.compute_shrinkage handles per-layer kernel size list."""
+    from cerberus.models.pomeranian import Pomeranian
+
+    # 8-layer schedule with varying kernel sizes
+    dilations = [1, 1, 2, 4, 8, 16, 32, 64]
+    dil_kernels = [5, 5, 7, 7, 9, 9, 11, 11]
+    result = Pomeranian.compute_shrinkage(
+        dilations=dilations, dil_kernel_size=dil_kernels
+    )
+    # stem: 20, tower: sum(d*(k-1)), head: 44
+    expected_tower = sum(
+        d * (k - 1) for d, k in zip(dilations, dil_kernels, strict=False)
+    )
+    assert result == 20 + expected_tower + 44
+
+
+def test_biasnet_compute_shrinkage_custom_args():
+    """BiasNet.compute_shrinkage with non-default architecture params."""
+    # Single int kernel, 3 layers, custom dilations
+    result = BiasNet.compute_shrinkage(
+        conv_kernel_size=21, n_layers=3, dilations=[1, 2, 4], dil_kernel_size=5
+    )
+    # stem: 20, tower: (1+2+4)*(5-1)=28, head: 44
+    assert result == 20 + 28 + 44
+
+
+def test_dalmatian_bias_args_architecture():
+    """bias_args with architecture-changing params updates shrinkage correctly."""
+    model = Dalmatian(bias_args={"n_layers": 3, "dilations": [1, 2, 4]})
+    expected_shrinkage = BiasNet.compute_shrinkage(n_layers=3, dilations=[1, 2, 4])
+    assert model.bias_input_len == 1024 + expected_shrinkage
+
+
+def test_dalmatian_signal_args_expansion_override():
+    """signal_args can override preset expansion."""
+    model_standard = Dalmatian(signal_preset="standard")
+    model_override = Dalmatian(signal_preset="standard", signal_args={"expansion": 2})
+    # expansion=2 should increase params relative to standard (expansion=1)
+    p_standard = sum(p.numel() for p in model_standard.signal_model.parameters())
+    p_override = sum(p.numel() for p in model_override.signal_model.parameters())
+    assert p_override > p_standard
+
+
+def test_dalmatian_shared_bias_single_channel_equivalent():
+    """shared_bias=True with 1 output channel is numerically identical to False."""
+    torch.manual_seed(42)
+    model_shared = Dalmatian(output_channels=["signal"], shared_bias=True)
+    model_normal = Dalmatian(output_channels=["signal"], shared_bias=False)
+    # Copy weights so both models are identical
+    model_normal.load_state_dict(model_shared.state_dict())
+    # eval() disables dropout so results are deterministic
+    model_shared.eval()
+    model_normal.eval()
+    x = torch.randn(2, 4, 2112)
+    with torch.no_grad():
+        out_shared = model_shared(x)
+        out_normal = model_normal(x)
+    assert torch.allclose(out_shared.logits, out_normal.logits, atol=1e-6)
+    assert torch.allclose(out_shared.log_counts, out_normal.log_counts, atol=1e-6)
+
+
+def test_dalmatian_shared_bias_loss_all_peaks_channel_mismatch():
+    """All-peaks batch with channel mismatch: L_bias is exactly zero."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        base_loss_args={"count_per_channel": True},
+        bias_weight=1.0,
+    )
+    output = FactorizedProfileCountOutput(
+        logits=torch.randn(4, 3, 100, requires_grad=True),
+        log_counts=torch.randn(4, 3, requires_grad=True),
+        bias_logits=torch.randn(4, 1, 100, requires_grad=True),
+        bias_log_counts=torch.randn(4, 1, requires_grad=True),
+        signal_logits=torch.randn(4, 3, 100, requires_grad=True),
+        signal_log_counts=torch.randn(4, 3, requires_grad=True),
+    )
+    target = torch.rand(4, 3, 100).abs() + 0.1
+    interval_source = ["IntervalSampler"] * 4  # all peaks
+
+    components = loss_fn.loss_components(
+        output, target, interval_source=interval_source
+    )
+    assert components["bias_loss"].item() == 0.0
+
+
+def test_dalmatian_shared_bias_loss_sum_targets_correctness():
+    """Verify summed targets are element-wise correct in shared_bias L_bias."""
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        base_loss_args={"count_per_channel": True},
+        bias_weight=1.0,
+    )
+    # Known targets: 3 channels
+    target = torch.tensor(
+        [
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+        ]
+    )  # (1, 3, 3)
+    # Sum across channels: [12.0, 15.0, 18.0]
+    output = FactorizedProfileCountOutput(
+        logits=torch.randn(1, 3, 3, requires_grad=True),
+        log_counts=torch.randn(1, 3, requires_grad=True),
+        bias_logits=torch.randn(1, 1, 3, requires_grad=True),
+        bias_log_counts=torch.randn(1, 1, requires_grad=True),
+        signal_logits=torch.randn(1, 3, 3, requires_grad=True),
+        signal_log_counts=torch.randn(1, 3, requires_grad=True),
+    )
+    interval_source = ["ComplexityMatchedSampler"]  # background
+
+    # Should not raise — the sum path triggers and produces valid loss
+    components = loss_fn.loss_components(
+        output, target, interval_source=interval_source
+    )
+    assert torch.isfinite(components["bias_loss"])
+    assert components["bias_loss"].item() > 0.0
+
+
+def test_dalmatian_shared_bias_state_dict_roundtrip(tmp_path):
+    """State dict save/load with shared_bias=True preserves all weights."""
+    model1 = Dalmatian(output_channels=["ct1", "ct2", "ct3"], shared_bias=True)
+    path = tmp_path / "dalmatian_shared.pt"
+    torch.save(model1.state_dict(), path)
+
+    model2 = Dalmatian(output_channels=["ct1", "ct2", "ct3"], shared_bias=True)
+    model2.load_state_dict(torch.load(path, weights_only=True))
+
+    for (n1, p1), (n2, p2) in zip(
+        model1.named_parameters(), model2.named_parameters(), strict=True
+    ):
+        assert n1 == n2
+        assert torch.equal(p1, p2), f"Parameter {n1} mismatch after load"
+
+
+def test_load_pretrained_biasnet_into_shared_bias_dalmatian(tmp_path):
+    """Standalone BiasNet (1 channel) loads into shared_bias Dalmatian's bias_model."""
+    bias = BiasNet(input_len=1128, output_len=1024, filters=12)
+    torch.save(bias.state_dict(), tmp_path / "biasnet.pt")
+
+    dalmatian = Dalmatian(
+        output_channels=["ct1", "ct2", "ct3"],
+        shared_bias=True,
+    )
+    load_pretrained_weights(
+        dalmatian,
+        [_pc(tmp_path / "biasnet.pt", target="bias_model")],
+    )
+
+    # Bias model weights should match
+    for (n1, p1), (_n2, p2) in zip(
+        bias.named_parameters(), dalmatian.bias_model.named_parameters(), strict=True
+    ):
+        assert torch.equal(p1, p2), f"bias_model.{n1} not loaded correctly"
+
+    # Signal model should have 3 channels, bias model 1
+    assert dalmatian.bias_model.n_output_channels == 1
+    assert dalmatian.signal_model.n_output_channels == 3
+
+
+def test_dalmatian_shared_bias_single_biasnet():
+    """shared_bias=True creates exactly one BiasNet with 1 output channel, not one per track."""
+    n_channels = 14
+    channel_names = [f"cell_type_{i}" for i in range(n_channels)]
+    model = Dalmatian(
+        output_channels=channel_names,
+        shared_bias=True,
+    )
+
+    # There is exactly one bias_model, not N
+    assert isinstance(model.bias_model, BiasNet)
+    assert model.bias_model.n_output_channels == 1
+
+    # SignalNet has N channels
+    assert model.signal_model.n_output_channels == n_channels
+
+    # BiasNet param count is identical regardless of number of output tracks
+    model_1ch = Dalmatian(output_channels=["single"], shared_bias=True)
+    bias_params_14 = sum(p.numel() for p in model.bias_model.parameters())
+    bias_params_1 = sum(p.numel() for p in model_1ch.bias_model.parameters())
+    assert bias_params_14 == bias_params_1, (
+        f"BiasNet params should be identical: {bias_params_14} vs {bias_params_1}"
+    )
+
+    # BiasNet forward produces 1-channel output, not N
+    x = torch.randn(2, 4, 2112)
+    with torch.no_grad():
+        bias_out = model.bias_model(x)
+    assert bias_out.logits.shape == (2, 1, 1024)
+    assert bias_out.log_counts.shape == (2, 1)
+
+    # Combined output broadcasts to N channels
+    with torch.no_grad():
+        out = model(x)
+    assert out.logits.shape == (2, n_channels, 1024)
+    assert out.log_counts.shape == (2, n_channels)

@@ -1,3 +1,10 @@
+from .attribution import (
+    ATTRIBUTION_MODES,
+    AttributionTarget,
+    apply_off_simplex_gradient_correction,
+    compute_ism_attributions,
+    resolve_ism_span,
+)
 from .config import (
     CerberusConfig,
     DataConfig,
@@ -18,6 +25,7 @@ from .genome import (
     create_human_genome_config,
 )
 from .interval import Interval, load_intervals_bed, write_intervals_bed
+from .variants import Variant, compute_variant_effects, load_variants, load_vcf, variant_to_ref_alt
 from .logging import setup_logging
 from .module import CerberusModule, instantiate, instantiate_model
 from .signal import register_extractor
@@ -33,6 +41,11 @@ __all__ = [
     "Interval",
     "write_intervals_bed",
     "load_intervals_bed",
+    "Variant",
+    "load_variants",
+    "load_vcf",
+    "variant_to_ref_alt",
+    "compute_variant_effects",
     # Config
     "GenomeConfig",
     "DataConfig",
@@ -59,6 +72,12 @@ __all__ = [
     "setup_logging",
     # Signal Extraction
     "register_extractor",
+    # Attribution utilities
+    "ATTRIBUTION_MODES",
+    "AttributionTarget",
+    "resolve_ism_span",
+    "compute_ism_attributions",
+    "apply_off_simplex_gradient_correction",
     # Training utilities
     "compute_counts_loss_weight",
     "resolve_adaptive_loss_args",

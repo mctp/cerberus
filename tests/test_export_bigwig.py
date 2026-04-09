@@ -191,7 +191,7 @@ def _make_setup(
 
     with (
         patch(
-            "cerberus.model_ensemble.ModelEnsemble._find_hparams",
+            "cerberus.model_ensemble.find_latest_hparams",
             return_value=Path("hparams.yaml"),
         ),
         patch("cerberus.model_ensemble.parse_hparams_config", return_value=mock_config),

@@ -23,7 +23,7 @@ A lightweight, efficient model (~150k params) mirroring BPNet's valid-padding pa
 **Implementation**: `cerberus.models.BPNet` (Standard) / `BPNet1024`
 **Source**: `src/cerberus/models/bpnet.py`
 
-An implementation of the BPNet architecture (Avsec et al., 2021) following the "Consensus" specification (Post-Activation Residual Blocks). It is designed for base-resolution profile prediction. Weights are initialized with Xavier uniform (Glorot) to match the TensorFlow/Keras defaults used by the original BPNet and chrombpnet-pytorch.
+An implementation of the BPNet architecture (Avsec et al., 2021) for base-resolution profile prediction. The default residual formulation is pre-activation (`x + conv(act(x))`), matching BasePairNet/bpnet-refactor. All activations are `nn.Module`-based (no `F.relu`) for full compatibility with hook-based attribution methods (Captum DeepLiftShap). Weights are initialized with Xavier uniform (Glorot) to match the TensorFlow/Keras defaults used by the original BPNet and chrombpnet-pytorch.
 
 ### Key Features
 *   **Valid Padding**: Uses `'valid'` padding throughout; excess length is center-cropped at the profile head.
@@ -88,11 +88,11 @@ The `residual_architecture` parameter controls the residual block formulation in
 
 | Variant | Formula | Description |
 |---|---|---|
-| `residual_post-activation_conv` (default) | `x + act(conv(x))` | Current Cerberus/BPNet-lite style. Initial conv output is activated before the tower. |
-| `residual_pre-activation_conv` | `x + conv(act(x))` | BasePairNet/bpnet-refactor pre-activation style. Initial conv is *not* activated before the tower; a final ReLU is applied after the tower. |
+| `residual_post-activation_conv` | `x + act(conv(x))` | Current Cerberus/BPNet-lite style. Initial conv output is activated before the tower. |
+| `residual_pre-activation_conv` (default) | `x + conv(act(x))` | BasePairNet/bpnet-refactor pre-activation style. Initial conv is *not* activated before the tower; a final ReLU is applied after the tower. |
 | `activated_residual_pre-activation_conv` | `act(x) + conv(act(x))` | bpnet-refactor post-activation style. Both the residual and conv branch are activated. Final ReLU after the tower. |
 
-The default (`residual_post-activation_conv`) preserves existing behavior. From the training script:
+The default is `residual_pre-activation_conv`. To override it from the training script:
 ```bash
 python tools/train_bpnet.py --residual-architecture residual_pre-activation_conv \
     --bigwig signal.bw --peaks peaks.bed --output-dir models/my_model
@@ -311,10 +311,11 @@ Their outputs are combined:
 
 ### Key Features
 *   **Gradient separation**: Bias outputs are `.detach()`-ed before combining with signal outputs, so the combined reconstruction loss (L_recon) trains only SignalNet. BiasNet receives gradients exclusively from L_bias (background reconstruction). This replicates ChromBPNet's freeze-bias design without requiring a two-stage training procedure.
-*   **Zero-initialized signal outputs** (`zero_init`, default `False`): When enabled, signal outputs are identity elements (logits=0, log_counts=-10) at initialization, so the combined output equals the bias-only output. **Recommended: leave disabled.** Experiments (exp20) show zero-init is harmful with gradient detach — SignalNet wastes epochs "turning on" from zero output. Without detach it served a purpose (soft two-stage training); with detach it's just a bad initialization.
-*   **Signal presets**: `signal_preset="large"` (f=256, expansion=2, ~3.9M params) or `signal_preset="standard"` (default, f=64, expansion=1, ~150K params — matches standalone Pomeranian K9). Individual `signal_*` args override the preset. Experiments (exp20) show the 24x parameter difference buys <0.01 profile Pearson.
+*   **Signal presets**: `signal_preset="large"` (f=256, expansion=2, ~3.9M params) or `signal_preset="standard"` (default, f=64, expansion=1, ~150K params — matches standalone Pomeranian K9). Individual `signal_args` entries override the preset. Experiments (exp20) show the 24x parameter difference buys <0.01 profile Pearson.
+*   **Sub-model configuration via `bias_args`/`signal_args`**: Forwarding dicts that use native sub-model parameter names (e.g. `bias_args={"filters": 24}` instead of `bias_filters=24`). Shared params (`input_len`, `output_len`, etc.) are injected automatically.
+*   **Shared bias** (`shared_bias=False`): When `True`, BiasNet has a single output channel (`["bias"]`) while SignalNet has N channels. This enables multi-task training where Tn5 bias is sequence-dependent (shared across cell types) but regulatory signal is cell-type-specific.
 *   **Per-channel counts**: Both sub-models use `predict_total_count=False` because ATAC-seq channels represent independent samples (not forward/reverse strands).
-*   **Clean geometry**: SignalNet shrinkage exactly maps `input_len` to `output_len` with no excess cropping. BiasNet receives a center-cropped input sized to its own receptive field needs.
+*   **Clean geometry**: SignalNet shrinkage exactly maps `input_len` to `output_len` with no excess cropping. BiasNet receives a center-cropped input sized to its own receptive field needs. Both sub-models own their geometry via `compute_shrinkage()` staticmethods.
 *   **Input validation**: Rejects configurations where SignalNet shrinkage doesn't produce the exact `output_len`.
 *   **DeepLIFT-compatible bias model**: BiasNet uses only Conv1d + ReLU + residual add, all with well-defined captum propagation rules.
 
@@ -351,6 +352,7 @@ No explicit signal suppression term is needed — gradient detach already preven
 ```python
 from cerberus.config import ModelConfig
 
+# Single-task Dalmatian
 model_config = ModelConfig(
     name="Dalmatian",
     model_cls="cerberus.models.dalmatian.Dalmatian",
@@ -363,9 +365,31 @@ model_config = ModelConfig(
     metrics_cls="cerberus.models.pomeranian.PomeranianMetricCollection",
     metrics_args={},
     model_args={
-        "input_len": 2112,
-        "output_len": 1024,
-        "output_channels": ["sample1"],
+        "input_channels": ["A", "C", "G", "T"],
+        "output_channels": ["signal"],
+        "signal_preset": "standard",
+        "bias_args": {"filters": 12, "dropout": 0.1},
+        "signal_args": {"dropout": 0.1},
+    },
+)
+
+# Multi-task Dalmatian with shared bias (scATAC-seq)
+model_config_multitask = ModelConfig(
+    name="Dalmatian",
+    model_cls="cerberus.models.dalmatian.Dalmatian",
+    loss_cls="cerberus.loss.DalmatianLoss",
+    loss_args={
+        "base_loss_cls": "cerberus.loss.MSEMultinomialLoss",
+        "base_loss_args": {"count_per_channel": True},
+        "bias_weight": 0.0,  # frozen bias, no L_bias needed
+    },
+    metrics_cls="cerberus.models.pomeranian.PomeranianMetricCollection",
+    metrics_args={},
+    model_args={
+        "input_channels": ["A", "C", "G", "T"],
+        "output_channels": ["cell_type_1", "cell_type_2", "cell_type_3"],
+        "signal_preset": "standard",
+        "shared_bias": True,  # 1-channel BiasNet, N-channel SignalNet
     },
 )
 ```
@@ -375,12 +399,20 @@ model_config = ModelConfig(
 from cerberus.models import Dalmatian
 from cerberus.loss import DalmatianLoss
 
-# Default: 2112bp -> 1024bp
+# Single-task: 2112bp -> 1024bp
 model = Dalmatian(
     input_len=2112,
     output_len=1024,
     input_channels=["A", "C", "G", "T"],
-    output_channels=["sample1"],
+    output_channels=["signal"],
+)
+
+# Multi-task with shared bias (e.g. 14 scATAC-seq cell types)
+model_mt = Dalmatian(
+    output_channels=["ct1", "ct2", "ct3"],
+    shared_bias=True,  # 1-channel BiasNet, 3-channel SignalNet
+    bias_args={"filters": 12},
+    signal_args={"dropout": 0.1},
 )
 
 loss = DalmatianLoss(
@@ -408,6 +440,30 @@ python tools/train_dalmatian.py \
 
 # Or use the example script
 bash examples/scatac_kidney_dalmatian.sh
+```
+
+### Multi-Task Training
+
+Use `tools/train_dalmatian_multitask.py` for multi-task training on multiple BigWig targets (e.g. scATAC-seq cell-type pseudobulk). Targets are specified via a JSON file:
+
+```json
+{
+  "cell_type_1": {"bigwig": "path/to/ct1.bw", "peaks": "path/to/ct1.bed"},
+  "cell_type_2": {"bigwig": "path/to/ct2.bw", "peaks": "path/to/ct2.bed"}
+}
+```
+
+```bash
+python tools/train_dalmatian_multitask.py \
+    --targets-json targets.json \
+    --peaks merged_peaks.bed \
+    --shared-bias \
+    --pretrained-bias bias_model.pt --freeze-bias \
+    --bias-weight 0.0 \
+    --output-dir models/multitask
+
+# Or use the example script
+bash examples/scatac_kidney_dalmatian_multitask.sh
 ```
 
 ### Pretrained Bias Loading

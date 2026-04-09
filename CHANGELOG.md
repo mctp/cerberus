@@ -7,7 +7,119 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a3] - 2026-04-08
+
 ### Added
+- **`load_variants()` function** (`variants.py`):
+  Lightweight alternative to `load_vcf()` for loading variants from
+  tab-separated files with `chrom`, `pos`, `ref`, `alt` columns.
+  Positions are 1-based by default (matching VCF/dbSNP/ClinVar convention);
+  set `zero_based=True` for 0-based input. Supports optional `id` column,
+  flexible column ordering, `#` comment lines, and extra columns.
+- **Attribution module** (`attribution.py`):
+  `AttributionTarget` wraps model output as a scalar for Captum attribution
+  methods. `compute_ism_attributions()` computes single-position ISM deltas.
+  `apply_off_simplex_gradient_correction()` subtracts per-position mean.
+  Mode is validated at construction time via `ATTRIBUTION_MODES`.
+- **TF-MoDISco interpretation tools** (`tools/export_tfmodisco_inputs.py`,
+  `tools/run_tfmodisco.py`): Two-step workflow for exporting attribution
+  arrays (Captum IG, DeepLiftShap, or ISM) and running TF-MoDISco motif
+  discovery.
+- **Internal analysis: attribution methods comparison**
+  (`docs/internal/attribution_methods_tangermeme_vs_captum.md`): Technical
+  reference comparing tangermeme and Captum attribution implementations.
+- **Internal analysis: BPNet vs Pomeranian performance-interpretability tradeoff**
+  (`docs/internal/interpretability_performance_tradeoff.md`): Documents why
+  Pomeranian's higher predictive accuracy produces worse TF-MoDISco motifs,
+  traces the cause to multiplicative gating, GRN, and non-linear profile head,
+  and proposes concrete remediation strategies for both architectures.
+
+### Changed
+- **BPNet default residual architecture** (`bpnet.py`):
+  Changed from `residual_post-activation_conv` to
+  `residual_pre-activation_conv`.  Existing checkpoints trained with the old
+  default are unaffected if `residual_architecture` is recorded in
+  `hparams.yaml` (which it is for all cerberus-trained models).
+- **BPNet final tower ReLU is now an `nn.Module`** (`bpnet.py`):
+  Replaced `F.relu()` with `self.final_tower_relu = nn.ReLU()` so
+  hook-based attribution methods (Captum DeepLiftShap) can register on the
+  activation.  No effect on forward-pass numerics or checkpoint loading.
+- **Refactored model-loading helpers** (`model_ensemble.py`):
+  Extracted `find_latest_hparams()`, `select_best_checkpoint()`,
+  `load_backbone_weights_from_checkpoint()`, and
+  `load_backbone_weights_from_fold_dir()` as public module-level functions
+  for reuse by interpretation tools.
+
+### Fixed
+- **Jitter mutation destroyed after first epoch** (`dataset.py`):
+
+## [1.0.0a2] - 2026-04-08
+
+### Changed
+- **Simplified Dalmatian constructor** (`dalmatian.py`):
+  Replaced 19 prefixed sub-model parameters (`bias_filters`, `signal_dropout`, etc.)
+  with `bias_args`/`signal_args` forwarding dicts that use native sub-model parameter
+  names (e.g. `bias_args={"filters": 12}`). Shared params (`input_len`, `output_len`,
+  etc.) are injected automatically. Reduces constructor from 22 to 9 parameters.
+- **Removed `zero_init` from Dalmatian** (`dalmatian.py`):
+  The `zero_init` parameter and `_zero_init_signal_outputs()` method have been removed.
+  Experiments showed zero-init is harmful with gradient detach.
+- **Removed `_compute_shrinkage()` module-level function** (`dalmatian.py`):
+  Replaced by `compute_shrinkage()` staticmethods on BiasNet, Pomeranian, and BPNet.
+  Each model now owns its own geometry computation.
+
+### Added
+- **`Variant` dataclass** (`variants.py`):
+  Frozen dataclass for genomic variants (SNPs, insertions, deletions) using
+  0-based coordinates consistent with `Interval`.  Includes `ref_center` for
+  symmetric window placement, `to_interval()` for fold routing, type
+  classification properties (`is_snp`, `is_insertion`, `is_deletion`), and
+  an `info` dict for VCF INFO fields.  First building block toward variant
+  effect prediction support.
+- **`load_vcf()` generator** (`variants.py`):
+  Parses VCF/BCF files via cyvcf2 (optional dependency) and yields `Variant`
+  objects with 0-based coordinates.  Supports region filtering (Interval or
+  tabix string), PASS-only filtering, and selective INFO field capture.
+  Requires biallelic, normalized input; multi-allelic records are skipped
+  with a warning.
+- **`variant_to_ref_alt()` function** (`variants.py`):
+  Constructs one-hot ref and alt sequence tensors `(4, input_len)` from a
+  `Variant` and a pyfaidx FASTA.  Window centered on `ref_center` (midpoint
+  of ref allele footprint).  Indels handled via symmetric trimming from both
+  flanks.  Validates ref allele against FASTA and rejects out-of-bounds
+  windows.
+- **`compute_signal()` function** (`output.py`):
+  Converts any `ModelOutput` to linear-space predicted signal `(B, C, L)`.
+  Handles `ProfileCountOutput` (softmax * counts), `ProfileLogRates`
+  (exp), and `ProfileLogits` (raw fallback).  Supports batched and
+  unbatched inputs with consistent pseudocount handling matching
+  `compute_total_log_counts`.
+- **`compute_profile_probs()` function** (`output.py`):
+  Returns the normalized profile probability distribution `(B, C, L)` from
+  any profile-producing model output.  Sums to 1 along the length axis.
+- **`compute_channel_log_counts()` function** (`output.py`):
+  Returns per-channel total counts in log space `(B, C)`.  Complements
+  `compute_total_log_counts` which aggregates across channels to `(B,)`.
+- **`compute_variant_effects()` function** (`variants.py`):
+  Computes per-channel variant effect metrics (SAD, log fold change,
+  Jensen-Shannon divergence, Pearson correlation, max absolute difference)
+  between ref and alt model outputs.  Automatically adds `signal_*` metrics
+  for `FactorizedProfileCountOutput` (Dalmatian) using the decomposed
+  signal sub-model.
+- **`shared_bias` parameter for Dalmatian** (`dalmatian.py`):
+  When `shared_bias=True`, BiasNet has a single output channel (`["bias"]`) while
+  SignalNet has the full N output channels. Enables multi-task training where Tn5
+  insertion bias is shared across cell types (e.g. scATAC-seq pseudobulk).
+- **`DalmatianLoss` shared bias support** (`loss.py`):
+  When bias has fewer channels than targets, automatically sums targets across channels
+  for L_bias computation (equivalent to ChromBPNet bulk training).
+- **`compute_shrinkage()` staticmethod** on BiasNet, Pomeranian, and BPNet:
+  Computes total valid-padding shrinkage in bp from architectural parameters.
+- **Multi-task Dalmatian training tool** (`tools/train_dalmatian_multitask.py`):
+  Accepts `--targets-json` for multi-task training on multiple BigWig targets.
+  Adds `--shared-bias` flag for shared BiasNet across cell types.
+- **Multi-task example files**: `examples/scatac_kidney_multitask_targets.json` and
+  `examples/scatac_kidney_dalmatian_multitask.sh` for 14-cell-type kidney scATAC-seq.
 - **Internal analysis: BPNet vs Pomeranian performance–interpretability tradeoff**
   (`docs/internal/interpretability_performance_tradeoff.md`): Documents why
   Pomeranian's higher predictive accuracy produces worse TF-MoDISco motifs,
@@ -40,6 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   broke stride alignment and produced an irregular first output gap. The clamp is
   now applied before the loop so the stride grid stays regular, and a warning is
   logged about the coverage gap.
+
+## [1.0.0a1] - 2026-03-22
 
 ### Added
 - **Ruff linter and formatter** configured in `pyproject.toml`: rules F (Pyflakes),
