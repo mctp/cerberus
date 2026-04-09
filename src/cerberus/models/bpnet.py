@@ -53,8 +53,8 @@ class BPNet(nn.Module):
             normalisation is a weight reparameterisation, not an activation nonlinearity.
             Default: ``False``.
         residual_architecture (str): Residual block formulation. One of:
-            ``"residual_post-activation_conv"`` (``x + act(conv(x))``, default),
-            ``"residual_pre-activation_conv"`` (``x + conv(act(x))``),
+            ``"residual_pre-activation_conv"`` (``x + conv(act(x))``, default),
+            ``"residual_post-activation_conv"`` (``x + act(conv(x))``),
             ``"activated_residual_pre-activation_conv"`` (``act(x) + conv(act(x))``).
             The initial convolution output is activated before entering the tower
             only for ``"residual_post-activation_conv"``.
@@ -77,7 +77,7 @@ class BPNet(nn.Module):
         predict_total_count: bool = True,
         activation: str = "relu",
         weight_norm: bool = False,
-        residual_architecture: str = "residual_post-activation_conv",
+        residual_architecture: str = "residual_pre-activation_conv",
     ):
         super().__init__()
         if input_channels is None:
@@ -99,6 +99,9 @@ class BPNet(nn.Module):
             "residual_pre-activation_conv",
             "activated_residual_pre-activation_conv",
         }
+        # Use an nn.Module activation (instead of functional F.relu) so hook-based
+        # attribution methods can register on this operation.
+        self.final_tower_relu = nn.ReLU()
 
         # 1. Initial Convolution (plain — weight_norm applied after reinit if requested)
         self.iconv: nn.Module = nn.Conv1d(
@@ -257,7 +260,7 @@ class BPNet(nn.Module):
         # bpnet-refactor applies a final ReLU after the dilated tower for both
         # pre-activation variants (syntax_module final activation).
         if self._apply_final_tower_relu:
-            x = F.relu(x)
+            x = self.final_tower_relu(x)
 
         # --- Profile Head ---
         profile_logits = self.profile_conv(x)  # (B, Out_Channels, Length)
@@ -328,7 +331,7 @@ class BPNet1024(BPNet):
         predict_total_count: bool = True,
         activation: str = "relu",
         weight_norm: bool = False,
-        residual_architecture: str = "residual_post-activation_conv",
+        residual_architecture: str = "residual_pre-activation_conv",
     ):
         super().__init__(
             input_len=input_len,

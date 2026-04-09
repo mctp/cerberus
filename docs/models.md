@@ -88,11 +88,11 @@ The `residual_architecture` parameter controls the residual block formulation in
 
 | Variant | Formula | Description |
 |---|---|---|
-| `residual_post-activation_conv` (default) | `x + act(conv(x))` | Current Cerberus/BPNet-lite style. Initial conv output is activated before the tower. |
-| `residual_pre-activation_conv` | `x + conv(act(x))` | BasePairNet/bpnet-refactor pre-activation style. Initial conv is *not* activated before the tower; a final ReLU is applied after the tower. |
+| `residual_post-activation_conv` | `x + act(conv(x))` | Current Cerberus/BPNet-lite style. Initial conv output is activated before the tower. |
+| `residual_pre-activation_conv` (default) | `x + conv(act(x))` | BasePairNet/bpnet-refactor pre-activation style. Initial conv is *not* activated before the tower; a final ReLU is applied after the tower. |
 | `activated_residual_pre-activation_conv` | `act(x) + conv(act(x))` | bpnet-refactor post-activation style. Both the residual and conv branch are activated. Final ReLU after the tower. |
 
-The default (`residual_post-activation_conv`) preserves existing behavior. From the training script:
+The default is `residual_pre-activation_conv`. To override it from the training script:
 ```bash
 python tools/train_bpnet.py --residual-architecture residual_pre-activation_conv \
     --bigwig signal.bw --peaks peaks.bed --output-dir models/my_model

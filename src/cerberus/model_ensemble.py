@@ -4,6 +4,7 @@ import logging
 import re
 from collections.abc import Iterable, Iterator
 from pathlib import Path
+from typing import Any
 
 import torch
 import yaml
@@ -48,6 +49,123 @@ def parse_hparams_config(path: str | Path) -> CerberusConfig:
     return CerberusConfig.model_validate(data)
 
 
+def find_latest_hparams(search_root: Path | str) -> Path:
+    """Find the most recently modified ``hparams.yaml`` under ``search_root``."""
+    root = Path(search_root)
+    candidates = list(root.rglob("hparams.yaml"))
+    if not candidates:
+        raise FileNotFoundError(f"No hparams.yaml found in {root}")
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+def _parse_val_loss(path: Path) -> float:
+    match = re.search(r"val_loss[=_](\d+\.?\d*)", path.name)
+    if match is None:
+        return float("inf")
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return float("inf")
+
+
+def select_best_checkpoint(checkpoints: list[Path]) -> Path:
+    """Select the best checkpoint by lowest val_loss in filename."""
+    if not checkpoints:
+        raise ValueError("No checkpoints provided.")
+    return sorted(checkpoints, key=lambda p: (_parse_val_loss(p), p.name))[0]
+
+
+def _extract_backbone_state_dict_from_lightning(
+    raw_state: dict[str, Any],
+) -> dict[str, torch.Tensor]:
+    """Strip Lightning/Cerberus prefixes and keep only backbone weights."""
+    state_dict: dict[str, torch.Tensor] = {}
+    for key, value in raw_state.items():
+        if not key.startswith("model."):
+            continue
+        new_key = key[6:]
+        if new_key.startswith("_orig_mod."):
+            new_key = new_key[10:]
+        state_dict[new_key] = value
+    return state_dict
+
+
+def load_backbone_weights_from_checkpoint(
+    model: nn.Module,
+    checkpoint_path: Path | str,
+    device: torch.device | str,
+    strict: bool = True,
+) -> None:
+    """Load backbone weights from either a clean ``model.pt`` or Lightning ``.ckpt``."""
+    if isinstance(device, str):
+        device = torch.device(device)
+    checkpoint_path = Path(checkpoint_path)
+
+    if checkpoint_path.suffix == ".pt":
+        logger.info("Loading clean state dict: %s", checkpoint_path)
+        state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
+        model.load_state_dict(state_dict, strict=strict)
+        return
+
+    if checkpoint_path.suffix != ".ckpt":
+        raise ValueError(
+            f"Unsupported checkpoint format '{checkpoint_path.suffix}' for {checkpoint_path}"
+        )
+
+    logger.info("Loading Lightning checkpoint: %s", checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    raw_state = checkpoint.get("state_dict")
+    if not isinstance(raw_state, dict):
+        raise ValueError(
+            f"Checkpoint missing 'state_dict' mapping: {checkpoint_path}"
+        )
+
+    state_dict = _extract_backbone_state_dict_from_lightning(raw_state)
+    if not state_dict:
+        raise ValueError(
+            f"No 'model.'-prefixed weights found in checkpoint: {checkpoint_path}"
+        )
+
+    model.load_state_dict(state_dict, strict=strict)
+
+
+def load_backbone_weights_from_fold_dir(
+    model: nn.Module,
+    fold_dir: Path | str,
+    device: torch.device | str,
+    strict: bool = True,
+) -> Path:
+    """Load a model from ``fold_dir`` by preferring ``model.pt`` then best ``.ckpt``."""
+    fold_dir = Path(fold_dir)
+    pt_path = fold_dir / "model.pt"
+    if pt_path.exists():
+        load_backbone_weights_from_checkpoint(
+            model=model,
+            checkpoint_path=pt_path,
+            device=device,
+            strict=strict,
+        )
+        return pt_path
+
+    checkpoints = list(fold_dir.glob("*.ckpt"))
+    if not checkpoints:
+        checkpoints = list(fold_dir.rglob("*.ckpt"))
+    if not checkpoints:
+        raise FileNotFoundError(
+            f"No model.pt or .ckpt files found in fold directory: {fold_dir}"
+        )
+
+    ckpt_path = select_best_checkpoint(checkpoints)
+    load_backbone_weights_from_checkpoint(
+        model=model,
+        checkpoint_path=ckpt_path,
+        device=device,
+        strict=strict,
+    )
+    return ckpt_path
+
+
 class ModelEnsemble(nn.ModuleDict):
     """
     Wraps a dictionary of models (fold_idx -> model) and manages
@@ -72,7 +190,7 @@ class ModelEnsemble(nn.ModuleDict):
             raise ValueError(f"checkpoint_path must be a directory: {path}")
 
         # Resolve configuration
-        hparams_path = self._find_hparams(path)
+        hparams_path = find_latest_hparams(path)
         self.cerberus_config: CerberusConfig = parse_hparams_config(hparams_path)
 
         overrides = {}
@@ -95,19 +213,6 @@ class ModelEnsemble(nn.ModuleDict):
         super().__init__(models)
         self.folds = folds
         self.device = device
-
-    def _find_hparams(self, checkpoint_dir: Path) -> Path:
-        """
-        Recursively searches for hparams.yaml in the checkpoint directory.
-        Returns the most recently modified one.
-        """
-        candidates = list(checkpoint_dir.rglob("hparams.yaml"))
-        if not candidates:
-            raise FileNotFoundError(f"No hparams.yaml found in {checkpoint_dir}")
-
-        # Sort by modification time (newest first)
-        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        return candidates[0]
 
     def _resolve_use_folds(self, use_folds: list[str] | None) -> list[str]:
         """
@@ -531,25 +636,6 @@ class _ModelManager:
             genome_config.fold_args,
         )
 
-    def _select_best_checkpoint(self, checkpoints: list[Path]) -> Path:
-        """
-        Selects the best checkpoint from a list based on validation loss.
-        """
-
-        def get_val_loss(p: Path) -> float:
-            # Pattern to match val_loss=0.1234
-            match = re.search(r"val_loss[=_](\d+\.?\d*)", p.name)
-            if match:
-                try:
-                    return float(match.group(1))
-                except ValueError:
-                    pass
-            return float("inf")
-
-        # Sort by val_loss ascending, then by name (for determinism)
-        sorted_ckpts = sorted(checkpoints, key=lambda p: (get_val_loss(p), p.name))
-        return sorted_ckpts[0]
-
     def load_models_and_folds(self) -> tuple[dict[str, nn.Module], list]:
         """
         Loads models and fold configuration.
@@ -562,85 +648,31 @@ class _ModelManager:
         for fold_idx in self.fold_indices:
             fold_dir = self.checkpoint_path / f"fold_{fold_idx}"
             key = f"fold_{fold_idx}"
-
-            # Prefer clean model.pt state dict
-            pt_path = fold_dir / "model.pt"
-            if pt_path.exists():
-                models_dict[str(fold_idx)] = self._load_model_pt(key, pt_path)
-                continue
-
-            # Fallback: find best Lightning checkpoint
-            logger.debug(
-                "model.pt not found for fold %s, falling back to .ckpt", fold_idx
-            )
-            checkpoints = list(fold_dir.glob("*.ckpt"))
-            if not checkpoints:
-                checkpoints = list(fold_dir.rglob("*.ckpt"))
-
-            if checkpoints:
-                ckpt_path = self._select_best_checkpoint(checkpoints)
-                models_dict[str(fold_idx)] = self._load_model_ckpt(key, ckpt_path)
-            else:
+            try:
+                models_dict[str(fold_idx)] = self._load_model_from_fold(key, fold_dir)
+            except FileNotFoundError:
                 logger.warning(f"No checkpoint found for fold {fold_idx} in {fold_dir}")
 
         return models_dict, self.folds
 
-    def _load_model_pt(self, key: str, pt_file: Path) -> nn.Module:
+    def _load_model_from_fold(self, key: str, fold_dir: Path) -> nn.Module:
         """
-        Loads a model from a clean ``.pt`` state dict file.
-
-        These files are produced by ``_save_model_pt`` during training and
-        contain a plain state dict with no ``model.`` or ``_orig_mod.``
-        prefixes, so no stripping is needed.
+        Load one fold model, caching by key for repeated use.
         """
         if key in self.cache:
             return self.cache[key]
 
-        logger.info(f"Loading model from {pt_file} for {key}...")
         model = instantiate_model(
             model_config=self.model_config,
             data_config=self.data_config,
         )
-        state_dict = torch.load(pt_file, map_location=self.device, weights_only=True)
-        model.load_state_dict(state_dict, strict=True)
-        model.to(self.device)
-        model.eval()
-
-        self.cache[key] = model
-        return model
-
-    def _load_model_ckpt(self, key: str, ckpt_file: Path) -> nn.Module:
-        """
-        Loads a model from a Lightning ``.ckpt`` checkpoint (fallback path).
-
-        Strips the ``model.`` prefix added by CerberusModule and the
-        ``_orig_mod.`` prefix added by ``torch.compile``.
-        """
-        if key in self.cache:
-            return self.cache[key]
-
-        logger.info(f"Loading model from {ckpt_file} for {key}...")
-        model = instantiate_model(
-            model_config=self.model_config,
-            data_config=self.data_config,
+        checkpoint_path = load_backbone_weights_from_fold_dir(
+            model=model,
+            fold_dir=fold_dir,
+            device=self.device,
+            strict=True,
         )
-        checkpoint = torch.load(ckpt_file, map_location=self.device, weights_only=False)
-        state_dict = checkpoint["state_dict"]
-
-        # Strip "model." prefix from state_dict keys because we are loading into the backbone model directly,
-        # not the CerberusModule wrapper where these weights were originally saved under 'self.model'.
-        new_state_dict = {}
-        for k, v in state_dict.items():
-            if k.startswith("model."):
-                weight_key = k[6:]
-                # Handle torch.compile prefix:
-                # If the model was compiled during training, keys will have "_orig_mod." prefix.
-                # Since we are loading into an uncompiled model here, we must strip this prefix.
-                if weight_key.startswith("_orig_mod."):
-                    weight_key = weight_key[10:]
-                new_state_dict[weight_key] = v
-
-        model.load_state_dict(new_state_dict)
+        logger.info("Loaded model for %s from %s", key, checkpoint_path)
         model.to(self.device)
         model.eval()
 

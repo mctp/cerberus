@@ -82,6 +82,10 @@ def test_bpnet_architecture_defaults():
         input_channels=["A", "C", "G", "T"],
         output_channels=["pos", "neg"],
     )
+    assert model.residual_architecture == "residual_pre-activation_conv"
+    assert model._activate_iconv_before_tower is False
+    assert model._apply_final_tower_relu is True
+
     x = torch.randn(batch_size, 4, input_len)
     with torch.no_grad():
         out = model(x)

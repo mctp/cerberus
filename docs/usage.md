@@ -437,6 +437,134 @@ python tools/print_model_dims.py BiasNet
 
 Supports case-insensitive model name matching and automatically infers default dimensions from the model class.
 
+## Model Interpretation (TF-MoDISco)
+
+Use a two-step workflow:
+
+1. `tools/export_tfmodisco_inputs.py` to export attribution inputs (`ohe.npz` + attribution NPZ).
+2. `tools/run_tfmodisco.py` to run TF-MoDISco motifs/report on any compatible NPZ inputs.
+
+What the export script does:
+
+1. Loads model weights from `model.pt` (or best `.ckpt`) and matching `hparams.yaml`.
+2. Rebuilds the matching `CerberusDataModule` and split (`train` / `val` / `test`).
+3. Exports:
+   - `ohe.npz` (DNA one-hot sequence; shape `(N, 4, L)`)
+   - `shap.npz` (attribution scores; shape `(N, 4, L)`)
+
+What the TF-MoDISco runner script does:
+
+1. Validates `ohe` and attribution NPZ inputs (expects key `arr_0`, shape `(N, 4, L)`).
+2. Runs `modisco motifs`.
+3. Optionally runs `modisco report`.
+
+Prerequisites:
+
+```bash
+pip install modisco
+# Optional (only if export uses --attribution-method integrated_gradients):
+pip install captum
+
+# Or install cerberus extras:
+pip install -e ".[tfmodisco]"
+pip install -e ".[attribution]"
+# (combined)
+pip install -e ".[interpret]"
+# (development + attribution)
+pip install -e ".[dev,attribution]"
+```
+
+Step 1: export attribution NPZ files:
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --split test \
+    --n-examples 2000 \
+    --seed 42 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --target-mode log_counts
+```
+
+Export with ISM attribution:
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --attribution-method ism \
+    --ism-start 800 \
+    --ism-end 1200
+```
+
+Step 2: run TF-MoDISco motifs on exported NPZ files:
+
+```bash
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5
+```
+
+Generate HTML report after motifs:
+
+```bash
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5 \
+    --run-report \
+    --meme-db motifs.meme
+```
+
+TF-MoDISco recommended motif database for human data:
+
+- Each pattern produced by TF-MoDISco is compared against a motif database using TOMTOM.
+- A good default for human analyses is `MotifCompendium-Database-Human.meme.txt` from MotifCompendium.
+- Source recommendation: https://github.com/kundajelab/tfmodisco?tab=readme-ov-file#generating-reports
+
+```bash
+mkdir -p data/motifs
+curl -L \
+  -o data/motifs/MotifCompendium-Database-Human.meme.txt \
+  https://raw.githubusercontent.com/kundajelab/MotifCompendium/refs/heads/main/pipeline/data/MotifCompendium-Database-Human.meme.txt
+
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --target-mode log_counts
+
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5 \
+    --run-report \
+    --meme-db data/motifs/MotifCompendium-Database-Human.meme.txt
+```
+
+Common interpretation target modes (`--target-mode`):
+
+| Mode | Meaning |
+|---|---|
+| `log_counts` | Attribution to predicted log total counts (default) |
+| `profile_bin` | Attribution to one profile-logit bin (`--bin-index`) |
+| `profile_window_sum` | Attribution to summed profile logits in `[start:end)` (`--window-start`, `--window-end`) |
+| `pred_count_bin` | Attribution to one predicted count bin (softmax(logits) × exp(log_counts)) |
+| `pred_count_window_sum` | Attribution to summed predicted counts in a window |
+
+Notes:
+
+1. Use the same `--seed` as training for comparable sampler behavior (`tools/train_*.py` defaults to `42`).
+2. For `peak` samplers, the script defaults to positive intervals only (`IntervalSampler` source).
+3. Attribution method is configurable via `--attribution-method`:
+   - `integrated_gradients` (default, requires `captum`)
+   - `ism` (forward-pass mutation deltas; can be expensive over full input length)
+4. `tools/run_tfmodisco.py` can consume any compatible attribution NPZ, not just outputs from `tools/export_tfmodisco_inputs.py`.
+5. `modisco motifs` expects NPZ key `arr_0`; export scripts should write NPZ in that format.
+
 ## Next Steps
 
 Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.

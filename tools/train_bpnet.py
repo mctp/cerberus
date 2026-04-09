@@ -249,7 +249,7 @@ def get_args():
     parser.add_argument(
         "--residual-architecture",
         type=str,
-        default="residual_post-activation_conv",
+        default="residual_pre-activation_conv",
         choices=[
             "residual_post-activation_conv",
             "residual_pre-activation_conv",
