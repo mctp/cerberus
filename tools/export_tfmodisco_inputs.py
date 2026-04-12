@@ -22,7 +22,9 @@ Notes
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -44,6 +46,9 @@ from cerberus.model_ensemble import (
 from cerberus.module import instantiate_model
 
 logger = logging.getLogger(__name__)
+
+_INTERVAL_WITH_STRAND_RE = re.compile(r"^([^:]+):(\d+)-(\d+)\(([+-])\)$")
+_INTERVAL_NO_STRAND_RE = re.compile(r"^([^:]+):(\d+)-(\d+)$")
 
 
 def _resolve_device(device_arg: str) -> torch.device:
@@ -287,6 +292,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default="shap.npz",
         help="Output filename for attributions.",
     )
+    parser.add_argument(
+        "--intervals-name",
+        type=str,
+        default="intervals.tsv",
+        help=(
+            "Output filename for exported interval metadata TSV "
+            "(one row per example, aligned to NPZ row order)."
+        ),
+    )
+    parser.add_argument(
+        "--meta-name",
+        type=str,
+        default="attribution_meta.json",
+        help="Output filename for export metadata JSON.",
+    )
 
     return parser
 
@@ -359,6 +379,28 @@ def _generate_dls_baselines(
         return torch.stack(refs, dim=0)
 
     raise ValueError(f"Unsupported DeepLiftShap baseline strategy: {strategy}")
+
+
+def _parse_interval_string(interval_repr: str) -> tuple[str, int, int, str]:
+    match = _INTERVAL_WITH_STRAND_RE.match(interval_repr)
+    if match is not None:
+        chrom = match.group(1)
+        start = int(match.group(2))
+        end = int(match.group(3))
+        strand = match.group(4)
+        return chrom, start, end, strand
+
+    match = _INTERVAL_NO_STRAND_RE.match(interval_repr)
+    if match is not None:
+        chrom = match.group(1)
+        start = int(match.group(2))
+        end = int(match.group(3))
+        return chrom, start, end, "+"
+
+    raise ValueError(
+        f"Could not parse interval string '{interval_repr}'. "
+        "Expected 'chrom:start-end(strand)' or 'chrom:start-end'."
+    )
 
 
 def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
@@ -502,6 +544,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
     ohe_batches: list[np.ndarray] = []
     attr_batches: list[np.ndarray] = []
+    interval_rows: list[tuple[int, str, int, int, str, str]] = []
     exported = 0
     logged_ism_span = False
     dls_rng = np.random.default_rng(args.seed)
@@ -528,15 +571,48 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
     for batch_idx, batch in enumerate(loader):
         inputs = batch["inputs"].float()
-        sources = batch.get("interval_source")
+        intervals_raw = batch.get("intervals")
+        if intervals_raw is None:
+            intervals = []
+        else:
+            intervals = list(intervals_raw)
+        if not intervals:
+            raise RuntimeError(
+                "Batch is missing 'intervals' metadata; cannot align exported NPZ rows."
+            )
+        if len(intervals) != inputs.shape[0]:
+            raise RuntimeError(
+                f"Batch interval count mismatch: len(intervals)={len(intervals)} vs "
+                f"batch_size={inputs.shape[0]}."
+            )
 
-        if include_sources is not None and sources is not None:
+        sources_raw = batch.get("interval_source")
+        if sources_raw is not None:
+            sources = [str(src) for src in list(sources_raw)]
+            if len(sources) != inputs.shape[0]:
+                raise RuntimeError(
+                    f"Batch interval_source count mismatch: len(interval_source)={len(sources)} "
+                    f"vs batch_size={inputs.shape[0]}."
+                )
+        else:
+            sources = ["unknown"] * inputs.shape[0]
+
+        if include_sources is not None:
             keep_mask = torch.tensor(
                 [src in include_sources for src in sources], dtype=torch.bool
             )
             if not keep_mask.any():
                 continue
             inputs = inputs[keep_mask]
+            keep_mask_list = keep_mask.tolist()
+            intervals = [
+                interval
+                for interval, keep in zip(intervals, keep_mask_list, strict=True)
+                if keep
+            ]
+            sources = [
+                src for src, keep in zip(sources, keep_mask_list, strict=True) if keep
+            ]
 
         if inputs.numel() == 0:
             continue
@@ -547,6 +623,8 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         remaining = args.n_examples - exported
         if inputs.shape[0] > remaining:
             inputs = inputs[:remaining]
+            intervals = intervals[:remaining]
+            sources = sources[:remaining]
 
         inputs = inputs.to(device)
 
@@ -611,6 +689,23 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         if apply_off_simplex_correction:
             attrs = apply_off_simplex_gradient_correction(attrs)
 
+        if len(intervals) != ohe.shape[0]:
+            raise RuntimeError(
+                f"Export row mismatch: intervals={len(intervals)} vs batch_examples={ohe.shape[0]}"
+            )
+        if len(sources) != ohe.shape[0]:
+            raise RuntimeError(
+                f"Export row mismatch: interval_source={len(sources)} vs batch_examples={ohe.shape[0]}"
+            )
+        batch_export_start = exported
+        for i, (interval_repr, source) in enumerate(
+            zip(intervals, sources, strict=True)
+        ):
+            chrom, start, end, strand = _parse_interval_string(str(interval_repr))
+            interval_rows.append(
+                (batch_export_start + i, chrom, start, end, strand, str(source))
+            )
+
         ohe_batches.append(ohe)
         attr_batches.append(attrs)
         exported += ohe.shape[0]
@@ -659,13 +754,67 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
     ohe_path = output_dir / args.ohe_name
     attr_path = output_dir / args.attr_name
+    intervals_path = output_dir / args.intervals_name
+    meta_path = output_dir / args.meta_name
 
     # Save with default key arr_0 for modisco compatibility.
     np.savez_compressed(ohe_path, ohe_all)
     np.savez_compressed(attr_path, attr_all)
+    if len(interval_rows) != exported:
+        raise RuntimeError(
+            f"interval row count mismatch: expected {exported}, got {len(interval_rows)}"
+        )
+    with intervals_path.open("w", encoding="utf-8") as f:
+        f.write("index\tchrom\tstart\tend\tstrand\tinterval_source\n")
+        for index, chrom, start, end, strand, source in interval_rows:
+            f.write(f"{index}\t{chrom}\t{start}\t{end}\t{strand}\t{source}\n")
+
+    attribution_meta = {
+        "checkpoint_dir": str(args.checkpoint_dir),
+        "fold": args.fold,
+        "split": args.split,
+        "seed": args.seed,
+        "device": str(device),
+        "n_examples_requested": args.n_examples,
+        "n_examples_exported": int(exported),
+        "batch_size": args.batch_size,
+        "num_workers": args.num_workers,
+        "intervals_path_override": (
+            str(args.intervals_path.resolve()) if args.intervals_path is not None else None
+        ),
+        "include_sources": sorted(include_sources) if include_sources is not None else None,
+        "attribution_method": args.attribution_method,
+        "target_mode": args.target_mode,
+        "target_channel": args.target_channel,
+        "bin_index": args.bin_index,
+        "window_start": args.window_start,
+        "window_end": args.window_end,
+        "off_simplex_gradient_correction": bool(args.off_simplex_gradient_correction),
+        "ig_steps": args.ig_steps,
+        "ig_internal_batch_size": args.ig_internal_batch_size,
+        "dls_n_baselines": args.dls_n_baselines,
+        "dls_baseline_strategy": args.dls_baseline_strategy,
+        "dls_warning_threshold": args.dls_warning_threshold,
+        "ism_start": args.ism_start,
+        "ism_end": args.ism_end,
+        "ohe_name": args.ohe_name,
+        "attr_name": args.attr_name,
+        "intervals_name": args.intervals_name,
+    }
+    if args.attribution_method == "deep_lift_shap" and dls_delta_count > 0:
+        attribution_meta["deep_lift_shap_convergence_abs_delta"] = {
+            "mean": dls_delta_abs_sum / dls_delta_count,
+            "max": dls_delta_abs_max,
+            "n": dls_delta_count,
+        }
+    with meta_path.open("w", encoding="utf-8") as f:
+        json.dump(attribution_meta, f, indent=2, sort_keys=True)
+        f.write("\n")
 
     logger.info("Saved sequences: %s  shape=%s", ohe_path, ohe_all.shape)
     logger.info("Saved attrs:     %s  shape=%s", attr_path, attr_all.shape)
+    logger.info("Saved intervals: %s  rows=%d", intervals_path, len(interval_rows))
+    logger.info("Saved metadata:  %s", meta_path)
 
     return output_dir, ohe_path, attr_path
 
@@ -679,6 +828,8 @@ def main() -> None:
     logger.info("Attribution export complete. Use tools/run_tfmodisco.py for aggregation.")
     logger.info("ohe:  %s", ohe_path)
     logger.info("attr: %s", attr_path)
+    logger.info("intervals: %s", args.output_dir.resolve() / args.intervals_name)
+    logger.info("meta:      %s", args.output_dir.resolve() / args.meta_name)
 
 
 if __name__ == "__main__":

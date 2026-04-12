@@ -451,6 +451,8 @@ What the export script does:
 3. Exports:
    - `ohe.npz` (DNA one-hot sequence; shape `(N, 4, L)`)
    - `shap.npz` (attribution scores; shape `(N, 4, L)`)
+   - `intervals.tsv` (one row/example aligned to NPZ order)
+   - `attribution_meta.json` (method/target/export provenance)
 
 What the TF-MoDISco runner script does:
 
@@ -507,6 +509,22 @@ python tools/run_tfmodisco.py \
     --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
     --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5
 ```
+
+Optional: export attributions to IGV/UCSC BigWig (chrombpnet-style projected SHAP):
+
+```bash
+python tools/export_attribution_bigwig.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --intervals-tsv models/my_pomeranian/single-fold/tfmodisco/intervals.tsv \
+    --chrom-sizes data/genome/chrom.sizes \
+    --output-bw models/my_pomeranian/single-fold/tfmodisco/shap.bw
+```
+
+Notes for BigWig export:
+- Coordinates come from exported `intervals.tsv` (realized examples), not the raw peaks BED.
+- Overlap resolution is fixed nearest-center midpoint splitting (chrombpnet-style).
+- The written track is `projected = (ohe * attr).sum(axis=1)` (one scalar per genomic base).
 
 Generate HTML report after motifs:
 
