@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`compute_bigwig_counts`** and **`compute_log2fc_from_bigwigs`**
+  (`differential.py`): Replace the BAM-based count extraction step with
+  direct bigwig bin sums, identical to how the count head computes its own
+  training target.  `compute_bigwig_counts` sums depth-normalised bigwig
+  signal over each peak interval; `compute_log2fc_from_bigwigs` wraps both
+  conditions and calls `compute_log2fc_cpm` with `normalize=False` (no
+  library-size correction needed since bigwigs are already RPM-normalised).
+  Both functions are exported from the top-level package.
+- **`DifferentialAttributionTarget`** (`attribution.py`): Wraps a
+  :class:`MultitaskBPNet` output into a scalar differential target for
+  gradient-based or ISM attribution.  Two modes:
+  ``"delta_log_counts"`` (total binding change; use after Phase 2 fine-tuning)
+  and ``"delta_profile_window_sum"`` (footprint shape change; works on Phase 1
+  model).  Exported from the top-level package alongside
+  ``DIFFERENTIAL_ATTRIBUTION_MODES``.  Integrates directly with
+  ``compute_ism_attributions`` and captum (IG, DeepSHAP).
+- **`MultitaskBPNet`** (`models/bpnet.py`): Multi-task BPNet with a shared
+  dilated tower and N condition-specific profile + count output channels.
+  Enforces `predict_total_count=False` (required for differential Phase 2).
+  Phase 1 of the two-phase differential accessibility workflow; architecture
+  follows bpAI-TAC (Chandra et al. 2025).
+- **`MultitaskBPNetLoss`** (`models/bpnet.py`): Phase 1 training loss.
+  Wraps `MSEMultinomialLoss` with `count_per_channel=True` and
+  `average_channels=True` enforced, matching the bpAI-TAC training objective.
+- **`DifferentialCountLoss`** (`loss.py`): Phase 2 fine-tuning loss.
+  Supervises `log_counts_B − log_counts_A` with an external differential
+  target (e.g. DESeq2 log2FC).  Profile loss is disabled (weight 0) following
+  Naqvi et al. (2025).  Accepts the log2FC target via a `log2fc` batch-context
+  kwarg or falls back to squeezing `targets`.  Optional `abs_weight > 0`
+  anchors the two count heads to absolute tracks during fine-tuning.
+- **Design doc** (`docs/internal/multitask-differential-bpnet.md`): Full
+  rationale for the two-phase workflow, design decisions rejected (condition
+  embeddings, profile delta head, consistency loss), and usage examples.
+- **`compute_log2fc_cpm`** (`differential.py`): Compute log2 CPM fold change
+  from raw per-peak counts.  Applies a configurable pseudocount before the
+  log ratio, which pulls low-coverage peaks toward zero (shrinkage without
+  requiring replicates or a statistical model).  Works with or without
+  library-size normalisation.
+- **`DifferentialRecord`** (`differential.py`): Frozen dataclass holding a
+  single peak's log2FC label with optional baseMean.  Coordinates follow
+  0-based BED convention.
+- **`load_differential_targets`** / **`write_differential_targets`**
+  (`differential.py`): Read and write the peak-level log2FC TSV format
+  consumed by :class:`DifferentialTargetIndex`.
+- **`DifferentialTargetIndex`** (`differential.py`): Fast
+  ``(chrom, start, end)`` → log2FC lookup dict.  ``from_tsv`` constructor
+  chains loading and index construction.  Returns a configurable ``default``
+  value (0.0) for peaks absent from the index.
+- **Design doc updated** (`docs/internal/multitask-differential-bpnet.md`):
+  Added sections on regression vs classification (why not binary DAR labels),
+  pseudocount shrinkage rationale, the two-step label generation workflow
+  (``compute_log2fc_cpm`` → ``write_differential_targets``), and a literature
+  table comparing DL differential accessibility approaches.
+
 ## [1.0.0a3] - 2026-04-08
 
 ### Added

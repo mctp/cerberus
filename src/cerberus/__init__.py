@@ -1,6 +1,17 @@
+from .differential import (
+    DifferentialRecord,
+    DifferentialTargetIndex,
+    compute_bigwig_counts,
+    compute_log2fc_cpm,
+    compute_log2fc_from_bigwigs,
+    load_differential_targets,
+    write_differential_targets,
+)
 from .attribution import (
     ATTRIBUTION_MODES,
+    DIFFERENTIAL_ATTRIBUTION_MODES,
     AttributionTarget,
+    DifferentialAttributionTarget,
     apply_off_simplex_gradient_correction,
     compute_ism_attributions,
     resolve_ism_span,
@@ -72,9 +83,19 @@ __all__ = [
     "setup_logging",
     # Signal Extraction
     "register_extractor",
+    # Differential target utilities
+    "compute_bigwig_counts",
+    "compute_log2fc_cpm",
+    "compute_log2fc_from_bigwigs",
+    "DifferentialRecord",
+    "load_differential_targets",
+    "write_differential_targets",
+    "DifferentialTargetIndex",
     # Attribution utilities
     "ATTRIBUTION_MODES",
+    "DIFFERENTIAL_ATTRIBUTION_MODES",
     "AttributionTarget",
+    "DifferentialAttributionTarget",
     "resolve_ism_span",
     "compute_ism_attributions",
     "apply_off_simplex_gradient_correction",

@@ -1,0 +1,290 @@
+"""Tests for MultitaskBPNet, MultitaskBPNetLoss, and DifferentialCountLoss.
+
+Covers:
+- MultitaskBPNet forward pass shape and per-channel count outputs
+- MultitaskBPNet validation (requires ≥2 output channels, predict_total_count=False)
+- MultitaskBPNetLoss fixed hyperparameter enforcement
+- DifferentialCountLoss basic delta supervision
+- DifferentialCountLoss log2fc kwarg path
+- DifferentialCountLoss abs_weight regularisation
+- DifferentialCountLoss validation errors
+- Round-trip: MultitaskBPNet → MultitaskBPNetLoss (Phase 1)
+- Round-trip: MultitaskBPNet → DifferentialCountLoss (Phase 2)
+"""
+
+import pytest
+import torch
+
+from cerberus.loss import DifferentialCountLoss
+from cerberus.models.bpnet import (
+    MultitaskBPNet,
+    MultitaskBPNetLoss,
+)
+from cerberus.output import ProfileCountOutput
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+BATCH = 4
+INPUT_LEN = 1200
+OUTPUT_LEN = 1000
+FILTERS = 16
+N_LAYERS = 2
+CONDITIONS = ["ctrl", "treat"]
+
+
+@pytest.fixture
+def model():
+    return MultitaskBPNet(
+        output_channels=CONDITIONS,
+        input_len=INPUT_LEN,
+        output_len=OUTPUT_LEN,
+        filters=FILTERS,
+        n_dilated_layers=N_LAYERS,
+    )
+
+
+@pytest.fixture
+def seq():
+    return torch.zeros(BATCH, 4, INPUT_LEN)
+
+
+@pytest.fixture
+def targets_2cond():
+    """Absolute count targets for 2 conditions, (B, N, L)."""
+    return torch.rand(BATCH, len(CONDITIONS), OUTPUT_LEN) * 10
+
+
+# ---------------------------------------------------------------------------
+# MultitaskBPNet
+# ---------------------------------------------------------------------------
+
+
+def test_multitask_bpnet_forward_shape(model, seq):
+    out = model(seq)
+    assert isinstance(out, ProfileCountOutput)
+    assert out.logits.shape == (BATCH, len(CONDITIONS), OUTPUT_LEN)
+    assert out.log_counts.shape == (BATCH, len(CONDITIONS))
+
+
+def test_multitask_bpnet_n_conditions(model):
+    assert model.n_conditions == len(CONDITIONS)
+    assert model.condition_channels == len(CONDITIONS)
+
+
+def test_multitask_bpnet_predict_total_count_is_false(model):
+    """predict_total_count must always be False."""
+    assert model.predict_total_count is False
+
+
+def test_multitask_bpnet_requires_at_least_two_channels():
+    with pytest.raises(ValueError, match="at least 2"):
+        MultitaskBPNet(output_channels=["only_one"], input_len=500, output_len=300)
+
+
+def test_multitask_bpnet_requires_nonempty_channels():
+    with pytest.raises(ValueError, match="at least 2"):
+        MultitaskBPNet(output_channels=[], input_len=500, output_len=300)
+
+
+def test_multitask_bpnet_three_conditions():
+    model3 = MultitaskBPNet(
+        output_channels=["a", "b", "c"],
+        input_len=INPUT_LEN,
+        output_len=OUTPUT_LEN,
+        filters=FILTERS,
+        n_dilated_layers=N_LAYERS,
+    )
+    seq = torch.zeros(BATCH, 4, INPUT_LEN)
+    out = model3(seq)
+    assert out.logits.shape == (BATCH, 3, OUTPUT_LEN)
+    assert out.log_counts.shape == (BATCH, 3)
+
+
+# ---------------------------------------------------------------------------
+# MultitaskBPNetLoss
+# ---------------------------------------------------------------------------
+
+
+def test_multitask_bpnet_loss_fixed_params():
+    loss = MultitaskBPNetLoss()
+    assert loss.count_per_channel is True
+    assert loss.average_channels is True
+    assert loss.flatten_channels is False
+
+
+def test_multitask_bpnet_loss_alpha_beta():
+    loss = MultitaskBPNetLoss(alpha=2.0, beta=0.5)
+    assert loss.count_weight == 2.0
+    assert loss.profile_weight == 0.5
+
+
+def test_multitask_bpnet_loss_warns_on_override(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING):
+        MultitaskBPNetLoss(count_per_channel=False)
+    assert "count_per_channel" in caplog.text
+
+
+def test_multitask_bpnet_loss_phase1_roundtrip(model, seq, targets_2cond):
+    loss_fn = MultitaskBPNetLoss()
+    out = model(seq)
+    loss = loss_fn(out, targets_2cond)
+    assert loss.ndim == 0
+    assert loss.item() > 0
+    loss.backward()
+
+
+# ---------------------------------------------------------------------------
+# DifferentialCountLoss — basic
+# ---------------------------------------------------------------------------
+
+
+def _make_output(log_counts: torch.Tensor, output_len: int = OUTPUT_LEN) -> ProfileCountOutput:
+    """Create a ProfileCountOutput with dummy logits."""
+    B, N = log_counts.shape
+    logits = torch.zeros(B, N, output_len)
+    return ProfileCountOutput(logits=logits, log_counts=log_counts)
+
+
+def test_differential_count_loss_basic():
+    """Delta loss supervises log_counts_B - log_counts_A."""
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    log_counts = torch.tensor([[1.0, 2.0], [0.5, 1.5], [2.0, 0.0], [1.0, 1.0]])
+    out = _make_output(log_counts)
+    # target_delta = log_counts_B - log_counts_A
+    target_delta = torch.tensor([1.0, 1.0, -2.0, 0.0])
+    # Targets as (B, 1, 1) scalar (fallback path)
+    targets = target_delta.view(4, 1, 1)
+    loss = loss_fn(out, targets)
+    assert loss.ndim == 0
+    assert loss.item() == pytest.approx(0.0, abs=1e-5)
+
+
+def test_differential_count_loss_log2fc_kwarg():
+    """log2fc kwarg takes priority over targets."""
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    log_counts = torch.tensor([[1.0, 3.0]])
+    out = _make_output(log_counts)
+    # Supply wrong targets (should be ignored)
+    targets = torch.zeros(1, 1, 1)
+    log2fc = torch.tensor([2.0])  # = 3.0 - 1.0, correct delta
+    loss = loss_fn(out, targets, log2fc=log2fc)
+    assert loss.item() == pytest.approx(0.0, abs=1e-5)
+
+
+def test_differential_count_loss_components_keys():
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1, abs_weight=0.0)
+    out = _make_output(torch.zeros(2, 2))
+    targets = torch.zeros(2, 1, 1)
+    comps = loss_fn.loss_components(out, targets)
+    assert "delta_loss" in comps
+    assert "abs_loss_a" not in comps
+    assert "abs_loss_b" not in comps
+
+
+def test_differential_count_loss_abs_weight_components():
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1, abs_weight=0.1)
+    log_counts = torch.zeros(2, 2)
+    out = _make_output(log_counts)
+    targets_abs = torch.rand(2, 2, OUTPUT_LEN) * 5
+    log2fc = torch.zeros(2)
+    comps = loss_fn.loss_components(out, targets_abs, log2fc=log2fc)
+    assert "delta_loss" in comps
+    assert "abs_loss_a" in comps
+    assert "abs_loss_b" in comps
+
+
+def test_differential_count_loss_abs_weight_scalar_targets_raises():
+    """abs_weight > 0 requires (B, N, L) targets with N >= max_cond_idx+1."""
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1, abs_weight=0.5)
+    out = _make_output(torch.zeros(2, 2))
+    # Only 1 channel in targets — not enough for cond_b_idx=1
+    targets = torch.zeros(2, 1, OUTPUT_LEN)
+    with pytest.raises(ValueError, match="abs_weight > 0"):
+        loss_fn.loss_components(out, targets)
+
+
+def test_differential_count_loss_same_idx_raises():
+    with pytest.raises(ValueError, match="must differ"):
+        DifferentialCountLoss(cond_a_idx=1, cond_b_idx=1)
+
+
+def test_differential_count_loss_out_of_range_idx():
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=5)
+    out = _make_output(torch.zeros(2, 2))  # only 2 channels
+    targets = torch.zeros(2, 1, 1)
+    with pytest.raises(ValueError, match="out of range"):
+        loss_fn.loss_components(out, targets)
+
+
+def test_differential_count_loss_wrong_output_type():
+    loss_fn = DifferentialCountLoss()
+    with pytest.raises(TypeError, match="ProfileCountOutput"):
+        loss_fn.loss_components("not_an_output", torch.zeros(2, 1, 1))
+
+
+def test_differential_count_loss_log2fc_wrong_type():
+    loss_fn = DifferentialCountLoss()
+    out = _make_output(torch.zeros(2, 2))
+    targets = torch.zeros(2, 1, 1)
+    with pytest.raises(TypeError, match="torch.Tensor"):
+        loss_fn.loss_components(out, targets, log2fc=[1.0, 2.0])
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 round-trip
+# ---------------------------------------------------------------------------
+
+
+def test_phase2_roundtrip_backward(model, seq):
+    """Phase 2: freeze trunk + profile heads, fine-tune count heads on delta."""
+    # Simulate partial fine-tuning: only count_dense receives gradients
+    for name, param in model.named_parameters():
+        param.requires_grad = name == "count_dense.weight" or name == "count_dense.bias"
+
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    out = model(seq)
+    log2fc = torch.randn(BATCH)
+    targets = log2fc.view(BATCH, 1, 1)
+    loss = loss_fn(out, targets)
+    assert loss.ndim == 0
+    loss.backward()
+
+    # Only count_dense should have gradients
+    for name, param in model.named_parameters():
+        if name in ("count_dense.weight", "count_dense.bias"):
+            assert param.grad is not None, f"{name} should have grad"
+        else:
+            assert param.grad is None, f"{name} should not have grad"
+
+
+def test_phase2_end_to_end_all_weights(model, seq):
+    """Phase 2 end-to-end: trunk and count_dense update; profile_conv does not.
+
+    DifferentialCountLoss sets profile loss weight to 0 (following Naqvi et al.).
+    Gradients flow through: count_dense → global avg pool → res_layers → iconv.
+    profile_conv is a separate branch that does not feed into log_counts and
+    therefore correctly receives no gradient.
+    """
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    out = model(seq)
+    log2fc = torch.randn(BATCH)
+    targets = log2fc.view(BATCH, 1, 1)
+    loss = loss_fn(out, targets)
+    loss.backward()
+
+    # Trunk parameters (iconv, res_layers) and count_dense must have gradients
+    trunk_and_count = {"iconv", "count_dense"}
+    for name, param in model.named_parameters():
+        is_trunk_or_count = any(k in name for k in trunk_and_count)
+        if is_trunk_or_count:
+            assert param.grad is not None, f"{name} should have gradient"
+
+    # profile_conv has no gradient: it is a separate branch not used by count loss
+    for name, param in model.named_parameters():
+        if "profile_conv" in name:
+            assert param.grad is None, (
+                f"{name} should not have gradient when profile loss weight is 0"
+            )
