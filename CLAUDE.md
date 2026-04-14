@@ -4,7 +4,11 @@
 
 After completing each task, always:
 
-1. **Update documentation** — Update or add relevant docstrings, comments, and any affected files in `docs/` to reflect the changes made.
+1. **Update documentation** — Update or add relevant docstrings, comments, and any affected files in `docs/` to reflect the changes made. Specifically:
+   - Check **public docs pages** in `docs/*.md` that reference the changed module or feature. Use `grep` to find them: `grep -rl 'keyword' docs/ --include='*.md'`.
+   - For new library modules: add API docs and usage examples to the relevant `docs/*.md` page.
+   - For new CLI tools: add a section in `docs/prediction.md` (or the relevant page).
+   - Regenerate LLM context files: `python tools/generate_llms_txt.py`
 2. **Update tests** — Add or update unit tests in `tests/` to cover the new or modified functionality. Ensure all existing tests still pass.
 3. **Update examples and tools** — Review and update any affected scripts in `examples/`, `tools/`, and `notebooks/` to stay consistent with the changes.
 4. **Update changelog** — Add an entry to `CHANGELOG.md` under the current unreleased version describing what was added, changed, or fixed.
@@ -35,7 +39,7 @@ After completing each task, always:
 
 ## Run and fix pyright (after each task)
 
-- npx pyright tests/ src/
+- `npx pyright tests/ src/` — run on the **full** codebase, not just changed files.
 
 ## Documentation (mkdocs)
 
