@@ -66,22 +66,29 @@ print(f"FASTA: {config.genome_config.fasta_path}")
 print(f"Loaded folds: {list(ensemble.keys())}")
 
 # %% [markdown]
-# ## 2. Create Synthetic Variants
+# ## 2. Define Variants
 #
-# We create a few variants near known peak summits from the training data.
-# In a real analysis you would load from a VCF file (see Section 5).
+# We score a mix of variants: synthetic SNPs at known AR peak summits
+# (from the training narrowPeak file), a known KLK3 missense variant,
+# and an intergenic control.  In a real analysis you would load from
+# a VCF file (see Section 5).
 
 # %%
 # Peak 1: chr6:93940029-93941032, summit offset 538 -> summit at 93940567
 # Peak 3: chr11:114178889-114180869, summit offset 586 -> summit at 114179475
+# Ref alleles verified against hg38.fa.
 
 variants = [
     # SNP at peak 1 summit
-    Variant("chr6", 93940567, "A", "G", id="peak1_summit_snp"),
+    Variant("chr6", 93940567, "C", "T", id="peak1_summit_snp"),
     # SNP 100bp upstream of peak 1 summit
-    Variant("chr6", 93940467, "C", "T", id="peak1_upstream_snp"),
+    Variant("chr6", 93940467, "A", "G", id="peak1_upstream_snp"),
     # SNP at peak 3 summit
-    Variant("chr11", 114179475, "G", "A", id="peak3_summit_snp"),
+    Variant("chr11", 114179475, "C", "A", id="peak3_summit_snp"),
+    # KLK3 missense variant (19:50858501 T>C, 0-based pos=50858500)
+    Variant("chr19", 50858500, "T", "C", id="KLK3_missense"),
+    # MSMB intergenic variant (10:46046326 A>G, 0-based pos=46046325)
+    Variant("chr10", 46046325, "A", "G", id="MSMB_intergenic"),
     # SNP far from any peak (control -- should have minimal effect)
     Variant("chr1", 10000000, "A", "C", id="intergenic_control"),
 ]
@@ -130,7 +137,7 @@ fasta = pyfaidx.Fasta(str(config.genome_config.fasta_path))
 lc_include, pseudocount = get_log_count_params(config.model_config_)
 
 # Score just one variant to show the full VariantResult
-single_variant = [Variant("chr6", 93940567, "A", "G", id="peak1_summit")]
+single_variant = [Variant("chr6", 93940567, "C", "T", id="peak1_summit")]
 result = next(score_variants(
     model=ensemble,
     variants=single_variant,
