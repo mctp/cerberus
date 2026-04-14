@@ -90,7 +90,9 @@ model_config = ModelConfig(
 # Since this is a single-fold model, it will be loaded under the key "single".
 
 # %%
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from cerberus.utils import resolve_device
+
+device = resolve_device()
 print(f"Using device: {device}")
 
 ensemble = ModelEnsemble(
