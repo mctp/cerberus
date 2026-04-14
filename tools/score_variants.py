@@ -1,0 +1,295 @@
+#!/usr/bin/env python
+"""Score variant effects using a trained Cerberus model.
+
+For each variant in a VCF or TSV file, this tool predicts the effect on
+model outputs by comparing predictions on reference vs alternative allele
+sequences.  Supports single-fold and multi-fold ensemble models.
+
+Usage:
+    # From a VCF
+    python tools/score_variants.py path/to/model_dir \\
+        --vcf variants.vcf.gz --output effects.tsv
+
+    # From a tab-delimited variant file
+    python tools/score_variants.py path/to/model_dir \\
+        --variants variants.tsv --output effects.tsv
+
+    # With region filter and custom folds
+    python tools/score_variants.py path/to/model_dir \\
+        --vcf variants.vcf.gz --output effects.tsv \\
+        --region chr1:1000000-2000000 --use-folds test+val
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import gzip
+import logging
+import re
+from collections.abc import Iterator
+from pathlib import Path
+
+import torch
+
+import cerberus
+from cerberus.interval import Interval
+from cerberus.model_ensemble import ModelEnsemble
+from cerberus.predict_variants import VariantResult, score_variants_from_ensemble
+from cerberus.variants import Variant, load_variants, load_vcf
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_region(region_str: str) -> Interval:
+    """Parse 'chr1:1000000-2000000' into an Interval."""
+    match = re.match(r"^(\w+):(\d+)-(\d+)$", region_str)
+    if not match:
+        raise ValueError(
+            f"Invalid region format: '{region_str}'. Expected 'chrom:start-end' "
+            f"(e.g. 'chr1:1000000-2000000')."
+        )
+    chrom, start, end = match.group(1), int(match.group(2)), int(match.group(3))
+    if start >= end:
+        raise ValueError(f"Region start ({start}) must be less than end ({end}).")
+    return Interval(chrom, start, end, "+")
+
+
+def _parse_use_folds(use_folds_str: str | None) -> list[str] | None:
+    """Parse a --use-folds argument like 'test+val' or 'all'."""
+    if use_folds_str is None:
+        return None
+    folds: list[str] = []
+    for part in re.split(r"[+,]", use_folds_str):
+        part = part.strip()
+        if not part:
+            continue
+        if part == "all":
+            folds.extend(["train", "test", "val"])
+        else:
+            folds.append(part)
+    return list(dict.fromkeys(folds)) or None
+
+
+def _load_variants(args: argparse.Namespace) -> Iterator[Variant]:
+    """Load variants from VCF or TSV based on CLI args."""
+    if args.vcf is not None:
+        region: str | Interval | None = None
+        if args.region:
+            region = _parse_region(args.region)
+        elif args.regions_bed:
+            raise ValueError(
+                "--regions-bed is not yet supported for VCF input. "
+                "Use --region for a single region or pre-filter the VCF."
+            )
+        return load_vcf(args.vcf, region=region)
+    else:
+        return load_variants(args.variants, zero_based=args.zero_based)
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Score variant effects using a trained Cerberus model."
+    )
+
+    parser.add_argument(
+        "model_path",
+        type=str,
+        help="Path to the trained model directory (ModelEnsemble compatible).",
+    )
+
+    # -- Variant source (mutually exclusive) --
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument(
+        "--vcf",
+        type=Path,
+        default=None,
+        help="Path to a VCF or BCF file (bgzipped + indexed for --region).",
+    )
+    source.add_argument(
+        "--variants",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a tab-delimited variant file with columns: "
+            "chrom, pos, ref, alt (and optional id). "
+            "Positions are 1-based by default; use --zero-based to change."
+        ),
+    )
+
+    parser.add_argument(
+        "--zero-based",
+        action="store_true",
+        default=False,
+        help="Interpret --variants positions as 0-based (default: 1-based).",
+    )
+
+    # -- Output --
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("variant_effects.tsv"),
+        help="Output TSV path (default: variant_effects.tsv). Supports .gz.",
+    )
+
+    # -- Region filter --
+    parser.add_argument(
+        "--region",
+        type=str,
+        default=None,
+        help=(
+            "Restrict to variants in this region (e.g. 'chr1:1000000-2000000'). "
+            "VCF must be indexed for region queries."
+        ),
+    )
+    parser.add_argument(
+        "--regions-bed",
+        type=str,
+        default=None,
+        help="BED file with regions to restrict variants to (not yet implemented).",
+    )
+
+    # -- FASTA override --
+    parser.add_argument(
+        "--fasta",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the reference genome FASTA. "
+            "Default: auto-detected from model hparams (genome_config.fasta_path)."
+        ),
+    )
+
+    # -- Inference options --
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=64,
+        help="Number of variants per inference batch (default: 64).",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="Device: auto (default), cpu, cuda, cuda:0, mps, ...",
+    )
+    parser.add_argument(
+        "--use-folds",
+        type=str,
+        default=None,
+        help=(
+            "Folds to use for ensemble prediction (e.g. 'test', 'test+val', 'all'). "
+            "Default depends on model type."
+        ),
+    )
+
+    return parser
+
+
+def _write_results(
+    results: Iterator[VariantResult],
+    output_path: Path,
+) -> int:
+    """Write variant effect results to a TSV file.
+
+    Returns the number of variants written.
+    """
+    opener = gzip.open if output_path.suffix == ".gz" else open
+    n_written = 0
+    header_written = False
+
+    with opener(output_path, "wt", newline="") as f:  # type: ignore[call-overload]
+        writer = csv.writer(f, delimiter="\t")
+
+        for result in results:
+            if not header_written:
+                # Build header from the first result's effect keys
+                metric_names = list(result.effects.keys())
+                header = ["chrom", "pos_0based", "ref", "alt", "id"]
+                for name in metric_names:
+                    tensor = result.effects[name]
+                    n_channels = tensor.numel()
+                    if n_channels == 1:
+                        header.append(name)
+                    else:
+                        for ch in range(n_channels):
+                            header.append(f"{name}_ch{ch}")
+                writer.writerow(header)
+                header_written = True
+
+            v = result.variant
+            row: list[object] = [v.chrom, v.pos, v.ref, v.alt, v.id]
+            for name in metric_names:
+                tensor = result.effects[name]
+                if tensor.numel() == 1:
+                    row.append(f"{tensor.item():.6g}")
+                else:
+                    for val in tensor.flatten().tolist():
+                        row.append(f"{val:.6g}")
+            writer.writerow(row)
+            n_written += 1
+
+    return n_written
+
+
+def main() -> None:
+    cerberus.setup_logging()
+    parser = _build_arg_parser()
+    args = parser.parse_args()
+
+    if args.region and args.regions_bed:
+        parser.error("--region and --regions-bed are mutually exclusive.")
+
+    # -- Device --
+    if args.device is not None:
+        device = torch.device(args.device)
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+    logger.info("Using device: %s", device)
+
+    # -- Load model --
+    logger.info("Loading model from %s...", args.model_path)
+    ensemble = ModelEnsemble(args.model_path, device=device)
+
+    # -- FASTA --
+    fasta = None
+    if args.fasta is not None:
+        import pyfaidx
+
+        fasta = pyfaidx.Fasta(str(args.fasta))
+        logger.info("Using FASTA: %s", args.fasta)
+    # else: score_variants_from_ensemble will open from config
+
+    # -- Load variants --
+    variants = _load_variants(args)
+
+    # -- Use folds --
+    use_folds = _parse_use_folds(args.use_folds)
+    logger.info("Using folds: %s", use_folds if use_folds else "default")
+
+    # -- Score --
+    results = score_variants_from_ensemble(
+        ensemble=ensemble,
+        variants=variants,
+        fasta=fasta,
+        batch_size=args.batch_size,
+        use_folds=use_folds,
+    )
+
+    # -- Write output --
+    output_path = args.output.resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    n_written = _write_results(results, output_path)
+
+    logger.info("Wrote %d variant effects to %s", n_written, output_path)
+
+    if fasta is not None:
+        fasta.close()
+
+
+if __name__ == "__main__":
+    main()

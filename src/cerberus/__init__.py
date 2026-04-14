@@ -26,6 +26,7 @@ from .genome import (
 )
 from .interval import Interval, load_intervals_bed, write_intervals_bed
 from .variants import Variant, compute_variant_effects, load_variants, load_vcf, variant_to_ref_alt
+from .predict_variants import VariantResult, score_variants, score_variants_from_ensemble
 from .logging import setup_logging
 from .module import CerberusModule, instantiate, instantiate_model
 from .signal import register_extractor
@@ -78,6 +79,10 @@ __all__ = [
     "resolve_ism_span",
     "compute_ism_attributions",
     "apply_off_simplex_gradient_correction",
+    # Variant scoring
+    "VariantResult",
+    "score_variants",
+    "score_variants_from_ensemble",
     # Training utilities
     "compute_counts_loss_weight",
     "resolve_adaptive_loss_args",

@@ -241,16 +241,100 @@ The variant scoring workflow uses the `compute_*` functions from `cerberus.outpu
 
 All accept `ModelOutput` and the `(log_counts_include_pseudocount, pseudocount)` parameter pair from `get_log_count_params()`.
 
-## Example Workflow
+## Batched Scoring
+
+### score_variants_from_ensemble
+
+The recommended way to score variants. Handles batching, config extraction, error handling (skips bad variants with warnings), and fold routing automatically:
+
+```python
+from cerberus.model_ensemble import ModelEnsemble
+from cerberus.predict_variants import score_variants_from_ensemble
+from cerberus.variants import load_vcf
+
+ensemble = ModelEnsemble("logs/my_dalmatian", device="cuda")
+variants = load_vcf("gwas_hits.vcf.gz")
+
+for result in score_variants_from_ensemble(ensemble, variants, batch_size=64):
+    v = result.variant
+    e = result.effects
+    print(f"{v}  SAD={e['sad'].item():.2f}  logFC={e['log_fc'].item():.4f}")
+```
+
+Each `VariantResult` contains:
+
+- `variant` — the scored `Variant`
+- `effects` — `dict[str, torch.Tensor]` with per-channel metrics (shape `(C,)`)
+- `interval` — the reference-coordinate input window used for scoring
+
+Parameters like `input_len`, `fasta_path`, and pseudocount settings are extracted from `ensemble.cerberus_config` automatically. Pass a `fasta` argument to override the FASTA path.
+
+### score_variants
+
+Lower-level function for use with a plain `nn.Module` or when you need full control over parameters:
+
+```python
+from cerberus.predict_variants import score_variants
+
+for result in score_variants(
+    model=my_model,
+    variants=variants,
+    fasta=fasta,
+    input_len=2112,
+    log_counts_include_pseudocount=True,
+    pseudocount=1.0,
+    device=torch.device("cuda"),
+    batch_size=64,
+):
+    ...
+```
+
+Both functions are **generators** — results are yielded as they are computed, so memory usage is bounded by `batch_size`, not the total number of variants.
+
+## CLI Tool
+
+### Score Variants (`tools/score_variants.py`)
+
+Scores variant effects from the command line, writing results to a TSV file:
+
+```bash
+# From a VCF
+python tools/score_variants.py path/to/model_dir \
+    --vcf variants.vcf.gz --output effects.tsv
+
+# From a tab-delimited variant file
+python tools/score_variants.py path/to/model_dir \
+    --variants variants.tsv --output effects.tsv
+
+# With region filter and custom folds
+python tools/score_variants.py path/to/model_dir \
+    --vcf variants.vcf.gz --output effects.tsv \
+    --region chr1:1000000-2000000 --use-folds test+val
+```
+
+Output columns: `chrom`, `pos_0based`, `ref`, `alt`, `id`, and per-channel effect metrics (e.g. `sad_ch0`, `log_fc_ch0`, `jsd_ch0`).
+
+| Argument | Description |
+|---|---|
+| `--vcf` / `--variants` | Variant source (mutually exclusive, required). |
+| `--output` | Output TSV path (default: `variant_effects.tsv`). Supports `.gz`. |
+| `--fasta` | Override FASTA path (default: from model config). |
+| `--region` | Restrict to variants in a region (e.g. `chr1:1000000-2000000`). |
+| `--batch-size` | Variants per inference batch (default: 64). |
+| `--use-folds` | Folds for ensemble prediction (e.g. `test`, `test+val`, `all`). |
+| `--device` | Device override (`cuda`, `mps`, `cpu`). |
+| `--zero-based` | Interpret `--variants` positions as 0-based (default: 1-based). |
+
+## Manual Workflow (Low-Level)
+
+For custom scoring logic where `score_variants` doesn't fit:
 
 ```python
 import pyfaidx
 import torch
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.output import get_log_count_params
-from cerberus.predict_misc import create_eval_dataset
 from cerberus.variants import (
-    Variant,
     compute_variant_effects,
     load_vcf,
     variant_to_ref_alt,
@@ -275,7 +359,6 @@ for variant in variants:
     except ValueError:
         continue  # skip edge-of-chromosome variants
 
-    # Batch of 1
     ref_batch = ref_t.unsqueeze(0).to(ensemble.device)
     alt_batch = alt_t.unsqueeze(0).to(ensemble.device)
 

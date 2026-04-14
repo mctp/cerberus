@@ -203,6 +203,27 @@ where `p = count_pseudocount`, rather than the naive `logsumexp`, which would gi
 | `--max_batches` | Limit the number of batches processed (useful for quick checks). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
 
+### Score Variants (`tools/score_variants.py`)
+Scores the predicted effect of genomic variants (from VCF or TSV) by comparing model predictions on reference vs alternative sequences. See [Variant Effect Prediction](variants.md) for full documentation.
+
+```bash
+python tools/score_variants.py path/to/model_dir \
+    --vcf variants.vcf.gz \
+    --output effects.tsv \
+    --batch-size 64 \
+    --device cuda
+```
+
+| Argument | Description |
+|---|---|
+| `--vcf` / `--variants` | Variant source (mutually exclusive, required). |
+| `--output` | Output TSV path (default: `variant_effects.tsv`). Supports `.gz`. |
+| `--fasta` | Override FASTA path (default: from model config). |
+| `--region` | Restrict to variants in a region (e.g. `chr1:1000000-2000000`). |
+| `--batch-size` | Variants per inference batch (default: 64). |
+| `--use-folds` | Folds for ensemble prediction (e.g. `test`, `test+val`, `all`). |
+| `--device` | Device override (`cuda`, `mps`, `cpu`). |
+
 ## Model Outputs
 
 Predictions return `ModelOutput` objects (defined in `cerberus.output`), which contain the raw tensors.

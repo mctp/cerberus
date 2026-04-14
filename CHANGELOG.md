@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Batched variant effect scoring** (`predict_variants.py`):
+  `score_variants()` generator composes `variant_to_ref_alt()` and
+  `compute_variant_effects()` with batched model inference. Supports plain
+  `nn.Module` or `ModelEnsemble` (with fold routing). Skips variants that
+  fail sequence construction (boundary violations, ref mismatches) with
+  logged warnings rather than crashing.
+  `score_variants_from_ensemble()` convenience wrapper extracts `input_len`,
+  `fasta_path`, and pseudocount parameters from the ensemble config.
+  `VariantResult` container holds per-variant effects and provenance interval.
+- **Variant scoring CLI tool** (`tools/score_variants.py`):
+  Thin CLI wrapper around `score_variants_from_ensemble()`. Accepts VCF
+  (`--vcf`) or TSV (`--variants`) input, writes per-variant effect metrics
+  to TSV. Supports `--region` filtering, `--use-folds`, `--device`, and
+  `--batch-size` options. Follows the `export_bigwig.py` pattern.
+- **Internal design document** (`docs/internal/variant_tool_design.md`):
+  Records design process, tool audit, library gap analysis, and four
+  design options (A-D) from minimal to full-pipeline.
+
 ## [1.0.0a3] - 2026-04-08
 
 ### Added
