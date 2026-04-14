@@ -185,6 +185,69 @@ print(f"\nScored {len(results)} / {len(vcf_variants)} variants "
       f"({len(vcf_variants) - len(results)} skipped due to ref mismatch)")
 
 # %% [markdown]
+# ## 6. Saturation Mutagenesis
+#
+# `generate_variants` produces every possible SNV within a genomic interval.
+# Combined with `score_variants_from_ensemble`, this gives a complete variant
+# effect map — the model's predicted impact of every single-nucleotide change
+# across a region.
+#
+# We scan a 356bp region on chr21 (chr21:41560339-41560695), generating
+# 356 x 3 = 1068 SNVs and scoring them all in one call.
+
+# %%
+from cerberus.interval import Interval
+from cerberus.variants import generate_variants
+
+region = Interval("chr21", 41560339, 41560695)
+sat_variants = generate_variants(region, pyfaidx.Fasta(str(config.genome_config.fasta_path)))
+
+sat_results = list(score_variants_from_ensemble(
+    ensemble=ensemble,
+    variants=sat_variants,
+    batch_size=128,
+))
+print(f"Scored {len(sat_results)} SNVs across {region}")
+
+# %%
+# Build a summary table: position, ref, alt, SAD, log_fc
+import csv
+import io
+
+buf = io.StringIO()
+writer = csv.writer(buf, delimiter="\t")
+writer.writerow(["chrom", "pos", "ref", "alt", "sad", "log_fc", "jsd"])
+for r in sat_results:
+    e = r.effects
+    writer.writerow([
+        r.variant.chrom, r.variant.pos, r.variant.ref, r.variant.alt,
+        f"{e['sad'].item():.4f}",
+        f"{e['log_fc'].item():.6f}",
+        f"{e['jsd'].item():.8f}",
+    ])
+
+print(buf.getvalue()[:500])
+print(f"... ({len(sat_results)} rows total)")
+
+# %%
+# Find the top 10 variants by SAD (largest predicted effect)
+sorted_results = sorted(sat_results, key=lambda r: r.effects["sad"].item(), reverse=True)
+
+print(f"\nTop 10 variants by SAD in {region}:\n")
+print(f"{'pos':>12} {'ref':>4} {'alt':>4} {'SAD':>10} {'log_fc':>10} {'JSD':>12}")
+print("-" * 58)
+for r in sorted_results[:10]:
+    e = r.effects
+    print(
+        f"{r.variant.pos:>12} "
+        f"{r.variant.ref:>4} "
+        f"{r.variant.alt:>4} "
+        f"{e['sad'].item():>10.2f} "
+        f"{e['log_fc'].item():>10.4f} "
+        f"{e['jsd'].item():>12.8f}"
+    )
+
+# %% [markdown]
 # ## Summary
 #
 # | Function | Use case |
