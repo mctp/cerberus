@@ -26,62 +26,25 @@ import argparse
 import csv
 import gzip
 import logging
-import re
 from collections.abc import Iterator
 from pathlib import Path
 
-import torch
+import pyfaidx
 
 import cerberus
-from cerberus.interval import Interval
+from cerberus.interval import resolve_interval
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.predict_variants import VariantResult, score_variants_from_ensemble
-from cerberus.variants import Variant, load_variants, load_vcf
+from cerberus.utils import parse_use_folds, resolve_device
+from cerberus.variants import load_variants, load_vcf
 
 logger = logging.getLogger(__name__)
 
 
-def _parse_region(region_str: str) -> Interval:
-    """Parse 'chr1:1000000-2000000' into an Interval."""
-    match = re.match(r"^(\w+):(\d+)-(\d+)$", region_str)
-    if not match:
-        raise ValueError(
-            f"Invalid region format: '{region_str}'. Expected 'chrom:start-end' "
-            f"(e.g. 'chr1:1000000-2000000')."
-        )
-    chrom, start, end = match.group(1), int(match.group(2)), int(match.group(3))
-    if start >= end:
-        raise ValueError(f"Region start ({start}) must be less than end ({end}).")
-    return Interval(chrom, start, end, "+")
-
-
-def _parse_use_folds(use_folds_str: str | None) -> list[str] | None:
-    """Parse a --use-folds argument like 'test+val' or 'all'."""
-    if use_folds_str is None:
-        return None
-    folds: list[str] = []
-    for part in re.split(r"[+,]", use_folds_str):
-        part = part.strip()
-        if not part:
-            continue
-        if part == "all":
-            folds.extend(["train", "test", "val"])
-        else:
-            folds.append(part)
-    return list(dict.fromkeys(folds)) or None
-
-
-def _load_variants(args: argparse.Namespace) -> Iterator[Variant]:
+def _load_variants(args: argparse.Namespace) -> Iterator:
     """Load variants from VCF or TSV based on CLI args."""
     if args.vcf is not None:
-        region: str | Interval | None = None
-        if args.region:
-            region = _parse_region(args.region)
-        elif args.regions_bed:
-            raise ValueError(
-                "--regions-bed is not yet supported for VCF input. "
-                "Use --region for a single region or pre-filter the VCF."
-            )
+        region = resolve_interval(args.region) if args.region else None
         return load_vcf(args.vcf, region=region)
     else:
         return load_variants(args.variants, zero_based=args.zero_based)
@@ -142,12 +105,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "VCF must be indexed for region queries."
         ),
     )
-    parser.add_argument(
-        "--regions-bed",
-        type=str,
-        default=None,
-        help="BED file with regions to restrict variants to (not yet implemented).",
-    )
 
     # -- FASTA override --
     parser.add_argument(
@@ -162,7 +119,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     # -- Inference options --
     parser.add_argument(
-        "--batch-size",
+        "--batch_size",
         type=int,
         default=64,
         help="Number of variants per inference batch (default: 64).",
@@ -174,7 +131,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Device: auto (default), cpu, cuda, cuda:0, mps, ...",
     )
     parser.add_argument(
-        "--use-folds",
+        "--use_folds",
         type=str,
         default=None,
         help=(
@@ -237,18 +194,7 @@ def main() -> None:
     parser = _build_arg_parser()
     args = parser.parse_args()
 
-    if args.region and args.regions_bed:
-        parser.error("--region and --regions-bed are mutually exclusive.")
-
-    # -- Device --
-    if args.device is not None:
-        device = torch.device(args.device)
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
+    device = resolve_device(args.device)
     logger.info("Using device: %s", device)
 
     # -- Load model --
@@ -258,8 +204,6 @@ def main() -> None:
     # -- FASTA --
     fasta = None
     if args.fasta is not None:
-        import pyfaidx
-
         fasta = pyfaidx.Fasta(str(args.fasta))
         logger.info("Using FASTA: %s", args.fasta)
     # else: score_variants_from_ensemble will open from config
@@ -268,7 +212,7 @@ def main() -> None:
     variants = _load_variants(args)
 
     # -- Use folds --
-    use_folds = _parse_use_folds(args.use_folds)
+    use_folds = parse_use_folds(args.use_folds)
     logger.info("Using folds: %s", use_folds if use_folds else "default")
 
     # -- Score --

@@ -4,7 +4,6 @@ import csv
 import gzip
 import json
 import logging
-import re
 from pathlib import Path
 
 import torch
@@ -22,6 +21,7 @@ from cerberus.output import (
     get_log_count_params,
 )
 from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
+from cerberus.utils import parse_use_folds, resolve_device
 
 logger = logging.getLogger(__name__)
 
@@ -94,40 +94,12 @@ def main():
     # 1. Load Model Ensemble
     logger.info(f"Loading model from {args.model_path}...")
 
-    if args.device:
-        device_name = args.device
-    elif torch.cuda.is_available():
-        device_name = "cuda"
-    elif torch.backends.mps.is_available():
-        device_name = "mps"
-    else:
-        device_name = "cpu"
-
-    device = torch.device(device_name)
+    device = resolve_device(args.device)
     logger.info(f"Using device: {device}")
 
-    # Provide search paths for resolving files (e.g. genome fasta) from other environments
-    # We include tests/data as a likely location for test resources relative to project root
-    script_dir = Path(__file__).resolve().parent
-    project_root = script_dir.parent
-    project_root / "tests/data"
     ensemble = ModelEnsemble(args.model_path, device=device)
 
-    # Configure use_folds
-    use_folds = None
-    if args.use_folds:
-        use_folds = []
-        parts = re.split(r"[+,]", args.use_folds)
-        for p in parts:
-            p = p.strip()
-            if not p:
-                continue
-            if p == "all":
-                use_folds.extend(["train", "test", "val"])
-            else:
-                use_folds.append(p)
-        use_folds = list(dict.fromkeys(use_folds))
-
+    use_folds = parse_use_folds(args.use_folds)
     logger.info(f"Using folds configuration: {use_folds if use_folds else 'Default'}")
 
     # 2. Configure Dataset

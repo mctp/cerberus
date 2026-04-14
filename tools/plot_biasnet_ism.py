@@ -28,6 +28,8 @@ import pyfaidx
 import torch
 import yaml
 
+from cerberus.utils import resolve_device
+
 logger = logging.getLogger(__name__)
 
 NUCLEOTIDES = ["A", "C", "G", "T"]
@@ -589,12 +591,7 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    if args.device is not None:
-        device = torch.device(args.device)
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
+    device = resolve_device(args.device)
     logger.info(f"Using device: {device}")
 
     model_path = Path(args.model_path)

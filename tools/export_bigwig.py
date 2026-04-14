@@ -14,32 +14,16 @@ Usage:
 
 import argparse
 import logging
-import re
 from pathlib import Path
-
-import torch
 
 import cerberus
 from cerberus.dataset import CerberusDataset
-from cerberus.interval import Interval
+from cerberus.interval import Interval, resolve_interval
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.predict_bigwig import predict_to_bigwig
+from cerberus.utils import parse_use_folds, resolve_device
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_region(region_str: str) -> Interval:
-    """Parse 'chr1:1000000-2000000' into an Interval."""
-    match = re.match(r"^(\w+):(\d+)-(\d+)$", region_str)
-    if not match:
-        raise ValueError(
-            f"Invalid region format: '{region_str}'. Expected 'chrom:start-end' "
-            f"(e.g. 'chr1:1000000-2000000')."
-        )
-    chrom, start, end = match.group(1), int(match.group(2)), int(match.group(3))
-    if start >= end:
-        raise ValueError(f"Region start ({start}) must be less than end ({end}).")
-    return Interval(chrom, start, end, "+")
 
 
 def _parse_bed(bed_path: str) -> list[Interval]:
@@ -125,40 +109,15 @@ def main():
     cerberus.setup_logging()
 
     # 1. Resolve device
-    if args.device:
-        device_name = args.device
-    elif torch.cuda.is_available():
-        device_name = "cuda"
-    elif torch.backends.mps.is_available():
-        device_name = "mps"
-    else:
-        device_name = "cpu"
-
-    device = torch.device(device_name)
+    device = resolve_device(args.device)
     logger.info(f"Using device: {device}")
 
     # 2. Load Model Ensemble
     logger.info(f"Loading model from {args.model_path}...")
-    script_dir = Path(__file__).resolve().parent
-    project_root = script_dir.parent
-    project_root / "tests/data"
     ensemble = ModelEnsemble(args.model_path, device=device)
 
     # 3. Parse use_folds
-    use_folds = None
-    if args.use_folds:
-        use_folds = []
-        parts = re.split(r"[+,]", args.use_folds)
-        for p in parts:
-            p = p.strip()
-            if not p:
-                continue
-            if p == "all":
-                use_folds.extend(["train", "test", "val"])
-            else:
-                use_folds.append(p)
-        use_folds = list(dict.fromkeys(use_folds))
-
+    use_folds = parse_use_folds(args.use_folds)
     logger.info(f"Using folds configuration: {use_folds if use_folds else 'Default'}")
 
     # 4. Configure Dataset
@@ -182,7 +141,7 @@ def main():
     # 5. Parse regions (if any)
     regions: list[Interval] | None = None
     if args.region:
-        regions = [_parse_region(args.region)]
+        regions = [resolve_interval(args.region)]
         logger.info(f"Predicting single region: {regions[0]}")
     elif args.regions_bed:
         regions = _parse_bed(args.regions_bed)

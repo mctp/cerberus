@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Shared CLI utilities** (`utils.py`):
+  `resolve_device()` auto-detects CUDA/MPS/CPU (replaces 6 inline copies
+  across tools). `parse_use_folds()` parses `--use_folds` CLI arguments
+  (replaces 3 inline copies). Both exported from `cerberus`.
 - **Batched variant effect scoring** (`predict_variants.py`):
   `VariantResult` is now a frozen dataclass (matching `Variant` convention).
 - **Per-sample fold routing in ModelEnsemble** (`model_ensemble.py`):

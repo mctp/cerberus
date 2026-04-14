@@ -42,18 +42,9 @@ from cerberus.model_ensemble import (
     parse_hparams_config,
 )
 from cerberus.module import instantiate_model
+from cerberus.utils import resolve_device
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_device(device_arg: str) -> torch.device:
-    if device_arg == "auto":
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        if torch.backends.mps.is_available():
-            return torch.device("mps")
-        return torch.device("cpu")
-    return torch.device(device_arg)
 
 
 def _resolve_fold_dir(checkpoint_dir: Path, fold: int) -> Path:
@@ -416,7 +407,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         )
         logger.info("Overriding sampler intervals_path with: %s", intervals_path)
 
-    device = _resolve_device(args.device)
+    device = resolve_device(args.device)
     logger.info("Using device: %s", device)
 
     model = instantiate_model(cfg.model_config_, cfg.data_config, compile=False)
