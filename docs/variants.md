@@ -309,7 +309,7 @@ python tools/score_variants.py path/to/model_dir \
 # With region filter and custom folds
 python tools/score_variants.py path/to/model_dir \
     --vcf variants.vcf.gz --output effects.tsv \
-    --region chr1:1000000-2000000 --use-folds test+val
+    --region chr1:1000000-2000000 --use_folds test+val
 ```
 
 Output columns: `chrom`, `pos_0based`, `ref`, `alt`, `id`, and per-channel effect metrics (e.g. `sad_ch0`, `log_fc_ch0`, `jsd_ch0`).
@@ -320,8 +320,8 @@ Output columns: `chrom`, `pos_0based`, `ref`, `alt`, `id`, and per-channel effec
 | `--output` | Output TSV path (default: `variant_effects.tsv`). Supports `.gz`. |
 | `--fasta` | Override FASTA path (default: from model config). |
 | `--region` | Restrict to variants in a region (e.g. `chr1:1000000-2000000`). |
-| `--batch-size` | Variants per inference batch (default: 64). |
-| `--use-folds` | Folds for ensemble prediction (e.g. `test`, `test+val`, `all`). |
+| `--batch_size` | Variants per inference batch (default: 64). |
+| `--use_folds` | Folds for ensemble prediction (e.g. `test`, `test+val`, `all`). |
 | `--device` | Device override (`cuda`, `mps`, `cpu`). |
 | `--zero-based` | Interpret `--variants` positions as 0-based (default: 1-based). |
 
