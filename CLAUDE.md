@@ -64,5 +64,16 @@ After completing each task, always:
 - Between releases, new changes accumulate under `## [Unreleased]` in `CHANGELOG.md`. The version in `pyproject.toml` stays unchanged.
 - At release time, in a single commit: rename `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD`, add a fresh empty `[Unreleased]` above it, and update `version` in `pyproject.toml` to match.
 
+## Commit Checklist (every commit that adds/changes public API)
+
+Before committing, verify ALL of these — do not batch them for later:
+
+1. [ ] New function/class is in `__init__.py` exports
+2. [ ] Documented in the relevant `docs/*.md` page (grep to find it)
+3. [ ] Entry added to `CHANGELOG.md` under `[Unreleased]`
+4. [ ] `python tools/generate_llms_txt.py` regenerated
+5. [ ] `pytest -v tests/` passes
+6. [ ] `npx pyright tests/ src/` has 0 errors
+
 ## DONT DO EMBARASSING THINGS
 

@@ -144,6 +144,39 @@ variants = list(load_vcf("variants.vcf.gz", info_fields=["AF", "DP"]))
 
 `load_vcf` returns a **generator** for memory efficiency with large VCFs. Call `list()` to materialize.
 
+### generate_variants
+
+Generates all possible variants (saturation mutagenesis) within a genomic interval:
+
+```python
+from cerberus.variants import generate_variants
+from cerberus.interval import Interval
+
+fasta = pyfaidx.Fasta("reference.fa")
+
+# All SNVs in a 1kb region (L positions x 3 alt bases)
+snvs = list(generate_variants(Interval("chr6", 93940000, 93941000), fasta))
+
+# SNVs + indels up to 2bp
+all_variants = list(generate_variants(
+    Interval("chr6", 93940000, 93941000), fasta, max_indel_size=2
+))
+```
+
+With ``max_indel_size=0`` (default), yields only SNVs. With ``max_indel_size=k``, also yields:
+
+- **Deletions** from 1 to *k* bases (anchor base + deleted bases as ref, anchor as alt)
+- **Insertions** of all ``4^size`` possible sequences from 1 to *k* bases
+
+Positions with ambiguous bases (N) are skipped. Composes directly with `score_variants_from_ensemble`:
+
+```python
+from cerberus.predict_variants import score_variants_from_ensemble
+
+variants = generate_variants(Interval("chr6", 93940000, 93941000), fasta)
+results = list(score_variants_from_ensemble(ensemble, variants))
+```
+
 ### variant_to_ref_alt
 
 Constructs paired one-hot encoded ref and alt tensors:

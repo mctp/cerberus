@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `resolve_device()` auto-detects CUDA/MPS/CPU (replaces 6 inline copies
   across tools). `parse_use_folds()` parses `--use_folds` CLI arguments
   (replaces 3 inline copies). Both exported from `cerberus`.
+- **Saturation variant generation** (`variants.py`):
+  `generate_variants(interval, fasta, max_indel_size=0)` yields all possible
+  variants within a genomic interval. Default SNVs only (L x 3 alt bases);
+  with `max_indel_size=k` also yields deletions up to k bases and insertions
+  of all 4^k possible sequences. Composes directly with `score_variants`.
 - **Batched variant effect scoring** (`predict_variants.py`):
   `VariantResult` is now a frozen dataclass (matching `Variant` convention).
 - **Per-sample fold routing in ModelEnsemble** (`model_ensemble.py`):
