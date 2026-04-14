@@ -25,7 +25,7 @@ from cerberus.model_ensemble import ModelEnsemble
 from cerberus.output import get_log_count_params
 from cerberus.predict_variants import score_variants, score_variants_from_ensemble
 from cerberus.utils import resolve_device
-from cerberus.variants import Variant, load_vcf
+from cerberus.variants import Variant
 
 # %% [markdown]
 # ## 1. Load Model
@@ -161,28 +161,16 @@ fasta.close()
 #
 # In a real analysis, load variants from a VCF:
 # ```python
+# from cerberus.variants import load_vcf
+#
 # variants = load_vcf("gwas_hits.vcf.gz", region="chr6:93000000-94000000")
 # results = list(score_variants_from_ensemble(ensemble, variants))
 # ```
 #
-# Here we demonstrate the pattern using the test VCF fixture.  Its variants
-# are on a tiny test FASTA (not the real genome), so they will be skipped
-# with ref-mismatch warnings.
-
-# %%
-vcf_path = project_root / "tests/data/fixtures/test_variants.vcf"
-vcf_variants = list(load_vcf(vcf_path))
-print(f"Loaded {len(vcf_variants)} variants from VCF:")
-for v in vcf_variants:
-    print(f"  {v} ({v.id})")
-
-results = list(score_variants_from_ensemble(
-    ensemble=ensemble,
-    variants=vcf_variants,
-    batch_size=64,
-))
-print(f"\nScored {len(results)} / {len(vcf_variants)} variants "
-      f"({len(vcf_variants) - len(results)} skipped due to ref mismatch)")
+# Or from the CLI:
+# ```bash
+# python tools/score_variants.py path/to/model_dir --vcf gwas_hits.vcf.gz --output effects.tsv
+# ```
 
 # %% [markdown]
 # ## 6. Saturation Mutagenesis
@@ -199,7 +187,10 @@ print(f"\nScored {len(results)} / {len(vcf_variants)} variants "
 from cerberus.interval import Interval
 from cerberus.variants import generate_variants
 
-region = Interval("chr21", 41560339, 41560695)
+# region = Interval("chr21", 41560339, 41560695)
+# region = Interval("chr21", 41501137, 41501151)
+# chr21:41499923-41499938
+region = Interval("chr21", 41499923, 41499938)
 sat_variants = generate_variants(region, pyfaidx.Fasta(str(config.genome_config.fasta_path)))
 
 sat_results = list(score_variants_from_ensemble(
@@ -246,6 +237,24 @@ for r in sorted_results[:10]:
         f"{e['log_fc'].item():>10.4f} "
         f"{e['jsd'].item():>12.8f}"
     )
+
+# %%
+# Per-position max effect: for each reference base (in sequence order),
+# show the alt allele that causes the largest SAD.
+max_by_pos: dict[int, tuple[float, float, str, str]] = {}  # pos → (sad, log_fc, ref, alt)
+for r in sat_results:
+    sad = r.effects["sad"].item()
+    log_fc = r.effects["log_fc"].item()
+    pos = r.variant.pos
+    if pos not in max_by_pos or sad > max_by_pos[pos][0]:
+        max_by_pos[pos] = (sad, log_fc, r.variant.ref, r.variant.alt)
+
+print(f"\nMax effect per position in {region}:\n")
+print(f"{'pos':>12} {'ref':>4} {'worst_alt':>10} {'max_SAD':>10} {'log_fc':>10}")
+print("-" * 52)
+for pos in sorted(max_by_pos):
+    sad, log_fc, ref, alt = max_by_pos[pos]
+    print(f"{pos:>12} {ref:>4} {alt:>10} {sad:>10.2f} {log_fc:>10.4f}")
 
 # %% [markdown]
 # ## Summary
