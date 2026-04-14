@@ -1150,7 +1150,7 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 ## Specific Implementations
 
 ### IntervalSampler
-*   **Function**: Loads a static list of intervals from a file (BED or narrowPeak).
+*   **Function**: Loads a static list of intervals from a file (BED or narrowPeak). narrowPeak detection is case-insensitive and supports compound extensions (`.narrowPeak.bed.gz`, `.narrowPeak.bb`, etc.).
 *   **Seeding**: Not applicable (deterministic data).
 *   **Resampling**: No-op (data is static).
 *   **Splitting**: Filters the loaded intervals based on the fold definitions.
@@ -1262,7 +1262,7 @@ The `CerberusDataModule` class (`src/cerberus/datamodule.py`) wraps the dataset 
 Samplers determine *where* the model looks during training. They yield `Interval` objects (chromosome, start, end, strand).
 
 ### IntervalSampler
-Used when you have a specific set of regions of interest, such as ChIP-seq peaks or TSS sites. Reads from BED or narrowPeak files.
+Used when you have a specific set of regions of interest, such as ChIP-seq peaks or TSS sites. Reads from BED or narrowPeak files. Detection is case-insensitive and supports compound extensions: `.narrowPeak`, `.narrowPeak.gz`, `.narrowPeak.bed`, `.narrowPeak.bed.gz`, and `.narrowPeak.bb`.
 *   **Use Case**: Training on peaks, fine-tuning on specific loci.
 *   **Behavior**: Centers the window on the interval (or summit for narrowPeak) and pads to `padded_size`.
 
@@ -4056,12 +4056,41 @@ def register_extractor(
     _EXTRACTOR_REGISTRY[extension.lower()] = (extractor_cls, in_memory_cls)
 
 
+def _resolve_container_suffix(path: Path) -> str:
+    """Determine the container format suffix for a file path.
+
+    Handles compound extensions (e.g. ``.narrowPeak.bed.gz``) by stripping
+    the narrowPeak component and returning the underlying container suffix.
+    Detection is case-insensitive.
+
+    Returns:
+        Normalised suffix string suitable for registry lookup, e.g.
+        ``".bed.gz"``, ``".bb"``, ``".bed"``.
+    """
+    name_lower = path.name.lower()
+
+    # Strip everything up to and including "narrowpeak" to get the container part.
+    idx = name_lower.find("narrowpeak")
+    if idx != -1:
+        remainder = name_lower[idx + len("narrowpeak") :]
+        if remainder in ("", ".bed"):
+            return ".bed"
+        if remainder in (".gz", ".bed.gz"):
+            return ".bed.gz"
+        if remainder in (".bb", ".bigbed"):
+            return ".bb"
+        # Unknown narrowpeak container — fall through to normal logic.
+
+    # Handle compound .bed.gz without narrowpeak prefix.
+    if name_lower.endswith(".bed.gz"):
+        return ".bed.gz"
+
+    return path.suffix.lower()
+
+
 def _resolve_extractor_cls(path: Path, in_memory: bool) -> type:
     """Look up the appropriate extractor class for a file path."""
-    suffix = path.suffix.lower()
-    # Handle compound extensions like .bed.gz
-    if path.name.lower().endswith(".bed.gz"):
-        suffix = ".bed.gz"
+    suffix = _resolve_container_suffix(path)
     entry = _EXTRACTOR_REGISTRY.get(suffix)
     if entry is None:
         raise ValueError(
@@ -5602,13 +5631,20 @@ class IntervalSampler(ListSampler):
         self._load()
         self._filter_excludes()
 
+    @staticmethod
+    def _is_narrowpeak(path: Path) -> bool:
+        """Return True if *path* looks like a narrowPeak file (case-insensitive).
+
+        Recognised patterns: ``*.narrowPeak``, ``*.narrowPeak.gz``,
+        ``*.narrowPeak.bed``, ``*.narrowPeak.bed.gz``.
+        """
+        return "narrowpeak" in path.name.lower()
+
     def _load(self) -> None:
         if not self.file_path.exists():
             raise FileNotFoundError(f"File not found: {self.file_path}")
 
-        # Check extension for narrowPeak
-        name = self.file_path.name
-        if name.endswith(".narrowPeak") or name.endswith(".narrowPeak.gz"):
+        if self._is_narrowpeak(self.file_path):
             self._load_narrowPeak()
         else:
             self._load_bed()

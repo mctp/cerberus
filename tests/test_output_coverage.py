@@ -195,9 +195,8 @@ class TestAggregateModels:
         masks = [torch.tensor([True]), torch.tensor([True])]
 
         result = aggregate_models([out0, out1], method="mean", masks=masks)
-        torch.testing.assert_close(
-            result.logits, torch.tensor([[[20.0]]])
-        )
+        assert isinstance(result, ProfileLogits)
+        torch.testing.assert_close(result.logits, torch.tensor([[[20.0]]]))
 
     def test_masked_partial_overlap(self):
         """Sample 0 seen by both models, sample 1 by model 1 only."""
@@ -206,10 +205,9 @@ class TestAggregateModels:
         masks = [torch.tensor([True, False]), torch.tensor([True, True])]
 
         result = aggregate_models([out0, out1], method="mean", masks=masks)
+        assert isinstance(result, ProfileLogits)
         # Sample 0: mean(10, 20) = 15; Sample 1: 30/1 = 30
-        torch.testing.assert_close(
-            result.logits, torch.tensor([[[15.0]], [[30.0]]])
-        )
+        torch.testing.assert_close(result.logits, torch.tensor([[[15.0]], [[30.0]]]))
 
     def test_masked_none_is_identity(self):
         """masks=None gives identical results to omitting the parameter."""
@@ -219,6 +217,8 @@ class TestAggregateModels:
         ]
         with_none = aggregate_models(outputs, method="mean", masks=None)
         without = aggregate_models(outputs, method="mean")
+        assert isinstance(with_none, ProfileLogits)
+        assert isinstance(without, ProfileLogits)
         torch.testing.assert_close(with_none.logits, without.logits)
 
     def test_masked_median_raises(self):
@@ -244,6 +244,7 @@ class TestAggregateModels:
         ]
 
         result = aggregate_models([out0, out1, out2], method="mean", masks=masks)
+        assert isinstance(result, ProfileLogits)
         expected = torch.tensor([[[15.0]], [[60.0]], [[30.0]]])
         torch.testing.assert_close(result.logits, expected)
 
@@ -479,9 +480,7 @@ class TestComputeProfileProbs:
         assert (probs >= 0).all()
 
     def test_unbatched(self):
-        out = ProfileCountOutput(
-            logits=torch.randn(3, 100), log_counts=torch.ones(3)
-        )
+        out = ProfileCountOutput(logits=torch.randn(3, 100), log_counts=torch.ones(3))
         probs = compute_profile_probs(out)
         assert probs.shape == (3, 100)
         assert torch.allclose(probs.sum(dim=-1), torch.ones(3), atol=1e-5)
@@ -491,9 +490,7 @@ class TestComputeProfileProbs:
         out = ProfileLogits(logits=torch.randn(2, 1, 50))
         probs = compute_profile_probs(out)
         assert probs.shape == (2, 1, 50)
-        assert torch.allclose(
-            probs.sum(dim=-1), torch.ones(2, 1), atol=1e-5
-        )
+        assert torch.allclose(probs.sum(dim=-1), torch.ones(2, 1), atol=1e-5)
 
     def test_profile_log_rates(self):
         """ProfileLogRates: normalized exp(log_rates)."""
@@ -501,9 +498,7 @@ class TestComputeProfileProbs:
         out = ProfileLogRates(log_rates=log_rates)
         probs = compute_profile_probs(out)
         assert probs.shape == (2, 1, 50)
-        assert torch.allclose(
-            probs.sum(dim=-1), torch.ones(2, 1), atol=1e-5
-        )
+        assert torch.allclose(probs.sum(dim=-1), torch.ones(2, 1), atol=1e-5)
 
     def test_uniform_logits(self):
         """Uniform logits → uniform probabilities."""
@@ -531,9 +526,7 @@ class TestComputeChannelLogCounts:
     def test_profile_count_passthrough(self):
         """Per-channel log_counts are returned directly."""
         log_c = torch.tensor([[2.0, 3.0, 4.0]])
-        out = ProfileCountOutput(
-            logits=torch.randn(1, 3, 50), log_counts=log_c
-        )
+        out = ProfileCountOutput(logits=torch.randn(1, 3, 50), log_counts=log_c)
         result = compute_channel_log_counts(out)
         assert torch.allclose(result, log_c)
 
@@ -545,9 +538,7 @@ class TestComputeChannelLogCounts:
         assert result.shape == (4, 3)
 
     def test_shape_unbatched(self):
-        out = ProfileCountOutput(
-            logits=torch.randn(3, 50), log_counts=torch.randn(3)
-        )
+        out = ProfileCountOutput(logits=torch.randn(3, 50), log_counts=torch.randn(3))
         result = compute_channel_log_counts(out)
         assert result.shape == (3,)
 
@@ -556,9 +547,7 @@ class TestComputeChannelLogCounts:
         import math
 
         log_c = torch.tensor([[6.0]])  # total = exp(6)
-        out = ProfileCountOutput(
-            logits=torch.randn(1, 4, 50), log_counts=log_c
-        )
+        out = ProfileCountOutput(logits=torch.randn(1, 4, 50), log_counts=log_c)
         result = compute_channel_log_counts(out)
         assert result.shape == (1, 4)
         expected = 6.0 - math.log(4)
@@ -568,9 +557,7 @@ class TestComputeChannelLogCounts:
     def test_single_channel_unchanged(self):
         """Single channel: no distribution needed."""
         log_c = torch.tensor([[5.0]])
-        out = ProfileCountOutput(
-            logits=torch.randn(1, 1, 50), log_counts=log_c
-        )
+        out = ProfileCountOutput(logits=torch.randn(1, 1, 50), log_counts=log_c)
         result = compute_channel_log_counts(out)
         assert result.item() == pytest.approx(5.0, rel=1e-5)
 

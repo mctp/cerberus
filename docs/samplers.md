@@ -44,7 +44,7 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 ## Specific Implementations
 
 ### IntervalSampler
-*   **Function**: Loads a static list of intervals from a file (BED or narrowPeak).
+*   **Function**: Loads a static list of intervals from a file (BED or narrowPeak). narrowPeak detection is case-insensitive and supports compound extensions (`.narrowPeak.bed.gz`, `.narrowPeak.bb`, etc.).
 *   **Seeding**: Not applicable (deterministic data).
 *   **Resampling**: No-op (data is static).
 *   **Splitting**: Filters the loaded intervals based on the fold definitions.

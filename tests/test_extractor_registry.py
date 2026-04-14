@@ -14,6 +14,7 @@ from cerberus.signal import (
     InMemorySignalExtractor,
     SignalExtractor,
     UniversalExtractor,
+    _resolve_container_suffix,
     _resolve_extractor_cls,
     register_extractor,
 )
@@ -215,3 +216,86 @@ class TestUniversalExtractorRegistry:
 
         with pytest.raises(ValueError, match="No extractor registered"):
             UniversalExtractor(paths={"ch": fake})
+
+
+class TestResolveContainerSuffix:
+    """Tests for _resolve_container_suffix with narrowPeak and compound extensions."""
+
+    def test_plain_bed(self):
+        assert _resolve_container_suffix(Path("peaks.bed")) == ".bed"
+
+    def test_bed_gz(self):
+        assert _resolve_container_suffix(Path("peaks.bed.gz")) == ".bed.gz"
+
+    def test_bigbed(self):
+        assert _resolve_container_suffix(Path("mask.bb")) == ".bb"
+
+    def test_bigwig(self):
+        assert _resolve_container_suffix(Path("signal.bw")) == ".bw"
+
+    def test_narrowpeak_plain(self):
+        assert _resolve_container_suffix(Path("peaks.narrowPeak")) == ".bed"
+
+    def test_narrowpeak_gz(self):
+        assert _resolve_container_suffix(Path("peaks.narrowPeak.gz")) == ".bed.gz"
+
+    def test_narrowpeak_bed(self):
+        assert _resolve_container_suffix(Path("peaks.narrowPeak.bed")) == ".bed"
+
+    def test_narrowpeak_bed_gz(self):
+        assert _resolve_container_suffix(Path("peaks.narrowPeak.bed.gz")) == ".bed.gz"
+
+    def test_narrowpeak_bb(self):
+        assert _resolve_container_suffix(Path("peaks.narrowPeak.bb")) == ".bb"
+
+    def test_narrowpeak_bigbed(self):
+        assert _resolve_container_suffix(Path("peaks.narrowPeak.bigbed")) == ".bb"
+
+    def test_narrowpeak_case_insensitive_upper(self):
+        assert _resolve_container_suffix(Path("peaks.NARROWPEAK")) == ".bed"
+
+    def test_narrowpeak_case_insensitive_mixed(self):
+        assert _resolve_container_suffix(Path("peaks.NarrowPeak.bed.gz")) == ".bed.gz"
+
+    def test_narrowpeak_case_insensitive_bb(self):
+        assert _resolve_container_suffix(Path("peaks.NARROWPEAK.BB")) == ".bb"
+
+
+class TestResolveExtractorClsNarrowPeak:
+    """Tests that narrowPeak compound extensions resolve to correct extractors."""
+
+    def test_narrowpeak_plain_resolves_to_bed(self):
+        assert (
+            _resolve_extractor_cls(Path("peaks.narrowPeak"), in_memory=False)
+            is BedMaskExtractor
+        )
+
+    def test_narrowpeak_gz_resolves_to_bed(self):
+        assert (
+            _resolve_extractor_cls(Path("peaks.narrowPeak.gz"), in_memory=False)
+            is BedMaskExtractor
+        )
+
+    def test_narrowpeak_bed_gz_resolves_to_bed(self):
+        assert (
+            _resolve_extractor_cls(Path("peaks.narrowPeak.bed.gz"), in_memory=False)
+            is BedMaskExtractor
+        )
+
+    def test_narrowpeak_bb_resolves_to_bigbed(self):
+        assert (
+            _resolve_extractor_cls(Path("peaks.narrowPeak.bb"), in_memory=False)
+            is BigBedMaskExtractor
+        )
+
+    def test_narrowpeak_bb_in_memory(self):
+        assert (
+            _resolve_extractor_cls(Path("peaks.narrowPeak.bb"), in_memory=True)
+            is InMemoryBigBedMaskExtractor
+        )
+
+    def test_narrowpeak_case_insensitive(self):
+        assert (
+            _resolve_extractor_cls(Path("peaks.NARROWPEAK.bed.gz"), in_memory=False)
+            is BedMaskExtractor
+        )

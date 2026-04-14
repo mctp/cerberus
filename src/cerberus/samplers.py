@@ -712,13 +712,20 @@ class IntervalSampler(ListSampler):
         self._load()
         self._filter_excludes()
 
+    @staticmethod
+    def _is_narrowpeak(path: Path) -> bool:
+        """Return True if *path* looks like a narrowPeak file (case-insensitive).
+
+        Recognised patterns: ``*.narrowPeak``, ``*.narrowPeak.gz``,
+        ``*.narrowPeak.bed``, ``*.narrowPeak.bed.gz``.
+        """
+        return "narrowpeak" in path.name.lower()
+
     def _load(self) -> None:
         if not self.file_path.exists():
             raise FileNotFoundError(f"File not found: {self.file_path}")
 
-        # Check extension for narrowPeak
-        name = self.file_path.name
-        if name.endswith(".narrowPeak") or name.endswith(".narrowPeak.gz"):
+        if self._is_narrowpeak(self.file_path):
             self._load_narrowPeak()
         else:
             self._load_bed()

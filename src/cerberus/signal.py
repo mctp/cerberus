@@ -36,12 +36,41 @@ def register_extractor(
     _EXTRACTOR_REGISTRY[extension.lower()] = (extractor_cls, in_memory_cls)
 
 
+def _resolve_container_suffix(path: Path) -> str:
+    """Determine the container format suffix for a file path.
+
+    Handles compound extensions (e.g. ``.narrowPeak.bed.gz``) by stripping
+    the narrowPeak component and returning the underlying container suffix.
+    Detection is case-insensitive.
+
+    Returns:
+        Normalised suffix string suitable for registry lookup, e.g.
+        ``".bed.gz"``, ``".bb"``, ``".bed"``.
+    """
+    name_lower = path.name.lower()
+
+    # Strip everything up to and including "narrowpeak" to get the container part.
+    idx = name_lower.find("narrowpeak")
+    if idx != -1:
+        remainder = name_lower[idx + len("narrowpeak") :]
+        if remainder in ("", ".bed"):
+            return ".bed"
+        if remainder in (".gz", ".bed.gz"):
+            return ".bed.gz"
+        if remainder in (".bb", ".bigbed"):
+            return ".bb"
+        # Unknown narrowpeak container — fall through to normal logic.
+
+    # Handle compound .bed.gz without narrowpeak prefix.
+    if name_lower.endswith(".bed.gz"):
+        return ".bed.gz"
+
+    return path.suffix.lower()
+
+
 def _resolve_extractor_cls(path: Path, in_memory: bool) -> type:
     """Look up the appropriate extractor class for a file path."""
-    suffix = path.suffix.lower()
-    # Handle compound extensions like .bed.gz
-    if path.name.lower().endswith(".bed.gz"):
-        suffix = ".bed.gz"
+    suffix = _resolve_container_suffix(path)
     entry = _EXTRACTOR_REGISTRY.get(suffix)
     if entry is None:
         raise ValueError(

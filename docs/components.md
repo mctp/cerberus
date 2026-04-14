@@ -28,7 +28,7 @@ The `CerberusDataModule` class (`src/cerberus/datamodule.py`) wraps the dataset 
 Samplers determine *where* the model looks during training. They yield `Interval` objects (chromosome, start, end, strand).
 
 ### IntervalSampler
-Used when you have a specific set of regions of interest, such as ChIP-seq peaks or TSS sites. Reads from BED or narrowPeak files.
+Used when you have a specific set of regions of interest, such as ChIP-seq peaks or TSS sites. Reads from BED or narrowPeak files. Detection is case-insensitive and supports compound extensions: `.narrowPeak`, `.narrowPeak.gz`, `.narrowPeak.bed`, `.narrowPeak.bed.gz`, and `.narrowPeak.bb`.
 *   **Use Case**: Training on peaks, fine-tuning on specific loci.
 *   **Behavior**: Centers the window on the interval (or summit for narrowPeak) and pads to `padded_size`.
 

@@ -95,6 +95,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Jitter mutation destroyed after first epoch** (`dataset.py`):
+- **Case-insensitive narrowPeak detection** (`signal.py`, `samplers.py`):
+  narrowPeak file detection is now case-insensitive and supports compound
+  extensions: `.narrowPeak.bed.gz`, `.narrowPeak.bed`, `.narrowPeak.bb`,
+  `.narrowPeak.bigbed`, `.narrowPeak.gz`, and plain `.narrowPeak`.
+  Previously, files like `peaks.narrowPeak.bed.gz` silently lost summit
+  information by falling through to the BED loader.
+- **Extracted `_resolve_container_suffix()`** (`signal.py`):
+  Compound extension resolution (stripping narrowPeak prefix, handling
+  `.bed.gz`) is now a standalone helper, shared by `_resolve_extractor_cls`.
 
 ## [1.0.0a2] - 2026-04-08
 
