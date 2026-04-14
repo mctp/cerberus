@@ -456,6 +456,34 @@ class TestScoreVariantsPlainModel:
         for original, result in zip(mixed_variants, results):
             assert result.variant is original
 
+    def test_use_folds_warns_for_plain_model(self, fasta, snp_variants, sensitive_model):
+        """Passing use_folds with a plain nn.Module logs a warning."""
+        import logging
+
+        records: list[logging.LogRecord] = []
+        handler = logging.Handler()
+        handler.emit = lambda record: records.append(record)  # type: ignore[assignment]
+
+        log = logging.getLogger("cerberus.predict_variants")
+        log.addHandler(handler)
+        old_level = log.level
+        log.setLevel(logging.WARNING)
+        try:
+            list(
+                score_variants(
+                    model=sensitive_model,
+                    variants=snp_variants,
+                    fasta=fasta,
+                    input_len=20,
+                    use_folds=["test"],
+                )
+            )
+        finally:
+            log.removeHandler(handler)
+            log.setLevel(old_level)
+
+        assert any("use_folds" in r.getMessage() for r in records)
+
 
 # ── Batching ─────────────────────────────────────────────────────────
 

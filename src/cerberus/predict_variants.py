@@ -105,6 +105,13 @@ def score_variants(
 
     is_ensemble = isinstance(model, ModelEnsemble)
 
+    if not is_ensemble and use_folds is not None:
+        logger.warning(
+            "use_folds=%r was passed but model is a plain nn.Module, not a "
+            "ModelEnsemble. Fold routing will not be applied.",
+            use_folds,
+        )
+
     effect_kwargs = {
         "log_counts_include_pseudocount": log_counts_include_pseudocount,
         "pseudocount": pseudocount,
@@ -112,6 +119,7 @@ def score_variants(
 
     n_scored = 0
     n_skipped = 0
+    n_batches = 0
 
     for batch_tuple in itertools.batched(variants, batch_size):
         batch_variants = list(batch_tuple)
@@ -165,9 +173,11 @@ def score_variants(
             yield VariantResult(variant=v, effects=per_variant, interval=intervals[i])
 
         n_scored += len(kept_variants)
-        if (n_scored + n_skipped) % (batch_size * 10) == 0:
+        n_batches += 1
+        if n_batches % 10 == 0:
             logger.info(
-                "Progress: %d scored, %d skipped", n_scored, n_skipped
+                "Progress: %d scored, %d skipped (%d batches)",
+                n_scored, n_skipped, n_batches,
             )
 
     logger.info(
