@@ -30,17 +30,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `tests/data/fixtures/chip_ar_mdapca2b_intervals_test.bed.gz`, and
   produces a 3-panel scatter plot of predicted vs observed total
   log-counts plus model-vs-model agreement, with Pearson R annotated.
-- **Shared CLI utilities** (`utils.py`):
-  `resolve_device()` auto-detects CUDA/MPS/CPU (replaces 6 inline copies
-  across tools). `parse_use_folds()` parses `--use_folds` CLI arguments
-  (replaces 3 inline copies). Both exported from `cerberus`.
+- **Batched variant effect scoring** (`predict_variants.py`):
+  `score_variants()` generator composes `variant_to_ref_alt()` and
+  `compute_variant_effects()` with batched model inference. Supports plain
+  `nn.Module` or `ModelEnsemble` (with fold routing). Skips variants that
+  fail sequence construction (boundary violations, ref mismatches) with
+  logged warnings rather than crashing.
+  `score_variants_from_ensemble()` convenience wrapper extracts `input_len`,
+  `fasta_path`, and pseudocount parameters from the ensemble config.
+  `VariantResult` frozen dataclass holds per-variant effects and provenance
+  interval.
 - **Saturation variant generation** (`variants.py`):
   `generate_variants(interval, fasta, max_indel_size=0)` yields all possible
   variants within a genomic interval. Default SNVs only (L x 3 alt bases);
   with `max_indel_size=k` also yields deletions up to k bases and insertions
   of all 4^k possible sequences. Composes directly with `score_variants`.
-- **Batched variant effect scoring** (`predict_variants.py`):
-  `VariantResult` is now a frozen dataclass (matching `Variant` convention).
+- **Variant scoring CLI tool** (`tools/score_variants.py`):
+  Thin CLI wrapper around `score_variants_from_ensemble()`. Accepts VCF
+  (`--vcf`) or TSV (`--variants`) input, writes per-variant effect metrics
+  to TSV. Supports `--region` filtering, `--use_folds`, `--device`, and
+  `--batch_size` options. Follows the `export_bigwig.py` pattern.
+- **Variant scoring notebook** (`notebooks/chip_ar_mdapca2b_score_variants.py`):
+  Demonstrates `score_variants_from_ensemble`, `score_variants`, and
+  `generate_variants` with a pre-trained BPNet model. Includes named
+  variants (peak summits, KLK3 missense, MSMB intergenic), saturation
+  mutagenesis of a genomic region, and per-position max-effect tables.
+- **Shared CLI utilities** (`utils.py`):
+  `resolve_device()` auto-detects CUDA/MPS/CPU (replaces 6 inline copies
+  across tools). `parse_use_folds()` parses `--use_folds` CLI arguments
+  (replaces 3 inline copies). Both exported from `cerberus`.
 - **Per-sample fold routing in ModelEnsemble** (`model_ensemble.py`):
   `_forward_models()` now routes each sample in a batch to the correct
   fold model(s) based on its interval, fixing a bug where heterogeneous
@@ -53,21 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `(B,)` bool tensors indicating which samples each model contributed to.
   Enables correct averaging when different models see different subsets
   of a batch.
-
-- **Batched variant effect scoring** (`predict_variants.py`):
-  `score_variants()` generator composes `variant_to_ref_alt()` and
-  `compute_variant_effects()` with batched model inference. Supports plain
-  `nn.Module` or `ModelEnsemble` (with fold routing). Skips variants that
-  fail sequence construction (boundary violations, ref mismatches) with
-  logged warnings rather than crashing.
-  `score_variants_from_ensemble()` convenience wrapper extracts `input_len`,
-  `fasta_path`, and pseudocount parameters from the ensemble config.
-  `VariantResult` container holds per-variant effects and provenance interval.
-- **Variant scoring CLI tool** (`tools/score_variants.py`):
-  Thin CLI wrapper around `score_variants_from_ensemble()`. Accepts VCF
-  (`--vcf`) or TSV (`--variants`) input, writes per-variant effect metrics
-  to TSV. Supports `--region` filtering, `--use-folds`, `--device`, and
-  `--batch-size` options. Follows the `export_bigwig.py` pattern.
 - **Internal design document** (`docs/internal/variant_tool_design.md`):
   Records design process, tool audit, library gap analysis, and four
   design options (A-D) from minimal to full-pipeline.
