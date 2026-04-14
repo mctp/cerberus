@@ -2,6 +2,7 @@ import dataclasses
 import itertools
 import logging
 import re
+from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -267,14 +268,14 @@ class ModelEnsemble(nn.ModuleDict):
         use_folds = self._resolve_use_folds(use_folds)
 
         # 1. Run models -> list[ModelOutput] (one per model, batched)
-        batch_outputs = self._forward_models(x, intervals, use_folds)
+        batch_outputs, masks = self._forward_models(x, intervals, use_folds)
 
         if not batch_outputs:
             raise RuntimeError("No model outputs generated.")
 
         if aggregation == "model":
             # Aggregate over models, return batched [aggregated]
-            return aggregate_models(batch_outputs, method="mean")
+            return aggregate_models(batch_outputs, method="mean", masks=masks)
 
         if aggregation == "interval+model":
             if intervals is None:
@@ -286,7 +287,9 @@ class ModelEnsemble(nn.ModuleDict):
             ]
 
             # Aggregate over models
-            aggregated_batch = aggregate_models(batch_outputs, method="mean")
+            aggregated_batch = aggregate_models(
+                batch_outputs, method="mean", masks=masks
+            )
             output_cls = type(aggregated_batch)
 
             # Unbatch
@@ -306,88 +309,161 @@ class ModelEnsemble(nn.ModuleDict):
             f"Unknown aggregation mode: {aggregation} (supported: 'model', 'interval+model')"
         )
 
+    def _get_partitions_for_interval(self, interval: Interval) -> set[int]:
+        """Return the set of fold partition indices that contain *interval*.
+
+        Queries each fold's InterLap tree.  Returns an empty set when no
+        partition matches (e.g. chromosome not in any fold map).
+        """
+        partitions: set[int] = set()
+        for fold_idx, fold_map in enumerate(self.folds):
+            if interval.chrom in fold_map:
+                if any(
+                    fold_map[interval.chrom].find(
+                        (interval.start, interval.end - 1)
+                    )
+                ):
+                    partitions.add(fold_idx)
+        return partitions
+
+    def _partitions_to_model_indices(
+        self, partitions: set[int], use_folds: list[str]
+    ) -> set[int]:
+        """Map partition indices to model indices using the fold rotation.
+
+        The rotation logic assumes:
+        - Model *i* treats Partition *i* as TEST.
+        - Model *i* treats Partition *(i+1) % k* as VAL.
+        """
+        model_indices: set[int] = set()
+        n_folds = len(self.folds)
+        if n_folds == 0:
+            return model_indices
+        for p_idx in partitions:
+            if "test" in use_folds:
+                model_indices.add(p_idx)
+            if "val" in use_folds:
+                model_indices.add((p_idx - 1) % n_folds)
+            if "train" in use_folds:
+                test_model = p_idx
+                val_model = (p_idx - 1) % n_folds
+                for i in range(n_folds):
+                    if i != test_model and i != val_model:
+                        model_indices.add(i)
+        return model_indices
+
     def _forward_models(
         self,
         x: torch.Tensor,
         intervals: list[Interval] | None = None,
         use_folds: list[str] | None = None,
-    ) -> list[ModelOutput]:
-        """
-        Runs the forward pass for selected models.
+    ) -> tuple[list[ModelOutput], list[torch.Tensor] | None]:
+        """Run the forward pass, routing each sample to the correct fold models.
+
+        When *intervals* are provided and the ensemble has multiple folds,
+        each sample is routed to its fold-appropriate model(s) based on its
+        interval.  Models that do not see a given sample produce zeros for
+        that position, and a boolean mask is returned so the caller can
+        average only over models that contributed to each sample.
 
         Args:
-            x: Input tensor (Batch, Channels, Length).
-            intervals: Optional list of intervals to determine which models to run.
-            use_folds: List of fold roles to use ('train', 'test', 'val').
+            x: Input tensor ``(Batch, Channels, Length)``.
+            intervals: Optional per-sample intervals for fold routing.
+            use_folds: Fold roles to include (``'train'``, ``'test'``,
+                ``'val'``).
 
         Returns:
-            list[ModelOutput]: A list of outputs from the selected models.
+            ``(outputs, masks)`` where *outputs* is one ``ModelOutput`` per
+            model (full-batch shaped) and *masks* is a parallel list of
+            ``(B,)`` bool tensors indicating which samples each model
+            contributed to.  *masks* is ``None`` when every model sees
+            every sample (no intervals, single model, or no folds).
         """
         use_folds = self._resolve_use_folds(use_folds)
+        batch_size = x.shape[0]
 
-        if not intervals:
-            # Fallback: run all models if no intervals provided (or for single model)
-            models_to_run = self.values()
-        else:
-            # Determine applicable models
-            target_partitions = set()
+        if not intervals or not self.folds:
+            # No routing needed — run all models on full batch
+            batch_outputs = []
+            with torch.no_grad():
+                for model in self.values():
+                    batch_outputs.append(model(x))
+            return batch_outputs, None
 
-            # We assume all intervals in the batch belong to the same partition
-            interval = intervals[0]
-            for fold_idx, fold_map in enumerate(self.folds):
-                if interval.chrom in fold_map:
-                    if any(
-                        fold_map[interval.chrom].find(
-                            (interval.start, interval.end - 1)
-                        )
-                    ):
-                        target_partitions.add(fold_idx)
+        # -- Per-sample routing --
+        # Map each model index to the list of sample indices it should process
+        model_to_samples: dict[int, list[int]] = defaultdict(list)
 
-            # Determine which models to load based on use_folds
-            # The rotation logic assumes:
-            # - Model 'i' treats Partition 'i' as TEST.
-            # - Model 'i' treats Partition '(i+1)%k' as VAL.
-            # Therefore:
-            # - To get TEST predictions for Partition 'p', we need Model 'p'.
-            # - To get VAL predictions for Partition 'p', we need Model 'p-1' (mod k).
+        for i, interval in enumerate(intervals):
+            partitions = self._get_partitions_for_interval(interval)
+            model_indices = self._partitions_to_model_indices(partitions, use_folds)
+            if not model_indices:
+                # No matching fold — fall back to all models for this sample.
+                # Common cause: interval is on a chromosome absent from the
+                # fold maps.  Could also indicate a fold configuration gap.
+                logger.debug(
+                    "No fold partition matched interval %s; "
+                    "falling back to all models for this sample.",
+                    interval,
+                )
+                for key in self:
+                    model_indices.add(int(key))
+            for m_idx in model_indices:
+                model_to_samples[m_idx].append(i)
 
-            models_to_load = set()
-            if len(self.folds) > 0 and target_partitions:
-                for p_idx in target_partitions:
-                    # 1. 'test'
-                    if "test" in use_folds:
-                        models_to_load.add(p_idx)
+        # -- Run each model on its sub-batch and scatter back --
+        batch_outputs: list[ModelOutput] = []
+        masks: list[torch.Tensor] = []
 
-                    # 2. 'val'
-                    if "val" in use_folds:
-                        val_model_idx = (p_idx - 1) % len(self.folds)
-                        models_to_load.add(val_model_idx)
-
-                    # 3. 'train'
-                    if "train" in use_folds:
-                        test_model = p_idx
-                        val_model = (p_idx - 1) % len(self.folds)
-                        for i in range(len(self.folds)):
-                            if i != test_model and i != val_model:
-                                models_to_load.add(i)
-
-                # Retrieve models by index string
-                models_to_run = []
-                for idx in sorted(list(models_to_load)):
-                    key = str(idx)
-                    if key in self:
-                        models_to_run.append(self[key])
-            else:
-                # If single model or no target partitions found, run all models
-                models_to_run = self.values()
-
-        # Run models
-        batch_outputs = []
         with torch.no_grad():
-            for model in models_to_run:
-                out = model(x)
-                batch_outputs.append(out)
-        return batch_outputs
+            for m_idx in sorted(model_to_samples):
+                key = str(m_idx)
+                if key not in self:
+                    continue
+
+                sample_indices = model_to_samples[m_idx]
+                idx_tensor = torch.tensor(sample_indices, device=x.device, dtype=torch.long)
+
+                sub_x = x[idx_tensor]
+                sub_out = self[key](sub_x)
+
+                # Scatter sub_out into full-batch-shaped output.
+                # Non-participating positions are filled with zeros.  The fill
+                # value is irrelevant: aggregate_models() multiplies by the
+                # boolean mask (0.0 for non-contributing positions) before
+                # summing, so any fill value × 0.0 = 0.0 — it never reaches
+                # the output.  Zero is used because torch.zeros is cheap and
+                # the masks (returned alongside) are the authoritative record
+                # of which samples each model contributed to.
+                full_out_fields: dict[str, Any] = {}
+                for field in dataclasses.fields(sub_out):
+                    val = getattr(sub_out, field.name)
+                    if isinstance(val, torch.Tensor):
+                        full = torch.zeros(
+                            (batch_size, *val.shape[1:]),
+                            dtype=val.dtype,
+                            device=val.device,
+                        )
+                        full[idx_tensor] = val
+                        full_out_fields[field.name] = full
+                    else:
+                        full_out_fields[field.name] = val
+
+                output_cls = type(sub_out)
+                batch_outputs.append(output_cls(**full_out_fields))
+
+                mask = torch.zeros(batch_size, dtype=torch.bool, device=x.device)
+                mask[idx_tensor] = True
+                masks.append(mask)
+
+        if not batch_outputs:
+            # No models matched any sample — fall back to all models, no routing
+            with torch.no_grad():
+                for model in self.values():
+                    batch_outputs.append(model(x))
+            return batch_outputs, None
+
+        return batch_outputs, masks
 
     def predict_intervals_batched(
         self,

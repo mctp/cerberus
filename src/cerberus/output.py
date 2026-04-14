@@ -282,16 +282,28 @@ def aggregate_intervals(
     return output_cls(**aggregated_components, out_interval=merged_interval)
 
 
-def aggregate_models(outputs: Sequence[ModelOutput], method: str) -> ModelOutput:
+def aggregate_models(
+    outputs: Sequence[ModelOutput],
+    method: str,
+    masks: list[torch.Tensor] | None = None,
+) -> ModelOutput:
     """Ensembles outputs from multiple models by reducing each tensor field.
 
     All outputs must be the same ModelOutput subclass with identically-shaped
     tensors. The out_interval is taken from the first output (all models
     predict on the same intervals).
 
+    When *masks* is provided, each mask is a ``(B,)`` bool tensor indicating
+    which batch samples the corresponding model contributed to.  The
+    aggregation averages only over models that contributed to each sample.
+    This supports heterogeneous batches where different samples are routed
+    to different fold models.
+
     Args:
         outputs: One ModelOutput per model, all for the same input batch.
-        method: Reduction across models — "mean" or "median".
+        method: Reduction across models — ``"mean"`` or ``"median"``.
+        masks: Optional parallel list of ``(B,)`` bool tensors.  ``None``
+            (default) means every model sees every sample.
 
     Returns:
         A single ModelOutput of the same type with ensembled tensor fields.
@@ -306,15 +318,37 @@ def aggregate_models(outputs: Sequence[ModelOutput], method: str) -> ModelOutput
         if isinstance(output_dicts[0][k], torch.Tensor)
     ]
 
+    # Pre-compute mask quantities once (independent of per-field tensor shape).
+    if masks is not None:
+        if method != "mean":
+            raise ValueError(
+                f"Masked aggregation only supports 'mean', got '{method}'"
+            )
+        mask_stacked = torch.stack(masks)  # (M, B)
+        count = mask_stacked.sum(dim=0).clamp_min(1)  # (B,)
+
     aggregated_elements = {}
     for key in keys:
-        stacked = torch.stack([out[key] for out in output_dicts])
-        if method == "mean":
-            aggregated_elements[key] = torch.mean(stacked, dim=0)
-        elif method == "median":
-            aggregated_elements[key] = torch.median(stacked, dim=0).values
+        stacked = torch.stack([out[key] for out in output_dicts])  # (M, B, ...)
+        if masks is None:
+            if method == "mean":
+                aggregated_elements[key] = torch.mean(stacked, dim=0)
+            elif method == "median":
+                aggregated_elements[key] = torch.median(stacked, dim=0).values
+            else:
+                raise ValueError(f"Unknown aggregation method: {method}")
         else:
-            raise ValueError(f"Unknown aggregation method: {method}")
+            # Broadcast (M, B) mask to match this field's shape (M, B, ...)
+            extra_dims = stacked.ndim - mask_stacked.ndim
+            mask_broad = mask_stacked.reshape(
+                *mask_stacked.shape, *((1,) * extra_dims)
+            )
+            count_broad = count.reshape(
+                *count.shape, *((1,) * extra_dims)
+            )
+            aggregated_elements[key] = (
+                (stacked * mask_broad).sum(dim=0) / count_broad
+            )
 
     cls = type(outputs[0])
     out_int = outputs[0].out_interval

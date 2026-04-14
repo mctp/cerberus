@@ -144,6 +144,109 @@ class TestAggregateModels:
         assert isinstance(result.out_interval, Interval)
         assert result.out_interval == iv
 
+    # -- Masked aggregation ---------------------------------------------------
+
+    def test_masked_disjoint_single_field(self):
+        """Disjoint masks with ProfileLogits: each sample gets its own model."""
+        out0 = ProfileLogits(logits=torch.tensor([[[10.0, 10.0]], [[0.0, 0.0]]]))
+        out1 = ProfileLogits(logits=torch.tensor([[[0.0, 0.0]], [[20.0, 20.0]]]))
+        masks = [torch.tensor([True, False]), torch.tensor([False, True])]
+
+        result = aggregate_models([out0, out1], method="mean", masks=masks)
+        assert isinstance(result, ProfileLogits)
+        torch.testing.assert_close(
+            result.logits,
+            torch.tensor([[[10.0, 10.0]], [[20.0, 20.0]]]),
+        )
+
+    def test_masked_multi_field_output(self):
+        """Masks work correctly across fields with different shapes.
+
+        ProfileCountOutput has logits (B, C, L) and log_counts (B, C) —
+        the broadcast must adapt per-field.
+        """
+        out0 = ProfileCountOutput(
+            logits=torch.tensor([[[5.0, 5.0]], [[0.0, 0.0]]]),
+            log_counts=torch.tensor([[3.0], [0.0]]),
+        )
+        out1 = ProfileCountOutput(
+            logits=torch.tensor([[[0.0, 0.0]], [[7.0, 7.0]]]),
+            log_counts=torch.tensor([[0.0], [4.0]]),
+        )
+        masks = [torch.tensor([True, False]), torch.tensor([False, True])]
+
+        result = aggregate_models([out0, out1], method="mean", masks=masks)
+        assert isinstance(result, ProfileCountOutput)
+        # logits: sample 0 from model 0, sample 1 from model 1
+        torch.testing.assert_close(
+            result.logits,
+            torch.tensor([[[5.0, 5.0]], [[7.0, 7.0]]]),
+        )
+        # log_counts: same routing
+        torch.testing.assert_close(
+            result.log_counts,
+            torch.tensor([[3.0], [4.0]]),
+        )
+
+    def test_masked_overlapping(self):
+        """When both models contribute, result is the mean."""
+        out0 = ProfileLogits(logits=torch.tensor([[[10.0]]]))
+        out1 = ProfileLogits(logits=torch.tensor([[[30.0]]]))
+        masks = [torch.tensor([True]), torch.tensor([True])]
+
+        result = aggregate_models([out0, out1], method="mean", masks=masks)
+        torch.testing.assert_close(
+            result.logits, torch.tensor([[[20.0]]])
+        )
+
+    def test_masked_partial_overlap(self):
+        """Sample 0 seen by both models, sample 1 by model 1 only."""
+        out0 = ProfileLogits(logits=torch.tensor([[[10.0]], [[0.0]]]))
+        out1 = ProfileLogits(logits=torch.tensor([[[20.0]], [[30.0]]]))
+        masks = [torch.tensor([True, False]), torch.tensor([True, True])]
+
+        result = aggregate_models([out0, out1], method="mean", masks=masks)
+        # Sample 0: mean(10, 20) = 15; Sample 1: 30/1 = 30
+        torch.testing.assert_close(
+            result.logits, torch.tensor([[[15.0]], [[30.0]]])
+        )
+
+    def test_masked_none_is_identity(self):
+        """masks=None gives identical results to omitting the parameter."""
+        outputs = [
+            ProfileLogits(logits=torch.tensor([[[1.0, 2.0]]])),
+            ProfileLogits(logits=torch.tensor([[[3.0, 4.0]]])),
+        ]
+        with_none = aggregate_models(outputs, method="mean", masks=None)
+        without = aggregate_models(outputs, method="mean")
+        torch.testing.assert_close(with_none.logits, without.logits)
+
+    def test_masked_median_raises(self):
+        """Masked aggregation rejects method='median'."""
+        outputs = [ProfileLogits(logits=torch.randn(1, 1, 5))]
+        masks = [torch.tensor([True])]
+        with pytest.raises(ValueError, match="Masked aggregation only supports 'mean'"):
+            aggregate_models(outputs, method="median", masks=masks)
+
+    def test_masked_3_models(self):
+        """Three models with non-uniform coverage per sample."""
+        # 3 samples, 3 models
+        # Sample 0: models 0, 1      → mean(10, 20) = 15
+        # Sample 1: model 2 only     → 60
+        # Sample 2: models 0, 1, 2   → mean(10, 20, 60) = 30
+        out0 = ProfileLogits(logits=torch.tensor([[[10.0]], [[0.0]], [[10.0]]]))
+        out1 = ProfileLogits(logits=torch.tensor([[[20.0]], [[0.0]], [[20.0]]]))
+        out2 = ProfileLogits(logits=torch.tensor([[[0.0]], [[60.0]], [[60.0]]]))
+        masks = [
+            torch.tensor([True, False, True]),
+            torch.tensor([True, False, True]),
+            torch.tensor([False, True, True]),
+        ]
+
+        result = aggregate_models([out0, out1, out2], method="mean", masks=masks)
+        expected = torch.tensor([[[15.0]], [[60.0]], [[30.0]]])
+        torch.testing.assert_close(result.logits, expected)
+
 
 # ---------------------------------------------------------------------------
 # unbatch_modeloutput

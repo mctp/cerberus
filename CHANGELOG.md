@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Batched variant effect scoring** (`predict_variants.py`):
+  `VariantResult` is now a frozen dataclass (matching `Variant` convention).
+- **Per-sample fold routing in ModelEnsemble** (`model_ensemble.py`):
+  `_forward_models()` now routes each sample in a batch to the correct
+  fold model(s) based on its interval, fixing a bug where heterogeneous
+  batches (samples from different chromosomes/partitions) were all routed
+  based on the first sample's interval.  New helpers
+  `_get_partitions_for_interval()` and `_partitions_to_model_indices()`
+  extracted from the routing logic.
+- **Masked model aggregation** (`output.py`):
+  `aggregate_models()` accepts an optional `masks` parameter — a list of
+  `(B,)` bool tensors indicating which samples each model contributed to.
+  Enables correct averaging when different models see different subsets
+  of a batch.
+
+- **Batched variant effect scoring** (`predict_variants.py`):
   `score_variants()` generator composes `variant_to_ref_alt()` and
   `compute_variant_effects()` with batched model inference. Supports plain
   `nn.Module` or `ModelEnsemble` (with fold routing). Skips variants that
