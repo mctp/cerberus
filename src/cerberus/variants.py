@@ -380,6 +380,100 @@ def load_variants(
 
 
 # ----------------------------------------------------------------------
+# Saturation variant generation
+# ----------------------------------------------------------------------
+
+
+def generate_variants(
+    interval: Interval,
+    fasta: pyfaidx.Fasta,
+    max_indel_size: int = 0,
+    encoding: str = "ACGT",
+) -> Iterator[Variant]:
+    """Generate all possible variants within a genomic interval.
+
+    Yields every single-nucleotide substitution at each position in
+    *interval*.  When ``max_indel_size > 0``, also yields deletions
+    up to that size and insertions of every possible sequence up to
+    that length.
+
+    Positions where the reference base is not in *encoding* (e.g. ``N``)
+    are skipped.
+
+    Variants are yielded in positional order.  At each position: SNVs
+    first, then deletions from size 1 to ``max_indel_size``, then
+    insertions from size 1 to ``max_indel_size`` (all ``4^size``
+    possible inserted sequences per size).
+
+    Args:
+        interval: Genomic interval to scan.
+        fasta: An open ``pyfaidx.Fasta`` for the reference genome.
+        max_indel_size: Maximum indel length.  0 (default) means SNVs
+            only.  For size *k*, deletions remove up to *k* reference
+            bases and insertions add up to *k* bases after the anchor.
+        encoding: DNA base alphabet (default ``"ACGT"``).
+
+    Yields:
+        :class:`Variant` objects in positional order.
+
+    Raises:
+        ValueError: If the interval's chromosome is not in the FASTA.
+        ValueError: If ``max_indel_size`` is negative.
+    """
+    if max_indel_size < 0:
+        raise ValueError(f"max_indel_size must be non-negative, got {max_indel_size}")
+
+    chrom = interval.chrom
+    if chrom not in fasta:
+        raise ValueError(f"Chromosome {chrom!r} not found in FASTA")
+
+    bases = tuple(encoding.upper())
+    bases_set = set(bases)
+    chrom_len = len(fasta[chrom])
+    start = interval.start
+    end = min(interval.end, chrom_len)
+
+    # Fetch the full reference sequence once
+    ref_seq = str(fasta[chrom][start:end]).upper()
+
+    for i, ref_base in enumerate(ref_seq):
+        if ref_base not in bases_set:
+            continue
+
+        pos = start + i
+
+        # -- SNVs --
+        for alt_base in bases:
+            if alt_base != ref_base:
+                yield Variant(chrom, pos, ref_base, alt_base)
+
+        # -- Deletions (ref = anchor + deleted bases, alt = anchor) --
+        for del_size in range(1, max_indel_size + 1):
+            ref_end = i + 1 + del_size
+            if ref_end > len(ref_seq):
+                break
+            del_ref = ref_seq[i:ref_end]
+            if not bases_set.issuperset(del_ref):
+                break
+            yield Variant(chrom, pos, del_ref, ref_base)
+
+        # -- Insertions (ref = anchor, alt = anchor + inserted bases) --
+        for ins_size in range(1, max_indel_size + 1):
+            for ins_seq in _product_bases(ins_size, bases):
+                yield Variant(chrom, pos, ref_base, ref_base + ins_seq)
+
+
+def _product_bases(size: int, bases: tuple[str, ...]) -> Iterator[str]:
+    """Yield all DNA strings of a given length over *bases*."""
+    if size == 0:
+        yield ""
+        return
+    for prefix in bases:
+        for suffix in _product_bases(size - 1, bases):
+            yield prefix + suffix
+
+
+# ----------------------------------------------------------------------
 # Ref / alt sequence construction
 # ----------------------------------------------------------------------
 

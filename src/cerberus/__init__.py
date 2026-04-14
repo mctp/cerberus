@@ -25,7 +25,7 @@ from .genome import (
     create_human_genome_config,
 )
 from .interval import Interval, load_intervals_bed, write_intervals_bed
-from .variants import Variant, compute_variant_effects, load_variants, load_vcf, variant_to_ref_alt
+from .variants import Variant, compute_variant_effects, generate_variants, load_variants, load_vcf, variant_to_ref_alt
 from .predict_variants import VariantResult, score_variants, score_variants_from_ensemble
 from .utils import parse_use_folds, resolve_device
 from .logging import setup_logging

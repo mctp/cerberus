@@ -14,6 +14,7 @@ from cerberus.variants import (
     Variant,
     _interval_to_region,
     compute_variant_effects,
+    generate_variants,
     load_variants,
     load_vcf,
     variant_to_ref_alt,
@@ -879,6 +880,169 @@ class TestLoadVariants:
         variants = list(load_variants(f))
         assert len(variants) == 1
         assert variants[0] == Variant("chr1", 99, "A", "G")
+
+
+# ── generate_variants ────────────────────────────────────────────────
+
+
+class TestGenerateVariants:
+    """Tests for generate_variants saturation mutagenesis generator."""
+
+    @pytest.fixture()
+    def fasta(self):
+        fa = pyfaidx.Fasta(str(FASTA_PATH))
+        yield fa
+        fa.close()
+
+    # -- SNVs only (default) --
+
+    def test_snv_count(self, fasta):
+        """4bp interval on repeating ACGT → 4 positions × 3 alts = 12 SNVs."""
+        iv = Interval("chr1", 0, 4)
+        variants = list(generate_variants(iv, fasta))
+        assert len(variants) == 12
+
+    def test_snv_ref_alleles(self, fasta):
+        """Ref alleles match the FASTA sequence."""
+        iv = Interval("chr1", 0, 4)  # ACGT
+        variants = list(generate_variants(iv, fasta))
+        # Group by position
+        by_pos = {}
+        for v in variants:
+            by_pos.setdefault(v.pos, []).append(v)
+        assert all(v.ref == "A" for v in by_pos[0])
+        assert all(v.ref == "C" for v in by_pos[1])
+        assert all(v.ref == "G" for v in by_pos[2])
+        assert all(v.ref == "T" for v in by_pos[3])
+
+    def test_snv_alt_alleles(self, fasta):
+        """Each position has exactly 3 non-ref alt alleles."""
+        iv = Interval("chr1", 0, 1)  # A
+        variants = list(generate_variants(iv, fasta))
+        alts = {v.alt for v in variants}
+        assert alts == {"C", "G", "T"}
+
+    def test_snv_all_are_snps(self, fasta):
+        iv = Interval("chr1", 0, 8)
+        for v in generate_variants(iv, fasta):
+            assert v.is_snp
+
+    def test_positional_order(self, fasta):
+        """Variants are yielded in positional order."""
+        iv = Interval("chr1", 0, 8)
+        variants = list(generate_variants(iv, fasta))
+        positions = [v.pos for v in variants]
+        assert positions == sorted(positions)
+
+    def test_is_generator(self, fasta):
+        result = generate_variants(Interval("chr1", 0, 4), fasta)
+        assert hasattr(result, "__next__")
+
+    # -- Deletions --
+
+    def test_deletions_size_1(self, fasta):
+        """max_indel_size=1 adds 1 deletion per position (if room in fetched seq)."""
+        iv = Interval("chr1", 0, 4)  # ACGT — fetched seq is 4bp
+        variants = list(generate_variants(iv, fasta, max_indel_size=1))
+        deletions = [v for v in variants if v.is_deletion]
+        # pos 0: AC→A, pos 1: CG→C, pos 2: GT→G
+        # pos 3 (T): needs pos 4 which is past the fetched sequence end → no deletion
+        assert len(deletions) == 3
+        for d in deletions:
+            assert len(d.ref) == 2
+            assert len(d.alt) == 1
+            assert d.alt == d.ref[0]  # anchor base
+
+    def test_deletions_size_2(self, fasta):
+        """max_indel_size=2 adds up to 2 deletions per position."""
+        iv = Interval("chr1", 0, 4)  # ACGT — fetched seq is 4bp
+        variants = list(generate_variants(iv, fasta, max_indel_size=2))
+        deletions = [v for v in variants if v.is_deletion]
+        # pos 0: del 1 (AC→A), del 2 (ACG→A) = 2
+        # pos 1: del 1 (CG→C), del 2 (CGT→C) = 2
+        # pos 2: del 1 (GT→G), del 2 needs pos 5 → out of bounds = 1
+        # pos 3: del 1 needs pos 5 → out of bounds = 0
+        assert len(deletions) == 5
+
+    def test_deletion_at_sequence_end(self, fasta):
+        """Deletion that would extend past the fetched sequence is not yielded."""
+        # chr1 is 104bp; interval ends at 104
+        iv = Interval("chr1", 102, 104)  # last 2 bases: GT
+        variants = list(generate_variants(iv, fasta, max_indel_size=2))
+        deletions = [v for v in variants if v.is_deletion]
+        # pos 102 (G): del 1 (GT→G) ok, del 2 would need pos 104 → out of bounds
+        # pos 103 (T): del 1 would need pos 104 → out of bounds
+        assert len(deletions) == 1
+
+    # -- Insertions --
+
+    def test_insertions_size_1(self, fasta):
+        """max_indel_size=1 adds 4 insertions per position (4 possible bases)."""
+        iv = Interval("chr1", 0, 2)  # AC
+        variants = list(generate_variants(iv, fasta, max_indel_size=1))
+        insertions = [v for v in variants if v.is_insertion]
+        # 2 positions × 4 inserted bases = 8
+        assert len(insertions) == 8
+        for ins in insertions:
+            assert len(ins.alt) == 2  # anchor + 1 inserted base
+            assert ins.alt[0] == ins.ref  # anchor preserved
+
+    def test_insertions_size_2(self, fasta):
+        """max_indel_size=2 adds 4 + 16 insertions per position."""
+        iv = Interval("chr1", 0, 1)  # A
+        variants = list(generate_variants(iv, fasta, max_indel_size=2))
+        insertions = [v for v in variants if v.is_insertion]
+        # size 1: 4 sequences, size 2: 4^2=16 sequences → 20
+        assert len(insertions) == 20
+
+    # -- Combined counts --
+
+    def test_combined_count(self, fasta):
+        """SNVs + indels at max_indel_size=1."""
+        iv = Interval("chr1", 0, 4)  # ACGT, fetched seq is 4bp
+        variants = list(generate_variants(iv, fasta, max_indel_size=1))
+        snvs = [v for v in variants if v.is_snp]
+        dels = [v for v in variants if v.is_deletion]
+        ins = [v for v in variants if v.is_insertion]
+        assert len(snvs) == 12   # 4 × 3
+        assert len(dels) == 3    # 3 positions can delete (last can't)
+        assert len(ins) == 16    # 4 × 4
+        assert len(variants) == 31
+
+    # -- Edge cases --
+
+    def test_empty_interval(self, fasta):
+        iv = Interval("chr1", 50, 50)
+        assert list(generate_variants(iv, fasta)) == []
+
+    def test_single_position(self, fasta):
+        iv = Interval("chr1", 0, 1)  # A
+        variants = list(generate_variants(iv, fasta))
+        assert len(variants) == 3
+        assert all(v.pos == 0 for v in variants)
+
+    def test_bad_chrom_raises(self, fasta):
+        with pytest.raises(ValueError, match="not found in FASTA"):
+            list(generate_variants(Interval("chrX", 0, 10), fasta))
+
+    def test_negative_indel_size_raises(self, fasta):
+        with pytest.raises(ValueError, match="non-negative"):
+            list(generate_variants(Interval("chr1", 0, 4), fasta, max_indel_size=-1))
+
+    def test_interval_clamped_to_chrom_length(self, fasta):
+        """Interval extending past chrom end is clamped, not an error."""
+        # chr1 is 104bp; interval asks for 200
+        iv = Interval("chr1", 100, 200)
+        variants = list(generate_variants(iv, fasta))
+        # Only 4 positions (100..103), each with 3 SNVs
+        assert len(variants) == 12
+
+    def test_chr2_homopolymer(self, fasta):
+        """chr2 is TTTTTTTTTTAAAAAAAAAA — T region has only 3 alts per pos."""
+        iv = Interval("chr2", 0, 3)  # TTT
+        variants = list(generate_variants(iv, fasta))
+        assert len(variants) == 9  # 3 × 3
+        assert all(v.ref == "T" for v in variants)
 
 
 # ── compute_variant_effects ──────────────────────────────────────────
