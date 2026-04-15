@@ -108,6 +108,81 @@ def test_find_hparams(tmp_path):
     assert found.resolve() == p2.resolve()
 
 
+def test_find_hparams_flattened_layout(tmp_path):
+    """find_latest_hparams finds hparams.yaml at the root (pretrained layout)."""
+    root = tmp_path / "pretrained_model"
+    root.mkdir()
+    (root / "fold_0").mkdir()
+    (root / "fold_0" / "model.pt").touch()
+    hp = root / "hparams.yaml"
+    hp.write_text("model_config: {}")
+
+    found = find_latest_hparams(root)
+    assert found.resolve() == hp.resolve()
+
+
+def test_find_hparams_nested_lightning_layout(tmp_path):
+    """find_latest_hparams finds hparams.yaml in lightning_logs/version_N/ (training layout)."""
+    root = tmp_path / "training_output"
+    version_dir = root / "fold_0" / "lightning_logs" / "version_0"
+    version_dir.mkdir(parents=True)
+    hp = version_dir / "hparams.yaml"
+    hp.write_text("model_config: {}")
+
+    found = find_latest_hparams(root)
+    assert found.resolve() == hp.resolve()
+
+
+def test_find_hparams_picks_most_recent_across_folds(tmp_path):
+    """With multiple folds, find_latest_hparams returns the most recently modified."""
+    root = tmp_path / "multi_fold"
+    for i in range(3):
+        d = root / f"fold_{i}" / "lightning_logs" / "version_0"
+        d.mkdir(parents=True)
+        hp = d / "hparams.yaml"
+        hp.write_text(f"fold: {i}")
+        time.sleep(0.05)
+
+    # fold_2 was written last
+    found = find_latest_hparams(root)
+    assert "fold_2" in str(found)
+
+
+def test_find_hparams_nested_beats_stale_root(tmp_path):
+    """A newer nested hparams.yaml is preferred over a stale root-level one."""
+    root = tmp_path / "mixed"
+    root.mkdir()
+    stale = root / "hparams.yaml"
+    stale.write_text("stale: true")
+
+    time.sleep(0.05)
+
+    nested_dir = root / "fold_0" / "lightning_logs" / "version_0"
+    nested_dir.mkdir(parents=True)
+    fresh = nested_dir / "hparams.yaml"
+    fresh.write_text("fresh: true")
+
+    found = find_latest_hparams(root)
+    assert found.resolve() == fresh.resolve()
+
+
+def test_find_hparams_root_beats_stale_nested(tmp_path):
+    """A newer root-level hparams.yaml is preferred over a stale nested one."""
+    root = tmp_path / "mixed"
+    nested_dir = root / "fold_0" / "lightning_logs" / "version_0"
+    nested_dir.mkdir(parents=True)
+    stale = nested_dir / "hparams.yaml"
+    stale.write_text("stale: true")
+
+    time.sleep(0.05)
+
+    fresh = root / "hparams.yaml"
+    fresh.write_text("fresh: true")
+
+    found = find_latest_hparams(root)
+    assert found.resolve() == fresh.resolve()
+
+
 def test_init_resolves_configs(tmp_path, mock_model_manager):
     hparams_path = tmp_path / "hparams.yaml"
     hparams_path.touch()
