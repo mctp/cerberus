@@ -24,6 +24,7 @@ from cerberus.output import ProfileCountOutput
 from cerberus.predict_misc import (
     create_eval_dataset,
     load_bed_intervals,
+    observed_log_counts,
     predict_log_counts,
 )
 
@@ -276,3 +277,135 @@ class TestPredictLogCounts:
         assert len(results) == 1
         # Single channel, so log_counts is just flattened (no multi-channel aggregation)
         assert abs(results[0] - math.log(101.0)) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# observed_log_counts
+# ---------------------------------------------------------------------------
+
+
+class _OnesTargetExtractor:
+    """Returns a (1, L) tensor of ones for any interval — sum equals L."""
+
+    def extract(self, interval: Interval) -> torch.Tensor:
+        length = interval.end - interval.start
+        return torch.ones((1, length), dtype=torch.float32)
+
+
+def _make_dataset_with_target(config: CerberusConfig) -> CerberusDataset:
+    """Build a dataset with an injected ones-returning target extractor.
+
+    ``create_eval_dataset`` cannot inject a custom extractor, so we construct
+    the dataset directly to keep the tests free of real BigWig fixtures.
+    """
+    return CerberusDataset(
+        genome_config=config.genome_config,
+        data_config=config.data_config,
+        sampler_config=None,
+        sequence_extractor=None,
+        target_signal_extractor=_OnesTargetExtractor(),
+        sampler=None,
+        exclude_intervals={},
+        is_train=False,
+    )
+
+
+class TestObservedLogCounts:
+    def test_mse_pseudocount_applied(self, mse_setup):
+        """MSE loss: obs = log(sum + pseudocount) over output_len-cropped window.
+
+        ones extractor → sum = output_len = 50; pseudocount = 1.0;
+        target_scale = 1.0 → expect log(51).
+        """
+        config, _ = mse_setup
+        ds = _make_dataset_with_target(config)
+        intervals = [Interval("chr1", 500, 600)]  # input_len-sized
+
+        results = observed_log_counts(ds, intervals, config)
+        assert len(results) == 1
+        assert abs(results[0] - math.log(51.0)) < 1e-5
+
+    def test_poisson_no_pseudocount(self, poisson_setup):
+        """Poisson loss: obs = log(sum) over output_len-cropped window.
+
+        ones extractor → sum = 50; no pseudocount → expect log(50).
+        """
+        config, _ = poisson_setup
+        ds = _make_dataset_with_target(config)
+        intervals = [Interval("chr1", 500, 600)]
+
+        results = observed_log_counts(ds, intervals, config)
+        assert len(results) == 1
+        assert abs(results[0] - math.log(50.0)) < 1e-5
+
+    def test_crops_to_output_len(self, mse_setup):
+        """Verify the function crops to output_len, not input_len.
+
+        If it summed over input_len (100) instead of output_len (50), the
+        result would be log(101), not log(51).
+        """
+        config, _ = mse_setup
+        ds = _make_dataset_with_target(config)
+        intervals = [Interval("chr1", 500, 600)]
+
+        result = observed_log_counts(ds, intervals, config)[0]
+        assert abs(result - math.log(51.0)) < 1e-5
+        # sanity: definitely not summing over input_len
+        assert abs(result - math.log(101.0)) > 0.5
+
+    def test_target_scale_applied(self, mse_setup):
+        """target_scale multiplies raw counts before log."""
+        config, _ = mse_setup
+        scaled_data = config.data_config.model_copy(update={"target_scale": 2.0})
+        scaled_config = config.model_copy(update={"data_config": scaled_data})
+        ds = _make_dataset_with_target(scaled_config)
+        intervals = [Interval("chr1", 500, 600)]
+
+        result = observed_log_counts(ds, intervals, scaled_config)[0]
+        # sum=50, scale=2 → 100, plus pseudocount 1 → log(101)
+        assert abs(result - math.log(101.0)) < 1e-5
+
+    def test_multiple_intervals_and_batching(self, mse_setup):
+        """Returns one float per interval, regardless of batch_size."""
+        config, _ = mse_setup
+        ds = _make_dataset_with_target(config)
+        intervals = [Interval("chr1", 500, 600) for _ in range(7)]
+
+        results = observed_log_counts(ds, intervals, config, batch_size=3)
+        assert len(results) == 7
+        for r in results:
+            assert abs(r - math.log(51.0)) < 1e-5
+
+    def test_empty_intervals(self, mse_setup):
+        config, _ = mse_setup
+        ds = _make_dataset_with_target(config)
+        assert observed_log_counts(ds, [], config) == []
+
+    def test_raises_without_target_extractor(self, mse_setup):
+        """Dataset without target_signal_extractor → RuntimeError."""
+        config, _ = mse_setup
+        ds = create_eval_dataset(config)  # config.targets is empty
+        assert ds.target_signal_extractor is None
+
+        with pytest.raises(RuntimeError, match="target_signal_extractor"):
+            observed_log_counts(ds, [Interval("chr1", 500, 600)], config)
+
+    def test_mirrors_predict_log_counts_when_obs_matches_pred(self, mse_setup):
+        """Sanity: when ground-truth happens to equal model prediction, both
+        helpers return the same value (in the same log-space).
+
+        DummyBPNetModel emits log_counts = log(101). Set target_scale and the
+        ones extractor so observed total + pseudocount = 101 → log(101).
+        """
+        config, ensemble = mse_setup
+        # output_len=50, pseudocount=1: need scale*50 = 100 → scale=2.0
+        scaled_data = config.data_config.model_copy(update={"target_scale": 2.0})
+        scaled_config = config.model_copy(update={"data_config": scaled_data})
+        ds = _make_dataset_with_target(scaled_config)
+        intervals = [Interval("chr1", 500, 600), Interval("chr1", 700, 800)]
+
+        pred = predict_log_counts(ensemble, ds, intervals)
+        obs = observed_log_counts(ds, intervals, scaled_config)
+
+        for p, o in zip(pred, obs, strict=True):
+            assert abs(p - o) < 1e-4

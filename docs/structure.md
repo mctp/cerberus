@@ -55,7 +55,7 @@ These are the main entry points.
 ### Prediction (`model_ensemble.py`, `predict_bigwig.py`, `predict_misc.py`)
 *   `model_ensemble.py`: Manages loading models (single or multi-fold) and selecting models for intervals. Delegates aggregation to `output.py`.
 *   `predict_bigwig.py`: Streamlines genome-wide prediction generation into BigWig files.
-*   `predict_misc.py`: High-level inference utilities — `create_eval_dataset`, `load_bed_intervals`, `get_eval_intervals`, `predict_log_counts`.
+*   `predict_misc.py`: High-level inference utilities — `create_eval_dataset`, `load_bed_intervals`, `get_eval_intervals`, `predict_log_counts`, `observed_log_counts`.
 
 ### Variant Effect Prediction (`variants.py`)
 *   `variants.py`: Variant representation (`Variant` dataclass), VCF loading (`load_vcf`), TSV loading (`load_variants`), ref/alt sequence construction (`variant_to_ref_alt`), and effect size computation (`compute_variant_effects`). See the [Variant Effect Prediction](variants.md) guide.

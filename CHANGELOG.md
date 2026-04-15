@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`observed_log_counts` helper** (`predict_misc.py`):
+  Mirror of `predict_log_counts` that extracts ground-truth total
+  log-counts from a dataset's `target_signal_extractor` over each
+  interval's `output_len`-centered window.  Auto-detects pseudocount and
+  scaling from the model's `loss_cls` so predicted and observed values
+  are guaranteed to be in the same log-space — designed to feed directly
+  into evaluation scatter plots without manual config plumbing.
 - **Pretrained-model comparison notebook**
   (`notebooks/chip_ar_mdapca2b_compare_models.py`):
   Loads both pretrained ensembles (BPNet and Pomeranian) for the

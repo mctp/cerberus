@@ -268,3 +268,28 @@ The `log_counts_include_pseudocount` parameter matters only for multi-channel `P
 - **`log_counts_include_pseudocount=True`**: assumes `log_counts` per channel is in `log(count + count_pseudocount)` space (MSE loss). Inverts per channel, sums, then reapplies: `log(Σ(exp(lc) - p) + p)`.
 
 Using the wrong value with a multi-channel MSE model would give `log(n_channels * count_pseudocount + total_counts)` instead of `log(count_pseudocount + total_counts)`.
+
+### Predicted vs observed log-counts
+
+For evaluation (e.g. scatter plots of predicted vs ground-truth log-counts on a held-out fold), `cerberus.predict_misc` exposes mirrored helpers:
+
+```python
+from cerberus.predict_misc import (
+    create_eval_dataset,
+    observed_log_counts,
+    predict_log_counts,
+)
+
+dataset = create_eval_dataset(ensemble.cerberus_config)
+
+# Predicted total log-counts (one float per interval)
+pred = predict_log_counts(ensemble, dataset, intervals)
+
+# Observed total log-counts on the same intervals — extracted from the
+# dataset's target signal over the model's output window.  Pseudocount and
+# scaling are auto-detected from config.model_config_.loss_cls so the two
+# arrays are guaranteed to be in the same log-space.
+obs = observed_log_counts(dataset, intervals, ensemble.cerberus_config)
+```
+
+Both functions take the same input-length intervals; `observed_log_counts` internally crops to `output_len` before signal extraction, and `predict_log_counts` runs the ensemble's batched fold-routing inference.

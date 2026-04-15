@@ -7,8 +7,11 @@ an argument rather than living as methods on ``ModelEnsemble``.  This keeps
 convenient entry points for scripts and notebooks.
 """
 
+import itertools
 import logging
 from pathlib import Path
+
+import torch
 
 from cerberus.config import CerberusConfig
 from cerberus.dataset import CerberusDataset
@@ -16,7 +19,11 @@ from cerberus.exclude import get_exclude_intervals
 from cerberus.genome import create_genome_folds
 from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.output import compute_total_log_counts, get_log_count_params
+from cerberus.output import (
+    compute_obs_total_log_counts,
+    compute_total_log_counts,
+    get_log_count_params,
+)
 from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
 
 logger = logging.getLogger(__name__)
@@ -185,4 +192,70 @@ def predict_log_counts(
             pseudocount=count_pseudocount,
         )
         results.extend(pred_log_total.cpu().tolist())
+    return results
+
+
+def observed_log_counts(
+    dataset: CerberusDataset,
+    intervals: list[Interval],
+    config: CerberusConfig,
+    batch_size: int = 64,
+) -> list[float]:
+    """Extract observed total log-counts from the target signal for each interval.
+
+    Mirror of :func:`predict_log_counts` — together they enable comparing a
+    model's predicted total log-counts against the ground-truth observed
+    counts on the same set of intervals (e.g. for evaluation scatter plots).
+
+    Each input interval is center-cropped to ``output_len`` and the target
+    signal is extracted from ``dataset.target_signal_extractor`` over that
+    window.  The result is summed and log-transformed in the same space as
+    the model — with or without pseudocount, inferred from
+    ``model_config.loss_cls`` via :func:`get_log_count_params`.
+
+    Args:
+        dataset: Initialized dataset (typically from
+            :func:`create_eval_dataset`) whose ``target_signal_extractor``
+            provides observed counts.
+        intervals: Genomic intervals.  Each is center-cropped to
+            ``config.data_config.output_len`` before signal extraction, so
+            passing input-length intervals (the same list given to
+            :func:`predict_log_counts`) is the typical pattern.
+        config: Full cerberus config — supplies ``output_len``,
+            ``target_scale``, and pseudocount parameters.
+        batch_size: Number of intervals stacked per ``compute_obs_total_log_counts``
+            call.  Has no effect on the result; tunes peak memory.
+
+    Returns:
+        List of observed total log-count values (one per interval).
+
+    Raises:
+        RuntimeError: If ``dataset.target_signal_extractor`` is None.
+    """
+    if dataset.target_signal_extractor is None:
+        raise RuntimeError(
+            "observed_log_counts requires dataset.target_signal_extractor; "
+            "ensure data_config.targets is configured."
+        )
+
+    output_len = config.data_config.output_len
+    target_scale = config.data_config.target_scale
+    log_counts_include_pseudocount, count_pseudocount = get_log_count_params(
+        config.model_config_
+    )
+
+    results: list[float] = []
+    for batch in itertools.batched(intervals, batch_size):
+        signals = [
+            dataset.target_signal_extractor.extract(iv.center(output_len))
+            for iv in batch
+        ]
+        raw = torch.stack(signals)  # (B, C, output_len)
+        obs = compute_obs_total_log_counts(
+            raw,
+            target_scale=target_scale,
+            log_counts_include_pseudocount=log_counts_include_pseudocount,
+            pseudocount=count_pseudocount,
+        )
+        results.extend(obs.cpu().tolist())
     return results
