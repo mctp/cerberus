@@ -11,7 +11,6 @@
 
 # %%
 import sys
-from pathlib import Path
 
 try:
     from paths import get_project_root
@@ -47,11 +46,10 @@ from cerberus.variants import Variant
 
 # %%
 project_root = get_project_root()
-checkpoint_dir = project_root / "tests/data/models/chip_ar_mdapca2b_bpnet/single-fold"
+checkpoint_dir = project_root / "pretrained/bpnet"
 
 if not checkpoint_dir.exists():
     print(f"Checkpoint directory not found: {checkpoint_dir}")
-    print("Run 'bash examples/chip_ar_mdapca2b_bpnet.sh' to train the model first.")
     sys.exit(0)
 
 device = resolve_device()
@@ -105,11 +103,13 @@ for v in variants:
 # ensemble config automatically.
 
 # %%
-results = list(score_variants_from_ensemble(
-    ensemble=ensemble,
-    variants=variants,
-    batch_size=64,
-))
+results = list(
+    score_variants_from_ensemble(
+        ensemble=ensemble,
+        variants=variants,
+        batch_size=64,
+    )
+)
 
 print(f"\nScored {len(results)} variants:\n")
 print(f"{'ID':<25} {'SAD':>10} {'log_fc':>10} {'JSD':>10} {'pearson':>10}")
@@ -138,19 +138,21 @@ lc_include, pseudocount = get_log_count_params(config.model_config_)
 
 # Score just one variant to show the full VariantResult
 single_variant = [Variant("chr6", 93940567, "C", "T", id="peak1_summit")]
-result = next(score_variants(
-    model=ensemble,
-    variants=single_variant,
-    fasta=fasta,
-    input_len=config.data_config.input_len,
-    log_counts_include_pseudocount=lc_include,
-    pseudocount=pseudocount,
-    device=device,
-))
+result = next(
+    score_variants(
+        model=ensemble,
+        variants=single_variant,
+        fasta=fasta,
+        input_len=config.data_config.input_len,
+        log_counts_include_pseudocount=lc_include,
+        pseudocount=pseudocount,
+        device=device,
+    )
+)
 
 print(f"Variant: {result.variant}")
 print(f"Interval: {result.interval}")
-print(f"\nEffect metrics:")
+print("\nEffect metrics:")
 for name, tensor in result.effects.items():
     print(f"  {name}: {tensor.item():.6f}")
 
@@ -191,13 +193,17 @@ from cerberus.variants import generate_variants
 # region = Interval("chr21", 41501137, 41501151)
 # chr21:41499923-41499938
 region = Interval("chr21", 41499923, 41499938)
-sat_variants = generate_variants(region, pyfaidx.Fasta(str(config.genome_config.fasta_path)))
+sat_variants = generate_variants(
+    region, pyfaidx.Fasta(str(config.genome_config.fasta_path))
+)
 
-sat_results = list(score_variants_from_ensemble(
-    ensemble=ensemble,
-    variants=sat_variants,
-    batch_size=128,
-))
+sat_results = list(
+    score_variants_from_ensemble(
+        ensemble=ensemble,
+        variants=sat_variants,
+        batch_size=128,
+    )
+)
 print(f"Scored {len(sat_results)} SNVs across {region}")
 
 # %%
@@ -210,19 +216,26 @@ writer = csv.writer(buf, delimiter="\t")
 writer.writerow(["chrom", "pos", "ref", "alt", "sad", "log_fc", "jsd"])
 for r in sat_results:
     e = r.effects
-    writer.writerow([
-        r.variant.chrom, r.variant.pos, r.variant.ref, r.variant.alt,
-        f"{e['sad'].item():.4f}",
-        f"{e['log_fc'].item():.6f}",
-        f"{e['jsd'].item():.8f}",
-    ])
+    writer.writerow(
+        [
+            r.variant.chrom,
+            r.variant.pos,
+            r.variant.ref,
+            r.variant.alt,
+            f"{e['sad'].item():.4f}",
+            f"{e['log_fc'].item():.6f}",
+            f"{e['jsd'].item():.8f}",
+        ]
+    )
 
 print(buf.getvalue()[:500])
 print(f"... ({len(sat_results)} rows total)")
 
 # %%
 # Find the top 10 variants by SAD (largest predicted effect)
-sorted_results = sorted(sat_results, key=lambda r: r.effects["sad"].item(), reverse=True)
+sorted_results = sorted(
+    sat_results, key=lambda r: r.effects["sad"].item(), reverse=True
+)
 
 print(f"\nTop 10 variants by SAD in {region}:\n")
 print(f"{'pos':>12} {'ref':>4} {'alt':>4} {'SAD':>10} {'log_fc':>10} {'JSD':>12}")
@@ -241,7 +254,9 @@ for r in sorted_results[:10]:
 # %%
 # Per-position max effect: for each reference base (in sequence order),
 # show the alt allele that causes the largest SAD.
-max_by_pos: dict[int, tuple[float, float, str, str]] = {}  # pos → (sad, log_fc, ref, alt)
+max_by_pos: dict[
+    int, tuple[float, float, str, str]
+] = {}  # pos → (sad, log_fc, ref, alt)
 for r in sat_results:
     sad = r.effects["sad"].item()
     log_fc = r.effects["log_fc"].item()

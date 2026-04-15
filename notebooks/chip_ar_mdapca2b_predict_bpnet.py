@@ -1,11 +1,10 @@
 # %% [markdown]
 # # Chip-AR MDAPCA2b Prediction Notebook (BPNet)
 #
-# This notebook demonstrates how to load a trained BPNet model and run predictions on genomic intervals.
-# It is based on the `examples/chip_ar_mdapca2b.py` training script (BPNet configuration).
+# This notebook demonstrates how to load a pretrained BPNet model and run predictions on genomic intervals.
+# The pretrained model is shipped in `pretrained/bpnet/`.
 
 # %%
-# Add project root to path if needed to import notebooks.paths
 import sys
 
 import matplotlib.pyplot as plt
@@ -15,183 +14,70 @@ import torch.nn.functional as F
 try:
     from paths import get_project_root
 except ImportError:
-    # If running from root, add notebooks/ to path
     sys.path.append("notebooks")
     from paths import get_project_root
 
-from cerberus.config import (
-    DataConfig,
-    GenomeConfig,
-    ModelConfig,
-    SamplerConfig,
-    TrainConfig,
-)
 from cerberus.dataset import CerberusDataset
 from cerberus.download import download_dataset, download_human_reference
-from cerberus.genome import create_genome_config
 from cerberus.model_ensemble import ModelEnsemble
 
 # %% [markdown]
-# ## 1. Setup Directories and Data
+# ## 1. Setup
 #
-# We define the data and checkpoint directories.
-# Make sure you have trained the BPNet model using `python examples/chip_ar_mdapca2b.py --model bpnet` first.
-
-# %%
-project_root = get_project_root()
-data_dir = project_root / "tests/data"
-# BPNet Checkpoint Directory
-checkpoint_dir = project_root / "tests/data/models/chip_ar_mdapca2b_bpnet/single-fold"
-
-print(f"Data Directory: {data_dir}")
-print(f"Checkpoint Directory: {checkpoint_dir}")
-
-if not checkpoint_dir.exists():
-    raise FileNotFoundError(
-        f"Checkpoint directory {checkpoint_dir} does not exist.\n"
-        "Please run 'python examples/chip_ar_mdapca2b.py --model bpnet' to train the model first."
-    )
-
-# %%
-# Download/Check Data
-print("Checking Data...")
-genome_files = download_human_reference(data_dir / "genome", name="hg38")
-dataset_files = download_dataset(data_dir / "dataset", name="mdapca2b_ar")
-
-# %% [markdown]
-# ## 2. Configuration
-#
-# We setup the configuration for BPNet.
-# Key differences from Baseline:
-# - `input_len=2114`, `output_len=1000`.
-# - `output_bin_size=1`.
-# - `log_transform=False` (Raw counts).
-
-# %%
-# Genome Config
-genome_config: GenomeConfig = create_genome_config(
-    name="hg38",
-    fasta_path=genome_files["fasta"],
-    species="human",
-    fold_type="chrom_partition",
-    fold_args={"k": 5, "val_fold": 1, "test_fold": 0},
-    exclude_intervals={
-        "blacklist": genome_files["blacklist"],
-        "gaps": genome_files["gaps"],
-    },
-)
-
-# Data Config for BPNet
-input_len = 2114
-output_len = 1000
-output_bin_size = 1
-log_transform = False
-
-data_config = DataConfig(
-    inputs={},
-    targets={"signal": dataset_files["bigwig"]},
-    input_len=input_len,
-    output_len=output_len,
-    max_jitter=128,  # Matches training config (ignored if is_train=False)
-    output_bin_size=output_bin_size,
-    encoding="ACGT",
-    log_transform=log_transform,
-    reverse_complement=True,  # Matches training config (ignored if is_train=False)
-    target_scale=1.0,
-    use_sequence=True,
-)
-
-# Sampler Config
-# Note: For prediction, we want exact windows centered on peaks.
-# However, if we reuse training configs, we might have padded_size = input_len + 2*max_jitter.
-# The Jitter transform (when deterministic) performs a center crop.
-# So we can define padded_size to accommodate jitter if we want to reuse config exactly.
-# But here we define a prediction-specific sampler config.
-sampler_config = SamplerConfig(
-    sampler_type="interval",
-    padded_size=input_len + 2 * 128,  # Matches training setup
-    sampler_args={"intervals_path": dataset_files["narrowPeak"]},
-)
-
-# Train Config
-train_config = TrainConfig(
-    batch_size=64,
-    max_epochs=1,
-    learning_rate=1e-3,
-    weight_decay=0.0,
-    patience=1,
-    optimizer="adamw",
-    filter_bias_and_bn=True,
-    reload_dataloaders_every_n_epochs=0,
-    scheduler_type="cosine",
-    scheduler_args={},
-    adam_eps=1e-7,
-    gradient_clip_val=None,
-)
-
-# Model Config for BPNet
-model_config = ModelConfig(
-    name="BPNet",
-    model_cls="cerberus.models.bpnet.BPNet",
-    loss_cls="cerberus.models.bpnet.BPNetLoss",
-    loss_args={
-        "alpha": 1.0,
-        "log1p_targets": log_transform,
-    },
-    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-    metrics_args={},
-    model_args={
-        "input_channels": ["A", "C", "G", "T"],
-        "output_channels": ["signal"],
-        "filters": 64,
-        "n_dilated_layers": 8,
-    },
-)
-
-# %% [markdown]
-# ## 3. Initialize Dataset and Sampler
-#
-# We initialize the dataset and split it to get the test fold sampler.
-
-# %%
-print("Initializing Dataset...")
-# We set is_train=False to ensure deterministic behavior (disables jitter/RC)
-# even though the config has them enabled.
-dataset = CerberusDataset(
-    genome_config=genome_config,
-    data_config=data_config,
-    sampler_config=sampler_config,
-    is_train=False,
-)
-
-print("Splitting folds (Test Fold = 0)...")
-_, _, test_dataset = dataset.split_folds(test_fold=0, val_fold=1)
-test_sampler = test_dataset.sampler
-
-print(f"Number of test intervals: {len(test_sampler)}")
-
-# %% [markdown]
-# ## 4. Load Model
-#
-# We use `ModelEnsemble` to load the trained model from the checkpoint.
-
+# We load the pretrained BPNet model from `pretrained/bpnet/`. All configuration
+# (genome, data, model) is recovered automatically from `hparams.yaml`.
+# The dataset (MDA-PCA-2b AR, hg38) is downloaded if not already present.
 # %%
 from cerberus.utils import resolve_device
+
+project_root = get_project_root()
+checkpoint_dir = project_root / "pretrained/bpnet"
+
+if not checkpoint_dir.exists():
+    raise FileNotFoundError(f"Pretrained model not found: {checkpoint_dir}")
 
 device = resolve_device()
 print(f"Using device: {device}")
 
 print("Loading Model...")
-model_ensemble = ModelEnsemble(
-    checkpoint_path=checkpoint_dir,
-    model_config=model_config,
-    data_config=data_config,
-    genome_config=genome_config,
-    device=device,
-)
+model_ensemble = ModelEnsemble(checkpoint_path=checkpoint_dir, device=device)
+config = model_ensemble.cerberus_config
+
+print(f"Model: {config.model_config_.name}")
+print(f"Input length: {config.data_config.input_len}")
+
+# %%
+# Download/Check Data
+data_dir = project_root / "tests/data"
+print("Checking Data...")
+genome_files = download_human_reference(data_dir / "genome", name="hg38")
+dataset_files = download_dataset(data_dir / "dataset", name="mdapca2b_ar")
 
 # %% [markdown]
-# ## 5. Run Prediction
+# ## 2. Initialize Dataset and Sampler
+#
+# We initialize the dataset from the ensemble config and split it to get the test fold sampler.
+
+# %%
+print("Initializing Dataset...")
+dataset = CerberusDataset(
+    genome_config=config.genome_config,
+    data_config=config.data_config,
+    sampler_config=config.sampler_config,
+    is_train=False,
+)
+
+fold_args = config.genome_config.fold_args
+print(f"Splitting folds (Test Fold = {fold_args['test_fold']})...")
+_, _, test_dataset = dataset.split_folds(
+    test_fold=fold_args["test_fold"], val_fold=fold_args["val_fold"]
+)
+test_sampler = test_dataset.sampler
+
+print(f"Number of test intervals: {len(test_sampler)}")
+
+# %% [markdown]
+# ## 3. Run Prediction
 #
 # We predict on a subset of the test intervals.
 
@@ -202,6 +88,7 @@ target_interval = test_sampler[target_idx]
 
 # Ensure interval matches input_len (center crop if needed)
 # predict_intervals expects intervals of exact input_len
+input_len = config.data_config.input_len
 if len(target_interval) > input_len:
     target_interval = target_interval.center(input_len)
 
@@ -226,7 +113,7 @@ print("Prediction Complete!")
 print(f"Merged Interval: {merged_interval}")
 
 # %% [markdown]
-# ## 6. Analyze Results
+# ## 4. Analyze Results
 #
 # BPNet returns `(profile_logits, log_counts)`.
 # `predict_intervals` aggregates these into tracks.
@@ -261,7 +148,8 @@ for key, track in outputs.items():
 # Visualizing the interval
 print(f"Visualizing interval: {target_interval}")
 
-output_bin_size = data_config.output_bin_size
+output_len = config.data_config.output_len
+output_bin_size = config.data_config.output_bin_size
 rel_start_bp = target_interval.center(output_len).start - merged_interval.start
 rel_start_bin = rel_start_bp // output_bin_size
 n_bins = output_len // output_bin_size

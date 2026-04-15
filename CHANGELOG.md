@@ -49,6 +49,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Internal design document** (`docs/internal/variant_tool_design.md`):
   Records design process, tool audit, library gap analysis, and four
   design options (A-D) from minimal to full-pipeline.
+- **Pretrained BPNet model** (`pretrained/bpnet/`):
+  Ships a trained BPNet (AR ChIP-seq, MDA-PCA-2b, hg38) ready for
+  inference via `ModelEnsemble("pretrained/bpnet")`. Minimal footprint:
+  `model.pt`, `hparams.yaml`, and `ensemble_metadata.yaml` only.
+
+### Changed
+- **Consolidated optional dependencies** (`pyproject.toml`):
+  Replaced six optional-dependency groups (`variants`, `attribution`,
+  `tfmodisco`, `interpret`, `plots`, `scatac`, `docs`) with two:
+  `extras` (all non-core libraries) and `dev` (extras + tooling + mkdocs).
+  Fixed modisco package name (`modisco` → `modisco-lite`). Removed unused
+  `jupyter` and `ipywidgets`.
+- **Simplified prediction notebook** (`notebooks/chip_ar_mdapca2b_predict_bpnet.py`):
+  Now loads from `pretrained/bpnet/` via `ModelEnsemble` instead of
+  manually reconstructing all configs. Removed ~100 lines of redundant setup.
 
 ## [1.0.0a3] - 2026-04-08
 

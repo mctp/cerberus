@@ -21,6 +21,20 @@ When multiple models predict on the same interval, or when tiling produces overl
     **Note on Alignment**: When merging overlapping predictions (e.g. from tiling), if `output_bin_size > 1`, Cerberus performs a **"snap-to-grid"** alignment. 
     Prediction starts are floored to the nearest bin relative to the merged interval start. This ensures consistent binning but means sub-bin shifts (e.g. from jitter) are quantized.
 
+## Pretrained Models
+
+Cerberus ships a pretrained BPNet model in the `pretrained/` directory, ready for inference without retraining:
+
+| Model | Path | Dataset | Architecture |
+|---|---|---|---|
+| BPNet (AR ChIP-seq) | `pretrained/bpnet/` | MDA-PCA-2b AR (hg38) | BPNet (kernel 21, 8 dilated layers) |
+
+```python
+from cerberus.model_ensemble import ModelEnsemble
+
+ensemble = ModelEnsemble("pretrained/bpnet", device="cuda")
+```
+
 ## Setup for Prediction
 
 To perform prediction, you need to instantiate a `ModelEnsemble`.

@@ -2,6 +2,23 @@
 
 Cerberus provides implementations of standard deep learning architectures for genomic sequence modeling.
 
+## Pretrained Models
+
+Ready-to-use models are shipped in the `pretrained/` directory:
+
+| Model | Path | Dataset | Architecture |
+|---|---|---|---|
+| BPNet (AR ChIP-seq) | `pretrained/bpnet/` | MDA-PCA-2b AR (hg38) | BPNet (kernel 21, 8 dilated layers, 64 filters) |
+
+Load with `ModelEnsemble`:
+
+```python
+from cerberus.model_ensemble import ModelEnsemble
+ensemble = ModelEnsemble("pretrained/bpnet", device="cuda")
+```
+
+See [Prediction](prediction.md) for inference examples.
+
 ## Pomeranian
 
 **Implementation**: `cerberus.models.Pomeranian` (Default) / `PomeranianK5`  
