@@ -49,10 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Internal design document** (`docs/internal/variant_tool_design.md`):
   Records design process, tool audit, library gap analysis, and four
   design options (A-D) from minimal to full-pipeline.
-- **Pretrained BPNet model** (`pretrained/bpnet/`):
-  Ships a trained BPNet (AR ChIP-seq, MDA-PCA-2b, hg38) ready for
-  inference via `ModelEnsemble("pretrained/bpnet")`. Minimal footprint:
-  `model.pt`, `hparams.yaml`, and `ensemble_metadata.yaml` only.
+- **Pretrained models** (`pretrained/`):
+  Ships trained BPNet and Pomeranian models (AR ChIP-seq, MDA-PCA-2b,
+  hg38) ready for inference via `ModelEnsemble("pretrained/bpnet")` or
+  `ModelEnsemble("pretrained/pomeranian")`. Minimal footprint: `model.pt`,
+  `hparams.yaml`, and `ensemble_metadata.yaml` only.
 
 ### Changed
 - **Consolidated optional dependencies** (`pyproject.toml`):

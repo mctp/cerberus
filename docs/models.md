@@ -9,6 +9,7 @@ Ready-to-use models are shipped in the `pretrained/` directory:
 | Model | Path | Dataset | Architecture |
 |---|---|---|---|
 | BPNet (AR ChIP-seq) | `pretrained/bpnet/` | MDA-PCA-2b AR (hg38) | BPNet (kernel 21, 8 dilated layers, 64 filters) |
+| Pomeranian (AR ChIP-seq) | `pretrained/pomeranian/` | MDA-PCA-2b AR (hg38) | Pomeranian (ConvNeXtV2 stem, 8 PGC layers, 64 filters) |
 
 Load with `ModelEnsemble`:
 
