@@ -25,14 +25,13 @@ except ImportError:
     sys.path.append("notebooks")
     from paths import get_project_root
 
-from cerberus.dataset import CerberusDataset
 from cerberus.download import download_dataset, download_human_reference
 from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
-from cerberus.output import (
-    compute_obs_total_log_counts,
-    compute_total_log_counts,
-    get_log_count_params,
+from cerberus.predict_misc import (
+    create_eval_dataset,
+    observed_log_counts,
+    predict_log_counts,
 )
 from cerberus.utils import resolve_device
 
@@ -83,10 +82,13 @@ print(f"Example interval: {test_intervals[0]} (length={len(test_intervals[0])})"
 # ## 3. Helper: Predict and Observe Log-Counts For One Model
 #
 # The two pretrained models have slightly different input lengths
-# (BPNet: 2114, Pomeranian: 2112) so the same intervals must be center-cropped
-# per model before inference. We loop over batches, recording both the
-# model's predicted total log-counts and the observed total log-counts
-# extracted from the target BigWig over the model's output window.
+# (BPNet: 2114, Pomeranian: 2112) so the same fixture intervals must be
+# center-cropped per model. The mirrored helpers
+# `predict_log_counts` and `observed_log_counts` from
+# `cerberus.predict_misc` then handle batched inference and ground-truth
+# extraction, sharing pseudocount + scaling parameters resolved from the
+# model's loss class — so the two arrays are guaranteed to live in the
+# same log-space.
 
 
 # %%
@@ -94,71 +96,23 @@ def predict_and_observe(
     checkpoint_dir: Path,
     intervals: list[Interval],
     device: torch.device | str,
-    batch_size: int = 64,
 ) -> tuple[np.ndarray, np.ndarray, str]:
-    """Run an ensemble on `intervals` and return (predicted, observed, name).
-
-    Both arrays are total log-counts per interval. Pseudocount handling is
-    inferred from the model's loss class via ``get_log_count_params``.
-    """
+    """Run an ensemble on `intervals` and return (predicted, observed, name)."""
     print(f"\nLoading ensemble from {checkpoint_dir.relative_to(project_root)}")
     ensemble = ModelEnsemble(checkpoint_path=checkpoint_dir, device=device)
     config = ensemble.cerberus_config
-
-    input_len = config.data_config.input_len
-    output_len = config.data_config.output_len
-    target_scale = config.data_config.target_scale
     name = config.model_config_.name
-    log_inc_pc, pc = get_log_count_params(config.model_config_)
     print(
-        f"  Model: {name} (input_len={input_len}, output_len={output_len}, "
-        f"log_counts_include_pseudocount={log_inc_pc}, pseudocount={pc})"
+        f"  Model: {name} (input_len={config.data_config.input_len}, "
+        f"output_len={config.data_config.output_len})"
     )
 
-    # Center each fixture interval to this model's input window.
-    centered = [iv.center(input_len) for iv in intervals]
+    centered = [iv.center(config.data_config.input_len) for iv in intervals]
+    dataset = create_eval_dataset(config)
 
-    dataset = CerberusDataset(
-        genome_config=config.genome_config,
-        data_config=config.data_config,
-        sampler_config=None,
-        is_train=False,
-    )
-    if dataset.target_signal_extractor is None:
-        raise RuntimeError("Target signal extractor is missing from the dataset.")
-
-    pred_log_counts: list[float] = []
-    obs_log_counts: list[float] = []
-
-    for batched_output, batch_intervals in ensemble.predict_intervals_batched(
-        centered,
-        dataset,
-        batch_size=batch_size,
-    ):
-        # Predicted total log-counts (B,)
-        pred = compute_total_log_counts(
-            batched_output,
-            log_counts_include_pseudocount=log_inc_pc,
-            pseudocount=pc,
-        )
-        pred_log_counts.extend(pred.detach().cpu().tolist())
-
-        # Observed total log-counts: extract the raw target signal over the
-        # model's output window (centered on the input interval) and sum.
-        obs_signals = []
-        for iv in batch_intervals:
-            out_iv = iv.center(output_len)
-            obs_signals.append(dataset.target_signal_extractor.extract(out_iv))
-        raw = torch.stack(obs_signals)  # (B, C, output_len)
-        obs = compute_obs_total_log_counts(
-            raw,
-            target_scale=target_scale,
-            log_counts_include_pseudocount=log_inc_pc,
-            pseudocount=pc,
-        )
-        obs_log_counts.extend(obs.detach().cpu().tolist())
-
-    return np.asarray(pred_log_counts), np.asarray(obs_log_counts), name
+    pred = predict_log_counts(ensemble, dataset, centered)
+    obs = observed_log_counts(dataset, centered, config)
+    return np.asarray(pred), np.asarray(obs), name
 
 
 # %% [markdown]
