@@ -345,7 +345,9 @@ def _generate_dls_baselines(
     if strategy == "shuffle":
         refs: list[torch.Tensor] = []
         for _ in range(n_baselines):
-            perm = torch.as_tensor(rng.permutation(seq_len), device=x.device, dtype=torch.long)
+            perm = torch.as_tensor(
+                rng.permutation(seq_len), device=x.device, dtype=torch.long
+            )
             refs.append(x[0, :, perm])
         return torch.stack(refs, dim=0)
 
@@ -361,7 +363,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         except ImportError as exc:  # pragma: no cover - import guard
             raise RuntimeError(
                 "captum is required for integrated_gradients. "
-                "Install with: pip install captum or pip install -e .[attribution]"
+                "Install with: pip install captum or pip install -e .[extras]"
             ) from exc
         IntegratedGradients = _IntegratedGradients
     elif args.attribution_method == "deep_lift_shap":
@@ -370,7 +372,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         except ImportError as exc:  # pragma: no cover - import guard
             raise RuntimeError(
                 "captum is required for deep_lift_shap. "
-                "Install with: pip install captum or pip install -e .[attribution]"
+                "Install with: pip install captum or pip install -e .[extras]"
             ) from exc
         DeepLiftShap = _DeepLiftShap
 
@@ -385,7 +387,9 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
     cfg = parse_hparams_config(hparams_path)
     if not cfg.data_config.use_sequence:
-        raise ValueError("data_config.use_sequence is False; sequence attributions unavailable.")
+        raise ValueError(
+            "data_config.use_sequence is False; sequence attributions unavailable."
+        )
 
     if args.intervals_path is not None:
         intervals_path = args.intervals_path.resolve()
@@ -569,7 +573,9 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
                 attrs_per_example.append(attr_i)
                 delta_abs = delta_i.detach().abs()
                 dls_delta_abs_sum += float(delta_abs.sum().item())
-                dls_delta_abs_max = max(dls_delta_abs_max, float(delta_abs.max().item()))
+                dls_delta_abs_max = max(
+                    dls_delta_abs_max, float(delta_abs.max().item())
+                )
                 dls_delta_count += int(delta_abs.numel())
             attributions = torch.cat(attrs_per_example, dim=0)
         else:
@@ -627,7 +633,9 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     attr_all = np.concatenate(attr_batches, axis=0)
 
     if ohe_all.shape != attr_all.shape:
-        raise RuntimeError(f"Shape mismatch: ohe {ohe_all.shape} vs attrs {attr_all.shape}")
+        raise RuntimeError(
+            f"Shape mismatch: ohe {ohe_all.shape} vs attrs {attr_all.shape}"
+        )
 
     if args.attribution_method == "deep_lift_shap" and dls_delta_count > 0:
         dls_delta_abs_mean = dls_delta_abs_sum / dls_delta_count
@@ -667,7 +675,9 @@ def main() -> None:
     args = parser.parse_args()
 
     _, ohe_path, attr_path = _export_arrays(args)
-    logger.info("Attribution export complete. Use tools/run_tfmodisco.py for aggregation.")
+    logger.info(
+        "Attribution export complete. Use tools/run_tfmodisco.py for aggregation."
+    )
     logger.info("ohe:  %s", ohe_path)
     logger.info("attr: %s", attr_path)
 

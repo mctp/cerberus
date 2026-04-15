@@ -461,17 +461,12 @@ What the TF-MoDISco runner script does:
 Prerequisites:
 
 ```bash
-pip install modisco
+pip install modisco-lite
 # Optional (only if export uses --attribution-method integrated_gradients):
 pip install captum
 
-# Or install cerberus extras:
-pip install -e ".[tfmodisco]"
-pip install -e ".[attribution]"
-# (combined)
-pip install -e ".[interpret]"
-# (development + attribution)
-pip install -e ".[dev,attribution]"
+# Or install all cerberus extras:
+pip install -e ".[extras]"
 ```
 
 Step 1: export attribution NPZ files:

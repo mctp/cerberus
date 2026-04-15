@@ -27,19 +27,30 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-variants = ["cyvcf2"]
-dev = ["pytest", "pybigwig", "pysam", "cyvcf2", "matplotlib", "jupyter", "ipywidgets", "snapatac2", "ruff", "pre-commit"]
-docs = [
+extras = [
+  "captum",
+  "modisco-lite",
+  "cyvcf2",
+  "pybigwig",
+  "pysam",
+  "anndata",
+  "snapatac2",
+  "matplotlib",
+  "seaborn",
+  "polars",
+]
+dev = [
+  "cerberus[extras]",
+  "pytest",
+  "ruff",
+  "pre-commit",
   "mkdocs>=1.6",
   "mkdocs-material>=9.5",
   "mkdocs-git-revision-date-localized-plugin>=1.2",
 ]
-attribution = ["captum"]
-tfmodisco = ["modisco"]
-interpret = ["captum", "modisco"]
 
 [project.urls]
-"Homepage" = "https://github.com/marcincieslik/cerberus"
+"Homepage" = "https://mctp.github.io/cerberus/"
 
 [tool.setuptools.packages.find]
 where = ["src"]

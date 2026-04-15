@@ -32,7 +32,7 @@ No changes to the model, training pipeline, or core library are required. Varian
 Variant effect prediction requires the `cyvcf2` package for VCF parsing:
 
 ```bash
-pip install cerberus[variants]
+pip install cerberus[extras]
 ```
 
 Or install cyvcf2 directly:

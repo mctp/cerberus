@@ -3,7 +3,7 @@
 ## Setup (one time)
 
 ```bash
-pip install -e ".[docs]"
+pip install -e ".[dev]"
 ```
 
 ## Editing docs

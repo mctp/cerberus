@@ -65,7 +65,9 @@ def _run_modisco_motifs(
     subprocess.run(cmd, check=True)
 
 
-def _run_modisco_report(modisco_h5: Path, report_dir: Path, meme_db: Path | None) -> None:
+def _run_modisco_report(
+    modisco_h5: Path, report_dir: Path, meme_db: Path | None
+) -> None:
     cmd = [
         "modisco",
         "report",
@@ -159,11 +161,15 @@ def main() -> None:
     output_h5 = args.modisco_output.resolve()
 
     if not args.run_motifs and not args.run_report:
-        raise ValueError("Nothing to do: both --no-run-motifs and --run-report not set.")
+        raise ValueError(
+            "Nothing to do: both --no-run-motifs and --run-report not set."
+        )
 
     if args.run_motifs:
         if args.ohe_path is None or args.attr_path is None:
-            raise ValueError("--ohe-path and --attr-path are required when --run-motifs is enabled.")
+            raise ValueError(
+                "--ohe-path and --attr-path are required when --run-motifs is enabled."
+            )
 
         ohe_path = args.ohe_path.resolve()
         attr_path = args.attr_path.resolve()
@@ -187,7 +193,7 @@ def main() -> None:
         except FileNotFoundError as exc:
             raise RuntimeError(
                 "`modisco` command not found. Install TF-MoDISco CLI first, "
-                "e.g. `pip install modisco` or `pip install -e .[tfmodisco]`."
+                "e.g. `pip install modisco-lite` or `pip install -e .[extras]`."
             ) from exc
 
     if args.run_report:
