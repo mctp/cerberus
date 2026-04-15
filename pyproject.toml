@@ -36,7 +36,6 @@ extras = [
   "anndata",
   "snapatac2",
   "matplotlib",
-  "seaborn",
   "polars",
 ]
 dev = [

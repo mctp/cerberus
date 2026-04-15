@@ -19,7 +19,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import polars as pl
-import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +35,51 @@ def get_args():
         help="Path to the output directory or specific log version",
     )
     return parser.parse_args()
+
+
+def _plot_curves(
+    df: pl.DataFrame,
+    metrics: list[tuple[str, str]],
+    title: str,
+    ylabel: str,
+    output_path: Path,
+    step_min,
+    step_max,
+) -> None:
+    """Plot one or more training-log curves on a shared figure.
+
+    Each ``(column, label)`` pair is drawn as a line. Columns missing from
+    the DataFrame or with only null/NaN values are skipped.  Validation
+    columns (identified by ``"val"`` in the column name) get point markers;
+    train columns are drawn as a plain line.  No figure is produced if
+    nothing survives filtering.
+    """
+    series = []
+    for col, label in metrics:
+        if col not in df.columns:
+            continue
+        sub = df.filter(pl.col(col).is_not_null() & pl.col(col).is_not_nan())
+        if sub.height == 0:
+            continue
+        series.append((col, label, sub["step"].to_numpy(), sub[col].to_numpy()))
+
+    if not series:
+        return
+
+    plt.figure(figsize=(10, 6))
+    for col, label, steps, values in series:
+        if "val" in col:
+            plt.plot(steps, values, label=label, marker="o", markersize=6, linewidth=2)
+        else:
+            plt.plot(steps, values, label=label, linewidth=2)
+    plt.title(title)
+    plt.xlabel("Step")
+    plt.ylabel(ylabel)
+    plt.xlim(step_min, step_max)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close()
 
 
 def plot_metrics(metrics_path, output_dir):
@@ -57,53 +101,47 @@ def plot_metrics(metrics_path, output_dir):
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
-    # Set style
-    sns.set_style("whitegrid")
+    # Whitegrid style (bundled with matplotlib, no seaborn import required).
+    plt.style.use("seaborn-v0_8-whitegrid")
 
     # Get step range for consistent x-axis
     step_min = df["step"].min()
     step_max = df["step"].max()
 
-    # 1. Training Loss (step-wise)
+    # 1. Training Loss — has a special smoothed overlay, so kept custom.
     if "train_loss" in df.columns:
         plt.figure(figsize=(10, 6))
-        # Filter rows where train_loss is not NaN
         train_df = df.filter(
             pl.col("train_loss").is_not_null() & pl.col("train_loss").is_not_nan()
         )
         if train_df.height > 0:
-            sns.lineplot(
-                data=train_df.to_pandas(),
-                x="step",
-                y="train_loss",
+            plt.plot(
+                train_df["step"].to_numpy(),
+                train_df["train_loss"].to_numpy(),
                 label="Train Loss",
                 alpha=0.6,
             )
-            # Add a smoothed version
             if train_df.height > 20:
                 train_df = train_df.with_columns(
                     pl.col("train_loss")
                     .rolling_mean(window_size=10)
                     .alias("train_loss_smooth")
                 )
-                sns.lineplot(
-                    data=train_df.to_pandas(),
-                    x="step",
-                    y="train_loss_smooth",
+                plt.plot(
+                    train_df["step"].to_numpy(),
+                    train_df["train_loss_smooth"].to_numpy(),
                     label="Train Loss (Smoothed)",
                     linewidth=2,
                 )
 
-        # Add validation loss if available
         if "val_loss" in df.columns:
             val_df = df.filter(
                 pl.col("val_loss").is_not_null() & pl.col("val_loss").is_not_nan()
             )
             if val_df.height > 0:
-                sns.lineplot(
-                    data=val_df.to_pandas(),
-                    x="step",
-                    y="val_loss",
+                plt.plot(
+                    val_df["step"].to_numpy(),
+                    val_df["val_loss"].to_numpy(),
                     label="Validation Loss",
                     marker="o",
                     markersize=6,
@@ -119,302 +157,96 @@ def plot_metrics(metrics_path, output_dir):
         plt.savefig(plots_dir / "loss_curve.png", dpi=300)
         plt.close()
 
-    # 2. Profile Pearson Correlation
-    pearson_metrics = []
-    if "train_pearson" in df.columns:
-        pearson_metrics.append("train_pearson")
-    if "val_pearson" in df.columns:
-        pearson_metrics.append("val_pearson")
+    # Remaining curves follow a single shared pattern: (candidates, title, ylabel, filename).
+    # Each entry plots whatever subset of candidate columns is present and populated.
+    curve_specs: list[tuple[list[tuple[str, str]], str, str, str]] = [
+        (
+            [
+                ("train_pearson", "Train Pearson (Profile)"),
+                ("val_pearson", "Validation Pearson (Profile)"),
+            ],
+            "Profile Pearson Correlation",
+            "Pearson r",
+            "pearson_curve.png",
+        ),
+        (
+            [
+                ("train_pearson_log_counts", "Train Pearson (Log Counts)"),
+                ("val_pearson_log_counts", "Validation Pearson (Log Counts)"),
+            ],
+            "Log Counts Pearson Correlation",
+            "Pearson r (log counts)",
+            "pearson_log_counts_curve.png",
+        ),
+        (
+            [
+                ("train_mse_log_counts", "Train MSE (Log Counts)"),
+                ("val_mse_log_counts", "Validation MSE (Log Counts)"),
+            ],
+            "Log Counts Mean Squared Error",
+            "Log Counts MSE",
+            "mse_log_counts_curve.png",
+        ),
+        (
+            [
+                ("train_profile_loss", "Train Profile Loss"),
+                ("val_profile_loss", "Validation Profile Loss"),
+            ],
+            "Profile Loss",
+            "Profile Loss",
+            "profile_loss_curve.png",
+        ),
+        (
+            [
+                ("train_count_loss", "Train Count Loss"),
+                ("val_count_loss", "Validation Count Loss"),
+            ],
+            "Count Loss",
+            "Count Loss",
+            "count_loss_curve.png",
+        ),
+        (
+            [
+                ("train_recon_loss", "Train Recon Loss"),
+                ("val_recon_loss", "Validation Recon Loss"),
+            ],
+            "Reconstruction Loss (Dalmatian)",
+            "Recon Loss",
+            "recon_loss_curve.png",
+        ),
+        (
+            [
+                ("train_bias_loss", "Train Bias Loss"),
+                ("val_bias_loss", "Validation Bias Loss"),
+            ],
+            "Bias Loss (Dalmatian)",
+            "Bias Loss",
+            "bias_loss_curve.png",
+        ),
+    ]
 
-    if pearson_metrics:
-        plt.figure(figsize=(10, 6))
-        for metric in pearson_metrics:
-            metric_df = df.filter(
-                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
-            )
-            if metric_df.height > 0:
-                label = (
-                    "Train Pearson (Profile)"
-                    if "train" in metric
-                    else "Validation Pearson (Profile)"
-                )
-                sns.lineplot(
-                    data=metric_df.to_pandas(),
-                    x="step",
-                    y=metric,
-                    label=label,
-                    marker="o",
-                )
+    for metrics, title, ylabel, fname in curve_specs:
+        _plot_curves(df, metrics, title, ylabel, plots_dir / fname, step_min, step_max)
 
-        plt.title("Profile Pearson Correlation")
-        plt.xlabel("Step")
-        plt.ylabel("Pearson r")
-        plt.xlim(step_min, step_max)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(plots_dir / "pearson_curve.png", dpi=300)
-        plt.close()
-
-    # 3. Profile MSE
-    mse_profile_metrics = []
-    if "train_mse_profile" in df.columns:
-        mse_profile_metrics.append("train_mse_profile")
-    if "val_mse_profile" in df.columns:
-        mse_profile_metrics.append("val_mse_profile")
-
-    # Backward compatibility
-    if not mse_profile_metrics:
-        if "train_mse" in df.columns:
-            mse_profile_metrics.append("train_mse")
-        if "val_mse" in df.columns:
-            mse_profile_metrics.append("val_mse")
-
-    if mse_profile_metrics:
-        plt.figure(figsize=(10, 6))
-        for metric in mse_profile_metrics:
-            metric_df = df.filter(
-                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
-            )
-            if metric_df.height > 0:
-                label = (
-                    "Train MSE (Profile)"
-                    if "train" in metric
-                    else "Validation MSE (Profile)"
-                )
-                sns.lineplot(
-                    data=metric_df.to_pandas(),
-                    x="step",
-                    y=metric,
-                    label=label,
-                    marker="o",
-                )
-
-        plt.title("Profile Mean Squared Error")
-        plt.xlabel("Step")
-        plt.ylabel("Profile MSE")
-        plt.xlim(step_min, step_max)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(plots_dir / "mse_profile_curve.png", dpi=300)
-        plt.close()
-
-    # 4. Log Counts MSE
-    mse_counts_metrics = []
-    if "train_mse_log_counts" in df.columns:
-        mse_counts_metrics.append("train_mse_log_counts")
-    if "val_mse_log_counts" in df.columns:
-        mse_counts_metrics.append("val_mse_log_counts")
-
-    if mse_counts_metrics:
-        plt.figure(figsize=(10, 6))
-        for metric in mse_counts_metrics:
-            metric_df = df.filter(
-                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
-            )
-            if metric_df.height > 0:
-                label = (
-                    "Train MSE (Log Counts)"
-                    if "train" in metric
-                    else "Validation MSE (Log Counts)"
-                )
-                sns.lineplot(
-                    data=metric_df.to_pandas(),
-                    x="step",
-                    y=metric,
-                    label=label,
-                    marker="o",
-                )
-
-        plt.title("Log Counts Mean Squared Error")
-        plt.xlabel("Step")
-        plt.ylabel("Log Counts MSE")
-        plt.xlim(step_min, step_max)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(plots_dir / "mse_log_counts_curve.png", dpi=300)
-        plt.close()
-
-    # 5. Log Counts Pearson Correlation
-    pearson_counts_metrics = []
-    if "train_pearson_log_counts" in df.columns:
-        pearson_counts_metrics.append("train_pearson_log_counts")
-    if "val_pearson_log_counts" in df.columns:
-        pearson_counts_metrics.append("val_pearson_log_counts")
-
-    if pearson_counts_metrics:
-        plt.figure(figsize=(10, 6))
-        for metric in pearson_counts_metrics:
-            metric_df = df.filter(
-                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
-            )
-            if metric_df.height > 0:
-                label = (
-                    "Train Pearson (Log Counts)"
-                    if "train" in metric
-                    else "Validation Pearson (Log Counts)"
-                )
-                sns.lineplot(
-                    data=metric_df.to_pandas(),
-                    x="step",
-                    y=metric,
-                    label=label,
-                    marker="o",
-                )
-
-        plt.title("Log Counts Pearson Correlation")
-        plt.xlabel("Step")
-        plt.ylabel("Pearson r (log counts)")
-        plt.xlim(step_min, step_max)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(plots_dir / "pearson_log_counts_curve.png", dpi=300)
-        plt.close()
-
-    # 6. Profile Loss
-    profile_loss_metrics = []
-    if "train_profile_loss" in df.columns:
-        profile_loss_metrics.append("train_profile_loss")
-    if "val_profile_loss" in df.columns:
-        profile_loss_metrics.append("val_profile_loss")
-
-    if profile_loss_metrics:
-        plt.figure(figsize=(10, 6))
-        for metric in profile_loss_metrics:
-            metric_df = df.filter(
-                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
-            )
-            if metric_df.height > 0:
-                label = (
-                    "Train Profile Loss"
-                    if "train" in metric
-                    else "Validation Profile Loss"
-                )
-                marker = None if "train" in metric else "o"
-                sns.lineplot(
-                    data=metric_df.to_pandas(),
-                    x="step",
-                    y=metric,
-                    label=label,
-                    marker=marker,
-                    markersize=6,
-                )
-
-        plt.title("Profile Loss")
-        plt.xlabel("Step")
-        plt.ylabel("Profile Loss")
-        plt.xlim(step_min, step_max)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(plots_dir / "profile_loss_curve.png", dpi=300)
-        plt.close()
-
-    # 7. Count Loss
-    count_loss_metrics = []
-    if "train_count_loss" in df.columns:
-        count_loss_metrics.append("train_count_loss")
-    if "val_count_loss" in df.columns:
-        count_loss_metrics.append("val_count_loss")
-
-    if count_loss_metrics:
-        plt.figure(figsize=(10, 6))
-        for metric in count_loss_metrics:
-            metric_df = df.filter(
-                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
-            )
-            if metric_df.height > 0:
-                label = (
-                    "Train Count Loss" if "train" in metric else "Validation Count Loss"
-                )
-                marker = None if "train" in metric else "o"
-                sns.lineplot(
-                    data=metric_df.to_pandas(),
-                    x="step",
-                    y=metric,
-                    label=label,
-                    marker=marker,
-                    markersize=6,
-                )
-
-        plt.title("Count Loss")
-        plt.xlabel("Step")
-        plt.ylabel("Count Loss")
-        plt.xlim(step_min, step_max)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(plots_dir / "count_loss_curve.png", dpi=300)
-        plt.close()
-
-    # 8. Recon Loss (DalmatianLoss)
-    recon_loss_metrics = []
-    if "train_recon_loss" in df.columns:
-        recon_loss_metrics.append("train_recon_loss")
-    if "val_recon_loss" in df.columns:
-        recon_loss_metrics.append("val_recon_loss")
-
-    if recon_loss_metrics:
-        plt.figure(figsize=(10, 6))
-        for metric in recon_loss_metrics:
-            metric_df = df.filter(
-                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
-            )
-            if metric_df.height > 0:
-                label = (
-                    "Train Recon Loss" if "train" in metric else "Validation Recon Loss"
-                )
-                marker = None if "train" in metric else "o"
-                sns.lineplot(
-                    data=metric_df.to_pandas(),
-                    x="step",
-                    y=metric,
-                    label=label,
-                    marker=marker,
-                    markersize=6,
-                )
-
-        plt.title("Reconstruction Loss (Dalmatian)")
-        plt.xlabel("Step")
-        plt.ylabel("Recon Loss")
-        plt.xlim(step_min, step_max)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(plots_dir / "recon_loss_curve.png", dpi=300)
-        plt.close()
-
-    # 9. Bias Loss (DalmatianLoss)
-    bias_loss_metrics = []
-    if "train_bias_loss" in df.columns:
-        bias_loss_metrics.append("train_bias_loss")
-    if "val_bias_loss" in df.columns:
-        bias_loss_metrics.append("val_bias_loss")
-
-    if bias_loss_metrics:
-        plt.figure(figsize=(10, 6))
-        for metric in bias_loss_metrics:
-            metric_df = df.filter(
-                pl.col(metric).is_not_null() & pl.col(metric).is_not_nan()
-            )
-            if metric_df.height > 0:
-                label = (
-                    "Train Bias Loss" if "train" in metric else "Validation Bias Loss"
-                )
-                marker = None if "train" in metric else "o"
-                sns.lineplot(
-                    data=metric_df.to_pandas(),
-                    x="step",
-                    y=metric,
-                    label=label,
-                    marker=marker,
-                    markersize=6,
-                )
-
-        plt.title("Bias Loss (Dalmatian)")
-        plt.xlabel("Step")
-        plt.ylabel("Bias Loss")
-        plt.xlim(step_min, step_max)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(plots_dir / "bias_loss_curve.png", dpi=300)
-        plt.close()
+    # Profile MSE has backward-compat fallback to unprefixed "train_mse"/"val_mse".
+    profile_mse = [
+        ("train_mse_profile", "Train MSE (Profile)"),
+        ("val_mse_profile", "Validation MSE (Profile)"),
+    ]
+    if not any(col in df.columns for col, _ in profile_mse):
+        profile_mse = [
+            ("train_mse", "Train MSE (Profile)"),
+            ("val_mse", "Validation MSE (Profile)"),
+        ]
+    _plot_curves(
+        df,
+        profile_mse,
+        "Profile Mean Squared Error",
+        "Profile MSE",
+        plots_dir / "mse_profile_curve.png",
+        step_min,
+        step_max,
+    )
 
     logger.info(f"Plots saved to {plots_dir}")
 

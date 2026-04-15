@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`tools/plot_training_results.py`** no longer depends on seaborn.
+  The 9 repetitive per-metric plot blocks collapse into a single
+  `_plot_curves` helper using `plt.plot` directly; the whitegrid look
+  is preserved via matplotlib's bundled `seaborn-v0_8-whitegrid` style
+  (no seaborn install required).  `seaborn` is removed from the
+  `extras` dependency group in `pyproject.toml`.
+
 ### Added
 - **`observed_log_counts` helper** (`predict_misc.py`):
   Mirror of `predict_log_counts` that extracts ground-truth total
