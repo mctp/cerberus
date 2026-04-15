@@ -713,7 +713,7 @@ For a detailed guide, see [**Prediction**](prediction.md).
     *   This automatically switches the data pipeline to use **deterministic transforms**.
 4.  **Run Prediction**: Use `model_ensemble.predict_intervals()` or `predict_output_intervals()`.
 
-**Example Reference**: `notebooks/chip_ar_mdapca2b_predict_bpnet.py` shows how to load a trained BPNet model and run inference on test set peaks.
+**Example Reference**: `notebooks/chip_ar_mdapca2b_predict_bpnet.py` shows how to load a trained BPNet model and run inference on test set peaks. `notebooks/chip_ar_mdapca2b_compare_models.py` extends this to compare both pretrained ensembles (BPNet and Pomeranian) on the full test interval fixture and produces predicted vs observed log-count scatter plots.
 
 ---
 

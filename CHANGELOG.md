@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Pretrained-model comparison notebook**
+  (`notebooks/chip_ar_mdapca2b_compare_models.py`):
+  Loads both pretrained ensembles (BPNet and Pomeranian) for the
+  MDA-PCA-2b AR ChIP-seq dataset, runs inference on the test intervals
+  in `tests/data/fixtures/chip_ar_mdapca2b_intervals_test.bed.gz`, and
+  produces a 3-panel scatter plot of predicted vs observed total
+  log-counts plus model-vs-model agreement, with Pearson R annotated.
 - **Shared CLI utilities** (`utils.py`):
   `resolve_device()` auto-detects CUDA/MPS/CPU (replaces 6 inline copies
   across tools). `parse_use_folds()` parses `--use_folds` CLI arguments
