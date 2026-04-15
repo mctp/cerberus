@@ -867,11 +867,18 @@ def test_bpnet_stable_deeplift():
     )
     model.eval()
 
-    def profile_metric(x: torch.Tensor) -> torch.Tensor:
-        out = model(x)
-        return out.logits.sum(dim=(-1, -2))  # (B,)
+    # captum's DeepLift registers forward hooks on its forward_func, so the
+    # metric must be an ``nn.Module`` rather than a plain Python callable.
+    class _ProfileMetric(nn.Module):
+        def __init__(self, inner: nn.Module):
+            super().__init__()
+            self.inner = inner
 
-    dl = DeepLift(profile_metric)
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            out = self.inner(x)
+            return out.logits.sum(dim=(-1, -2))  # (B,)
+
+    dl = DeepLift(_ProfileMetric(model))
     x = torch.randn(2, 4, 600)
     baseline = torch.zeros_like(x)
     attributions = dl.attribute(x, baseline)
