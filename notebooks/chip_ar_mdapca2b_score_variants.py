@@ -46,7 +46,7 @@ from cerberus.variants import Variant
 
 # %%
 project_root = get_project_root()
-checkpoint_dir = project_root / "pretrained/bpnet"
+checkpoint_dir = project_root / "pretrained/chip_ar_mdapca2b_bpnet"
 
 if not checkpoint_dir.exists():
     print(f"Checkpoint directory not found: {checkpoint_dir}")

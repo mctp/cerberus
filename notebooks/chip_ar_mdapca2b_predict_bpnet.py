@@ -2,7 +2,7 @@
 # # Chip-AR MDAPCA2b Prediction Notebook (BPNet)
 #
 # This notebook demonstrates how to load a pretrained BPNet model and run predictions on genomic intervals.
-# The pretrained model is shipped in `pretrained/bpnet/`.
+# The pretrained model is shipped in `pretrained/chip_ar_mdapca2b_bpnet/`.
 
 # %%
 import sys
@@ -24,14 +24,14 @@ from cerberus.model_ensemble import ModelEnsemble
 # %% [markdown]
 # ## 1. Setup
 #
-# We load the pretrained BPNet model from `pretrained/bpnet/`. All configuration
+# We load the pretrained BPNet model from `pretrained/chip_ar_mdapca2b_bpnet/`. All configuration
 # (genome, data, model) is recovered automatically from `hparams.yaml`.
 # The dataset (MDA-PCA-2b AR, hg38) is downloaded if not already present.
 # %%
 from cerberus.utils import resolve_device
 
 project_root = get_project_root()
-checkpoint_dir = project_root / "pretrained/bpnet"
+checkpoint_dir = project_root / "pretrained/chip_ar_mdapca2b_bpnet"
 
 if not checkpoint_dir.exists():
     raise FileNotFoundError(f"Pretrained model not found: {checkpoint_dir}")

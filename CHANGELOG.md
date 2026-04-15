@@ -51,8 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   design options (A-D) from minimal to full-pipeline.
 - **Pretrained models** (`pretrained/`):
   Ships trained BPNet and Pomeranian models (AR ChIP-seq, MDA-PCA-2b,
-  hg38) ready for inference via `ModelEnsemble("pretrained/bpnet")` or
-  `ModelEnsemble("pretrained/pomeranian")`. Minimal footprint: `model.pt`,
+  hg38) ready for inference via `ModelEnsemble("pretrained/chip_ar_mdapca2b_bpnet")` or
+  `ModelEnsemble("pretrained/chip_ar_mdapca2b_pomeranian")`. Minimal footprint: `model.pt`,
   `hparams.yaml`, and `ensemble_metadata.yaml` only.
 
 ### Changed
@@ -63,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Fixed modisco package name (`modisco` → `modisco-lite`). Removed unused
   `jupyter` and `ipywidgets`.
 - **Simplified prediction notebook** (`notebooks/chip_ar_mdapca2b_predict_bpnet.py`):
-  Now loads from `pretrained/bpnet/` via `ModelEnsemble` instead of
+  Now loads from `pretrained/chip_ar_mdapca2b_bpnet/` via `ModelEnsemble` instead of
   manually reconstructing all configs. Removed ~100 lines of redundant setup.
 
 ## [1.0.0a3] - 2026-04-08
