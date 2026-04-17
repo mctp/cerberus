@@ -36,7 +36,8 @@ docs = [
 ]
 attribution = ["captum"]
 tfmodisco = ["modisco"]
-interpret = ["captum", "modisco"]
+tpcav = ["tpcav"]
+interpret = ["captum", "modisco", "tpcav"]
 
 [project.urls]
 "Homepage" = "https://github.com/marcincieslik/cerberus"
