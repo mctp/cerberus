@@ -279,12 +279,18 @@ def _find_phase1_model(phase1_dir: Path) -> Path:
 
 
 def _get_pos_intervals(dataset: Any) -> list[Interval]:
-    """Return intervals from a CerberusDataset's sampler in index order.
+    """Materialize sampler intervals in the same order used by ``dataset[idx]``.
 
-    All sampler types support ``__iter__``, and ``MultiSampler.__iter__``
-    follows the same ``_indices`` list as ``__getitem__``, so
-    ``list(sampler)[idx] == sampler[idx]``.  This means ``log2fc[idx]``
-    computed from this list correctly corresponds to ``dataset[idx]``.
+    Phase 2 precomputes one ``log2fc`` target per interval, then
+    :class:`_DiffWrapper` injects that target back into samples by integer
+    index. This helper therefore must return intervals in the exact order that
+    :class:`CerberusDataset` uses for ``__getitem__``; otherwise sample ``idx``
+    would receive the fold-change label for the wrong peak.
+
+    All sampler types implement ``__iter__``. For mixed samplers such as
+    :class:`MultiSampler`, iteration and indexed access both traverse the same
+    internal ``_indices`` list, so ``list(dataset.sampler)[idx]`` matches
+    ``dataset.sampler[idx]``.
     """
     return list(dataset.sampler)
 
@@ -352,6 +358,7 @@ class _Phase2Module(pl.LightningModule):
         return opt
 
     def _step(self, batch: dict, split: str) -> torch.Tensor:
+        # turn a batch into outputs, loss, and logged metrics
         inputs = batch["inputs"]
         targets = batch["targets"]
         log2fc = batch.get("log2fc")  # (B,) — injected by _DiffWrapper

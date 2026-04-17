@@ -598,7 +598,7 @@ class DifferentialCountLoss(nn.Module):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         abs_weight: float = 0.0,
-        count_pseudocount: float = 1.0,
+        count_pseudocount: float = 1.0, #TODO: change pseudocount to shrink FC for low count regions
     ) -> None:
         super().__init__()
         if cond_a_idx == cond_b_idx:
