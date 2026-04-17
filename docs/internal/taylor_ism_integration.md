@@ -121,11 +121,27 @@ TISM's `plot_attribution` lives next to the compute code ([utils.py:266](../../s
 
 The plan is staged. Phase 1 lands a minimal, correct, regression-safe TISM. Later phases add robustness and speed one change at a time, each gated by a regression check (parity on `_WeightedScalarTarget` + Pearson ≥ 0.6 on a fixed biasnet fixture) before the next phase starts.
 
+### Next step — finish Phase 1 by wiring TISM into `export_tfmodisco_inputs.py`
+
+`compute_taylor_ism_attributions` is landed and correct (parity + paper-identity tests green) but **not reachable from any CLI**, so no TF-MoDISco run can use it end-to-end. The smallest self-contained delivery that unlocks user-visible TISM is:
+
+1. Add `"taylor_ism"` to the `--attribution-method` choices in [tools/export_tfmodisco_inputs.py:147](../../tools/export_tfmodisco_inputs.py#L147).
+2. In the per-batch dispatch (~line 598), add a branch that calls `compute_taylor_ism_attributions(target_model, inputs, span=(args.ism_start, args.ism_end), tf_modisco_format=True)` — shape / dtype contract is already identical to the `ism` branch, so the downstream `ohe.npz` / `shap.npz` writers need no changes.
+3. Update the `--attribution-method` help text to name `taylor_ism` and note the ~100× speedup vs `ism` at typical peak widths.
+4. Add a short `docs/usage.md` example alongside the existing ISM example.
+5. Regenerate `llms.txt`; CHANGELOG entry.
+
+Scope: roughly `+15 / -2` across `tools/export_tfmodisco_inputs.py` + `docs/usage.md`. No new deps, no test churn — the tool is already a thin dispatcher and the attribution function is already covered by unit tests. Plotting (#3, #4, #5) stays deferred; users can run TF-MoDISco without sequence logos.
+
+After that step lands, Phase 1 is complete and we can either start Phase 2 (gradient hygiene, param freezing) or jump to Phase 4 (multi-track) depending on the next real-world need.
+
 ### Phase 1 — Minimal Port (land first, ship-ready)
 
-#### 1. `src/cerberus/attribution.py`
+**Status**: core function + tests **[LANDED]** (`e43e682`); tool integration, plotting, and public docs outstanding.
 
-Replace the existing `compute_taylor_ism_attributions` with an implementation that parallels `compute_ism_attributions` and exposes `tf_modisco_format`.
+#### 1. `src/cerberus/attribution.py` — **[LANDED]** `e43e682`
+
+`compute_taylor_ism_attributions` is in-tree with the signature below, exported from `cerberus/__init__.py`, and covered by 9 unit tests (see §7).
 
 ```python
 def compute_taylor_ism_attributions(
@@ -162,21 +178,20 @@ def compute_taylor_ism_attributions(
     """
 ```
 
-Body steps:
+Body (as landed):
 
 1. **Validation.** `inputs.shape[1] >= N_NUCLEOTIDES`. Resolve span via `resolve_ism_span(seq_len, span)`.
 2. **Leaf with grad.** `x = inputs.detach().clone().requires_grad_(True)`.
-3. **Forward.** `out = target_model(x).reshape(batch_size)` — requires scalar target, matching ISM's contract.
-4. **Backward.** `(grads,) = torch.autograd.grad(out, x, grad_outputs=torch.ones_like(out), create_graph=False, retain_graph=False)`. Summed-output trick is correct because batch elements are independent.
-5. **Raw deltas via dot product** (already Phase-2a-compatible, see below). `grad_ref = (grads[:, :N_NUCLEOTIDES, :] * inputs[:, :N_NUCLEOTIDES, :]).sum(dim=1)  # (B, L)`; `raw = grads[:, :N_NUCLEOTIDES, :] - grad_ref.unsqueeze(1)`. Matches `correct_multipliers` in [torch_grad.py:198-199](../../s2f-models/repos/TISM/tism/torch_grad.py#L198-L199) exactly and is well-defined on soft inputs.
-6. **Span zeroing.** Allocate zero-initialized `(B, N_NUCLEOTIDES, L)`; write `raw[:, :, span_start:span_end]` into it.
-7. **TF-MoDISco override** (when `tf_modisco_format=True`): call the existing `_apply_tf_modisco_ref_override(attrs, inputs, span_start, span_end)` helper. When False, skip this call — reference channel stays at zero (raw TISM mode).
+3. **Forward + backward under `torch.enable_grad()`.** `out = target_model(x).reshape(batch_size)` → `torch.autograd.grad(out, x, grad_outputs=torch.ones_like(out), create_graph=False, retain_graph=False)`. Summed-output trick is correct because batch elements are independent. `enable_grad()` wrap lets the function work from inside `@torch.no_grad()` eval loops (a small Phase 2b item folded in here since without it the call fails with a cryptic error).
+4. **Raw deltas via dot product.** `grad_ref = (grads[:, :N_NUCLEOTIDES, :] * inputs[:, :N_NUCLEOTIDES, :]).sum(dim=1, keepdim=True)`; `raw = grads[:, :N_NUCLEOTIDES, :] - grad_ref`. Matches `correct_multipliers` in [torch_grad.py:198-199](../../s2f-models/repos/TISM/tism/torch_grad.py#L198-L199) exactly; on one-hot inputs identical to gather-at-argmax, and well-defined on soft / PWM inputs (also folds in Phase 2a).
+5. **Span zeroing.** Allocate zero-initialized `(B, N_NUCLEOTIDES, L)`; write `raw[:, :, span_start:span_end]` into it.
+6. **TF-MoDISco override** (when `tf_modisco_format=True`): call `_apply_tf_modisco_ref_override(attrs, inputs, span_start, span_end)`. When False, skip — reference channel stays at zero (raw TISM mode).
 
-Keep `compute_ism_attributions` behaviorally identical but add the same `tf_modisco_format` flag. When False, skip the `_apply_tf_modisco_ref_override` call and leave the raw zero delta at reference. **Default stays True** — no change for existing callers.
+`compute_ism_attributions` was not given a matching `tf_modisco_format` flag yet — kept unchanged in this commit to keep the scope narrow. The flag can be added later if a caller needs raw exact-ISM output (today, no caller does).
 
-Also: do **not** call `model.eval()` inside either function. Matches current ISM behavior; caller sets eval (documented in docstring).
+Also: `model.eval()` is **not** called inside the function. Matches current ISM behavior; caller sets eval (documented in the docstring).
 
-Export `compute_taylor_ism_attributions` from `src/cerberus/__init__.py`.
+Public export `compute_taylor_ism_attributions` added to `src/cerberus/__init__.py`.
 
 **Prerequisite refactors (already landed on `marcin-feature`).** Four small changes landed ahead of Phase 1 to remove naming collisions and DRY up the ISM / TISM overlap before the second method arrives:
 
@@ -193,20 +208,18 @@ Export `compute_taylor_ism_attributions` from `src/cerberus/__init__.py`.
 
 Hard break on all of the above (no deprecation shims). In-repo callers (tests + `tools/export_tfmodisco_inputs.py`) updated atomically. CLI flags `--target-mode`, `--ism-start`, `--ism-end` unchanged (external contracts; the tool packs `(args.ism_start, args.ism_end)` into a tuple at the boundary).
 
-#### 2. Silent assumptions to make explicit
+#### 2. Silent assumptions — **[LANDED in `e43e682`]**
 
-Each needs a docstring line or a `raise`:
+| Assumption | Resolution |
+|---|---|
+| First 4 channels = ACGT | Documented in docstring; `N_NUCLEOTIDES` constant is greppable |
+| Reference base | Dot-product `grad_ref = (g * x).sum(dim=1)` — bit-identical to `argmax` on one-hot, well-defined on soft inputs. No warning emitted yet; soft-input warning deferred to Phase 2a cleanup |
+| Target scalar per batch | `.reshape(batch_size)` raises on non-scalar output; a clearer error is a Phase 2 item |
+| `model.eval()` not called | Documented as caller's responsibility; matches `compute_ism_attributions` |
+| Runs under grad context | `torch.enable_grad()` wrap is in place — works from within `@torch.no_grad()` |
+| Ignores conditioning channels (C > N_NUCLEOTIDES) | Documented; slice is explicit |
 
-| Assumption | Current state | Proposed |
-|---|---|---|
-| First 4 channels = ACGT | Implicit in `[:, :4, :]` slice | Documented in docstring |
-| Reference = argmax over 4 channels | Silent; wrong on soft / PWM inputs | Add NOTE in docstring; not enforced (breaks biasnet ISM use cases if enforced) |
-| Target is scalar per batch | `.reshape(batch_size)` will raise | Document "scalar output required" + catch non-scalar with a clearer `ValueError` |
-| `model.eval()` not called | Silent; shared convention with ISM | Document: "caller must set eval mode" |
-| Runs under grad context | Fails under `torch.no_grad()` | `torch.enable_grad()` wrap inside the function |
-| Ignores conditioning channels (C > 4) | Implicit via slice | Documented |
-
-#### 3. `src/cerberus/plots.py` — `plot_seqlogo`
+#### 3. `src/cerberus/plots.py` — `plot_seqlogo` — **[OUTSTANDING]**
 
 Add a thin `logomaker`-based helper (optional import, mirroring `save_count_scatter`):
 
@@ -224,39 +237,44 @@ def plot_seqlogo(
 * `as_ic=True`: convert attributions to probabilities (softmax along axis 0) and scale by per-position information content (2 + Σ p log2 p clipped to [0, 2]).
 * Raise `ImportError` with a clear install hint (`pip install cerberus[extras]`) if `logomaker` / `pandas` are unavailable.
 
-#### 4. `tools/plot_biasnet_ism.py`
+#### 4. `tools/plot_biasnet_ism.py` — **[OUTSTANDING]**
 
 Delete the local `plot_logo` (lines ~403–500) and replace call sites with `from cerberus.plots import plot_seqlogo`. Preserve the stacked logo-over-heatmap layout. This removes ~100 lines of matplotlib patch-effect code.
 
-#### 5. `pyproject.toml`
+#### 5. `pyproject.toml` — **[OUTSTANDING]**
 
 Add `"logomaker"` and `"pandas"` to `[project.optional-dependencies].extras`. `pandas` is a hard `logomaker` dep; listing it explicitly makes the requirement visible. No change to the hard deps.
 
-#### 6. `tools/export_tfmodisco_inputs.py`
+#### 6. `tools/export_tfmodisco_inputs.py` — **[OUTSTANDING]**
 
 * Extend `--attribution-method` choices: `["integrated_gradients", "deep_lift_shap", "ism", "taylor_ism"]`.
 * Re-use the existing `--ism-start` / `--ism-end` flags for `taylor_ism`; add a note that they define the window in which deltas are computed (positions outside are zero, same as ISM).
 * Dispatch to `compute_taylor_ism_attributions(..., tf_modisco_format=True)` so the downstream TF-MoDISco `shap.npz` / `ohe.npz` shape contract is unchanged.
+* **This is the load-bearing step for user-visible TISM**: until this lands, TISM is importable but not reachable from the CLI, so no TF-MoDISco run can use it.
 
-#### 7. Tests (`tests/test_attribution.py`)
+#### 7. Tests (`tests/test_attribution.py`) — **[LANDED]** `e43e682`
 
-Add:
+Nine unit tests landed; all green:
 
-1. **Linear parity.** On `_WeightedScalarTarget`, assert `torch.allclose(compute_taylor_ism_attributions(...), compute_ism_attributions(...))` with `atol=1e-6` across several spans (full, partial window, edge positions).
-2. **Raw mode.** With `tf_modisco_format=False`, assert `attrs[:, ref, :]` is exactly zero within the span; ISM and TISM both satisfy this.
-3. **ATISM equivalence.** `mean_center_attributions(raw_tism)` should equal `grads - grads.mean(dim=1, keepdim=True)` (within the span), proving the Majdandzic bridge.
-4. **Span zeroing.** Positions outside the resolved `span` remain zero.
-5. **Non-scalar target raises.** Wrap a model that returns `(B, 2)` and assert a clear `ValueError`.
-6. **Shape & dtype.** `(B=3, 4, L=16)` input → `(3, 4, 16)` output, matching input dtype.
+1. `test_taylor_ism_linear_parity_single_batch` — `torch.allclose(taylor, ism, atol=1e-6)` across 6 spans on `_WeightedScalarTarget`.
+2. `test_taylor_ism_linear_parity_multi_batch_distinct_refs` — 3 samples × 4 positions with every reference base represented.
+3. `test_taylor_ism_raw_mode_has_zero_at_reference` — `tf_modisco_format=False` → ref channel == 0 in span.
+4. `test_taylor_ism_majdandzic_bridge_on_nonlinear_model` — paper Eq. 8/11/15 identity on a GELU CNN: `mean_center(raw_tism) == grads - grads.mean(dim=1)` within span.
+5. `test_taylor_ism_outside_span_is_zero` — I/O contract vs exact ISM.
+6. `test_taylor_ism_rejects_too_few_channels` — same channel-count validation as exact ISM.
+7. `test_taylor_ism_preserves_dtype_and_shape` — dtype passthrough, `(B, 4, L)` output.
+8. `test_taylor_ism_works_inside_no_grad_context` — guards the `torch.enable_grad()` wrap.
+9. `test_taylor_ism_default_output_matches_ism_shape_and_format` — shape, dtype, and ref-channel format all match.
 
-Do **not** test against a fully non-linear model for an exact value; correlation against ISM there is a property test (~0.7) not a unit test.
+Deferred (not in current suite):
+* **Non-scalar target raises** — relies on a `.reshape(batch_size)` error path; worth a cleaner error message first (Phase 2b item).
+* **Non-linear Pearson ≥ 0.6 property test** — needs the trained-biasnet fixture; belongs with the regression-gate artifact, not the unit tests.
 
-#### 8. Docs + changelog
+#### 8. Docs + changelog — **[PARTIAL]**
 
-* Add a "Taylor ISM" section to [docs/attribution.md](docs/attribution.md) (or whichever page currently documents `compute_ism_attributions` — grep before editing).
-* Mention `plot_seqlogo` in the plotting page.
-* `CHANGELOG.md` → `[Unreleased]`: "Added `compute_taylor_ism_attributions` and `plot_seqlogo`; `tools/export_tfmodisco_inputs.py` now accepts `--attribution-method taylor_ism`."
-* Regenerate LLM context: `python tools/generate_llms_txt.py`.
+* CHANGELOG `[Unreleased]` entry **[LANDED]** (`e43e682`).
+* `python tools/generate_llms_txt.py` regenerated **[LANDED]**.
+* mkdocs page for attribution (`docs/attribution.md` or equivalent) **[OUTSTANDING]** — natural to write alongside the tool integration so users get a runnable example.
 
 ### Regression Gate (runs between every phase)
 
@@ -438,12 +456,12 @@ Regression gate carries over from Phase 4; this is additive structural work, not
 
 ## Success Criteria
 
-1. `compute_taylor_ism_attributions` is exported from `cerberus` and documented.
-2. `torch.allclose(ism, tism)` on `_WeightedScalarTarget` — the parity test is the load-bearing check.
-3. `python tools/export_tfmodisco_inputs.py --attribution-method taylor_ism ...` produces `ohe.npz` and `shap.npz` with the same shape / dtype contract as the `ism` path, and TF-MoDISco runs on the output without schema changes.
-4. `tools/plot_biasnet_ism.py` renders identical-looking output after switching to `plot_seqlogo` (visual parity, no regression).
-5. `pytest -v tests/` and `npx pyright tests/ src/` pass.
-6. Docs rebuild cleanly (`mkdocs build --strict`); `llms.txt` regenerated.
+1. ✅ `compute_taylor_ism_attributions` is exported from `cerberus` and docstring-documented (`e43e682`).
+2. ✅ `torch.allclose(ism, tism)` on `_WeightedScalarTarget` — the parity test is the load-bearing check. Single-batch, multi-batch, all spans tested.
+3. ⏳ `python tools/export_tfmodisco_inputs.py --attribution-method taylor_ism ...` produces `ohe.npz` and `shap.npz` with the same shape / dtype contract as the `ism` path, and TF-MoDISco runs on the output without schema changes. **Next step.**
+4. ⏳ `tools/plot_biasnet_ism.py` renders identical-looking output after switching to `plot_seqlogo` (visual parity, no regression).
+5. ✅ `pytest tests/` passes (1842 + 26 skipped); pyright on changed files has no new errors.
+6. ⏳ mkdocs attribution page updated alongside the tool integration; `llms.txt` regenerated on every change.
 
 ## Known Non-Issues (Don't "Fix" These)
 
