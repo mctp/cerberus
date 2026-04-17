@@ -335,3 +335,63 @@ def test_train_single_run_test_skips_when_no_checkpoint():
             )
 
         mock_trainer.test.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Rank-zero gate for update_ensemble_metadata
+# ---------------------------------------------------------------------------
+
+
+def _run_train_single_with_rank(rank: int) -> MagicMock:
+    """Invoke train_single with rank_zero_only.rank patched to *rank*.
+
+    Returns the mocked update_ensemble_metadata so the caller can assert on
+    call count.
+    """
+    with (
+        patch("cerberus.train._train") as mock_train,
+        patch("cerberus.train.CerberusDataModule"),
+        patch("cerberus.train.update_ensemble_metadata") as mock_update,
+        patch("cerberus.train.rank_zero_only") as mock_rank_zero,
+    ):
+        mock_rank_zero.rank = rank
+        mock_train.return_value = MagicMock(spec=pl.Trainer)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            train_single(
+                genome_config=_make_genome_config(k=3),
+                data_config=_make_data_config(),
+                sampler_config=MagicMock(spec=SamplerConfig),
+                model_config=_make_model_config(),
+                train_config=_make_train_config(),
+                test_fold=0,
+                root_dir=tmp_dir,
+                run_test=False,
+            )
+
+        return mock_update
+
+
+def test_train_single_rank_zero_updates_metadata():
+    """Global rank 0 must call update_ensemble_metadata exactly once."""
+    mock_update = _run_train_single_with_rank(rank=0)
+    assert mock_update.call_count == 1
+
+
+def test_train_single_non_rank_zero_skips_metadata():
+    """Non-zero global rank must NOT call update_ensemble_metadata."""
+    mock_update = _run_train_single_with_rank(rank=1)
+    assert mock_update.call_count == 0
+
+
+def test_train_single_multi_node_only_global_rank_zero_writes():
+    """Regression for the LOCAL_RANK multi-node race.
+
+    Simulate two processes that would *both* have LOCAL_RANK=0 on a 2-node
+    DDP launch: node 0's global rank is 0, node 1's is (devices_per_node).
+    Only the global rank-0 process should touch ensemble_metadata.yaml.
+    """
+    # Node 0, LOCAL_RANK=0 → global rank 0 → writes.
+    assert _run_train_single_with_rank(rank=0).call_count == 1
+    # Node 1, LOCAL_RANK=0 → global rank 4 (4 GPUs/node) → must skip.
+    assert _run_train_single_with_rank(rank=4).call_count == 0

@@ -51,6 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (paper Eq. 8 / 11 / 15). Wrapped in `torch.enable_grad()` so it works from
   within `@torch.no_grad()` eval loops.
 
+### Fixed
+- **Multi-node DDP ensemble metadata race** (`train.py`): `train_single` now
+  gates `update_ensemble_metadata` on `rank_zero_only.rank == 0` (Lightning's
+  global-rank-aware attribute) instead of `os.environ["LOCAL_RANK"]`. The old
+  check let every node's rank-0 process enter the read-modify-write on
+  `ensemble_metadata.yaml`, which could corrupt the fold list when a reader
+  observed a zero-byte truncated snapshot mid-write. Single-node behaviour is
+  unchanged. See `docs/internal/correctness_audit_2026_04_16.md` §2 for the
+  failure analysis; regression tests live in `tests/test_train_wrapper.py`.
+
 ### Changed
 - **Attribution module refactor** (`attribution.py`) — breaking, no deprecation shims:
   added `N_NUCLEOTIDES = 4` constant and `IsmSpan = tuple[int | None, int | None]`

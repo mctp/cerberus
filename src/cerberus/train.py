@@ -1,11 +1,11 @@
 import logging
-import os
 import warnings
 from pathlib import Path
 from typing import Any
 
 import pytorch_lightning as pl
 import torch
+from lightning_fabric.utilities.rank_zero import rank_zero_only
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint
 
@@ -353,7 +353,12 @@ def train_single(
         The fitted PyTorch Lightning Trainer object.
     """
     # 0. Update Metadata and Prepare Directory
-    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+    # Global-rank-0 only. rank_zero_only.rank is populated by Lightning from
+    # (RANK, LOCAL_RANK, SLURM_PROCID, JSM_NAMESPACE_RANK) in that order, so it
+    # is correct for single-node DDP (LOCAL_RANK) and multi-node DDP (RANK /
+    # SLURM_PROCID) alike. Using LOCAL_RANK directly would let each node's
+    # rank-0 process enter this block and race on ensemble_metadata.yaml.
+    if rank_zero_only.rank == 0:
         update_ensemble_metadata(root_dir, test_fold)
 
     root_path = Path(root_dir)
