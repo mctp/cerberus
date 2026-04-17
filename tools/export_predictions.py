@@ -22,6 +22,7 @@ from cerberus.output import (
     get_log_count_params,
 )
 from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
+from cerberus.utils import resolve_device
 
 logger = logging.getLogger(__name__)
 
@@ -94,16 +95,7 @@ def main():
     # 1. Load Model Ensemble
     logger.info(f"Loading model from {args.model_path}...")
 
-    if args.device:
-        device_name = args.device
-    elif torch.cuda.is_available():
-        device_name = "cuda"
-    elif torch.backends.mps.is_available():
-        device_name = "mps"
-    else:
-        device_name = "cpu"
-
-    device = torch.device(device_name)
+    device = resolve_device(args.device)
     logger.info(f"Using device: {device}")
 
     # Provide search paths for resolving files (e.g. genome fasta) from other environments

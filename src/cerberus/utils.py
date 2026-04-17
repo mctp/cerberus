@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+import torch
+
 
 def import_class(name: str) -> Any:
     """Dynamically import a class from a dotted module path.
@@ -21,6 +23,25 @@ def import_class(name: str) -> Any:
         return getattr(module, class_name)
     except (ValueError, ImportError, AttributeError) as e:
         raise ImportError(f"Could not import class '{name}': {e}") from e
+
+
+def resolve_device(device_arg: str | None = "auto") -> torch.device:
+    """Resolve a user-provided device string or choose the best available device.
+
+    Args:
+        device_arg: Explicit device string such as ``"cpu"``, ``"cuda:0"``, or
+            ``"mps"``. ``None`` and ``"auto"`` both trigger auto-detection.
+
+    Returns:
+        A concrete :class:`torch.device`.
+    """
+    if device_arg in (None, "auto"):
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+    return torch.device(device_arg)
 
 
 def get_precision_kwargs(

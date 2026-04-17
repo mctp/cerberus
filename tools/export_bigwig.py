@@ -17,13 +17,12 @@ import logging
 import re
 from pathlib import Path
 
-import torch
-
 import cerberus
 from cerberus.dataset import CerberusDataset
 from cerberus.interval import Interval
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.predict_bigwig import predict_to_bigwig
+from cerberus.utils import resolve_device
 
 logger = logging.getLogger(__name__)
 
@@ -125,16 +124,7 @@ def main():
     cerberus.setup_logging()
 
     # 1. Resolve device
-    if args.device:
-        device_name = args.device
-    elif torch.cuda.is_available():
-        device_name = "cuda"
-    elif torch.backends.mps.is_available():
-        device_name = "mps"
-    else:
-        device_name = "cpu"
-
-    device = torch.device(device_name)
+    device = resolve_device(args.device)
     logger.info(f"Using device: {device}")
 
     # 2. Load Model Ensemble

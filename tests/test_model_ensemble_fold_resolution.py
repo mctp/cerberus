@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from cerberus.model_ensemble import ModelEnsemble
+from cerberus.model_ensemble import ModelEnsemble, resolve_fold_dir
 
 
 class MockModel(nn.Module):
@@ -64,3 +64,10 @@ def test_resolve_use_folds_multi_model_large():
 
     resolved = ens._resolve_use_folds(None)
     assert set(resolved) == {"test", "val"}
+
+
+def test_resolve_fold_dir_finds_nested_fold_directory(tmp_path):
+    fold_dir = tmp_path / "nested" / "single-fold" / "fold_0"
+    fold_dir.mkdir(parents=True)
+
+    assert resolve_fold_dir(tmp_path, 0) == fold_dir

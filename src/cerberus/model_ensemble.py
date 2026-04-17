@@ -59,6 +59,25 @@ def find_latest_hparams(search_root: Path | str) -> Path:
     return candidates[0]
 
 
+def resolve_fold_dir(checkpoint_dir: Path | str, fold: int) -> Path:
+    """Resolve a checkpoint root or fold path to a concrete fold directory."""
+    checkpoint_dir = Path(checkpoint_dir)
+    if (checkpoint_dir / "model.pt").exists() or list(checkpoint_dir.glob("*.ckpt")):
+        return checkpoint_dir
+
+    direct = checkpoint_dir / f"fold_{fold}"
+    if direct.is_dir():
+        return direct
+
+    recursive = sorted(p for p in checkpoint_dir.rglob(f"fold_{fold}") if p.is_dir())
+    if recursive:
+        return recursive[0]
+
+    raise FileNotFoundError(
+        f"Could not locate fold directory for fold={fold} under {checkpoint_dir}."
+    )
+
+
 def _parse_val_loss(path: Path) -> float:
     match = re.search(r"val_loss[=_](\d+\.?\d*)", path.name)
     if match is None:

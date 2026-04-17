@@ -42,44 +42,15 @@ from cerberus.model_ensemble import (
     find_latest_hparams,
     load_backbone_weights_from_fold_dir,
     parse_hparams_config,
+    resolve_fold_dir,
 )
 from cerberus.module import instantiate_model
+from cerberus.utils import resolve_device
 
 logger = logging.getLogger(__name__)
 
 _INTERVAL_WITH_STRAND_RE = re.compile(r"^([^:]+):(\d+)-(\d+)\(([+-])\)$")
 _INTERVAL_NO_STRAND_RE = re.compile(r"^([^:]+):(\d+)-(\d+)$")
-
-
-def _resolve_device(device_arg: str) -> torch.device:
-    if device_arg == "auto":
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        if torch.backends.mps.is_available():
-            return torch.device("mps")
-        return torch.device("cpu")
-    return torch.device(device_arg)
-
-
-def _resolve_fold_dir(checkpoint_dir: Path, fold: int) -> Path:
-    # Direct fold directory
-    if (checkpoint_dir / "model.pt").exists() or list(checkpoint_dir.glob("*.ckpt")):
-        return checkpoint_dir
-
-    # Common train root layout: root/fold_{i}
-    direct = checkpoint_dir / f"fold_{fold}"
-    if direct.is_dir():
-        return direct
-
-    # Recursive fallback
-    recursive = sorted([p for p in checkpoint_dir.rglob(f"fold_{fold}") if p.is_dir()])
-    if recursive:
-        return recursive[0]
-
-    raise FileNotFoundError(
-        f"Could not locate fold directory for fold={fold} under {checkpoint_dir}."
-    )
-
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -425,7 +396,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
             ) from exc
         DeepLiftShap = _DeepLiftShap
 
-    fold_dir = _resolve_fold_dir(args.checkpoint_dir.resolve(), args.fold)
+    fold_dir = resolve_fold_dir(args.checkpoint_dir.resolve(), args.fold)
     try:
         hparams_path = find_latest_hparams(fold_dir)
     except FileNotFoundError:
@@ -458,7 +429,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         )
         logger.info("Overriding sampler intervals_path with: %s", intervals_path)
 
-    device = _resolve_device(args.device)
+    device = resolve_device(args.device)
     logger.info("Using device: %s", device)
 
     model = instantiate_model(cfg.model_config_, cfg.data_config, compile=False)
