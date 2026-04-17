@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Attribution module refactor** (`attribution.py`) — breaking, no deprecation shims:
+  added `N_NUCLEOTIDES = 4` constant and `IsmSpan = tuple[int | None, int | None]`
+  type alias; magic `4`s in `compute_ism_attributions` now use the named
+  constant, and the DNA-alphabet assumption is greppable.
+  `compute_ism_attributions(..., ism_start, ism_end)` →
+  `compute_ism_attributions(..., span: IsmSpan)`; `resolve_ism_span(seq_len,
+  start, end)` → `resolve_ism_span(seq_len, span)`. The TF-MoDISco reference
+  override is now applied once after the ISM loop (vectorized `scatter_`)
+  rather than per position, and lives in a private helper
+  `_apply_tf_modisco_ref_override` that is ready for Taylor-ISM reuse.
+  In-repo callers (tests, `tools/export_tfmodisco_inputs.py`) updated in the
+  same commit; `--ism-start` / `--ism-end` CLI flags are unchanged (external
+  contract; the tool packs into a tuple at the boundary).
 - **Attribution API renames** (`attribution.py`) — breaking, no deprecation shims:
   `ATTRIBUTION_MODES` → `TARGET_REDUCTIONS` (the set names `AttributionTarget`
   *reductions*, not attribution *modes*, and would collide with the planned

@@ -6,6 +6,16 @@ import numpy as np
 import torch
 
 
+N_NUCLEOTIDES = 4
+"""Number of DNA nucleotide channels (A, C, G, T) assumed by all attribution
+methods. Inputs must have their first ``N_NUCLEOTIDES`` channels one-hot encode
+DNA; trailing channels (if any) are treated as conditioning and ignored."""
+
+IsmSpan = tuple[int | None, int | None]
+"""Inclusive-start / exclusive-end ISM mutation window. ``None`` on either side
+defaults to the sequence endpoint. ``(None, None)`` → full-length ISM."""
+
+
 TARGET_REDUCTIONS = {
     "log_counts",
     "profile_bin",
@@ -117,8 +127,13 @@ class AttributionTarget(torch.nn.Module):
         raise ValueError(f"Unsupported reduction: {self.reduction}")
 
 
-def resolve_ism_span(seq_len: int, start: int | None, end: int | None) -> tuple[int, int]:
-    """Resolve and validate the inclusive/exclusive ISM mutation window."""
+def resolve_ism_span(seq_len: int, span: IsmSpan) -> tuple[int, int]:
+    """Resolve and validate the inclusive/exclusive ISM mutation window.
+
+    ``span`` is a ``(start, end)`` tuple where either side may be ``None`` to
+    default to the sequence endpoint. ``(None, None)`` → full-length ISM.
+    """
+    start, end = span
     span_start = 0 if start is None else start
     span_end = seq_len if end is None else end
     if not (0 <= span_start < span_end <= seq_len):
@@ -128,50 +143,69 @@ def resolve_ism_span(seq_len: int, start: int | None, end: int | None) -> tuple[
     return span_start, span_end
 
 
+def _apply_tf_modisco_ref_override(
+    attrs: torch.Tensor,
+    inputs: torch.Tensor,
+    span_start: int,
+    span_end: int,
+) -> None:
+    """Overwrite the observed-nucleotide channel with ``-mean_j raw_delta_j``.
+
+    Mutates ``attrs`` in place within ``[span_start, span_end)``. Implements
+    the TF-MoDISco ``one_hot * hypothetical_contribs`` convention used by both
+    exact ISM and first-order Taylor ISM: at each position in the span, the
+    reference channel stores the negative mean of the four raw deltas, so that
+    ``one_hot * attrs`` at the reference gives the importance score.
+
+    Assumes ``attrs[:, :, span_start:span_end]`` holds raw deltas with the
+    reference channel equal to zero (the natural output of both ISM and TISM).
+    """
+    ref_bases = inputs[:, :N_NUCLEOTIDES, span_start:span_end].argmax(dim=1)
+    span_view = attrs[:, :, span_start:span_end]
+    mean_in_span = span_view.mean(dim=1, keepdim=True)
+    span_view.scatter_(dim=1, index=ref_bases.unsqueeze(1), src=-mean_in_span)
+
+
 def compute_ism_attributions(
     target_model: torch.nn.Module,
     inputs: torch.Tensor,
-    ism_start: int | None,
-    ism_end: int | None,
+    span: IsmSpan,
 ) -> torch.Tensor:
     """Compute single-position ISM deltas as ``(B, 4, L)`` attribution scores.
 
-    Positions outside ``[ism_start, ism_end)`` are left as zeros.  At each
-    mutated position the observed-nucleotide channel is set to the negative
-    per-position mean (TF-MoDISco ``one_hot * hypothetical_contribs``
-    convention) rather than the raw zero delta.
+    ``span`` is a ``(start, end)`` tuple; positions outside the resolved span
+    are left as zeros.  At each mutated position the observed-nucleotide
+    channel is set to the negative per-position mean (TF-MoDISco
+    ``one_hot * hypothetical_contribs`` convention) rather than the raw zero
+    delta.
     """
-    if inputs.shape[1] < 4:
+    if inputs.shape[1] < N_NUCLEOTIDES:
         raise ValueError(
-            f"ISM requires >=4 DNA channels in inputs, got shape {tuple(inputs.shape)}"
+            f"ISM requires >={N_NUCLEOTIDES} DNA channels in inputs, "
+            f"got shape {tuple(inputs.shape)}"
         )
 
     batch_size = inputs.shape[0]
     seq_len = inputs.shape[-1]
-    span_start, span_end = resolve_ism_span(seq_len, ism_start, ism_end)
+    span_start, span_end = resolve_ism_span(seq_len, span)
 
-    attrs = torch.zeros((batch_size, 4, seq_len), device=inputs.device, dtype=inputs.dtype)
-    rows = torch.arange(batch_size * 4, device=inputs.device)
-    nuc_idx = torch.arange(4, device=inputs.device).repeat(batch_size)
-    sample_idx = torch.arange(batch_size, device=inputs.device)
+    attrs = torch.zeros(
+        (batch_size, N_NUCLEOTIDES, seq_len), device=inputs.device, dtype=inputs.dtype
+    )
+    rows = torch.arange(batch_size * N_NUCLEOTIDES, device=inputs.device)
+    nuc_idx = torch.arange(N_NUCLEOTIDES, device=inputs.device).repeat(batch_size)
 
     with torch.no_grad():
         ref_pred = target_model(inputs).reshape(batch_size)
         for pos in range(span_start, span_end):
-            mutants = inputs.repeat_interleave(4, dim=0)
-            mutants[:, :4, pos] = 0.0
+            mutants = inputs.repeat_interleave(N_NUCLEOTIDES, dim=0)
+            mutants[:, :N_NUCLEOTIDES, pos] = 0.0
             mutants[rows, nuc_idx, pos] = 1.0
 
-            mut_pred = target_model(mutants).reshape(batch_size, 4)
+            mut_pred = target_model(mutants).reshape(batch_size, N_NUCLEOTIDES)
             attrs[:, :, pos] = mut_pred - ref_pred[:, None]
 
-            # For TF-MoDISco compatibility with one_hot * hypothetical_contribs,
-            # fill the observed nucleotide channel with negative of the per-position
-            # mean hypothetical contribution instead of forcing it to zero.
-            ref_base = inputs[:, :4, pos].argmax(dim=1)
-            mean_at_pos = attrs[:, :, pos].mean(dim=1)
-            attrs[sample_idx, ref_base, pos] = -mean_at_pos
-
+    _apply_tf_modisco_ref_override(attrs, inputs, span_start, span_end)
     return attrs
 
 

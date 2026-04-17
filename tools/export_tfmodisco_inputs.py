@@ -581,7 +581,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         else:
             if not logged_ism_span:
                 span_start, span_end = resolve_ism_span(
-                    inputs.shape[-1], args.ism_start, args.ism_end
+                    inputs.shape[-1], (args.ism_start, args.ism_end)
                 )
                 span_len = span_end - span_start
                 logger.info(
@@ -598,8 +598,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
             attributions = compute_ism_attributions(
                 target_model=target_model,
                 inputs=inputs,
-                ism_start=args.ism_start,
-                ism_end=args.ism_end,
+                span=(args.ism_start, args.ism_end),
             )
 
         # TF-MoDISco sequences and attribution files should both be (N, 4, L).
