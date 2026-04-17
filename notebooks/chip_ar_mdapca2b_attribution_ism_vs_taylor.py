@@ -253,4 +253,141 @@ full_path = plots_dir / "chip_ar_mdapca2b_attribution_tism_full_length.png"
 fig3.savefig(full_path, dpi=120, bbox_inches="tight")
 print(f"Saved: {full_path.relative_to(project_root)}")
 
+# %% [markdown]
+# ## 11. Cross-architecture: BPNet TISM vs Pomeranian TISM on the same peak
+#
+# Sasse et al. 2024 report ISM↔ISM correlation between two re-initialised
+# instances of the *same* architecture is ~0.58 — model-to-model variation
+# in attributions is real and substantial. Comparing TISM across two
+# *different* architectures (BPNet vs Pomeranian, both trained on the same
+# AR-ChIP data) is a stronger test of which features are intrinsic to the
+# data and which are model-specific.
+#
+# Pomeranian uses a slightly shorter input window (2112 bp vs BPNet's 2114),
+# so we re-center the same fixture peak to its native input length. Both
+# spans cover the same 200 bp of genomic sequence so the in-span TISM tensors
+# can be compared element-wise.
+
+# %%
+pomeranian_dir = project_root / "pretrained/chip_ar_mdapca2b_pomeranian"
+if not pomeranian_dir.exists():
+    raise FileNotFoundError(f"Pretrained Pomeranian not found: {pomeranian_dir}")
+
+pomeranian_ensemble = ModelEnsemble(checkpoint_path=pomeranian_dir, device=device)
+pomeranian_config = pomeranian_ensemble.cerberus_config
+pomeranian_input_len = pomeranian_config.data_config.input_len
+print(
+    f"Model: {pomeranian_config.model_config_.name}  "
+    f"(input_len = {pomeranian_input_len})"
+)
+
+pom_fold_keys = list(pomeranian_ensemble.keys())
+pomeranian_model = pomeranian_ensemble[pom_fold_keys[0]].to(device)
+pomeranian_model.eval();  # noqa: E702 — suppress repr in Jupyter
+
+pomeranian_target = AttributionTarget(
+    model=pomeranian_model,
+    reduction="log_counts",
+    channel=0,
+    bin_index=None,
+    window_start=None,
+    window_end=None,
+).to(device)
+pomeranian_target.eval();  # noqa: E702 — suppress repr in Jupyter
+
+# %%
+# Re-extract the SAME genomic peak at Pomeranian's input length, then run
+# TISM over the central 200 bp (same genomic window as the BPNet run above).
+pom_peak_interval = test_intervals[peak_idx].center(pomeranian_input_len)
+pom_extractor = SequenceExtractor(pomeranian_config.genome_config.fasta_path)
+pom_inputs = pom_extractor.extract(pom_peak_interval).unsqueeze(0).to(device)
+
+pom_center = pomeranian_input_len // 2
+pom_span = (pom_center - SPAN_WIDTH // 2, pom_center + SPAN_WIDTH // 2)
+
+t0 = time.perf_counter()
+pom_tism = compute_taylor_ism_attributions(
+    pomeranian_target, pom_inputs, span=pom_span
+)
+pom_elapsed = time.perf_counter() - t0
+print(
+    f"Pomeranian TISM ({SPAN_WIDTH} bp):  {pom_elapsed:.2f} s   "
+    f"BPNet TISM ({SPAN_WIDTH} bp): {tism_elapsed:.2f} s"
+)
+
+# %% [markdown]
+# ### Element-wise correlation across architectures
+#
+# Both arrays are ``(4, 200)`` and aligned to the same 200 bp of genome.
+
+# %%
+bpnet_tism_np = tism_attrs[0, :, span_start:span_end].detach().cpu().numpy()
+pom_tism_np = pom_tism[0, :, pom_span[0] : pom_span[1]].detach().cpu().numpy()
+assert bpnet_tism_np.shape == pom_tism_np.shape, (
+    f"shape mismatch: bpnet {bpnet_tism_np.shape} vs pom {pom_tism_np.shape}"
+)
+
+cross_pearson = float(
+    np.corrcoef(bpnet_tism_np.ravel(), pom_tism_np.ravel())[0, 1]
+)
+print(f"Pearson R (BPNet TISM vs Pomeranian TISM): {cross_pearson:.4f}")
+print(f"Pearson R (BPNet TISM vs BPNet ISM)      : {pearson_r:.4f}  (reference)")
+
+# %% [markdown]
+# ### Side-by-side cross-architecture logo + heatmap
+
+# %%
+fig4 = plt.figure(figsize=(14, 7))
+gs4 = fig4.add_gridspec(2, 1, hspace=0.35)
+
+sub_bp = fig4.add_subfigure(gs4[0])
+ax_bp_logo, _ = plot_attribution_panel(sub_bp, bpnet_tism_np)
+ax_bp_logo.set_title(
+    f"BPNet  TISM   {tism_elapsed:.2f} s   "
+    f"({peak_interval})"
+)
+
+sub_pom = fig4.add_subfigure(gs4[1])
+ax_pom_logo, _ = plot_attribution_panel(sub_pom, pom_tism_np)
+ax_pom_logo.set_title(
+    f"Pomeranian  TISM   {pom_elapsed:.2f} s   "
+    f"(Pearson R vs BPNet TISM = {cross_pearson:.3f})"
+)
+
+cross_path = plots_dir / "chip_ar_mdapca2b_attribution_tism_cross_architecture.png"
+fig4.savefig(cross_path, dpi=120, bbox_inches="tight")
+print(f"Saved: {cross_path.relative_to(project_root)}")
+
+# %% [markdown]
+# ### Cross-architecture scatter
+#
+# As with the within-model ISM-vs-TISM scatter, perfect agreement lies on the
+# dashed identity line. Comparing the spread here against the within-model
+# spread tells you whether your candidate motifs are robust across architectures
+# or merely artifacts of one model's inductive bias.
+
+# %%
+fig5, ax5 = plt.subplots(figsize=(5.5, 5.5))
+bp_flat = bpnet_tism_np.ravel()
+pom_flat = pom_tism_np.ravel()
+ax5.scatter(bp_flat, pom_flat, alpha=0.25, s=6, color="#9467bd")
+lim = float(np.max(np.abs(np.concatenate([bp_flat, pom_flat])))) * 1.05
+ax5.plot([-lim, lim], [-lim, lim], "r--", linewidth=1, label="y = x")
+ax5.set_xlim(-lim, lim)
+ax5.set_ylim(-lim, lim)
+ax5.set_aspect("equal", adjustable="box")
+ax5.set_xlabel("BPNet TISM")
+ax5.set_ylabel("Pomeranian TISM")
+ax5.set_title(
+    f"BPNet vs Pomeranian TISM  (Pearson R = {cross_pearson:.3f})\n"
+    f"vs within-BPNet ISM↔TISM R = {pearson_r:.3f}"
+)
+ax5.legend(loc="upper left")
+
+cross_scatter_path = (
+    plots_dir / "chip_ar_mdapca2b_attribution_tism_cross_architecture_scatter.png"
+)
+fig5.savefig(cross_scatter_path, dpi=120, bbox_inches="tight")
+print(f"Saved: {cross_scatter_path.relative_to(project_root)}")
+
 # %%

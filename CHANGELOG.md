@@ -30,7 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of ~0.7 — this notebook hits 0.74 on the first random peak), and renders
   paper-style logo+heatmap panels via the new `plot_attribution_panel`.
   Also runs TISM full-length (2114 bp) in one forward+backward to
-  demonstrate the asymptotic speedup over exact ISM. Outputs three PNGs in
+  demonstrate the asymptotic speedup over exact ISM. A final cross-
+  architecture section runs TISM on the same peak with the Pomeranian
+  ensemble and compares the two attribution maps element-wise — typical
+  cross-architecture Pearson R ~0.58 matches the paper's reported
+  inter-model variability and is meaningfully lower than the within-model
+  TISM↔ISM R, illustrating that motif features can be confirmed across
+  architectures even when per-base magnitudes differ. Five PNGs total in
   `notebooks/plots/`.
 - **Sequence logo helpers** (`cerberus.plots`): `plot_seqlogo`,
   `plot_attribution_heatmap`, and `plot_attribution_panel` render attribution
