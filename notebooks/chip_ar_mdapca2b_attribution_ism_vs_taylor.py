@@ -462,6 +462,8 @@ print(f"Saved: {cross_ism_path.relative_to(project_root)}")
 # Taylor approximation is well within the noise of model selection.
 
 # %%
+import pandas as pd  # extras-only, already pulled in transitively by logomaker
+
 attribution_maps = {
     "BPNet ISM": bpnet_ism_np,
     "BPNet TISM": bpnet_tism_np,
@@ -479,12 +481,7 @@ for i, ni in enumerate(names):
             )[0, 1]
         )
 
-print("Pairwise Pearson R:")
-header = "                  " + "  ".join(f"{n:>15}" for n in names)
-print(header)
-for i, ni in enumerate(names):
-    row = f"{ni:>16}  " + "  ".join(f"{corr_matrix[i, j]:>15.3f}" for j in range(n))
-    print(row)
+corr_df = pd.DataFrame(corr_matrix, index=names, columns=names).round(3)
 
 # %% [markdown]
 # ### Heatmap of the pairwise correlations
@@ -512,5 +509,17 @@ corr_path = plots_dir / "chip_ar_mdapca2b_attribution_pairwise_correlation.png"
 fig7.tight_layout()
 fig7.savefig(corr_path, dpi=120, bbox_inches="tight")
 print(f"Saved: {corr_path.relative_to(project_root)}")
+
+# %% [markdown]
+# ### Pairwise correlation table
+#
+# Final summary: every pair of attribution maps from the four model × method
+# combinations, Pearson R rounded to three decimals. In Jupyter this renders
+# as an HTML table; running as a script, the same data is echoed to stdout.
+
+# %%
+print("\nPairwise Pearson R:")
+print(corr_df.to_string())
+corr_df  # noqa: B018 — last expression auto-renders as HTML in Jupyter  # pyright: ignore[reportUnusedExpression]
 
 # %%
