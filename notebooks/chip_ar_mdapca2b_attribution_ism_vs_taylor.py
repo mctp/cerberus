@@ -22,7 +22,6 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 
 try:
     from paths import get_project_root
@@ -64,7 +63,7 @@ print(f"Model: {config.model_config_.name}  (input_len = {input_len})")
 fold_keys = list(model_ensemble.keys())
 print(f"Ensemble folds: {fold_keys}")
 model = model_ensemble[fold_keys[0]].to(device)
-model.eval()
+model.eval();  # noqa: E702 — suppress repr in Jupyter
 
 # %% [markdown]
 # ## 2. Pick a random test peak from the shipped fixture
@@ -111,7 +110,7 @@ target_model = AttributionTarget(
     window_start=None,
     window_end=None,
 ).to(device)
-target_model.eval()
+target_model.eval();  # noqa: E702 — suppress repr in Jupyter
 
 # %% [markdown]
 # ## 4. Extract the input one-hot and choose an ISM window
