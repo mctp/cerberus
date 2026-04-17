@@ -31,7 +31,7 @@ import torch
 import cerberus
 from cerberus.attribution import (
     AttributionTarget,
-    apply_off_simplex_gradient_correction,
+    mean_center_attributions,
     compute_ism_attributions,
     resolve_ism_span,
 )
@@ -421,7 +421,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
     target_model = AttributionTarget(
         model=model,
-        mode=args.target_mode,
+        reduction=args.target_mode,
         channel=args.target_channel,
         bin_index=args.bin_index,
         window_start=args.window_start,
@@ -606,7 +606,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         ohe = inputs[:, :4, :].detach().cpu().numpy().astype(np.float32)
         attrs = attributions[:, :4, :].detach().cpu().numpy().astype(np.float32)
         if apply_off_simplex_correction:
-            attrs = apply_off_simplex_gradient_correction(attrs)
+            attrs = mean_center_attributions(attrs)
 
         ohe_batches.append(ohe)
         attr_batches.append(attrs)

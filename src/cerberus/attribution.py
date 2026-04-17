@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 
-ATTRIBUTION_MODES = {
+TARGET_REDUCTIONS = {
     "log_counts",
     "profile_bin",
     "profile_window_sum",
@@ -16,24 +16,30 @@ ATTRIBUTION_MODES = {
 
 
 class AttributionTarget(torch.nn.Module):
-    """Wrap Cerberus model output into a scalar target tensor."""
+    """Wrap Cerberus model output into a scalar target tensor.
+
+    The ``reduction`` argument names the strategy used to reduce the model's
+    multi-channel / multi-bin output to a single scalar per batch element,
+    which is what attribution methods (ISM, TISM, IG, DLS) differentiate.
+    """
 
     def __init__(
         self,
         model: torch.nn.Module,
-        mode: str,
+        reduction: str,
         channel: int,
         bin_index: int | None,
         window_start: int | None,
         window_end: int | None,
     ) -> None:
         super().__init__()
-        if mode not in ATTRIBUTION_MODES:
+        if reduction not in TARGET_REDUCTIONS:
             raise ValueError(
-                f"Unsupported mode: {mode!r}. Must be one of {sorted(ATTRIBUTION_MODES)}."
+                f"Unsupported reduction: {reduction!r}. "
+                f"Must be one of {sorted(TARGET_REDUCTIONS)}."
             )
         self.model = model
-        self.mode = mode
+        self.reduction = reduction
         self.channel = channel
         self.bin_index = bin_index
         self.window_start = window_start
@@ -80,7 +86,7 @@ class AttributionTarget(torch.nn.Module):
 
         channel = self._resolve_channel(logits)
 
-        if self.mode == "log_counts":
+        if self.reduction == "log_counts":
             if log_counts.shape[1] == 1:
                 return log_counts[:, 0]
             if channel >= log_counts.shape[1]:
@@ -90,25 +96,25 @@ class AttributionTarget(torch.nn.Module):
                 )
             return log_counts[:, channel]
 
-        if self.mode == "profile_bin":
+        if self.reduction == "profile_bin":
             bin_index = self._resolve_bin(logits.shape[-1])
             return logits[:, channel, bin_index]
 
-        if self.mode == "profile_window_sum":
+        if self.reduction == "profile_window_sum":
             start, end = self._resolve_window(logits.shape[-1])
             return logits[:, channel, start:end].sum(dim=-1)
 
-        if self.mode == "pred_count_bin":
+        if self.reduction == "pred_count_bin":
             pred_counts = self._predicted_counts_channel(logits, log_counts, channel)
             bin_index = self._resolve_bin(pred_counts.shape[-1])
             return pred_counts[:, bin_index]
 
-        if self.mode == "pred_count_window_sum":
+        if self.reduction == "pred_count_window_sum":
             pred_counts = self._predicted_counts_channel(logits, log_counts, channel)
             start, end = self._resolve_window(pred_counts.shape[-1])
             return pred_counts[:, start:end].sum(dim=-1)
 
-        raise ValueError(f"Unsupported mode: {self.mode}")
+        raise ValueError(f"Unsupported reduction: {self.reduction}")
 
 
 def resolve_ism_span(seq_len: int, start: int | None, end: int | None) -> tuple[int, int]:
@@ -169,8 +175,17 @@ def compute_ism_attributions(
     return attrs
 
 
-def apply_off_simplex_gradient_correction(attrs: np.ndarray) -> np.ndarray:
-    """Subtract per-position mean attribution across nucleotide channels."""
+def mean_center_attributions(attrs: np.ndarray) -> np.ndarray:
+    """Subtract the per-position mean across nucleotide channels.
+
+    Applies ``attrs - attrs.mean(axis=1, keepdims=True)`` to a ``(N, 4, L)``
+    attribution tensor. This single operation is equivalent to three
+    well-known formulations in the literature:
+
+    * Majdandzic et al. 2023 off-simplex gradient correction.
+    * Paper ATISM (Sasse et al. 2024, Eq. 8) when applied to raw TISM deltas.
+    * TF-MoDISco hypothetical attributions with uniform 0.25 baseline.
+    """
     if attrs.ndim != 3:
         raise ValueError(
             f"Expected 3D attribution array (N, 4, L), got shape {attrs.shape}"

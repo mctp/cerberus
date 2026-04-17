@@ -5,10 +5,10 @@ import pytest
 import torch
 
 from cerberus.attribution import (
-    ATTRIBUTION_MODES,
+    TARGET_REDUCTIONS,
     AttributionTarget,
-    apply_off_simplex_gradient_correction,
     compute_ism_attributions,
+    mean_center_attributions,
     resolve_ism_span,
 )
 
@@ -31,12 +31,12 @@ class _WeightedScalarTarget(torch.nn.Module):
         return (x[:, :4, :] * self.weights).sum(dim=(1, 2))
 
 
-def test_attribution_target_invalid_mode_raises() -> None:
+def test_attribution_target_invalid_reduction_raises() -> None:
     model = _ToyCerberusModel()
-    with pytest.raises(ValueError, match="Unsupported mode"):
+    with pytest.raises(ValueError, match="Unsupported reduction"):
         AttributionTarget(
             model=model,
-            mode="bad_mode",
+            reduction="bad_reduction",
             channel=0,
             bin_index=None,
             window_start=None,
@@ -44,17 +44,17 @@ def test_attribution_target_invalid_mode_raises() -> None:
         )
 
 
-def test_attribution_modes_constant() -> None:
-    assert "log_counts" in ATTRIBUTION_MODES
-    assert "profile_bin" in ATTRIBUTION_MODES
-    assert len(ATTRIBUTION_MODES) == 5
+def test_target_reductions_constant() -> None:
+    assert "log_counts" in TARGET_REDUCTIONS
+    assert "profile_bin" in TARGET_REDUCTIONS
+    assert len(TARGET_REDUCTIONS) == 5
 
 
 def test_attribution_target_log_counts_channel() -> None:
     model = _ToyCerberusModel()
     target = AttributionTarget(
         model=model,
-        mode="log_counts",
+        reduction="log_counts",
         channel=1,
         bin_index=None,
         window_start=None,
@@ -79,7 +79,7 @@ def test_attribution_target_profile_bin_center_default() -> None:
     model = _ToyCerberusModel()
     target = AttributionTarget(
         model=model,
-        mode="profile_bin",
+        reduction="profile_bin",
         channel=0,
         bin_index=None,
         window_start=None,
@@ -136,7 +136,7 @@ def test_compute_ism_attributions_expected_deltas() -> None:
     assert torch.allclose(attrs, expected)
 
 
-def test_apply_off_simplex_gradient_correction() -> None:
+def test_mean_center_attributions() -> None:
     attrs = np.array(
         [
             [
@@ -148,8 +148,8 @@ def test_apply_off_simplex_gradient_correction() -> None:
         ],
         dtype=np.float32,
     )
-    corrected = apply_off_simplex_gradient_correction(attrs)
-    assert np.allclose(corrected.mean(axis=1), 0.0)
+    centered = mean_center_attributions(attrs)
+    assert np.allclose(centered.mean(axis=1), 0.0)
 
     with pytest.raises(ValueError):
-        apply_off_simplex_gradient_correction(np.ones((4, 10), dtype=np.float32))
+        mean_center_attributions(np.ones((4, 10), dtype=np.float32))

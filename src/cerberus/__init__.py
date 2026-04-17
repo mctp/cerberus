@@ -1,8 +1,8 @@
 from .attribution import (
-    ATTRIBUTION_MODES,
+    TARGET_REDUCTIONS,
     AttributionTarget,
-    apply_off_simplex_gradient_correction,
     compute_ism_attributions,
+    mean_center_attributions,
     resolve_ism_span,
 )
 from .config import (
@@ -75,11 +75,11 @@ __all__ = [
     # Signal Extraction
     "register_extractor",
     # Attribution utilities
-    "ATTRIBUTION_MODES",
+    "TARGET_REDUCTIONS",
     "AttributionTarget",
     "resolve_ism_span",
     "compute_ism_attributions",
-    "apply_off_simplex_gradient_correction",
+    "mean_center_attributions",
     # Variant scoring
     "VariantResult",
     "score_variants",

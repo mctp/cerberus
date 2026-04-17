@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Attribution API renames** (`attribution.py`) — breaking, no deprecation shims:
+  `ATTRIBUTION_MODES` → `TARGET_REDUCTIONS` (the set names `AttributionTarget`
+  *reductions*, not attribution *modes*, and would collide with the planned
+  `AttributionMode` enum). `AttributionTarget` constructor arg `mode=` and
+  attribute `.mode` → `reduction`. `apply_off_simplex_gradient_correction()`
+  → `mean_center_attributions()` (shorter, and the operation is equivalent
+  to Majdandzic off-simplex correction *and* paper ATISM *and* hypothetical
+  uniform-baseline — "mean-center" names what it does without overloading
+  one paper's framing). The `--target-mode` CLI flag in
+  `tools/export_tfmodisco_inputs.py` is unchanged (external contract).
 - **`tools/plot_training_results.py`** no longer depends on seaborn.
   The 9 repetitive per-metric plot blocks collapse into a single
   `_plot_curves` helper using `plt.plot` directly; the whitegrid look
