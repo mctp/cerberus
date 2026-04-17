@@ -79,6 +79,7 @@ from cerberus.interval import Interval, merge_intervals
 from cerberus.loss import DifferentialCountLoss
 from cerberus.models.bpnet import MultitaskBPNet, MultitaskBPNetLoss
 from cerberus.train import train_multi, train_single
+from cerberus.utils import get_precision_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +226,13 @@ def get_args() -> argparse.Namespace:
 # Utilities
 # ---------------------------------------------------------------------------
 
+# This script accepts two peak files (one per condition), but the existing
+# Cerberus peak sampler API expects a single ``intervals_path``.  Single-task
+# training tools can pass their one peak file straight through to the sampler;
+# the differential workflow cannot.  We therefore read the raw intervals from
+# both inputs, merge them into a union peak set, and write a temporary BED that
+# both Phase 1 and Phase 2 can sample from consistently.
+
 
 def _read_bed_intervals(path: "str | Path") -> list[Interval]:
     """Read chrom/start/end from a BED or narrowPeak file (plain or .gz)."""
@@ -258,29 +266,6 @@ def _merge_and_write_peaks(peaks_a: Path, peaks_b: Path, out_bed: Path) -> Path:
         len(ivs_a), len(ivs_b), len(merged), out_bed,
     )
     return out_bed
-
-
-def _get_precision_kwargs(precision: str, accelerator: str, devices: "str | int") -> dict:
-    if precision == "full":
-        return dict(
-            precision="32-true", matmul_precision="highest",
-            accelerator=accelerator, devices=devices,
-            strategy="auto", compile=False,
-        )
-    if precision == "mps":
-        return dict(
-            precision="16-mixed",
-            accelerator=accelerator, devices=devices,
-            strategy="auto", compile=False,
-        )
-    # bf16 default
-    multi_gpu = accelerator == "gpu" and isinstance(devices, int) and devices > 1
-    return dict(
-        precision="bf16-mixed", matmul_precision="medium",
-        accelerator=accelerator, devices=devices,
-        strategy="ddp_find_unused_parameters_false" if multi_gpu else "auto",
-        benchmark=True, compile=True,
-    )
 
 
 def _find_phase1_model(phase1_dir: Path) -> Path:
@@ -512,7 +497,7 @@ def run_phase1(args: argparse.Namespace, merged_peaks: Path, output_dir: Path,
     if accelerator == "auto" and torch.backends.mps.is_available():
         accelerator = "mps"
 
-    precision_kwargs = _get_precision_kwargs(args.precision, accelerator, devices)
+    precision_kwargs = get_precision_kwargs(args.precision, accelerator, devices)
 
     logger.info("Phase 1 config:\n%s", pformat(model_config))
 

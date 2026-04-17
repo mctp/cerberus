@@ -49,6 +49,7 @@ from cerberus.config import (
 from cerberus.download import download_human_reference
 from cerberus.genome import create_genome_config
 from cerberus.train import train_multi, train_single
+from cerberus.utils import get_precision_kwargs
 
 
 def _parse_count_weight(value: str) -> "float | str":
@@ -511,33 +512,12 @@ def main():
                 num_workers,
             )
 
-    if args.precision == "full":
-        precision_args = {
-            "precision": "32-true",
-            "matmul_precision": "highest",
-            "accelerator": accelerator,
-            "devices": devices,
-            "strategy": "auto",
-            "compile": False,
-        }
-    elif args.precision == "mps":
-        precision_args = {
-            "precision": "16-mixed",
-            "accelerator": accelerator,
-            "devices": devices,
-            "strategy": "auto",
-            "compile": False,
-        }
-    else:
-        precision_args = {
-            "precision": "bf16-mixed",
-            "matmul_precision": "medium",
-            "accelerator": accelerator,
-            "devices": devices,
-            "strategy": "auto",
-            "benchmark": True,
-            "compile": True,
-        }
+    precision_args = get_precision_kwargs(
+        args.precision,
+        accelerator,
+        devices,
+        use_ddp_find_unused_parameters_false=False,
+    )
 
     logging.info("Configurations:")
     logging.info("Data Config:\n%s", pformat(data_config))
