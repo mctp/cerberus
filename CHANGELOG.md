@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **ISM vs Taylor-ISM notebook**
+  (`notebooks/chip_ar_mdapca2b_attribution_ism_vs_taylor.py`):
+  Loads the pretrained BPNet AR-ChIP model, picks a random test-fold peak
+  (seeded), computes both exact ISM and Taylor-ISM on the central 200 bp,
+  reports Pearson correlation between them (Sasse et al. 2024 report a mean
+  of ~0.7 — this notebook hits 0.74 on the first random peak), and renders
+  paper-style logo+heatmap panels via the new `plot_attribution_panel`.
+  Also runs TISM full-length (2114 bp) in one forward+backward to
+  demonstrate the asymptotic speedup over exact ISM. Outputs three PNGs in
+  `notebooks/plots/`.
 - **Sequence logo helpers** (`cerberus.plots`): `plot_seqlogo`,
   `plot_attribution_heatmap`, and `plot_attribution_panel` render attribution
   maps as stacked letter logos (via `logomaker`), diverging-colormap heatmaps,
