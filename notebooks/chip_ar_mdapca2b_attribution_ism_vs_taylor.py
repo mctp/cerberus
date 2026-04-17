@@ -72,11 +72,11 @@ model.eval();  # noqa: E702 — suppress repr in Jupyter
 # / sampler / fold-split setup is needed — we only need the interval and its
 # reference sequence for ISM, so we go through two library primitives:
 #
-# * :func:`cerberus.interval.load_intervals_bed` (gzip-aware) reads the
+# * `cerberus.interval.load_intervals_bed` (gzip-aware) reads the
 #   fixture directly.
-# * :class:`cerberus.sequence.SequenceExtractor` gives us the one-hot the
+# * `cerberus.sequence.SequenceExtractor` gives us the one-hot the
 #   model saw in training, straight from the FASTA referenced in
-#   ``config.genome_config.fasta_path``.
+#   `config.genome_config.fasta_path`.
 
 # %%
 fixture_path = (
@@ -115,7 +115,7 @@ target_model.eval();  # noqa: E702 — suppress repr in Jupyter
 # %% [markdown]
 # ## 4. Extract the input one-hot and choose an ISM window
 #
-# :class:`SequenceExtractor` reads the FASTA referenced in the model's config
+# `SequenceExtractor` reads the FASTA referenced in the model's config
 # and returns ``(4, L)``; we add a batch dim. Exact ISM is O(L_span) forward
 # passes, so we restrict the window to the central 200 bp of the peak to keep
 # the notebook interactive. TISM runs on the same window for a fair
