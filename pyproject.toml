@@ -37,6 +37,7 @@ extras = [
   "snapatac2",
   "matplotlib",
   "polars",
+  "logomaker",
 ]
 dev = [
   "cerberus[extras]",

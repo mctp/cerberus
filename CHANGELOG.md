@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Sequence logo helpers** (`cerberus.plots`): `plot_seqlogo`,
+  `plot_attribution_heatmap`, and `plot_attribution_panel` render attribution
+  maps as stacked letter logos (via `logomaker`), diverging-colormap heatmaps,
+  and a combined logo+heatmap panel respectively. Accept numpy arrays or
+  torch tensors, any alphabet (`"ACGT"` / `"ACGU"` / 20-letter protein), and
+  three logo-height modes (`"attribution"` / `"probability"` / `"ic"`).
+  All helpers take a caller-owned `ax` / `fig`; no side effects on matplotlib
+  backends, no filesystem I/O. Optional-import pattern: function body raises
+  a clear error pointing at `pip install 'cerberus[extras]'` if `logomaker`
+  isn't installed. `logomaker` added to `extras`; `pandas` arrives as its
+  transitive dep (used only inside `plot_seqlogo`'s body).
 - **`--attribution-method taylor_ism`** in `tools/export_tfmodisco_inputs.py`:
   wires the new Taylor-ISM function into the TF-MoDISco export pipeline.
   Re-uses the existing `--ism-start` / `--ism-end` window; output `ohe.npz` /
