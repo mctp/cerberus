@@ -390,4 +390,127 @@ cross_scatter_path = (
 fig5.savefig(cross_scatter_path, dpi=120, bbox_inches="tight")
 print(f"Saved: {cross_scatter_path.relative_to(project_root)}")
 
+# %% [markdown]
+# ## 12. Cross-architecture: exact ISM
+#
+# Repeat the cross-architecture comparison with exact ISM rather than its
+# Taylor approximation. This isolates whether the cross-model disagreement
+# we just measured is a property of the *models* or of the approximation —
+# if exact ISM also disagrees by ~0.6, the gap is real and not Taylor's
+# fault.
+#
+# Pomeranian's exact ISM over 200 bp takes noticeably longer than BPNet's
+# (more parameters per forward), but it's a one-shot for this notebook.
+
+# %%
+t0 = time.perf_counter()
+pom_ism = compute_ism_attributions(pomeranian_target, pom_inputs, span=pom_span)
+pom_ism_elapsed = time.perf_counter() - t0
+print(
+    f"Pomeranian exact ISM ({SPAN_WIDTH} bp):  {pom_ism_elapsed:.2f} s   "
+    f"BPNet exact ISM ({SPAN_WIDTH} bp): {ism_elapsed:.2f} s"
+)
+
+bpnet_ism_np = ism_attrs[0, :, span_start:span_end].detach().cpu().numpy()
+pom_ism_np = pom_ism[0, :, pom_span[0] : pom_span[1]].detach().cpu().numpy()
+
+cross_ism_pearson = float(
+    np.corrcoef(bpnet_ism_np.ravel(), pom_ism_np.ravel())[0, 1]
+)
+print(f"Pearson R (BPNet ISM vs Pomeranian ISM): {cross_ism_pearson:.4f}")
+
+# %% [markdown]
+# ### Side-by-side cross-architecture ISM logo + heatmap
+
+# %%
+fig6 = plt.figure(figsize=(14, 7))
+gs6 = fig6.add_gridspec(2, 1, hspace=0.35)
+
+sub_bp_ism = fig6.add_subfigure(gs6[0])
+ax_bp_ism_logo, _ = plot_attribution_panel(sub_bp_ism, bpnet_ism_np)
+ax_bp_ism_logo.set_title(
+    f"BPNet  exact ISM   {ism_elapsed:.2f} s   ({peak_interval})"
+)
+
+sub_pom_ism = fig6.add_subfigure(gs6[1])
+ax_pom_ism_logo, _ = plot_attribution_panel(sub_pom_ism, pom_ism_np)
+ax_pom_ism_logo.set_title(
+    f"Pomeranian  exact ISM   {pom_ism_elapsed:.2f} s   "
+    f"(Pearson R vs BPNet ISM = {cross_ism_pearson:.3f})"
+)
+
+cross_ism_path = (
+    plots_dir / "chip_ar_mdapca2b_attribution_ism_cross_architecture.png"
+)
+fig6.savefig(cross_ism_path, dpi=120, bbox_inches="tight")
+print(f"Saved: {cross_ism_path.relative_to(project_root)}")
+
+# %% [markdown]
+# ## 13. Pairwise correlation summary
+#
+# Four attribution maps over the same 200 bp window:
+# `BPNet ISM`, `BPNet TISM`, `Pomeranian ISM`, `Pomeranian TISM`. Six unique
+# pairwise correlations tell the full story of *how much each axis matters*:
+#
+# * **same model, ISM vs TISM** — first-order Taylor approximation error
+#   (typically ~0.7-0.8).
+# * **different model, same method** — architecture-level disagreement on
+#   what the motif is (typically ~0.5-0.7).
+# * **different model AND different method** — composite disagreement.
+#
+# If TISM↔ISM within a model is *higher* than ISM↔ISM across models, the
+# Taylor approximation is well within the noise of model selection.
+
+# %%
+attribution_maps = {
+    "BPNet ISM": bpnet_ism_np,
+    "BPNet TISM": bpnet_tism_np,
+    "Pomeranian ISM": pom_ism_np,
+    "Pomeranian TISM": pom_tism_np,
+}
+names = list(attribution_maps.keys())
+n = len(names)
+corr_matrix = np.zeros((n, n))
+for i, ni in enumerate(names):
+    for j, nj in enumerate(names):
+        corr_matrix[i, j] = float(
+            np.corrcoef(
+                attribution_maps[ni].ravel(), attribution_maps[nj].ravel()
+            )[0, 1]
+        )
+
+print("Pairwise Pearson R:")
+header = "                  " + "  ".join(f"{n:>15}" for n in names)
+print(header)
+for i, ni in enumerate(names):
+    row = f"{ni:>16}  " + "  ".join(f"{corr_matrix[i, j]:>15.3f}" for j in range(n))
+    print(row)
+
+# %% [markdown]
+# ### Heatmap of the pairwise correlations
+
+# %%
+fig7, ax7 = plt.subplots(figsize=(6, 5))
+im = ax7.imshow(corr_matrix, cmap="RdYlGn", vmin=0.4, vmax=1.0)
+ax7.set_xticks(range(n))
+ax7.set_yticks(range(n))
+ax7.set_xticklabels(names, rotation=30, ha="right")
+ax7.set_yticklabels(names)
+for i in range(n):
+    for j in range(n):
+        ax7.text(
+            j, i, f"{corr_matrix[i, j]:.2f}",
+            ha="center", va="center", color="black", fontsize=10,
+        )
+fig7.colorbar(im, ax=ax7, label="Pearson R")
+ax7.set_title(
+    "Pairwise attribution correlation\n"
+    f"({SPAN_WIDTH} bp window around peak center)"
+)
+
+corr_path = plots_dir / "chip_ar_mdapca2b_attribution_pairwise_correlation.png"
+fig7.tight_layout()
+fig7.savefig(corr_path, dpi=120, bbox_inches="tight")
+print(f"Saved: {corr_path.relative_to(project_root)}")
+
 # %%

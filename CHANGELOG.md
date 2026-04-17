@@ -36,8 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cross-architecture Pearson R ~0.58 matches the paper's reported
   inter-model variability and is meaningfully lower than the within-model
   TISM↔ISM R, illustrating that motif features can be confirmed across
-  architectures even when per-base magnitudes differ. Five PNGs total in
-  `notebooks/plots/`.
+  architectures even when per-base magnitudes differ. A pairwise-correlation
+  summary section runs all four combinations (BPNet ISM, BPNet TISM,
+  Pomeranian ISM, Pomeranian TISM) and renders a 4×4 Pearson R heatmap —
+  surfaces the paper's "non-linear models break TISM" hypothesis directly:
+  on the random peak, Pomeranian's TISM↔ISM correlation (~0.49) is
+  meaningfully worse than BPNet's (~0.74), while BPNet ISM ↔ Pomeranian
+  ISM hits ~0.90 (architectures agree strongly when both compute exactly).
+  Seven PNGs total in `notebooks/plots/`.
 - **Sequence logo helpers** (`cerberus.plots`): `plot_seqlogo`,
   `plot_attribution_heatmap`, and `plot_attribution_panel` render attribution
   maps as stacked letter logos (via `logomaker`), diverging-colormap heatmaps,
