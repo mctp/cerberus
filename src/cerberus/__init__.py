@@ -2,6 +2,7 @@ from .attribution import (
     TARGET_REDUCTIONS,
     AttributionTarget,
     compute_ism_attributions,
+    compute_taylor_ism_attributions,
     mean_center_attributions,
     resolve_ism_span,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "AttributionTarget",
     "resolve_ism_span",
     "compute_ism_attributions",
+    "compute_taylor_ism_attributions",
     "mean_center_attributions",
     # Variant scoring
     "VariantResult",

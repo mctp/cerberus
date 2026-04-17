@@ -9,6 +9,7 @@ from cerberus.attribution import (
     TARGET_REDUCTIONS,
     AttributionTarget,
     compute_ism_attributions,
+    compute_taylor_ism_attributions,
     mean_center_attributions,
     resolve_ism_span,
 )
@@ -398,6 +399,188 @@ def test_compute_ism_attributions_ref_channel_is_negative_span_mean() -> None:
         # Raw mean = (sum_nonref + 0) / 4.
         raw_mean = sum(nonref_deltas) / 4.0
         assert attrs[0, ref, pos].item() == pytest.approx(-raw_mean, abs=1e-6)
+
+
+class _TinyNonlinearTarget(torch.nn.Module):
+    """Small non-linear scalar target used to exercise the paper's identities.
+
+    Deterministic (no dropout, no BN), so gradients are reproducible across
+    runs without needing an explicit seed or eval() call.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        torch.manual_seed(0)
+        self.conv = torch.nn.Conv1d(N_NUCLEOTIDES, 6, kernel_size=3, padding=1)
+        self.head = torch.nn.Linear(6, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = torch.nn.functional.gelu(self.conv(x[:, :N_NUCLEOTIDES, :]))
+        # Mean-pool across length, then linear head → (B,) scalar.
+        return self.head(h.mean(dim=-1)).squeeze(-1)
+
+
+def _make_onehot_sequence(
+    indices: list[list[int]], dtype: torch.dtype = torch.float32
+) -> torch.Tensor:
+    """Build a ``(B, 4, L)`` one-hot tensor from per-sample base indices."""
+    batch = len(indices)
+    seq_len = len(indices[0])
+    x = torch.zeros((batch, N_NUCLEOTIDES, seq_len), dtype=dtype)
+    for b, seq in enumerate(indices):
+        for pos, base in enumerate(seq):
+            x[b, base, pos] = 1.0
+    return x
+
+
+def test_taylor_ism_linear_parity_single_batch() -> None:
+    """On a linear model, TISM is bit-identical to exact ISM (paper Eq. 7).
+
+    Core correctness gate: if the model's input-to-target map is linear, the
+    first-order Taylor expansion is exact, so every span / formatting must
+    match the brute-force ISM output to float tolerance.
+    """
+    model = _WeightedScalarTarget()
+    inputs = _make_onehot_sequence([[0, 1, 2, 3, 2]])
+
+    for span in [(None, None), (0, 5), (1, 4), (2, 3), (None, 3), (2, None)]:
+        ism = compute_ism_attributions(model, inputs, span=span)
+        taylor = compute_taylor_ism_attributions(model, inputs, span=span)
+        assert torch.allclose(taylor, ism, atol=1e-6), f"mismatch for span={span}"
+
+
+def test_taylor_ism_linear_parity_multi_batch_distinct_refs() -> None:
+    """Multi-batch with different ref bases per (b, pos): linear parity holds.
+
+    Stronger than the single-batch test — catches any broadcasting error in
+    the dot-product ``grad_ref`` computation or the span scatter.
+    """
+    model = _WeightedScalarTarget()
+    inputs = _make_onehot_sequence(
+        [
+            [0, 1, 2, 3],  # A C G T
+            [3, 2, 1, 0],  # T G C A
+            [1, 1, 3, 0],  # C C T A
+        ]
+    )
+    ism = compute_ism_attributions(model, inputs, span=(None, None))
+    taylor = compute_taylor_ism_attributions(model, inputs, span=(None, None))
+    assert torch.allclose(taylor, ism, atol=1e-6)
+
+
+def test_taylor_ism_raw_mode_has_zero_at_reference() -> None:
+    """``tf_modisco_format=False`` returns raw TISM: ref channel == 0 in span.
+
+    This matches the TISM reference's ``output='tism'`` behavior.
+    """
+    model = _WeightedScalarTarget()
+    inputs = _make_onehot_sequence([[0, 1, 2, 3], [3, 2, 1, 0]])
+    attrs = compute_taylor_ism_attributions(
+        model, inputs, span=(0, 4), tf_modisco_format=False
+    )
+    for b in range(inputs.shape[0]):
+        for pos in range(4):
+            ref = int(inputs[b, :N_NUCLEOTIDES, pos].argmax().item())
+            assert attrs[b, ref, pos].item() == 0.0, (
+                f"raw mode should have 0 at reference (b={b}, pos={pos}, "
+                f"ref={ref}), got {attrs[b, ref, pos].item()}"
+            )
+
+
+def test_taylor_ism_majdandzic_bridge_on_nonlinear_model() -> None:
+    """``mean_center(raw_tism) == grads - grads.mean(dim=1)`` within the span.
+
+    Paper Eq. 8 / 11 / 15 identity (Sasse et al. 2024 links Majdandzic 2023
+    off-simplex correction to TISM via this equivalence). Must hold for any
+    model — linear or not — to numerical precision.
+    """
+    model = _TinyNonlinearTarget().eval()
+    torch.manual_seed(1)
+    inputs = _make_onehot_sequence([[0, 1, 2, 3, 1, 2, 0, 3]])
+
+    span_start, span_end = 1, 6
+    raw_tism = compute_taylor_ism_attributions(
+        model, inputs, span=(span_start, span_end), tf_modisco_format=False
+    )
+
+    # Reference: direct gradient minus mean across channels.
+    x = inputs.detach().clone().requires_grad_(True)
+    out = model(x).sum()
+    (grads,) = torch.autograd.grad(out, x)
+    grads_centered = grads[:, :N_NUCLEOTIDES, :] - grads[:, :N_NUCLEOTIDES, :].mean(
+        dim=1, keepdim=True
+    )
+
+    centered_tism = mean_center_attributions(raw_tism.detach().numpy())
+
+    np.testing.assert_allclose(
+        centered_tism[:, :, span_start:span_end],
+        grads_centered[:, :, span_start:span_end].detach().numpy(),
+        atol=1e-5,
+    )
+
+
+def test_taylor_ism_outside_span_is_zero() -> None:
+    """I/O contract: positions outside the resolved span are exactly zero.
+
+    Matches :func:`compute_ism_attributions`.
+    """
+    model = _WeightedScalarTarget()
+    inputs = _make_onehot_sequence([[0, 1, 2, 0, 1]])
+    attrs = compute_taylor_ism_attributions(model, inputs, span=(1, 3))
+    assert torch.all(attrs[:, :, 0] == 0.0)
+    assert torch.all(attrs[:, :, 3:] == 0.0)
+    assert torch.any(attrs[:, :, 1:3] != 0.0)
+
+
+def test_taylor_ism_rejects_too_few_channels() -> None:
+    """I/O contract: same channel-count validation as exact ISM."""
+    model = _WeightedScalarTarget()
+    inputs = torch.zeros((1, 3, 3), dtype=torch.float32)
+    with pytest.raises(ValueError, match=f">={N_NUCLEOTIDES} DNA channels"):
+        compute_taylor_ism_attributions(model, inputs, span=(None, None))
+
+
+def test_taylor_ism_preserves_dtype_and_shape() -> None:
+    """I/O contract: output dtype follows input dtype, shape is (B, 4, L)."""
+    model = _WeightedScalarTarget()
+    inputs = _make_onehot_sequence([[0, 1, 2], [3, 0, 1]], dtype=torch.float32)
+    attrs = compute_taylor_ism_attributions(model, inputs, span=(None, None))
+    assert attrs.shape == (2, N_NUCLEOTIDES, 3)
+    assert attrs.dtype == torch.float32
+
+
+def test_taylor_ism_works_inside_no_grad_context() -> None:
+    """Callers nested in ``@torch.no_grad()`` (eval loops) must still work.
+
+    Without the :func:`torch.enable_grad` wrap, the gradient call would fail
+    with an obscure error inside ``torch.no_grad()``. This guard keeps the
+    function usable from the export tool and other inference-mode paths.
+    """
+    model = _WeightedScalarTarget()
+    inputs = _make_onehot_sequence([[0, 1, 2]])
+    with torch.no_grad():
+        attrs = compute_taylor_ism_attributions(model, inputs, span=(None, None))
+    assert attrs.shape == (1, N_NUCLEOTIDES, 3)
+
+
+def test_taylor_ism_default_output_matches_ism_shape_and_format() -> None:
+    """Default (``tf_modisco_format=True``) returns the same shape and the
+    same TF-MoDISco ref-channel formatting as :func:`compute_ism_attributions`.
+
+    Linear model → values also match (redundant with the parity test, but
+    asserts the full contract in one place).
+    """
+    model = _WeightedScalarTarget()
+    inputs = _make_onehot_sequence([[0, 1, 2, 3]])
+    ism = compute_ism_attributions(model, inputs, span=(None, None))
+    taylor = compute_taylor_ism_attributions(model, inputs, span=(None, None))
+    assert taylor.shape == ism.shape
+    assert taylor.dtype == ism.dtype
+    # Ref channel at each position must equal -mean_j raw_delta_j (both funcs).
+    for pos in range(4):
+        ref = int(inputs[0, :N_NUCLEOTIDES, pos].argmax().item())
+        assert taylor[0, ref, pos].item() == pytest.approx(ism[0, ref, pos].item(), abs=1e-6)
 
 
 def test_mean_center_attributions() -> None:

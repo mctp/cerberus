@@ -209,6 +209,91 @@ def compute_ism_attributions(
     return attrs
 
 
+def compute_taylor_ism_attributions(
+    target_model: torch.nn.Module,
+    inputs: torch.Tensor,
+    span: IsmSpan,
+    *,
+    tf_modisco_format: bool = True,
+) -> torch.Tensor:
+    """First-order Taylor approximation of :func:`compute_ism_attributions`.
+
+    Replaces the ``3 * L`` forward passes of exact ISM with one forward plus
+    one backward pass. Per Sasse et al. 2024 (*iScience*, Eq. 7):
+
+    .. math::
+        \\mathrm{TISM}(l, b) = g[b, l] - g[\\mathrm{ref}(l), l]
+
+    where :math:`g = \\partial f / \\partial x` is the model's input gradient
+    and :math:`\\mathrm{ref}(l)` is the observed base at position :math:`l`.
+    On models whose input-to-target map is linear (e.g. a fixed-weight linear
+    scalar), the returned tensor is bit-identical to
+    :func:`compute_ism_attributions` (verified by test).
+
+    Reference-base gradient :math:`g[\\mathrm{ref}(l), l]` is computed as the
+    dot product ``(g * x).sum(dim=1)``, matching
+    [tism/torch_grad.py::correct_multipliers](../../../s2f-models/repos/TISM/tism/torch_grad.py).
+    This form is bit-identical to ``g.gather(argmax)`` on one-hot inputs and
+    is also well-defined on soft / PWM inputs.
+
+    Input and output contracts are identical to :func:`compute_ism_attributions`:
+
+    * ``inputs`` must have at least ``N_NUCLEOTIDES`` channels; the first
+      ``N_NUCLEOTIDES`` one-hot encode DNA, trailing channels are ignored.
+    * Returned tensor has shape ``(B, N_NUCLEOTIDES, L)`` and matches
+      ``inputs.dtype``.
+    * Positions outside the resolved ``span`` are left as zeros.
+    * When ``tf_modisco_format=True`` (default), the observed-nucleotide
+      channel holds ``-mean_j raw_delta_j`` — the TF-MoDISco
+      ``one_hot * hypothetical_contribs`` convention exact ISM uses.
+    * When ``tf_modisco_format=False``, raw TISM deltas are returned
+      unchanged (reference channel == 0 in span), matching the TISM
+      reference ``output='tism'``.
+
+    The call is wrapped in :func:`torch.enable_grad` so callers nested inside
+    ``@torch.no_grad()`` (common in eval loops) work correctly.
+    """
+    if inputs.shape[1] < N_NUCLEOTIDES:
+        raise ValueError(
+            f"TISM requires >={N_NUCLEOTIDES} DNA channels in inputs, "
+            f"got shape {tuple(inputs.shape)}"
+        )
+
+    batch_size = inputs.shape[0]
+    seq_len = inputs.shape[-1]
+    span_start, span_end = resolve_ism_span(seq_len, span)
+
+    x = inputs.detach().clone().requires_grad_(True)
+
+    with torch.enable_grad():
+        out = target_model(x).reshape(batch_size)
+        # grad_outputs=ones sums outputs across the batch; batch elements are
+        # independent so per-sample gradients are recovered correctly.
+        (grads,) = torch.autograd.grad(
+            out,
+            x,
+            grad_outputs=torch.ones_like(out),
+            create_graph=False,
+            retain_graph=False,
+        )
+
+    dna_grads = grads[:, :N_NUCLEOTIDES, :]
+    grad_ref = (dna_grads * inputs[:, :N_NUCLEOTIDES, :]).sum(dim=1, keepdim=True)
+    raw = dna_grads - grad_ref
+
+    attrs = torch.zeros(
+        (batch_size, N_NUCLEOTIDES, seq_len),
+        device=inputs.device,
+        dtype=inputs.dtype,
+    )
+    attrs[:, :, span_start:span_end] = raw[:, :, span_start:span_end]
+
+    if tf_modisco_format:
+        _apply_tf_modisco_ref_override(attrs, inputs, span_start, span_end)
+
+    return attrs
+
+
 def mean_center_attributions(attrs: np.ndarray) -> np.ndarray:
     """Subtract the per-position mean across nucleotide channels.
 

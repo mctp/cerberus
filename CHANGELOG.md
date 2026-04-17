@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Taylor-approximated ISM** (`compute_taylor_ism_attributions`):
+  First-order Taylor approximation of exact ISM per Sasse et al. 2024
+  (*iScience*). Replaces ``3 * L`` forward passes with one forward plus one
+  backward; on linear models the output is bit-identical to
+  `compute_ism_attributions` (verified by `torch.allclose`). Reference-base
+  gradient computed via the dot product ``(g * x).sum(dim=1)``, matching
+  the TISM reference implementation exactly and extending cleanly to soft /
+  PWM inputs. Input and output contracts (shape, dtype, span zeroing, DNA
+  channel validation, default TF-MoDISco ref-channel formatting) match exact
+  ISM. The optional ``tf_modisco_format=False`` flag returns raw TISM deltas
+  (reference channel == 0 in span) for the Majdandzic-bridge use case —
+  `mean_center_attributions(raw_tism)` then equals `grad - grad.mean(dim=1)`
+  (paper Eq. 8 / 11 / 15). Wrapped in `torch.enable_grad()` so it works from
+  within `@torch.no_grad()` eval loops.
+
 ### Changed
 - **Attribution module refactor** (`attribution.py`) — breaking, no deprecation shims:
   added `N_NUCLEOTIDES = 4` constant and `IsmSpan = tuple[int | None, int | None]`
