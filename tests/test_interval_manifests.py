@@ -3,6 +3,8 @@ and CerberusDataModule.save_interval_manifests."""
 
 from __future__ import annotations
 
+import gzip
+import shutil
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -49,6 +51,22 @@ def test_round_trip_basic(tmp_path: Path) -> None:
     write_intervals_bed(path, intervals, sources)
 
     loaded_iv, loaded_src = load_intervals_bed(path)
+    assert loaded_iv == intervals
+    assert loaded_src == sources
+
+
+def test_round_trip_gzip(tmp_path: Path) -> None:
+    """``.gz`` inputs are read transparently — matches the shipped fixture."""
+    intervals = [_IV1, _IV2, _IV3]
+    sources = ["IntervalSampler", "ComplexityMatchedSampler", "IntervalSampler"]
+
+    plain = tmp_path / "intervals.bed"
+    gz = tmp_path / "intervals.bed.gz"
+    write_intervals_bed(plain, intervals, sources)
+    with open(plain, "rb") as src, gzip.open(gz, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+
+    loaded_iv, loaded_src = load_intervals_bed(gz)
     assert loaded_iv == intervals
     assert loaded_src == sources
 

@@ -35,10 +35,10 @@ from cerberus.attribution import (
     compute_ism_attributions,
     compute_taylor_ism_attributions,
 )
-from cerberus.dataset import CerberusDataset
-from cerberus.download import download_dataset, download_human_reference
+from cerberus.interval import load_intervals_bed
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.plots import plot_attribution_panel, plot_seqlogo
+from cerberus.sequence import SequenceExtractor
 from cerberus.utils import resolve_device
 
 # %% [markdown]
@@ -67,35 +67,32 @@ model = model_ensemble[fold_keys[0]].to(device)
 model.eval()
 
 # %% [markdown]
-# ## 2. Initialise the test-fold sampler and pick a random peak
+# ## 2. Pick a random test peak from the shipped fixture
+#
+# The BED fixture lists the exact intervals held out of training. No dataset
+# / sampler / fold-split setup is needed — we only need the interval and its
+# reference sequence for ISM, so we go through two library primitives:
+#
+# * :func:`cerberus.interval.load_intervals_bed` (gzip-aware) reads the
+#   fixture directly.
+# * :class:`cerberus.sequence.SequenceExtractor` gives us the one-hot the
+#   model saw in training, straight from the FASTA referenced in
+#   ``config.genome_config.fasta_path``.
 
 # %%
-data_dir = project_root / "tests/data"
-download_human_reference(data_dir / "genome", name="hg38")
-download_dataset(data_dir / "dataset", name="mdapca2b_ar")
-
-dataset = CerberusDataset(
-    genome_config=config.genome_config,
-    data_config=config.data_config,
-    sampler_config=config.sampler_config,
-    is_train=False,
+fixture_path = (
+    project_root / "tests/data/fixtures/chip_ar_mdapca2b_intervals_test.bed.gz"
 )
+test_intervals, _ = load_intervals_bed(fixture_path)
+print(f"Fixture intervals: {len(test_intervals)}")
 
-fold_args = config.genome_config.fold_args
-_, _, test_dataset = dataset.split_folds(
-    test_fold=fold_args["test_fold"], val_fold=fold_args["val_fold"]
-)
-test_sampler = test_dataset.sampler
-print(f"Test-fold intervals: {len(test_sampler)}")
-
-# %%
-# Pick one peak at random — seeded for reproducibility. Re-run the cell with a
+# Pick one peak at random — seeded for reproducibility. Re-run with a
 # different ``PEAK_SEED`` to study a different locus.
 PEAK_SEED = 42
 rng = np.random.default_rng(PEAK_SEED)
-peak_idx = int(rng.integers(0, len(test_sampler)))
-peak_interval = test_sampler[peak_idx].center(input_len)
-print(f"Random peak  (seed={PEAK_SEED}, idx={peak_idx}): {peak_interval}")
+peak_idx = int(rng.integers(0, len(test_intervals)))
+peak_interval = test_intervals[peak_idx].center(input_len)
+print(f"Random peak (seed={PEAK_SEED}, idx={peak_idx}): {peak_interval}")
 
 # %% [markdown]
 # ## 3. Build the scalar attribution target
@@ -119,16 +116,16 @@ target_model.eval()
 # %% [markdown]
 # ## 4. Extract the input one-hot and choose an ISM window
 #
-# ``dataset.get_interval`` returns the (C, L) input that the model would see
-# during training/inference; we add a batch dimension. Exact ISM is O(L_span)
-# forward passes, so we restrict the window to the central 200 bp of the peak
-# to keep the notebook interactive. TISM runs on the same window for a fair
+# :class:`SequenceExtractor` reads the FASTA referenced in the model's config
+# and returns ``(4, L)``; we add a batch dim. Exact ISM is O(L_span) forward
+# passes, so we restrict the window to the central 200 bp of the peak to keep
+# the notebook interactive. TISM runs on the same window for a fair
 # comparison — though in practice it can cover the full 2114 bp in the same
 # wall-clock time.
 
 # %%
-item = dataset.get_interval(peak_interval)
-inputs = item["inputs"].unsqueeze(0).to(device)  # (1, C, L)
+extractor = SequenceExtractor(config.genome_config.fasta_path)
+inputs = extractor.extract(peak_interval).unsqueeze(0).to(device)  # (1, 4, L)
 print(f"Input shape: {tuple(inputs.shape)}  dtype: {inputs.dtype}")
 
 SPAN_WIDTH = 200

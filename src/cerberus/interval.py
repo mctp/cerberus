@@ -1,3 +1,4 @@
+import gzip
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -85,15 +86,20 @@ def load_intervals_bed(
 ) -> tuple[list[Interval], list[str]]:
     """Load intervals and source labels from a BED-like TSV file.
 
+    Transparently reads ``.gz``-compressed inputs (detected by suffix) so
+    gzipped fixtures written by :func:`write_intervals_bed` followed by
+    ``gzip`` can be round-tripped without a separate decompression step.
+
     Args:
-        path: Input file path (as written by :func:`write_intervals_bed`).
+        path: Input file path. Plain text or gzip-compressed (``.gz`` suffix).
 
     Returns:
         ``(intervals, sources)`` tuple.
     """
+    opener = gzip.open if Path(path).suffix == ".gz" else open
     intervals: list[Interval] = []
     sources: list[str] = []
-    with open(path) as f:
+    with opener(path, "rt") as f:
         header = next(f)
         if not header.startswith("chrom\t"):
             raise ValueError(f"Unexpected header in {path}: {header!r}")

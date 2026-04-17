@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`load_intervals_bed` now reads gzipped files transparently**
+  (`src/cerberus/interval.py`). `.gz`-suffixed paths are opened with
+  `gzip.open(..., "rt")`; plain-text paths keep the previous behavior.
+  Matches the format of the shipped test fixtures (e.g.
+  `tests/data/fixtures/chip_ar_mdapca2b_intervals_test.bed.gz`) so notebooks
+  no longer need to inline their own `gzip.open` read loops.
+- **ISM-vs-Taylor notebook now bypasses the dataset pipeline.** Previously
+  built a full `CerberusDataset` + fold-split just to extract one peak's
+  one-hot; now uses `load_intervals_bed` (fixture) + `SequenceExtractor`
+  directly, shaving ~5 s of setup and removing unnecessary `download_*` /
+  fold-split overhead. No API change — just a consumer migration to
+  existing, lighter-weight primitives.
+
 ### Added
 - **ISM vs Taylor-ISM notebook**
   (`notebooks/chip_ar_mdapca2b_attribution_ism_vs_taylor.py`):
