@@ -33,6 +33,7 @@ from cerberus.attribution import (
     AttributionTarget,
     mean_center_attributions,
     compute_ism_attributions,
+    compute_taylor_ism_attributions,
     resolve_ism_span,
 )
 from cerberus.datamodule import CerberusDataModule
@@ -144,12 +145,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--attribution-method",
-        choices=["integrated_gradients", "deep_lift_shap", "ism"],
+        choices=["integrated_gradients", "deep_lift_shap", "ism", "taylor_ism"],
         default="integrated_gradients",
         help=(
             "Attribution method. 'integrated_gradients' uses Captum; "
             "'deep_lift_shap' uses Captum DeepLiftShap; "
-            "'ism' computes mutation deltas via forward passes."
+            "'ism' computes mutation deltas via 3*L forward passes per batch; "
+            "'taylor_ism' is a first-order Taylor approximation of 'ism' "
+            "(one forward + one backward per batch, ~100x faster at peak widths, "
+            "bit-identical to 'ism' on linear models; see Sasse et al. 2024)."
         ),
     )
     parser.add_argument(
@@ -187,7 +191,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "Inclusive input-base start index for ISM mutations. "
+            "Inclusive input-base start index for ISM / Taylor-ISM mutations. "
             "Default: 0 (full-length ISM)."
         ),
     )
@@ -196,7 +200,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "Exclusive input-base end index for ISM mutations. "
+            "Exclusive input-base end index for ISM / Taylor-ISM mutations. "
             "Default: input length (full-length ISM)."
         ),
     )
@@ -492,7 +496,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
             args.dls_baseline_strategy,
             args.dls_n_baselines,
         )
-    elif args.attribution_method != "ism":
+    elif args.attribution_method not in {"ism", "taylor_ism"}:
         raise ValueError(f"Unsupported attribution method: {args.attribution_method}")
 
     ohe_batches: list[np.ndarray] = []
@@ -578,7 +582,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
                 )
                 dls_delta_count += int(delta_abs.numel())
             attributions = torch.cat(attrs_per_example, dim=0)
-        else:
+        elif args.attribution_method == "ism":
             if not logged_ism_span:
                 span_start, span_end = resolve_ism_span(
                     inputs.shape[-1], (args.ism_start, args.ism_end)
@@ -596,6 +600,25 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
                 )
                 logged_ism_span = True
             attributions = compute_ism_attributions(
+                target_model=target_model,
+                inputs=inputs,
+                span=(args.ism_start, args.ism_end),
+            )
+        else:  # taylor_ism
+            if not logged_ism_span:
+                span_start, span_end = resolve_ism_span(
+                    inputs.shape[-1], (args.ism_start, args.ism_end)
+                )
+                logger.info(
+                    "Taylor-ISM span [%d, %d) over input length %d (%d positions); "
+                    "per batch this runs 1 forward + 1 backward pass.",
+                    span_start,
+                    span_end,
+                    inputs.shape[-1],
+                    span_end - span_start,
+                )
+                logged_ism_span = True
+            attributions = compute_taylor_ism_attributions(
                 target_model=target_model,
                 inputs=inputs,
                 span=(args.ism_start, args.ism_end),

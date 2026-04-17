@@ -494,6 +494,25 @@ python tools/export_tfmodisco_inputs.py \
     --ism-end 1200
 ```
 
+Export with Taylor-approximated ISM (first-order, one forward + one backward
+pass per batch — typically ~100× faster than exact ISM at peak widths, and
+bit-identical on linear models; see Sasse et al. 2024 *iScience*):
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --attribution-method taylor_ism \
+    --ism-start 800 \
+    --ism-end 1200
+```
+
+The `--ism-start` / `--ism-end` window applies to both `ism` and `taylor_ism`;
+positions outside the window are zero in the output. The exported
+`ohe.npz` / `shap.npz` shapes are identical across methods, so downstream
+`run_tfmodisco.py` needs no flag changes.
+
 Step 2: run TF-MoDISco motifs on exported NPZ files:
 
 ```bash

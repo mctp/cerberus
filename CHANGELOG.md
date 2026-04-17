@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`--attribution-method taylor_ism`** in `tools/export_tfmodisco_inputs.py`:
+  wires the new Taylor-ISM function into the TF-MoDISco export pipeline.
+  Re-uses the existing `--ism-start` / `--ism-end` window; output `ohe.npz` /
+  `shap.npz` shape and dtype match the `ism` path exactly so downstream
+  `tools/run_tfmodisco.py` needs no flag changes. Typically ~100× faster
+  than `ism` at peak widths. Documented in `docs/usage.md` alongside the
+  existing ISM example.
 - **Taylor-approximated ISM** (`compute_taylor_ism_attributions`):
   First-order Taylor approximation of exact ISM per Sasse et al. 2024
   (*iScience*). Replaces ``3 * L`` forward passes with one forward plus one
