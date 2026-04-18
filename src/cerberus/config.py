@@ -174,18 +174,27 @@ class PretrainedConfig(BaseModel):
 class FreezeSpec(BaseModel):
     """Declarative freeze rule applied after model instantiation.
 
-    Patterns are matched with ``fnmatch.fnmatchcase`` against every
-    ``named_modules()`` and ``named_parameters()`` path on the model.
+    Patterns are exact paths into the model's named hierarchy — not
+    globs.  Exactly one of the following must hold:
+
+    - ``pattern`` equals the name of a module in ``named_modules()``
+      (e.g. ``"bias_model"``, ``"res_layers.0"``) — freezes every
+      parameter in that subtree and, if ``eval_mode`` is ``True``,
+      calls ``.eval()`` on the module root so that Dropout / BatchNorm
+      descendants stop firing / drifting.
+    - ``pattern`` equals the name of a parameter in
+      ``named_parameters()`` (e.g. ``"iconv.weight"``) — freezes that
+      single parameter.  ``eval_mode`` is ignored for parameter-only
+      matches.
+
+    A zero-match pattern raises at ``apply_freeze`` time so typos
+    cannot silently become no-ops.
 
     Attributes:
-        pattern: Glob pattern selecting the module or parameter to freeze.
-            Note that ``*`` matches dots: ``"iconv*"`` matches both
-            ``"iconv.weight"`` and ``"iconv_act"``. Prefer ``"iconv.*"``
-            to scope to a subtree.
-        eval_mode: If ``True`` (default), call ``.eval()`` on matched
-            module roots. Required for Dropout / BatchNorm layers inside
-            a frozen subtree to stop firing / drifting. Parameter-only
-            matches ignore this flag.
+        pattern: Exact module or parameter path to freeze.
+        eval_mode: If ``True`` (default), call ``.eval()`` on the
+            matched module root. Ignored when ``pattern`` names a
+            parameter rather than a module.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

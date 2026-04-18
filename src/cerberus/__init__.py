@@ -18,6 +18,7 @@ from .config import (
 )
 from .datamodule import CerberusDataModule
 from .dataset import CerberusDataset
+from .freeze import FreezeReport, apply_freeze, maybe_promote_ddp_strategy
 from .download import (
     download_dataset,
     download_human_reference,
@@ -93,4 +94,8 @@ __all__ = [
     "resolve_adaptive_loss_args",
     "train_single",
     "train_multi",
+    # Freezing
+    "apply_freeze",
+    "FreezeReport",
+    "maybe_promote_ddp_strategy",
 ]
