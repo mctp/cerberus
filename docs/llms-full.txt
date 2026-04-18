@@ -679,6 +679,87 @@ Notes:
 4. `tools/run_tfmodisco.py` can consume any compatible attribution NPZ, not just outputs from `tools/export_tfmodisco_inputs.py`.
 5. `modisco motifs` expects NPZ key `arr_0`; export scripts should write NPZ in that format.
 
+## Model Interpretation (TPCAV)
+
+`tools/run_tpcav.py` is a thin Cerberus adapter around the upstream
+[`tpcav`](https://github.com/seqcode/TPCAV) package.
+
+The current MVP intentionally supports only:
+
+- single-task `BPNet`
+- sequence-only concepts (motif files)
+- scalar targets wrapped through `AttributionTarget`
+
+What the script does:
+
+1. Loads the checkpoint via `ModelEnsemble(fold=args.fold)` (same layout as
+   every other Cerberus inference tool).
+2. Pulls the fold-specific model out of the ensemble.
+3. Wraps it in `AttributionTarget` so upstream TPCAV sees a scalar-output `nn.Module`.
+4. Resolves Cerberus-friendly probe-layer aliases such as `tower_out`.
+5. Delegates concept construction, PCA fitting, CAV training, and HTML reporting to the upstream `tpcav` package.
+
+Prerequisites:
+
+```bash
+pip install -e ".[tpcav]"
+```
+
+Inspect available probe layers for a checkpoint:
+
+```bash
+python tools/run_tpcav.py \
+    --checkpoint-dir models/my_bpnet/single-fold \
+    --fold 0 \
+    --list-layers
+```
+
+Default BPNet probe-layer aliases:
+
+| Alias | Meaning |
+|---|---|
+| `initial_conv` | Initial sequence convolution (`iconv`) |
+| `tower_block_0`, `tower_block_1`, ... | Individual dilated residual blocks |
+| `tower_out` | Final shared tower representation before the heads |
+| `profile_head` | Profile readout convolution |
+| `count_head` | Count readout dense layer |
+
+For BPNet, `tower_out` is the recommended default:
+
+- `residual_pre-activation_conv` and `activated_residual_pre-activation_conv`:
+  `final_tower_relu`
+- `residual_post-activation_conv`:
+  the last residual block output (`res_layers.<last>`)
+
+Run TPCAV on motif concepts:
+
+```bash
+python tools/run_tpcav.py \
+    --checkpoint-dir models/my_bpnet/single-fold \
+    --fold 0 \
+    --motif-file data/motifs/my_concepts.meme \
+    --motif-file-fmt meme \
+    --layer tower_out \
+    --target-mode log_counts \
+    --num-motif-insertions 4 8 16 \
+    --num-samples-for-pca 10 \
+    --num-samples-for-cav 1000 \
+    --output-dir models/my_bpnet/single-fold/tpcav
+```
+
+Outputs:
+
+- `run_config.json`: Cerberus-side run metadata
+- `motif_auc_fscores.tsv`: saved when upstream TPCAV returns motif AUC/F-score summary
+- upstream `cav_trainer.pt` artifacts (optional)
+- upstream `report.html` (optional)
+
+Notes:
+
+1. `tools/run_tpcav.py` requires the upstream `tpcav` Python package in the active environment.
+2. The script is deliberately thin: it does not reimplement concept generation or TCAV scoring.
+3. Large motif databases can create very long-running jobs because upstream TPCAV trains one CAV per motif concept.
+
 ## Next Steps
 
 Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.
@@ -11390,8 +11471,21 @@ class ModelEnsemble(nn.ModuleDict):
         if not path.is_dir():
             raise ValueError(f"checkpoint_path must be a directory: {path}")
 
-        # Resolve configuration
-        hparams_path = find_latest_hparams(path)
+        # Resolve configuration. When a specific fold is requested, prefer the
+        # hparams.yaml inside that fold's directory (train_multi writes
+        # fold-specific test_fold / val_fold values there); fall back to the
+        # latest hparams under the root if the fold-specific one is absent
+        # (e.g. single-fold train_single layout with no fold_N subdir).
+        hparams_search_root: Path = path
+        if fold is not None:
+            fold_dir_candidate = path / f"fold_{fold}"
+            if fold_dir_candidate.is_dir():
+                try:
+                    find_latest_hparams(fold_dir_candidate)
+                    hparams_search_root = fold_dir_candidate
+                except FileNotFoundError:
+                    pass
+        hparams_path = find_latest_hparams(hparams_search_root)
         self.cerberus_config: CerberusConfig = parse_hparams_config(hparams_path)
 
         overrides = {}

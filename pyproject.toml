@@ -38,6 +38,7 @@ extras = [
   "matplotlib",
   "polars",
   "logomaker",
+  "tpcav",
 ]
 dev = [
   "cerberus[extras]",

@@ -39,6 +39,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ddp_find_unused_parameters_false` for multi-GPU CUDA runs; callers can
   disable the DDP override via `use_ddp_find_unused_parameters_false=False`
   (used by BiasNet). Covered by `tests/test_train_precision.py`.
+- **Minimal TPCAV adapter for single-task BPNet.** New `cerberus.tpcav`
+  module providing `build_tpcav_target_model` (wraps a BPNet output through
+  `AttributionTarget` so upstream [tpcav](https://github.com/seqcode/TPCAV)
+  sees a scalar-output `nn.Module`), `list_tpcav_probe_layers` (exposes
+  stable Cerberus-friendly probe-layer aliases such as `tower_out`,
+  `tower_block_i`, `profile_head`, `count_head`), and
+  `resolve_tpcav_layer_name`. The MVP intentionally rejects non-BPNet
+  models and multi-task BPNet. New `tools/run_tpcav.py` CLI loads the
+  checkpoint via `ModelEnsemble(fold=args.fold)`, resolves probe-layer
+  aliases, and delegates concept construction / CAV training to the
+  upstream `tpcav` package. New `[tpcav]` optional extra holds the
+  dependency. Documented in `docs/usage.md`; tests in `tests/test_tpcav.py`
+  and `tests/test_package_api.py` (verifies the TPCAV helpers stay off the
+  top-level `cerberus.*` API surface).
 
 - **Interval-aligned attribution export.** `tools/export_tfmodisco_inputs.py`
   now emits `intervals.tsv` (row-aligned to the NPZ outputs) and
