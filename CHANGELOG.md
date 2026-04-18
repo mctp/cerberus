@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a4] - 2026-04-18
+
 ### Added
 - **Two-phase multitask-differential BPNet workflow.** New library primitives
   plus an end-to-end CLI for training a shared-trunk BPNet on N conditions
