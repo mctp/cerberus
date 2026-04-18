@@ -251,7 +251,7 @@ model_config = ModelConfig(
     pretrained=[
         PretrainedConfig(
             weights_path="models/foxa1/phase1/single-fold/fold_0/model.pt",
-            source=None, target=None, freeze=False,
+            source=None, target=None,
         )
     ],
     count_pseudocount=150.0,  # raw × target_scale, same as Phase 1
@@ -720,3 +720,25 @@ model = GlobalProfileCNN(
 )
 # Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 256)
 ```
+
+## Named submodules reference
+
+Top-level child names (`model.named_children()`) for every shipped
+architecture.  These are the paths that are valid as
+`FreezeSpec(pattern=...)` targets (see
+[configuration.md § Freezing Parameters](configuration.md#freezing-parameters)).
+Nested paths like `res_layers.0` are also valid — any name
+returned by `model.named_modules()` works.
+
+| Architecture | Top-level children |
+|---|---|
+| `BPNet` / `MultitaskBPNet` | `iconv`, `iconv_act`, `res_layers`, `final_tower_relu`, `profile_conv`, `count_dense` |
+| `Pomeranian` | `stem`, `layers`, `profile_pointwise`, `profile_act`, `profile_spatial`, `count_mlp` |
+| `BiasNet` | `stem`, `layers`, `profile_spatial`, `count_mlp` |
+| `Dalmatian` | `bias_model`, `signal_model` |
+| `ConvNeXtDCNN` (ASAP) | `init_conv`, `init_pool`, `core` |
+| `GlobalProfileCNN` (Gopher) | see `src/cerberus/models/gopher.py` |
+
+For composite models such as Dalmatian, patterns can address the
+sub-model directly (`"bias_model"`) or any nested path
+(`"signal_model.stem"`, `"signal_model.layers.3"`).

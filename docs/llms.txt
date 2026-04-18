@@ -30,6 +30,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class DataConfig(BaseModel)`** — Configuration for input/output data handling.
 - **`class TrainConfig(BaseModel)`** — Configuration for training hyperparameters.
 - **`class PretrainedConfig(BaseModel)`** — Configuration for loading pretrained weights into a model sub-module.
+- **`class FreezeSpec(BaseModel)`** — Declarative freeze rule applied after model instantiation.
 - **`class ModelConfig(BaseModel)`** — Configuration for the model architecture.
 - **`class CerberusConfig(BaseModel)`** — Combined configuration for Cerberus.
 

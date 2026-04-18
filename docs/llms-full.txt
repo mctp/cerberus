@@ -973,7 +973,7 @@ All config types can be imported directly from `cerberus`:
 ```python
 from cerberus import (
     GenomeConfig, DataConfig, SamplerConfig,
-    TrainConfig, ModelConfig, PretrainedConfig, CerberusConfig,
+    TrainConfig, ModelConfig, PretrainedConfig, FreezeSpec, CerberusConfig,
 )
 ```
 
@@ -1230,6 +1230,11 @@ class ModelConfig(BaseModel):
     # Empty list means no pretrained weights.
     pretrained: list[PretrainedConfig] = []
 
+    # List of freeze rules applied after model instantiation and after
+    # pretrained weights (if any) are loaded. Empty list = fully trainable.
+    # See the "Freezing Parameters" section below for FreezeSpec semantics.
+    freeze: list[FreezeSpec] = []
+
     # Additive offset before log-transforming count targets, specified in scaled
     # units (i.e. raw coverage × target_scale). Injected into loss_args and
     # metrics_args automatically so that loss and metrics receive the value in
@@ -1238,6 +1243,64 @@ class ModelConfig(BaseModel):
     # Set to 0.0 for Poisson/NB losses that do not use a pseudocount.
     count_pseudocount: float = 0.0
 ```
+
+## Freezing Parameters
+
+`ModelConfig.freeze` is a list of `FreezeSpec` rules applied once
+after the model is built and pretrained weights (if any) are
+loaded.  Each rule selects a module or parameter by exact path and
+sets `requires_grad=False`; module matches additionally put the
+subtree in `.eval()` mode (unless `eval_mode=False`).
+
+```python
+from cerberus import FreezeSpec
+
+class FreezeSpec(BaseModel):
+    # Exact path into the model.
+    # - Matches a module: "bias_model", "res_layers.0", "encoder.block.conv"
+    # - Matches a parameter: "iconv.weight"
+    pattern: str
+
+    # If True (default), call .eval() on matched module roots so Dropout
+    # becomes identity and BatchNorm stops updating running stats.
+    # Ignored for parameter-only matches.
+    eval_mode: bool = True
+```
+
+**Pattern semantics.** Patterns are exact paths — not globs. A
+pattern must equal a name in `named_modules()` (subtree freeze) or
+`named_parameters()` (single-parameter freeze).  A spec that
+matches neither raises at `apply_freeze` time so typos can't
+silently become no-ops.  Overlapping specs are idempotent.
+
+**Interaction with DDP.** If any parameter is frozen, cerberus
+automatically promotes `strategy="ddp_find_unused_parameters_false"`
+to `ddp_find_unused_parameters_true` for that run (frozen params
+violate the `_false` assumption that every parameter gets a
+gradient every step).  Tools that never freeze keep the faster
+`_false` default.
+
+**Examples.**
+
+```python
+from cerberus import ModelConfig, FreezeSpec
+
+# Freeze a whole sub-model (Dalmatian bias branch).
+ModelConfig(..., freeze=[FreezeSpec(pattern="bias_model")])
+
+# Freeze BPNet's trunk + profile head, fine-tune only count_dense.
+ModelConfig(..., freeze=[
+    FreezeSpec(pattern="iconv"),
+    FreezeSpec(pattern="res_layers"),
+    FreezeSpec(pattern="profile_conv"),
+])
+
+# Freeze a single parameter.
+ModelConfig(..., freeze=[FreezeSpec(pattern="iconv.weight")])
+```
+
+See `docs/models.md` for the `named_children()` of each shipped
+architecture.
 
 ## DataModule Runtime Arguments
 
@@ -2486,7 +2549,7 @@ model_config = ModelConfig(
     pretrained=[
         PretrainedConfig(
             weights_path="models/foxa1/phase1/single-fold/fold_0/model.pt",
-            source=None, target=None, freeze=False,
+            source=None, target=None,
         )
     ],
     count_pseudocount=150.0,  # raw × target_scale, same as Phase 1
@@ -2956,6 +3019,28 @@ model = GlobalProfileCNN(
 # Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 256)
 ```
 
+## Named submodules reference
+
+Top-level child names (`model.named_children()`) for every shipped
+architecture.  These are the paths that are valid as
+`FreezeSpec(pattern=...)` targets (see
+[configuration.md § Freezing Parameters](configuration.md#freezing-parameters)).
+Nested paths like `res_layers.0` are also valid — any name
+returned by `model.named_modules()` works.
+
+| Architecture | Top-level children |
+|---|---|
+| `BPNet` / `MultitaskBPNet` | `iconv`, `iconv_act`, `res_layers`, `final_tower_relu`, `profile_conv`, `count_dense` |
+| `Pomeranian` | `stem`, `layers`, `profile_pointwise`, `profile_act`, `profile_spatial`, `count_mlp` |
+| `BiasNet` | `stem`, `layers`, `profile_spatial`, `count_mlp` |
+| `Dalmatian` | `bias_model`, `signal_model` |
+| `ConvNeXtDCNN` (ASAP) | `init_conv`, `init_pool`, `core` |
+| `GlobalProfileCNN` (Gopher) | see `src/cerberus/models/gopher.py` |
+
+For composite models such as Dalmatian, patterns can address the
+sub-model directly (`"bias_model"`) or any nested path
+(`"signal_model.stem"`, `"signal_model.layers.3"`).
+
 ## Complexity Metrics  [complexity.md]
 
 # Sequence Complexity Metrics
@@ -3268,6 +3353,7 @@ from .attribution import (
 from .config import (
     CerberusConfig,
     DataConfig,
+    FreezeSpec,
     GenomeConfig,
     ModelConfig,
     PretrainedConfig,
@@ -3276,6 +3362,7 @@ from .config import (
 )
 from .datamodule import CerberusDataModule
 from .dataset import CerberusDataset
+from .freeze import FreezeReport, apply_freeze, maybe_promote_ddp_strategy
 from .download import (
     download_dataset,
     download_human_reference,
@@ -3315,6 +3402,7 @@ __all__ = [
     "TrainConfig",
     "ModelConfig",
     "PretrainedConfig",
+    "FreezeSpec",
     "CerberusConfig",
     # Dataset
     "CerberusDataset",
@@ -3350,6 +3438,10 @@ __all__ = [
     "resolve_adaptive_loss_args",
     "train_single",
     "train_multi",
+    # Freezing
+    "apply_freeze",
+    "FreezeReport",
+    "maybe_promote_ddp_strategy",
 ]
 
 ## src/cerberus/config.py
@@ -3510,13 +3602,15 @@ class TrainConfig(BaseModel):
 class PretrainedConfig(BaseModel):
     """Configuration for loading pretrained weights into a model sub-module.
 
+    Parameter freezing is handled separately via :class:`FreezeSpec` on
+    ``ModelConfig.freeze`` — this class only describes *loading*.
+
     Attributes:
         weights_path: Path to a ``.pt`` state-dict file.
         source: Sub-module prefix to extract from the source state dict
             (``None`` uses all keys).
         target: Named sub-module to load into (``None`` loads into the
             whole model).
-        freeze: If ``True``, freeze all parameters in the loaded sub-module.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -3524,7 +3618,38 @@ class PretrainedConfig(BaseModel):
     weights_path: str
     source: str | None
     target: str | None
-    freeze: bool
+
+
+class FreezeSpec(BaseModel):
+    """Declarative freeze rule applied after model instantiation.
+
+    Patterns are exact paths into the model's named hierarchy — not
+    globs.  Exactly one of the following must hold:
+
+    - ``pattern`` equals the name of a module in ``named_modules()``
+      (e.g. ``"bias_model"``, ``"res_layers.0"``) — freezes every
+      parameter in that subtree and, if ``eval_mode`` is ``True``,
+      calls ``.eval()`` on the module root so that Dropout / BatchNorm
+      descendants stop firing / drifting.
+    - ``pattern`` equals the name of a parameter in
+      ``named_parameters()`` (e.g. ``"iconv.weight"``) — freezes that
+      single parameter.  ``eval_mode`` is ignored for parameter-only
+      matches.
+
+    A zero-match pattern raises at ``apply_freeze`` time so typos
+    cannot silently become no-ops.
+
+    Attributes:
+        pattern: Exact module or parameter path to freeze.
+        eval_mode: If ``True`` (default), call ``.eval()`` on the
+            matched module root. Ignored when ``pattern`` names a
+            parameter rather than a module.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pattern: str
+    eval_mode: bool = True
 
 
 class ModelConfig(BaseModel):
@@ -3540,6 +3665,10 @@ class ModelConfig(BaseModel):
         model_args: Model constructor keyword arguments.
         pretrained: List of pretrained-weight configs to apply after
             instantiation.  Empty list means train from scratch.
+        freeze: List of freeze rules applied after the model is built
+            and pretrained weights (if any) are loaded.  Empty list
+            means all parameters remain trainable.  See
+            :class:`FreezeSpec` for pattern semantics.
         count_pseudocount: Additive offset before log-transforming count
             targets, in scaled units (raw coverage × ``target_scale``).
             Set to ``0.0`` for losses that do not use a pseudocount
@@ -3556,6 +3685,7 @@ class ModelConfig(BaseModel):
     metrics_args: dict[str, Any]
     model_args: dict[str, Any]
     pretrained: list[PretrainedConfig] = Field(default_factory=list)
+    freeze: list[FreezeSpec] = Field(default_factory=list)
     count_pseudocount: float = Field(default=0.0, ge=0)
 
 
@@ -8654,6 +8784,7 @@ from .config import (
     TrainConfig,
 )
 from .datamodule import CerberusDataModule
+from .freeze import apply_freeze, maybe_promote_ddp_strategy
 from .model_ensemble import update_ensemble_metadata
 from .module import configure_callbacks, instantiate
 from .pretrained import load_pretrained_weights
@@ -8811,7 +8942,10 @@ def _train(
       3. Module instantiation with the resolved model_config (which internally
          calls instantiate_metrics_and_loss to inject scaled count_pseudocount
          into loss_args and metrics_args).
-      4. trainer.fit().
+      4. Pretrained weight loading + declarative freezing (``model_config.freeze``);
+         DDP strategy is promoted to ``ddp_find_unused_parameters_true`` if any
+         parameter was frozen and the requested strategy was the ``_false`` variant.
+      5. trainer.fit().
 
     Keeping setup before instantiation ensures that loss weights derived from
     training data statistics are always concrete floats by the time the loss
@@ -8882,16 +9016,6 @@ def _train(
             save_dir = "."
         trainer_kwargs["logger"] = pl_loggers.CSVLogger(save_dir=str(save_dir))
 
-    # Initialize Trainer
-    trainer = pl.Trainer(
-        max_epochs=train_config.max_epochs,
-        callbacks=current_callbacks,
-        precision=precision,
-        reload_dataloaders_every_n_epochs=train_config.reload_dataloaders_every_n_epochs,
-        gradient_clip_val=train_config.gradient_clip_val,
-        **trainer_kwargs,
-    )
-
     # 1. Pre-compute and cache complexity metrics (rank 0 only in DDP).
     datamodule.prepare_data()
 
@@ -8925,14 +9049,32 @@ def _train(
     if pretrained:
         load_pretrained_weights(module.model, pretrained)
 
-    # 6. Train
+    # 6. Apply declarative freeze rules. Runs after weight loading so
+    #    patterns can target anything in the final model graph, and
+    #    before Trainer construction so the DDP strategy can be promoted
+    #    if any parameter is frozen.
+    if model_config.freeze:
+        freeze_report = apply_freeze(module.model, model_config.freeze)
+        trainer_kwargs = maybe_promote_ddp_strategy(trainer_kwargs, freeze_report)
+
+    # 7. Initialize Trainer
+    trainer = pl.Trainer(
+        max_epochs=train_config.max_epochs,
+        callbacks=current_callbacks,
+        precision=precision,
+        reload_dataloaders_every_n_epochs=train_config.reload_dataloaders_every_n_epochs,
+        gradient_clip_val=train_config.gradient_clip_val,
+        **trainer_kwargs,
+    )
+
+    # 8. Train
     trainer.fit(module, datamodule=datamodule)
 
-    # 7. Save clean state dict for inference (best checkpoint, no Lightning overhead)
+    # 9. Save clean state dict for inference (best checkpoint, no Lightning overhead)
     if root_dir is not None and trainer.is_global_zero:
         _save_model_pt(trainer, root_dir)
 
-    # 8. Save interval manifests for reproducible evaluation (rank-0 only)
+    # 10. Save interval manifests for reproducible evaluation (rank-0 only)
     if root_dir is not None and trainer.is_global_zero:
         datamodule.save_interval_manifests(Path(root_dir))
 

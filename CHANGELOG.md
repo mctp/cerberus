@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Declarative parameter freezing via `ModelConfig.freeze`.** New
+  `FreezeSpec(pattern, eval_mode)` type plus `cerberus.freeze`
+  module exposing `apply_freeze`, `FreezeReport`, and
+  `maybe_promote_ddp_strategy`. `pattern` is an **exact path** into
+  `named_modules()` (subtree freeze) or `named_parameters()`
+  (single parameter); module matches additionally call `.eval()` on
+  the subtree root so Dropout / BatchNorm inside the frozen branch
+  stop firing / drifting. Applied by `_train` after pretrained
+  weight loading; DDP strategy auto-promotes
+  `ddp_find_unused_parameters_false` → `_true` whenever any
+  parameter is frozen. Zero-match specs raise to catch typos. See
+  `docs/configuration.md#freezing-parameters` and
+  `docs/models.md#named-submodules-reference`.
+
+### Changed
+- **Dalmatian `--freeze-bias` correctness fix.** The flag now
+  populates `ModelConfig.freeze=[FreezeSpec("bias_model",
+  eval_mode=True)]` instead of the legacy
+  `PretrainedConfig.freeze=True`. The new surface pairs the
+  `requires_grad` flip with `bias_model.eval()` so the 5×
+  `Dropout(p=0.1)` layers inside BiasNet become identity during
+  training — frozen bias logits now match what inference sees,
+  eliminating a silent train/infer distribution shift (measured up
+  to 0.257-magnitude per-logit difference pre-fix).
+- `_train` now constructs `pl.Trainer` after `apply_freeze` so the
+  promoted DDP strategy reaches the trainer. No change for callers
+  that leave `ModelConfig.freeze` empty.
+
+### Removed (breaking)
+- **`PretrainedConfig.freeze` field.** Freezing is now exclusively
+  expressed via `ModelConfig.freeze`. Update any hand-written
+  configs or scripts: drop `freeze=...` from `PretrainedConfig(...)`
+  calls; if you were passing `freeze=True`, add a
+  `FreezeSpec(pattern=target, eval_mode=True)` to
+  `ModelConfig.freeze`. All shipped tools have been migrated; the
+  `--freeze-bias` CLI flag on Dalmatian is unchanged.
+
+### Tests
+- `tests/test_freeze.py` (~40 cases) covering the new module end to
+  end: exact-path matching, sibling/parameter prefix collisions
+  (`bias_model` vs `bias_model_v2`, `weight` vs `weight_logit`,
+  `encoder.block.conv` vs `encoder.block.conv_bias`), multi-branch
+  composition, torch.compile unwrapping, `weight_norm`
+  parametrization (`parametrizations.weight.original0/1`), DDP
+  strategy promotion, a live `trainer.fit` verifying PL 2.2+
+  preserves per-submodule eval state across epochs, and the
+  `PretrainedConfig` + `FreezeSpec` composition flow.
+- `tests/test_train_wrapper.py`: three new cases exercising the
+  freeze wiring inside `_train` (apply_freeze is invoked, DDP
+  strategy is promoted when frozen, strategy passes through
+  unchanged when not).
+
 ## [1.0.0a4] - 2026-04-18
 
 ### Added

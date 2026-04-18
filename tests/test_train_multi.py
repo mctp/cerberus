@@ -27,6 +27,7 @@ def test_train_multi_loop():
         "output_channels": ["B"],
     }
     model_config.pretrained = []
+    model_config.freeze = []
 
     train_config = TrainConfig(
         batch_size=32,
