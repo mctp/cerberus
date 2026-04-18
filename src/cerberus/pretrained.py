@@ -64,18 +64,20 @@ def load_pretrained_weights(
       (and strips it), enabling loading a sub-module from a full-model checkpoint.
     - **target**: Where to load in the model. ``None`` loads into the whole model.
       A string like ``"bias_model"`` loads into that named sub-module.
-    - **freeze**: If ``True``, set ``requires_grad=False`` on all loaded parameters.
 
     Common patterns::
 
         # biasnet.pt → Dalmatian's bias_model
-        {"weights_path": "biasnet.pt", "source": None, "target": "bias_model", "freeze": True}
+        {"weights_path": "biasnet.pt", "source": None, "target": "bias_model"}
 
         # dalmatian.pt's bias_model → new Dalmatian's bias_model
-        {"weights_path": "dalmatian.pt", "source": "bias_model", "target": "bias_model", "freeze": True}
+        {"weights_path": "dalmatian.pt", "source": "bias_model", "target": "bias_model"}
 
         # dalmatian.pt → full Dalmatian (re-initialize everything)
-        {"weights_path": "dalmatian.pt", "source": None, "target": None, "freeze": False}
+        {"weights_path": "dalmatian.pt", "source": None, "target": None}
+
+    Parameter freezing is handled separately via
+    :attr:`cerberus.config.ModelConfig.freeze`.
 
     Uses ``strict=True`` so architecture mismatches raise immediately.
     Handles ``torch.compile`` transparently via ``_orig_mod`` unwrapping.
@@ -90,15 +92,12 @@ def load_pretrained_weights(
         weights_path = cfg.weights_path
         source = cfg.source
         target_name = cfg.target
-        freeze = cfg.freeze
 
         state_dict = torch.load(weights_path, map_location="cpu", weights_only=True)
 
-        # Extract sub-tree from source checkpoint if specified
         if source is not None:
             state_dict = _extract_prefix(state_dict, source)
 
-        # Resolve target module
         if target_name is not None:
             target = getattr(target_root, target_name)
         else:
@@ -108,20 +107,9 @@ def load_pretrained_weights(
 
         n_params = sum(p.numel() for p in target.parameters())
         label = target_name or model.__class__.__name__
-
-        if freeze:
-            for p in target.parameters():
-                p.requires_grad_(False)
-            logger.info(
-                "Loaded and froze pretrained %s (%s params) from %s",
-                label,
-                f"{n_params:,}",
-                weights_path,
-            )
-        else:
-            logger.info(
-                "Loaded pretrained %s (%s params) from %s",
-                label,
-                f"{n_params:,}",
-                weights_path,
-            )
+        logger.info(
+            "Loaded pretrained %s (%s params) from %s",
+            label,
+            f"{n_params:,}",
+            weights_path,
+        )

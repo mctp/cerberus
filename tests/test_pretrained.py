@@ -109,7 +109,6 @@ class TestLoadPretrainedFull:
             weights_path=str(weights_path),
             source=None,
             target=None,
-            freeze=False,
         )
         load_pretrained_weights(model2, [cfg])
 
@@ -121,7 +120,8 @@ class TestLoadPretrainedFull:
             model.signal_model.linear.weight, model2.signal_model.linear.weight
         )
 
-    def test_loaded_params_are_trainable_when_not_frozen(self, tmp_path):
+    def test_loaded_params_are_trainable(self, tmp_path):
+        """load_pretrained_weights never freezes — freezing is ModelConfig.freeze's job."""
         model = ParentModel()
         weights_path = tmp_path / "full.pt"
         torch.save(model.state_dict(), weights_path)
@@ -130,7 +130,6 @@ class TestLoadPretrainedFull:
             weights_path=str(weights_path),
             source=None,
             target=None,
-            freeze=False,
         )
         load_pretrained_weights(model, [cfg])
 
@@ -157,7 +156,6 @@ class TestLoadPretrainedTarget:
             weights_path=str(weights_path),
             source=None,
             target="bias_model",
-            freeze=False,
         )
         load_pretrained_weights(parent, [cfg])
 
@@ -176,7 +174,6 @@ class TestLoadPretrainedTarget:
             weights_path=str(weights_path),
             source=None,
             target="bias_model",
-            freeze=False,
         )
         load_pretrained_weights(parent, [cfg])
 
@@ -203,7 +200,6 @@ class TestLoadPretrainedSource:
             weights_path=str(weights_path),
             source="bias_model",
             target="bias_model",
-            freeze=False,
         )
         load_pretrained_weights(parent, [cfg])
 
@@ -220,57 +216,9 @@ class TestLoadPretrainedSource:
             weights_path=str(weights_path),
             source="nonexistent_module",
             target=None,
-            freeze=False,
         )
         with pytest.raises(ValueError, match="No keys found with prefix"):
             load_pretrained_weights(model, [cfg])
-
-
-# ---------------------------------------------------------------------------
-# load_pretrained_weights — freeze
-# ---------------------------------------------------------------------------
-
-
-class TestLoadPretrainedFreeze:
-    def test_freeze_all_params(self, tmp_path):
-        model = ParentModel()
-        weights_path = tmp_path / "full.pt"
-        torch.save(model.state_dict(), weights_path)
-
-        cfg = PretrainedConfig(
-            weights_path=str(weights_path),
-            source=None,
-            target=None,
-            freeze=True,
-        )
-        load_pretrained_weights(model, [cfg])
-
-        for p in model.parameters():
-            assert p.requires_grad is False
-
-    def test_freeze_only_target_submodule(self, tmp_path):
-        """Freezing target='bias_model' should not freeze signal_model."""
-        sub = SubModule()
-        weights_path = tmp_path / "sub.pt"
-        torch.save(sub.state_dict(), weights_path)
-
-        parent = ParentModel()
-
-        cfg = PretrainedConfig(
-            weights_path=str(weights_path),
-            source=None,
-            target="bias_model",
-            freeze=True,
-        )
-        load_pretrained_weights(parent, [cfg])
-
-        # bias_model frozen
-        for p in parent.bias_model.parameters():
-            assert p.requires_grad is False
-
-        # signal_model still trainable
-        for p in parent.signal_model.parameters():
-            assert p.requires_grad is True
 
 
 # ---------------------------------------------------------------------------
@@ -296,23 +244,20 @@ class TestLoadPretrainedMultiple:
                 weights_path=str(bias_path),
                 source=None,
                 target="bias_model",
-                freeze=True,
             ),
             PretrainedConfig(
                 weights_path=str(signal_path),
                 source=None,
                 target="signal_model",
-                freeze=False,
             ),
         ]
         load_pretrained_weights(parent, configs)
 
         assert torch.equal(parent.bias_model.linear.weight, bias_sub.linear.weight)
         assert torch.equal(parent.signal_model.linear.weight, signal_sub.linear.weight)
-
-        # bias frozen, signal trainable
+        # Loading never freezes — parameters remain trainable after load.
         for p in parent.bias_model.parameters():
-            assert p.requires_grad is False
+            assert p.requires_grad is True
         for p in parent.signal_model.parameters():
             assert p.requires_grad is True
 
@@ -349,7 +294,6 @@ class TestLoadPretrainedStrict:
             weights_path=str(weights_path),
             source=None,
             target=None,
-            freeze=False,
         )
         with pytest.raises(RuntimeError):
             load_pretrained_weights(model, [cfg])
@@ -364,7 +308,6 @@ class TestLoadPretrainedStrict:
             weights_path=str(weights_path),
             source=None,
             target=None,
-            freeze=False,
         )
         with pytest.raises(RuntimeError):
             load_pretrained_weights(model, [cfg])

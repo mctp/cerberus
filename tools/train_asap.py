@@ -361,7 +361,6 @@ def main():
                 weights_path=args.pretrained,
                 source=None,
                 target=None,
-                freeze=False,
             )
         )
 

@@ -414,10 +414,9 @@ def main():
         "count_pseudocount": args.count_pseudocount,
     }
 
-    # Build pretrained weight + freeze configs. Freezing uses the
-    # declarative ModelConfig.freeze surface so Dropout/BatchNorm
-    # inside the bias branch stop firing (vs. leaving them stochastic
-    # via PretrainedConfig's requires_grad-only freeze).
+    # Freezing the bias branch uses ModelConfig.freeze with eval_mode=True
+    # so the 5x Dropout layers inside BiasNet stop firing — training and
+    # inference then see the same deterministic bias signal.
     pretrained: list[PretrainedConfig] = []
     freeze: list[FreezeSpec] = []
     if args.pretrained_bias:
@@ -426,7 +425,6 @@ def main():
                 weights_path=args.pretrained_bias,
                 source=None,
                 target="bias_model",
-                freeze=False,
             )
         )
         if args.freeze_bias:

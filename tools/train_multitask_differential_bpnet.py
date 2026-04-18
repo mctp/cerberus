@@ -541,7 +541,6 @@ def run_phase2(
                 weights_path=str(phase1_model_path),
                 source=None,
                 target=None,
-                freeze=False,
             )
         ],
         count_pseudocount=count_pseudocount_scaled,

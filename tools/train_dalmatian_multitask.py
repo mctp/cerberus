@@ -465,8 +465,8 @@ def main():
             "count_pseudocount": args.count_pseudocount,
         }
 
-        # Declarative freeze: ModelConfig.freeze pairs requires_grad=False
-        # with .eval() on bias_model so Dropout/BatchNorm stop firing.
+        # Freezing the bias branch uses ModelConfig.freeze with eval_mode=True
+        # so Dropout/BatchNorm stop firing inside the frozen subtree.
         pretrained: list[PretrainedConfig] = []
         freeze: list[FreezeSpec] = []
         if args.pretrained_bias:
@@ -475,7 +475,6 @@ def main():
                     weights_path=args.pretrained_bias,
                     source=None,
                     target="bias_model",
-                    freeze=False,
                 )
             )
             if args.freeze_bias:

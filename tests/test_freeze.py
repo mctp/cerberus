@@ -681,3 +681,60 @@ class TestHparamsRoundTrip:
         ]
         rebuilt = ModelConfig(**dumped)
         assert rebuilt.freeze == mc.freeze
+
+    def test_model_config_freeze_defaults_to_empty_list(self):
+        """Existing configs that predate ModelConfig.freeze must still parse."""
+        from cerberus.config import ModelConfig
+
+        mc = ModelConfig(
+            name="m",
+            model_cls="torch.nn.Linear",
+            loss_cls="cerberus.loss.MSEMultinomialLoss",
+            loss_args={},
+            metrics_cls="torchmetrics.MetricCollection",
+            metrics_args={},
+            model_args={},
+        )
+        assert mc.freeze == []
+
+
+# ---------------------------------------------------------------------------
+# Composition: PretrainedConfig (load) + ModelConfig.freeze (freeze)
+# ---------------------------------------------------------------------------
+
+
+class TestFreezeComposesWithPretrained:
+    """Exercise the intended Dalmatian-style workflow:
+    load standalone bias weights via PretrainedConfig, then freeze the
+    bias subtree via FreezeSpec. The two surfaces are orthogonal."""
+
+    def test_load_then_freeze_via_apply_freeze(self, tmp_path):
+        from cerberus.config import PretrainedConfig
+        from cerberus.pretrained import load_pretrained_weights
+
+        bias_weights = DalmatianLike()
+        weights_path = tmp_path / "bias.pt"
+        torch.save(bias_weights.bias_model.state_dict(), weights_path)
+
+        model = DalmatianLike()
+        load_pretrained_weights(
+            model,
+            [
+                PretrainedConfig(
+                    weights_path=str(weights_path),
+                    source=None,
+                    target="bias_model",
+                )
+            ],
+        )
+        # After load, all params are trainable — freezing is a separate step.
+        for p in model.bias_model.parameters():
+            assert p.requires_grad is True
+
+        apply_freeze(model, [FreezeSpec(pattern="bias_model", eval_mode=True)])
+
+        for p in model.bias_model.parameters():
+            assert p.requires_grad is False
+        for p in model.signal_model.parameters():
+            assert p.requires_grad is True
+        assert model.bias_model.training is False

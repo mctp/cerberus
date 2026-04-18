@@ -154,13 +154,15 @@ class TrainConfig(BaseModel):
 class PretrainedConfig(BaseModel):
     """Configuration for loading pretrained weights into a model sub-module.
 
+    Parameter freezing is handled separately via :class:`FreezeSpec` on
+    ``ModelConfig.freeze`` — this class only describes *loading*.
+
     Attributes:
         weights_path: Path to a ``.pt`` state-dict file.
         source: Sub-module prefix to extract from the source state dict
             (``None`` uses all keys).
         target: Named sub-module to load into (``None`` loads into the
             whole model).
-        freeze: If ``True``, freeze all parameters in the loaded sub-module.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -168,7 +170,6 @@ class PretrainedConfig(BaseModel):
     weights_path: str
     source: str | None
     target: str | None
-    freeze: bool
 
 
 class FreezeSpec(BaseModel):
