@@ -1,11 +1,19 @@
 # Differential-Learning Workflow Redesign
 
 **Date:** 2026-04-18
-**Status:** Design proposal (no implementation)
+**Status:** Design selected — **Option B**. No implementation yet.
 **Predecessors:**
 - `docs/internal/multitask-differential-bpnet.md` (joanne-feature internal design, not ported)
 - `docs/internal/variant_tool_design.md` (same proposal shape; adapted here)
 - `docs/internal/correctness_audit_2026_04_16.md` (format of the audit sections)
+
+---
+
+> **TL;DR — Option B is the chosen design.** Sections §5 and §6
+> document the alternatives considered and the rationale for the
+> choice. §7 and §7a are the implementation plan. §8 covers the
+> attribution-module unification (a part of Option B). §13 covers
+> future extensions that are **not** required for the current work.
 
 ---
 
@@ -20,64 +28,132 @@ re-injects it as a batch kwarg; and the attribution module now ships two
 near-identical classes (`AttributionTarget`,
 `DifferentialAttributionTarget`) whose fields only partially overlap.
 
-The proposal here is to do three things:
+**Design principle for this redesign:** keep `src/cerberus/` lean,
+polished, and free of hacks. Every library symbol should be
+justified by multiple consumers or a clean conceptual boundary.
+`tools/train_multitask_differential_bpnet.py` is allowed — even
+expected — to absorb workflow-specific quirks (BED union merging,
+two-phase coordination, trunk freezing, pretrained-weight loading
+logistics). The library gets the small, reusable pieces; the tool
+gets the one-off workflow.
+
+Under this principle the proposal is a tight triangle:
 
 1. **Compute the per-peak log2FC inside the loss**, from the `(B, N, L)`
-   `targets` tensor the count head is already supervised against. This
-   makes `_compute_log2fc_from_bigwigs`, `_DiffWrapper`, and the
-   provenance TSV unnecessary. `SignalExtractor` is already the single
-   source of truth for bigwig reading; this plan keeps it that way.
+   `targets` tensor the count head is already supervised against.
+   This makes `_compute_log2fc_from_bigwigs`, `_DiffWrapper`, and the
+   provenance TSV unnecessary. `SignalExtractor` stays the single
+   source of truth for bigwig reading.
 
-2. **Unify `AttributionTarget` and `DifferentialAttributionTarget`** into
-   a single class dispatched by its `reduction` string. The
-   differential reductions (`delta_log_counts`,
-   `delta_profile_window_sum`) become peers of the existing five. The
-   field set widens slightly (`channels: list[int]` replaces
-   `channel: int`), but the class count drops from two to one and
-   `_resolve_window` is no longer duplicated.
+2. **Collapse `DifferentialCountLoss` to a single-path, single-concept
+   loss.** Inputs: `outputs`, `targets`. Output: one scalar. No
+   kwargs, no shape overloading, no `abs_weight` regularizer, no
+   `(B, 1, 1)` scalar fallback. Target: ~15 lines.
 
-3. **Simplify `DifferentialCountLoss` to a single protocol.** `targets`
-   stays `(B, N, L)` absolute-signal always, matching what every other
-   cerberus loss sees. The three fallback branches in
-   `_resolve_delta_target` collapse to one path: derive the delta
-   target from `targets.sum(dim=-1)` with a pseudocount. The
-   `log2fc` kwarg and the `(B, 1, 1)` scalar fallback are both
-   removed; `DifferentialCountLoss.forward` becomes a tight,
-   self-contained function with no caller-facing protocol choice.
+3. **Unify `AttributionTarget` and `DifferentialAttributionTarget`**
+   into a single class dispatched by its `reduction` string. The two
+   delta reductions become peers of the existing five. The
+   `DifferentialAttributionTarget` name and the
+   `DIFFERENTIAL_TARGET_REDUCTIONS` set are **removed** (breaking
+   change); all in-tree callers (3 of them) update in the same
+   commit. One class, one registry, one code path.
 
-External-labels support (DESeq2/edgeR shrunk log2FC, etc.) is **not a
-requirement** for this redesign. No current caller or test in cerberus
-exercises that path. The bigwig-derived log2FC that `SignalExtractor`
-yields is the only delta target the planned code needs to produce.
-§13 sketches how external-label support could be added in a later
-pass if demand appears; the recommended design is **not dependent on
-it**.
+What stays out of `src/`:
 
-After the rewrite the training tool loses `_DiffWrapper`, `_Phase2Module`
-(both become unnecessary), and `_compute_log2fc_from_bigwigs` +
-`_DifferentialRecord` + `_write_differential_targets` (the offline
-precompute pipeline). Phase 2 can then be expressed in the same
-`train_single` / `train_multi` call shape as Phase 1 — a second
-ModelConfig with a different `loss_cls`. Phase 1 and Phase 2 stop being
-"two training paradigms glued together in a bespoke tool" and become
-"the same training CLI called twice with different config".
+- BED / peak union merging (lives in the tool).
+- Phase 1 / Phase 2 config construction (lives in the tool).
+- Trunk-freezing logic for Phase 2 fine-tuning (lives in the tool,
+  via a direct `requires_grad = False` loop — no `TrainConfig`
+  extension).
+- Pretrained-weight loading glue (uses the existing
+  `ModelConfig.pretrained` mechanism; no new library feature).
+- Optional DeepLIFTSHAP + TF-MoDISco interpretation pipe (lives in
+  the tool; uses the unified `AttributionTarget`).
+- Optional absolute-count regularizer (removed; add back only when a
+  real consumer surfaces).
+- Externally-computed delta targets (not a requirement; §13
+  describes how to add them later without touching the core).
 
-Overall line count: the current tool is 1068 lines. A version built on
-the design proposed here is expected to be ~350 lines, with the saved
-~700 lines distributed among (a) reusing `train_single` / `train_multi`,
-(b) dropping the inlined helpers, and (c) dropping the wrapper /
-precompute plumbing. Conversely, `src/cerberus/loss.py` **net shrinks**
-(the inline log2FC derivation is smaller than the kwarg + fallback
-machinery it replaces) and `src/cerberus/attribution.py` shrinks by
-~70 lines (single `AttributionTarget` instead of two).
+Overall line count: the current tool is 1068 lines. A version built
+on the design proposed here is expected to be ~350 lines, with the
+saved ~700 lines distributed among (a) reusing `train_single` /
+`train_multi`, (b) dropping the inlined helpers, and (c) dropping
+the wrapper / precompute plumbing. Library side: `src/cerberus/loss.py`
+**net shrinks** (~30 lines less than today — the kwarg + fallback +
+`abs_weight` machinery is bigger than the single-path replacement).
+`src/cerberus/attribution.py` shrinks by ~90 lines (single
+`AttributionTarget` replaces two classes and the shim).
 
-Three design options are presented (§5), with option **B** recommended.
-§7 is a concrete blueprint for option B at the signature / config /
-migration level. §8 spells out the attribution unification
-independently — it is a win regardless of which of A/B/C is chosen.
-§13 describes the optional future-work path for external delta
-labels, with the explicit commitment that the planned code does not
-depend on any of it.
+The design is **Option B** as described in §5.2. §6 documents the
+rationale for the choice against the alternatives. §7 and §7a are
+the implementation plan at the signature / config / migration
+level. §8 spells out the attribution unification component in
+isolation. §13 describes optional future-work extensions (external
+delta labels, `abs_weight` regularizer restoration) and explicitly
+commits that the planned code does not depend on any of them.
+
+---
+
+## 0. Design Principle: Library Polish, Tool Pragmatism
+
+This redesign commits to a two-tier split between `src/cerberus/` and
+`tools/`, more strictly than has been applied to previous feature
+additions:
+
+**`src/cerberus/` rules.** A symbol lives here only if:
+
+- It has (or plausibly will have) multiple consumers, or
+- It embodies a clean, self-contained concept that the rest of the
+  library is built around (a model class, a loss, a data primitive), or
+- It is the single source of truth for some I/O format or cross-cutting
+  invariant (e.g. `SignalExtractor` for bigwig reading,
+  `propagate_pseudocount` for count-space consistency).
+
+Library code is written to a higher bar: no optional protocols,
+no kwarg-driven shape changes, no "also works if you happen to pass
+X" branches, no scaffolding for future features that don't have a
+current consumer. Every library symbol should be explainable in one
+sentence and callable from a notebook without reading the source.
+
+**`tools/` rules.** A tool is allowed to:
+
+- Absorb workflow-specific sequencing (Phase 1 → Phase 2 → optional
+  interpretation).
+- Know things the library does not (that this particular CLI takes
+  two BED files and merges them; that Phase 2 wants trunk + profile
+  heads frozen; that this specific call to `train_single` uses a
+  pretrained checkpoint).
+- Be verbose, imperative, and specific. A tool is a script, not a
+  library.
+- Contain logic that would be inappropriate in the library because
+  it only serves one workflow.
+
+A tool is not a second-class citizen — it is the correct home for
+code that is genuinely one-off. The mistake the current
+implementation makes is the inverse: putting workflow-specific
+quirks (`log2fc` kwarg, `(B, 1, 1)` scalar fallback,
+`DifferentialTargetIndex`) into the library, where every other
+reader has to reason about them, while simultaneously inlining
+generic helpers (`_compute_log2fc_from_bigwigs`) into the tool,
+where they bypass existing library machinery.
+
+Applying the principle:
+
+| Concern | Today | Under this redesign |
+|---|---|---|
+| Compute log2FC from bigwigs | Tool (duplicates `SignalExtractor`) | **Library** (inside loss, uses the existing targets tensor) |
+| Map per-condition names → channel indices | Tool | Tool |
+| Merge two peak BEDs into union | Tool | Tool |
+| Load Phase 1 checkpoint into Phase 2 model | Tool (manual `_find_phase1_model`) | Tool (via library's `ModelConfig.pretrained`) |
+| Freeze trunk for Phase 2 | Tool (`_Phase2Module.__init__` loop) | Tool (same loop; no library change) |
+| Supervise `log_counts[b] - log_counts[a]` | Library (with overloading) | **Library** (single path) |
+| Absolute-track regularizer | Library (`abs_weight`) | **Not in library** (future work if needed) |
+| External DESeq2 labels | Library (`log2fc` kwarg) | **Not in library** (future work if needed) |
+| Provenance TSV of log2FCs | Tool (`_write_differential_targets`) | **Dropped** (never read back; derivable on demand) |
+| Attribution target for delta | Library (`DifferentialAttributionTarget`) | **Library** (unified `AttributionTarget` with delta reductions) |
+
+This split is the lens applied to each of the §5 options and the §7
+blueprint.
 
 ---
 
@@ -376,19 +452,27 @@ deferred to §13 as future work.
 
 ---
 
-## 5. Design Options
+## 5. Design Options Considered
 
-### 5.1 Option A — Minimal: inline the log2FC derivation; drop the kwarg path
+> **Option B (§5.2) is the selected design.** The other options are
+> documented here as considered-and-rejected alternatives, for
+> future maintainers who will want to understand why the API looks
+> the way it does.
+
+### 5.1 Option A — Minimal: inline the log2FC derivation; drop the kwarg + fallback + abs_weight *(not selected)*
 
 **Scope.**
 
 - `DifferentialCountLoss` gains a single-path target derivation:
   `targets` is always `(B, N, L)`, delta is computed inline from
   `targets.sum(dim=-1)` with `count_pseudocount`.
-- Remove the `log2fc` kwarg and the `(B, 1, 1)` / `(B, 1, L)` scalar
-  fallback. `_resolve_delta_target` goes away as a distinct method.
-- Keep the `abs_weight > 0` abs-term branch as-is (already operates
-  on `(B, N, L)` targets — no overloading).
+- Remove the `log2fc` kwarg, the `(B, 1, 1)` / `(B, 1, L)` scalar
+  fallback, **and the `abs_weight` regularizer branch**. Resulting
+  loss is ~15 lines: one init, one `forward`. No `loss_components`
+  decomposition needed (only one component exists).
+- Remove `_resolve_delta_target` and the `uses_count_pseudocount`
+  machinery around the kwarg path; `count_pseudocount` stays as a
+  constructor arg (used in the derivation).
 - Rewrite `tools/train_multitask_differential_bpnet.py` to drop
   `_DiffWrapper`, `_Phase2Module`, `_compute_log2fc_from_bigwigs`,
   `_DifferentialRecord`, `_write_differential_targets`. Phase 2
@@ -400,57 +484,65 @@ deferred to §13 as future work.
 - Cleanest fix for the single biggest issue (the offline precompute +
   wrapper).
 - `DifferentialCountLoss.forward(outputs, targets)` is the entire
-  surface — no optional kwargs, no shape branches.
+  surface — no optional kwargs, no shape branches, no regularizer
+  choice.
 - Tool shrinks dramatically (est. 1068 → 350 lines).
-- No core cerberus changes beyond the loss.
+- Library side shrinks: ~100 lines of `DifferentialCountLoss`
+  machinery collapses to ~15.
 
 **Cons.**
 
-- Removes the `log2fc` kwarg as a public API surface (currently
-  unused outside the tool itself; see §3.2).
+- Removes three `DifferentialCountLoss` features at once: `log2fc`
+  kwarg, scalar fallback, `abs_weight` regularizer. None has an
+  in-tree consumer (§3.2, §6.1); each is documented as future-work
+  re-entry in §13.
 - Attribution module keeps both classes; the near-duplication remains.
 
 **Appropriate when:** you want the tool fixed this week and are OK
 with the attribution-side duplication as a known debt.
 
-### 5.2 Option B — Recommended: inline derivation + unified `AttributionTarget`
+### 5.2 Option B — **Selected**: inline derivation + unified `AttributionTarget` (no shim)
 
 **Scope.** Option A plus:
 
 - Collapse `DifferentialAttributionTarget` into `AttributionTarget`.
-  Single class, single reductions set, `channels: list[int]` field
-  (length 1 or 2 depending on reduction).
-- `DIFFERENTIAL_TARGET_REDUCTIONS` retained as a grouping helper but
-  becomes a subset of `TARGET_REDUCTIONS`.
-- Public API: `cerberus.DifferentialAttributionTarget` becomes an
-  alias / thin constructor wrapper for `AttributionTarget` with
-  a convenience signature (`cond_a_idx`, `cond_b_idx` kwargs that
-  translate to `channels=[a, b]`). Source of truth is one class.
+  Single class, single reductions set,
+  `channels: int | tuple[int, int]` field (int for the 5
+  single-channel reductions, 2-tuple for the 2 delta reductions).
+- Fold `DIFFERENTIAL_TARGET_REDUCTIONS` into `TARGET_REDUCTIONS`.
+  Remove the grouping set.
+- **Remove** `DifferentialAttributionTarget` from the public API.
+  In-tree callers update in the same commit:
+  - `tools/train_multitask_differential_bpnet.py` (the interpret path)
+  - `tools/run_tpcav.py` (unaffected — it uses `AttributionTarget` already)
+  - `tests/test_attribution.py` (tests for the differential path)
+- Remove `DIFFERENTIAL_TARGET_REDUCTIONS` and
+  `DifferentialAttributionTarget` from `src/cerberus/__init__.py`
+  exports.
 
 **Pros.**
 
 - Addresses both the tool-level mess and the attribution-module
   duplication.
-- The `AttributionTarget` API becomes closed-form for the set of
-  "what scalar do I attribute": every supported question is one
-  `reduction` string with a small number of typed fields.
-- Zero breaking changes at the import site (`DifferentialAttributionTarget`
-  remains importable).
+- Library's attribution surface is closed-form: one class,
+  seven reductions, one registry.
+- No compatibility shim to maintain. Breaking change is contained
+  to in-tree callers, all of which land in the same commit.
 
 **Cons.**
 
-- `AttributionTarget.channel` becomes `channels: list[int]` — this
-  is a mechanical change in existing callers (tools, tests). The
-  `DifferentialAttributionTarget` shim can hide it from the
-  multi-channel callers.
-- Slightly more code in one place (one class with 7 reductions
-  instead of two classes with 5+2).
+- `AttributionTarget.channel` → `AttributionTarget.channels`
+  (mechanical rename). Touches ~10 test + tool call sites.
+- External callers of `DifferentialAttributionTarget` (none known)
+  would need to update. Since it was added in the joanne-feature
+  port and has been public for ~1 release cycle, this risk is low.
 
-**Appropriate when:** you want to pay down the attribution duplication
-while you're already reshaping the differential workflow. This is the
-recommended option.
+**Status:** **Selected.** This option accepts one intentional
+breaking-change commit in exchange for a permanently simpler
+attribution API and a clean library surface for the differential
+workflow.
 
-### 5.3 Option C — Radical: drop `DifferentialCountLoss` entirely; make it a composition
+### 5.3 Option C — Radical: drop `DifferentialCountLoss` entirely; make it a composition *(not selected)*
 
 **Scope.** Option B plus:
 
@@ -501,74 +593,137 @@ Rejected because:
 
 ---
 
-## 6. Recommendation
+## 6. Why Option B (Rationale Log)
 
-**Ship Option B. Leave the door open for Option C.**
+Option B is selected. This section records the reasoning against
+the alternatives, so future readers understand why the API looks
+the way it does.
 
-Rationale:
-
-1. **Option A fixes the worst problem** (offline precompute, wrapper,
-   1068-line tool). Option B additionally fixes the attribution-module
-   duplication, which was the single most callable-out structural
-   debt from the joanne-feature port. Both are small, localized
-   changes — no cerberus-wide API changes.
+1. **Option A fixes only the worst problem** (offline precompute,
+   wrapper, 1068-line tool). It leaves the attribution-module
+   duplication in place — two classes, duplicated `_resolve_window`,
+   two reduction sets. The duplication was the single most
+   callable-out structural debt from the joanne-feature port;
+   deferring it perpetuates a known hack.
 
 2. **Option C's value depends on a use case that doesn't exist yet.**
-   The transform-API extension is genuinely useful *if* there is a
-   second derived-quantity consumer. Right now there is one
-   (differential) and it fits inside the loss cleanly. If a second
-   one (e.g. a training-time attribution regularizer that needs the
-   gradient of `log_counts` as a per-sample scalar target) shows up,
-   revisit the transform API at that point.
+   The generic `CoupledChannelDeltaLoss` base would pay off if a
+   second delta objective appeared (e.g. a training-time attribution
+   regularizer, a chromatin-state delta loss). None exists today.
+   Designing the base class without a second consumer risks fitting
+   it to the one we have; revisit when a second one appears.
 
-3. **Option B keeps the `DifferentialCountLoss` import path and the
-   `log2fc` kwarg** — the DESeq2-style external-labels workflow (not
-   currently exercised in-tree but part of the public API) keeps
-   working without code changes.
+3. **Option B's breaking-change cost is contained.** Three in-tree
+   call sites need updating (the training tool, `tests/test_attribution.py`,
+   `src/cerberus/__init__.py` exports). All land in one commit. No
+   deprecation period, no shim, no external caller impact
+   (`DifferentialAttributionTarget` has existed for ~one release
+   cycle and has no known external users).
 
 4. **The attribution unification in Option B is a win on its own.**
-   Even if the differential-loss redesign stalls, pulling the two
-   attribution targets into one class is worth doing — the two
-   classes diverge along a trivially-parameterizable axis
-   (1 channel vs. 2).
+   Even if the differential-loss simplification stalled, pulling the
+   two attribution targets into one class would be worth doing —
+   the two classes diverge along a trivially-parameterizable axis
+   (1 channel vs. 2). Under Option B we collect the wins together
+   while the context is fresh.
 
-### 6.1 What not to do even under Option B
+5. **Option B's library delta is strictly negative** (~−200 lines
+   across `loss.py`, `attribution.py`, `__init__.py`). Under Options
+   A or C the library either stays the same size (A) or trades
+   complexity between files without a clear net win (C). Option B is
+   the option that leaves `src/cerberus/` smaller and more polished.
 
-- **Do not remove the `log2fc` kwarg.** It is the only supported
-  escape hatch for DESeq2/edgeR-style shrunk estimators, which
-  cerberus does not compute.
-- **Do not remove `abs_weight`.** Per Naqvi et al. 2025 the default
-  is 0.0 and the abs term is rarely used, but when the count heads
-  drift away from absolute tracks during fine-tuning this is the
-  only available anchor.
+### 6.1 Constraints of the selected design
+
+- **Do not keep the `log2fc` kwarg as a public API.** It exists
+  today only to serve the offline precompute the redesign is
+  removing. Keeping it "just in case" perpetuates the four-row
+  truth table that made `DifferentialCountLoss` hackish. External
+  labels, if ever needed, come back via the §13 re-entry plan.
+- **Do not keep the `abs_weight` regularizer.** Per Naqvi et al.
+  2025 the default is 0.0; no in-tree caller sets it; no test
+  asserts that removing it is visible to users. Library code does
+  not carry optional features "just in case". §13 documents how to
+  restore it if a real need appears.
+- **Do not keep a `DifferentialAttributionTarget` back-compat shim.**
+  Three in-tree callers all update in the same commit. A shim
+  preserves name continuity at the cost of two classes in
+  `src/cerberus/attribution.py` forever. Not worth it.
 - **Do not merge `MultitaskBPNet` back into `BPNet`.** The `≥ 2`
   output_channels invariant and `predict_total_count=False`
   enforcement are real guardrails, not cosmetic.
+- **Do not add transform-API extensions for this redesign.** The
+  single in-tree consumer (log2FC derivation) fits in the loss.
+  Broader transform-API changes are a cerberus-wide concern with
+  their own design process; do not couple them to this work.
+- **Do not introduce a `TrainConfig.freeze_patterns` field for Phase
+  2 trunk freezing.** The tool can do `for p in model.trunk.parameters():
+  p.requires_grad = False` directly — a one-off workflow need that
+  does not justify a library feature. When a second caller appears
+  with the same need, promote then.
 
 ---
 
-## 7. Blueprint for Option B
+## 7. Implementation Plan
 
 ### 7.1 Library changes
 
-**`src/cerberus/loss.py`** — `DifferentialCountLoss` target resolution:
+**`src/cerberus/loss.py`** — `DifferentialCountLoss` collapses to
+a single-path, single-concept loss. Whole body:
 
 ```
-_resolve_delta_target(targets, kwargs):
-    log2fc = kwargs.get("log2fc")
-    if log2fc is not None:
-        [existing kwarg path, unchanged]
+class DifferentialCountLoss(nn.Module):
+    """MSE on log_counts[:, B] - log_counts[:, A].
 
-    # New primary path: derive from per-channel targets.
-    if targets.ndim == 3 and targets.shape[1] > max(cond_a_idx, cond_b_idx):
-        counts = targets.float().sum(dim=-1)   # (B, N)
+    Delta target is derived from the (B, N, L) targets tensor:
+        log2((sum_B + pc) / (sum_A + pc))
+    where sums are over the length axis and pc is count_pseudocount
+    (same value Phase 1 used so log_counts are in one space).
+    """
+
+    uses_count_pseudocount: bool = True
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        count_pseudocount: float = 1.0,
+    ) -> None:
+        super().__init__()
+        if cond_a_idx == cond_b_idx:
+            raise ValueError(...)
+        if cond_a_idx < 0 or cond_b_idx < 0:
+            raise ValueError(...)
+        self.cond_a_idx = cond_a_idx
+        self.cond_b_idx = cond_b_idx
+        self.count_pseudocount = count_pseudocount
+
+    def forward(
+        self,
+        outputs: ProfileCountOutput,
+        targets: torch.Tensor,
+    ) -> torch.Tensor:
+        if not isinstance(outputs, ProfileCountOutput):
+            raise TypeError(...)
+
+        a, b = self.cond_a_idx, self.cond_b_idx
+        n = outputs.log_counts.shape[-1]
+        if max(a, b) >= n:
+            raise ValueError(...)
+
+        counts = targets.float().sum(dim=-1)              # (B, N)
         pc = self.count_pseudocount
-        return torch.log2((counts[:, cond_b_idx] + pc) /
-                          (counts[:, cond_a_idx] + pc))
-
-    # Legacy scalar-delta fallback: unchanged, kept for back-compat.
-    return targets.float().reshape(targets.shape[0], -1).mean(dim=-1)
+        target_delta = torch.log2((counts[:, b] + pc) /
+                                  (counts[:, a] + pc))    # (B,)
+        delta_pred = (outputs.log_counts[:, b]
+                      - outputs.log_counts[:, a])         # (B,)
+        return F.mse_loss(delta_pred, target_delta)
 ```
+
+No `abs_weight`, no `log2fc` kwarg, no `_resolve_delta_target`, no
+`loss_components` decomposition (one component, one return). Roughly
+35 lines including docstring and imports — down from the current
+~170 lines.
 
 Pseudocount semantics: use the loss's own `count_pseudocount`. In the
 bpAI-TAC / Naqvi recipe this is the *same* pseudocount Phase 1 used
@@ -576,17 +731,17 @@ bpAI-TAC / Naqvi recipe this is the *same* pseudocount Phase 1 used
 `propagate_pseudocount` → `MSEMultinomialLoss.count_pseudocount`), so
 Phase 1 and Phase 2 operate in the same log-space.
 
-**`src/cerberus/attribution.py`** — unify the two attribution targets:
+**`src/cerberus/attribution.py`** — one class replaces two:
 
 ```
 TARGET_REDUCTIONS = {
-    # single-channel
+    # single-channel (channels: int)
     "log_counts",
     "profile_bin",
     "profile_window_sum",
     "pred_count_bin",
     "pred_count_window_sum",
-    # multi-channel (delta)
+    # multi-channel delta (channels: tuple[int, int], [a, b])
     "delta_log_counts",
     "delta_profile_window_sum",
 }
@@ -596,47 +751,62 @@ class AttributionTarget(nn.Module):
         self,
         model: nn.Module,
         reduction: str,
-        channels: int | tuple[int, int],   # 1 for single, 2 for delta
+        channels: int | tuple[int, int],
         bin_index: int | None = None,
         window_start: int | None = None,
         window_end: int | None = None,
     ):
-        ...
-
-# Back-compat shim, no behaviour change for callers:
-def DifferentialAttributionTarget(
-    model, *, reduction, cond_a_idx, cond_b_idx, window_start=None, window_end=None
-):
-    return AttributionTarget(
-        model=model,
-        reduction=reduction,
-        channels=(cond_a_idx, cond_b_idx),
-        window_start=window_start,
-        window_end=window_end,
-    )
+        ...  # validates arity of `channels` against the reduction
 ```
 
-`DIFFERENTIAL_TARGET_REDUCTIONS` stays exported as a subset of
-`TARGET_REDUCTIONS` for discoverability (lets `run_tpcav.py`'s
-`--target-mode` flag keep its `choices=sorted(TARGET_REDUCTIONS)`
-grouping intact).
+`DifferentialAttributionTarget` is removed outright — no shim. The
+three in-tree callers (§5.2) update in the same commit to use
+`AttributionTarget(reduction="delta_log_counts", channels=(0, 1))`
+etc.
+
+`DIFFERENTIAL_TARGET_REDUCTIONS` is removed. Users who want to know
+which reductions are "delta" reductions can inspect the arity of
+`channels` the reduction implies, or we can expose a predicate like
+`is_delta_reduction(name: str) -> bool` if a caller needs it (none
+do today).
 
 ### 7.2 Tool rewrite
+
+Everything workflow-specific stays in the tool. The library exposes
+a model, a loss, and an attribution target; the tool composes them.
 
 **`tools/train_multitask_differential_bpnet.py` new structure:**
 
 ```
 get_args()
-run_phase1(args)      # unchanged — already uses train_single/train_multi
-                      # with MultitaskBPNet + MultitaskBPNetLoss
-run_phase2(args, phase1_model_path):
-    # Same DataConfig.targets as Phase 1 (bw_a, bw_b)
-    # Different ModelConfig: loss_cls=DifferentialCountLoss
-    # Same CerberusDataModule, same train_single/train_multi
-    # Pretrained weights loaded via ModelConfig.pretrained = [phase1_model_path]
 
-run_interpretation(args)   # Uses unified AttributionTarget with
-                           # reduction="delta_log_counts", channels=(0, 1)
+# Workflow-specific one-offs (tool-only):
+_read_bed_intervals(path)               # BED/narrowPeak parser
+_merge_and_write_peaks(a, b, out)       # union BED merge
+_find_phase1_checkpoint(path, fold)     # Phase 1 output layout glob
+_freeze_phase2_trunk(model)             # for p in model.trunk/profile_*:
+                                        #     p.requires_grad = False
+_dinuc_shuffle(...)                     # DLS baseline gen
+_data_config_two_channel(args)          # {name_a: bw_a, name_b: bw_b}
+
+# Workflow phases (compositions of library primitives):
+run_phase1(args):
+    # ModelConfig: MultitaskBPNet + MultitaskBPNetLoss.
+    # train_single / train_multi on the merged peaks. No tool-specific
+    # data wiring beyond _data_config_two_channel + peak merge.
+
+run_phase2(args, phase1_ckpt_dir):
+    # Same DataConfig (same two bigwigs).
+    # ModelConfig: MultitaskBPNet + DifferentialCountLoss, with
+    # pretrained=[PretrainedConfig(phase1_ckpt_dir, strict=True)].
+    # After model construction, call _freeze_phase2_trunk(model) via
+    # a lightweight Lightning callback or a post-instantiate hook.
+    # train_single / train_multi unchanged.
+
+run_interpretation(args):
+    # AttributionTarget(reduction="delta_log_counts", channels=(0, 1)).
+    # DeepLIFTSHAP + TF-MoDISco pipe, as today.
+
 main()
 ```
 
@@ -645,37 +815,44 @@ The tool collapses to:
 | Section | Current lines | Projected lines |
 |---|---|---|
 | Argument parser + main | ~250 | ~230 |
-| `_merge_and_write_peaks` + related BED helpers | ~50 | ~50 (kept — useful, not cerberus-generic) |
+| `_merge_and_write_peaks` + related BED helpers | ~50 | ~50 (tool-only, not library) |
+| `_data_config_two_channel` | inline | ~30 |
+| `_find_phase1_checkpoint` | inline (~10) | ~15 |
+| `_freeze_phase2_trunk` | `_Phase2Module.__init__` loop | ~15 |
 | `run_phase1` | ~140 | ~130 |
-| `run_phase2` | ~200 | ~60 (was ~200: drop wrapper+module, reuse train_single) |
-| `run_interpretation` | ~200 | ~200 |
+| `run_phase2` | ~200 | ~50 (drop wrapper+module, reuse train_single) |
+| `run_interpretation` | ~200 | ~200 (argparse `choices` updated for delta) |
 | `_dinuc_shuffle` | ~20 | ~20 |
-| Inlined differential helpers | ~50 | 0 (dropped) |
+| Inlined differential helpers (`_compute_log2fc_from_bigwigs`, `_DifferentialRecord`, `_write_differential_targets`) | ~50 | 0 (dropped; derived in loss) |
 | `_DiffWrapper` / `_Phase2Module` | ~100 | 0 (dropped) |
-| **Total** | **~1068** | **~350 + ~40 new = ~390** |
+| **Total** | **~1068** | **~390** |
 
 Phase 2 specifically becomes (schematically):
 
 ```
 run_phase2(args, phase1_ckpt_dir):
-    data_config = data_config_p2(args)              # same bigwigs as Phase 1
+    data_config = _data_config_two_channel(args)   # same bigwigs as Phase 1
     model_config = ModelConfig(
         name="MultitaskBPNet_Phase2",
         model_cls="cerberus.models.bpnet.MultitaskBPNet",
         loss_cls="cerberus.loss.DifferentialCountLoss",
-        loss_args={"cond_a_idx": 0, "cond_b_idx": 1,
-                   "abs_weight": args.abs_weight},
+        loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
         pretrained=[PretrainedConfig(path=phase1_ckpt_dir, strict=True)],
         model_args={...},
         count_pseudocount=args.count_pseudocount * args.target_scale,
     )
+    # Trunk freezing: either a post-instantiate hook, a Lightning
+    # callback, or a direct call after train_single returns the
+    # module — whichever is simplest given the current _train
+    # dispatcher. Implementation detail; the library does not need
+    # to know that this workflow freezes anything.
     train_single(... model_config ... train_config ... )
 ```
 
 That's it. No `_DiffWrapper`, no `_Phase2Module`, no offline log2FC
-precompute. The DataLoader emits `{inputs, targets, intervals,
-interval_source}`; `DifferentialCountLoss` derives the delta target
-from `targets` in the training step.
+precompute, no `abs_weight` flag. The DataLoader emits `{inputs,
+targets, intervals, interval_source}`; `DifferentialCountLoss`
+derives the delta target from `targets` in the training step.
 
 ### 7.3 Pretrained-weight loading for Phase 2
 
@@ -698,13 +875,24 @@ needs a small scan of `train.py` during implementation.
 
 ### 7.4 Back-compat and migration
 
-- **`DifferentialAttributionTarget`**: stays importable
-  (alias/shim under Option B). Zero breakage.
-- **`DifferentialCountLoss(log2fc=...)` kwarg**: unchanged
-  semantics — still overrides the derived target.
-- **`DifferentialCountLoss(abs_weight=...)` branch**: unchanged.
+The design is deliberately not back-compatible — the breaking
+changes land in one commit, there is no deprecation shim, and the
+three in-tree call sites migrate in the same commit. Full surface
+diff is in §9. Summary:
+
+- **`DifferentialAttributionTarget`**: removed. No shim. In-tree
+  call sites rewrite to `AttributionTarget(reduction=...,
+  channels=(a, b))`.
+- **`DifferentialCountLoss(log2fc=...)` kwarg**: removed. Delta is
+  derived from the `(B, N, L)` `targets` tensor inline. §13.1
+  describes the future re-entry path for external labels.
+- **`DifferentialCountLoss(abs_weight=...)`**: removed. §13.2
+  describes the future re-entry path for the regularizer.
+- **`DIFFERENTIAL_TARGET_REDUCTIONS`**: removed. Delta reductions
+  are members of `TARGET_REDUCTIONS`.
 - **CLI flags** on the tool (`--bigwig-a`, `--peaks-a`, etc.):
-  unchanged.
+  mostly unchanged. `--abs-weight` and `--diff-pseudocount` drop
+  (they serve library features that no longer exist).
 - **`differential_targets.tsv` provenance output**: dropped under
   the redesign, since the log2FC is no longer precomputed. If the
   provenance is valued (e.g. for "what log2FC did my Phase 2 actually
@@ -720,23 +908,38 @@ New tests required under Option B:
 - `test_differential_count_loss_derives_from_targets` — parametrized
   over `(cond_a_idx, cond_b_idx)` combos. Constructs a known
   `(B, N, L)` target tensor whose per-channel sums are known; asserts
-  `_resolve_delta_target(targets, {})` returns the expected
-  `log2((sum_b + pc) / (sum_a + pc))`.
-- `test_differential_count_loss_log2fc_kwarg_still_overrides` —
-  regression test that the kwarg path wins when both inputs are
-  present.
-- `test_differential_count_loss_scalar_fallback_unchanged` —
-  `(B, 1, 1)` target still returns squeezed mean.
-- `test_attribution_target_multi_channel_reduction` —
+  `loss(outputs, targets)` returns
+  `MSE(delta_pred, log2((sum_b + pc) / (sum_a + pc)))`.
+- `test_differential_count_loss_rejects_bad_indices` — negative
+  indices, `cond_a == cond_b`, and out-of-range vs `log_counts`
+  shape all raise.
+- `test_attribution_target_delta_reduction` —
   `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))`
-  on a toy model returns the expected delta.
-- `test_differential_attribution_target_shim` — assert the shim
-  constructs an equivalent `AttributionTarget`.
+  on a toy model returns `f_B - f_A`.
+- `test_attribution_target_channels_arity_validation` —
+  `AttributionTarget(reduction="log_counts", channels=(0, 1))`
+  raises (wrong arity: single-channel reduction with 2-tuple);
+  `AttributionTarget(reduction="delta_log_counts", channels=0)`
+  also raises.
 
-Existing tests
-([test_multitask_differential_bpnet.py](tests/test_multitask_differential_bpnet.py),
-[test_attribution.py](tests/test_attribution.py)) should continue to
-pass unchanged under the shim.
+Tests to **remove** under Option B (they encode protocols that no
+longer exist):
+
+- `test_differential_count_loss_basic` — uses `(B, 1, 1)` scalar
+  fallback path. Rewrite against `(B, N, L)` primary.
+- `test_differential_count_loss_log2fc_kwarg`,
+  `test_differential_count_loss_log2fc_wrong_type`,
+  `test_differential_count_loss_log2fc_batch_size_mismatch` — kwarg
+  is gone.
+- `test_differential_count_loss_abs_weight_components`,
+  `test_differential_count_loss_abs_weight_scalar_targets_raises` —
+  `abs_weight` is gone.
+- `test_differential_count_loss_wrong_output_type` — keep but
+  simplify (still asserts the ProfileCountOutput type check).
+- All tests importing `DifferentialAttributionTarget` — update to
+  `AttributionTarget(reduction=..., channels=(a, b))`.
+
+Net: ~4 new tests, ~6 removed, ~3 updated. The test module shrinks.
 
 ### 7.6 Documentation
 
@@ -750,12 +953,379 @@ pass unchanged under the shim.
 
 ---
 
-## 8. Attribution Module Unification (independent of §5–7)
+## 7a. Visual Reference
 
-The unification of `AttributionTarget` + `DifferentialAttributionTarget`
-is a net simplification regardless of what happens on the loss side.
-This section describes it independently so it can be pursued on its
-own schedule.
+The following diagrams and tables are the ground-truth reference for
+the selected design. If the prose in §7 and the visuals here
+disagree, the visuals are authoritative.
+
+### 7a.1 Phase 2 data flow: before vs. after
+
+**Before (current):**
+
+```
+ ┌─────────────────┐     ┌──────────────────────────┐
+ │ bigwig_a        │     │ bigwig_b                 │
+ └────────┬────────┘     └──────────┬───────────────┘
+          │                         │
+          │   (offline pass #1: precompute per-peak log2FC)
+          │                         │
+          ▼                         ▼
+ ┌────────────────────────────────────────────────────┐
+ │  _compute_log2fc_from_bigwigs   (tool-private)     │
+ │     sum_a, sum_b = sum(signal over each interval)  │
+ │     log2fc = log2((sum_b + pc) / (sum_a + pc))     │
+ └──────────────────────┬─────────────────────────────┘
+                        │ np.ndarray (N,)
+                        │ — written as provenance TSV
+                        │   never read back
+                        ▼
+ ┌────────────────────────────────────────────────────┐
+ │  _DiffWrapper  (tool-private Dataset wrapper)      │
+ │     __getitem__(idx):                              │
+ │         item = base[idx]                           │
+ │         item["log2fc"] = self.log2fc[idx]  ← INJ. │
+ │         return item                                │
+ └──────────────────────┬─────────────────────────────┘
+                        │
+          (offline pass #2 via SignalExtractor, per-batch:
+           CerberusDataset reads the SAME bigwigs again)
+                        │
+                        ▼
+ ┌────────────────────────────────────────────────────┐
+ │  batch = {inputs, targets, intervals,              │
+ │           interval_source, log2fc}                 │
+ └──────────────────────┬─────────────────────────────┘
+                        │
+                        ▼
+ ┌────────────────────────────────────────────────────┐
+ │  _Phase2Module._step  (tool-private PL wrapper)    │
+ │     loss = loss_fn(out, targets, log2fc=log2fc)    │
+ └──────────────────────┬─────────────────────────────┘
+                        │
+                        ▼
+ ┌────────────────────────────────────────────────────┐
+ │  DifferentialCountLoss   (4-row truth table)       │
+ │     if "log2fc" in kwargs:                         │
+ │         delta = kwargs["log2fc"]                   │
+ │     elif targets is (B, 1, 1): fallback            │
+ │     elif targets is (B, N, L) and abs_weight > 0:  │
+ │         delta = fallback (BUG: silently garbage    │
+ │                 if log2fc kwarg forgotten)         │
+ │     ...                                            │
+ └────────────────────────────────────────────────────┘
+```
+
+**After (Option B):**
+
+```
+ ┌─────────────────┐     ┌──────────────────────────┐
+ │ bigwig_a        │     │ bigwig_b                 │
+ └────────┬────────┘     └──────────┬───────────────┘
+          │                         │
+          │   (one pass via SignalExtractor, per-batch)
+          ▼                         ▼
+ ┌────────────────────────────────────────────────────┐
+ │  CerberusDataset + SignalExtractor                 │
+ │     targets = stack([bw_a, bw_b])    # (B, 2, L)   │
+ └──────────────────────┬─────────────────────────────┘
+                        │
+                        ▼
+ ┌────────────────────────────────────────────────────┐
+ │  batch = {inputs, targets, intervals,              │
+ │           interval_source}                         │
+ │  (no log2fc key, no tool-private wrapper)          │
+ └──────────────────────┬─────────────────────────────┘
+                        │
+                        ▼
+ ┌────────────────────────────────────────────────────┐
+ │  CerberusModule._shared_step  (library, unchanged) │
+ │     loss = self.criterion(outputs, targets)        │
+ └──────────────────────┬─────────────────────────────┘
+                        │
+                        ▼
+ ┌────────────────────────────────────────────────────┐
+ │  DifferentialCountLoss   (ONE code path)           │
+ │     counts = targets.sum(-1)          # (B, 2)     │
+ │     delta_t = log2((cB + pc)/(cA + pc))            │
+ │     delta_p = log_counts[:,B] - log_counts[:,A]    │
+ │     return MSE(delta_p, delta_t)                   │
+ └────────────────────────────────────────────────────┘
+```
+
+Note: the bigwigs are read once per batch via `SignalExtractor`
+(which is how Phase 1 already works). The before-state reads them
+twice — once offline for precompute, once online for `targets`.
+
+### 7a.2 Attribution-class unification
+
+**Before:**
+
+```
+  ┌──────────────────────────┐        ┌──────────────────────────┐
+  │ AttributionTarget        │        │ DifferentialAttribution  │
+  │                          │        │ Target                   │
+  ├──────────────────────────┤        ├──────────────────────────┤
+  │ model                    │        │ model                    │
+  │ reduction                │        │ reduction                │
+  │ channel: int             │        │ cond_a_idx: int          │
+  │ bin_index: int|None      │        │ cond_b_idx: int          │
+  │ window_start: int|None   │        │ window_start: int|None   │
+  │ window_end: int|None     │        │ window_end: int|None     │
+  ├──────────────────────────┤        ├──────────────────────────┤
+  │ TARGET_REDUCTIONS = {    │        │ DIFFERENTIAL_TARGET_     │
+  │   log_counts,            │        │ REDUCTIONS = {           │
+  │   profile_bin,           │        │   delta_log_counts,      │
+  │   profile_window_sum,    │        │   delta_profile_window_  │
+  │   pred_count_bin,        │        │     sum,                 │
+  │   pred_count_window_sum, │        │ }                        │
+  │ }                        │        │                          │
+  ├──────────────────────────┤        ├──────────────────────────┤
+  │ _resolve_window()        │   ←──  │ _resolve_window()        │
+  │ (identical copies)       │        │                          │
+  └──────────────────────────┘        └──────────────────────────┘
+```
+
+**After:**
+
+```
+  ┌───────────────────────────────────────────────────────┐
+  │ AttributionTarget                                     │
+  ├───────────────────────────────────────────────────────┤
+  │ model                                                 │
+  │ reduction                                             │
+  │ channels: int | tuple[int, int]                       │
+  │ bin_index: int | None                                 │
+  │ window_start: int | None                              │
+  │ window_end: int | None                                │
+  ├───────────────────────────────────────────────────────┤
+  │ TARGET_REDUCTIONS = {                                 │
+  │   log_counts,                 # channels: int         │
+  │   profile_bin,                # channels: int         │
+  │   profile_window_sum,         # channels: int         │
+  │   pred_count_bin,             # channels: int         │
+  │   pred_count_window_sum,      # channels: int         │
+  │   delta_log_counts,           # channels: (int, int)  │
+  │   delta_profile_window_sum,   # channels: (int, int)  │
+  │ }                                                     │
+  ├───────────────────────────────────────────────────────┤
+  │ _resolve_window()  (once)                             │
+  │ _REDUCTIONS: dict[str, Callable]  (registry dispatch) │
+  └───────────────────────────────────────────────────────┘
+```
+
+### 7a.3 Reduction × field compatibility matrix
+
+Which `AttributionTarget` fields each reduction uses:
+
+| Reduction | `channels` arity | `bin_index` | `window_start` / `window_end` |
+|---|---|---|---|
+| `log_counts` | `int` | — | — |
+| `profile_bin` | `int` | **required\*** | — |
+| `profile_window_sum` | `int` | — | **required\*** |
+| `pred_count_bin` | `int` | **required\*** | — |
+| `pred_count_window_sum` | `int` | — | **required\*** |
+| `delta_log_counts` | `tuple[int, int]` | — | — |
+| `delta_profile_window_sum` | `tuple[int, int]` | — | **required\*** |
+
+\* *"Required" with defaults — `bin_index` defaults to `length // 2`
+and `window_start`/`window_end` default to `0` / `length`, so
+callers may omit them and get the sensible behaviour.*
+
+Fields that are `—` are checked at `__init__`: passing them with a
+reduction that does not use them raises `ValueError`.
+
+### 7a.4 `DifferentialCountLoss`: current vs. redesigned
+
+| Property | Current | Redesigned (Option B) |
+|---|---|---|
+| Constructor args | `cond_a_idx`, `cond_b_idx`, `abs_weight`, `count_pseudocount` | `cond_a_idx`, `cond_b_idx`, `count_pseudocount` |
+| Instance methods | `__init__`, `_resolve_delta_target`, `loss_components`, `forward` | `__init__`, `forward` |
+| Supported `targets` shapes | `(B, 1, 1)`, `(B, 1, L)`, `(B, N, L)` | `(B, N, L)` |
+| Supported kwargs | `log2fc: Tensor \| None` | — |
+| Return shape of `forward` | `Tensor` (sum of weighted components) | `Tensor` (MSE scalar) |
+| Return of `loss_components` | `{"delta_loss", "abs_loss_a", "abs_loss_b"}` (conditionally) | **method removed** |
+| Optional behaviours | `abs_weight` regularizer | none |
+| Branches inside `forward` | 4 (see §2.2 truth table) | 0 |
+| Source line count | ~170 | ~35 |
+| `uses_count_pseudocount` class flag | `True` | `True` |
+
+### 7a.5 File-by-file change summary
+
+| File | Before | After | Δ lines | What changes |
+|---|---|---|---|---|
+| `src/cerberus/loss.py` | has `DifferentialCountLoss` with kwarg, fallback, `abs_weight` (~170 lines of the class) | single-path class (~35 lines) | **−135** | Remove `_resolve_delta_target`, `log2fc` kwarg, scalar fallback, abs-weight branch, `loss_components` decomposition. |
+| `src/cerberus/attribution.py` | two classes (`AttributionTarget`, `DifferentialAttributionTarget`) + duplicated `_resolve_window` + two reduction sets | single `AttributionTarget` + registry dispatch + one reduction set | **−70** | Delete `DifferentialAttributionTarget` class. Rename `channel` → `channels`. Fold delta reductions into `TARGET_REDUCTIONS`. Delete `DIFFERENTIAL_TARGET_REDUCTIONS`. |
+| `src/cerberus/__init__.py` | exports `DifferentialAttributionTarget`, `DIFFERENTIAL_TARGET_REDUCTIONS` | doesn't | **−4** | Remove from `from .attribution import …` and from `__all__`. |
+| `tools/train_multitask_differential_bpnet.py` | 1068 lines: `_DiffWrapper`, `_Phase2Module`, 4 inlined helpers, Phase 2 bespoke training loop | ~390 lines: `_merge_and_write_peaks`, `_find_phase1_checkpoint`, `_freeze_phase2_trunk`, standard `train_single` call for both phases | **−680** | Drop wrapper, PL module, log2FC precompute, `_DifferentialRecord`, TSV writer. Phase 2 rewritten as a regular `ModelConfig`-driven `train_single` invocation. |
+| `tests/test_multitask_differential_bpnet.py` | 22 tests incl. log2fc kwarg path, abs-weight branch, scalar fallback | ~18 tests against single path + channel validation | **−80** | Remove: 4 log2fc-kwarg tests, 2 abs-weight tests, 1 scalar-fallback test. Add: 4 single-path tests. |
+| `tests/test_attribution.py` | has `DifferentialAttributionTarget` tests | uses unified `AttributionTarget` with `channels=(a, b)` | ≈0 | Mechanical: update imports, rename `channel` → `channels`, update call sites. |
+| `tests/test_package_api.py` | asserts `DifferentialAttributionTarget` import-survives | removed (assertion is vacuous after removal) | −15 | Delete or simplify. |
+| `tests/test_train_multitask_differential_tool.py` | tests `_DiffWrapper` length invariant | **deleted** (wrapper no longer exists) | −50 | The invariant being tested doesn't apply — no wrapper to wrap. |
+| `CHANGELOG.md` | — | `### Changed` entry | +8 | Document the 6 breaking changes. |
+| `docs/usage.md` | — | short "Differential workflow" subsection | +30 | Point at the tool and the unified AttributionTarget docs. |
+
+**Net across the tree: ≈ −1000 lines.**
+
+### 7a.6 Call-site migrations
+
+All in-tree call sites that break under Option B, with the before →
+after rewrite.
+
+**1. `tools/train_multitask_differential_bpnet.py` interpret path:**
+
+```python
+# Before
+from cerberus.attribution import DifferentialAttributionTarget
+...
+diff_target = DifferentialAttributionTarget(
+    model=model,
+    reduction="delta_log_counts",
+    cond_a_idx=0,
+    cond_b_idx=1,
+)
+
+# After
+from cerberus.attribution import AttributionTarget
+...
+diff_target = AttributionTarget(
+    model=model,
+    reduction="delta_log_counts",
+    channels=(0, 1),
+)
+```
+
+**2. Phase 2 loss construction (same tool, different section):**
+
+```python
+# Before
+loss_fn = DifferentialCountLoss(
+    cond_a_idx=0,
+    cond_b_idx=1,
+    abs_weight=args.abs_weight,
+    count_pseudocount=args.count_pseudocount * args.target_scale,
+)
+# ...in training step:
+loss = loss_fn(outputs, targets, log2fc=log2fc)   # or kwargs
+
+# After
+loss_fn = DifferentialCountLoss(
+    cond_a_idx=0,
+    cond_b_idx=1,
+    count_pseudocount=args.count_pseudocount * args.target_scale,
+)
+# ...in training step:
+loss = loss_fn(outputs, targets)
+```
+
+**3. `tests/test_attribution.py` (differential test block):**
+
+```python
+# Before
+from cerberus.attribution import (
+    DIFFERENTIAL_TARGET_REDUCTIONS,
+    DifferentialAttributionTarget,
+)
+...
+t = DifferentialAttributionTarget(model=m, reduction="delta_log_counts",
+                                  cond_a_idx=0, cond_b_idx=1)
+
+# After
+from cerberus.attribution import AttributionTarget, TARGET_REDUCTIONS
+...
+t = AttributionTarget(model=m, reduction="delta_log_counts", channels=(0, 1))
+```
+
+**4. `src/cerberus/__init__.py`:**
+
+```python
+# Before
+from .attribution import (
+    DIFFERENTIAL_TARGET_REDUCTIONS,
+    TARGET_REDUCTIONS,
+    AttributionTarget,
+    DifferentialAttributionTarget,
+    ...
+)
+__all__ = [
+    ...,
+    "DIFFERENTIAL_TARGET_REDUCTIONS",
+    "DifferentialAttributionTarget",
+    ...,
+]
+
+# After
+from .attribution import (
+    TARGET_REDUCTIONS,
+    AttributionTarget,
+    ...
+)
+__all__ = [
+    ...,
+    "TARGET_REDUCTIONS",
+    "AttributionTarget",
+    ...,
+]
+```
+
+### 7a.7 Phase 1 / Phase 2 symmetry
+
+Under Option B both phases reduce to the same top-level shape:
+
+```
+       ┌─ Phase 1 ─────────────────────────────────┐
+       │                                           │
+       │  data_config = _data_config_two_channel(  │
+       │      {name_a: bw_a, name_b: bw_b})        │
+       │                                           │
+       │  model_config = ModelConfig(              │
+       │      model_cls = MultitaskBPNet,          │
+       │      loss_cls  = MultitaskBPNetLoss,      │
+       │      model_args = {output_channels: 2},   │
+       │      pretrained = [],                     │
+       │  )                                        │
+       │                                           │
+       │  train_single(genome, data, sampler,      │
+       │               model, train)               │
+       │                                           │
+       └───────────────┬───────────────────────────┘
+                       │
+                       │  Phase 1 checkpoint
+                       ▼
+       ┌─ Phase 2 ─────────────────────────────────┐
+       │                                           │
+       │  data_config = _data_config_two_channel(  │
+       │      {name_a: bw_a, name_b: bw_b})        │
+       │                                           │
+       │  model_config = ModelConfig(              │
+       │      model_cls = MultitaskBPNet,          │
+       │      loss_cls  = DifferentialCountLoss,   │  ← only diff
+       │      model_args = {output_channels: 2},   │
+       │      pretrained = [phase1_checkpoint],    │  ← only diff
+       │  )                                        │
+       │                                           │
+       │  _freeze_phase2_trunk(model)   (tool hook)│  ← tool-only
+       │                                           │
+       │  train_single(genome, data, sampler,      │
+       │               model, train)               │
+       │                                           │
+       └───────────────────────────────────────────┘
+```
+
+Phase 2 is Phase 1 with a different `loss_cls`, the same
+`DataConfig`, a populated `pretrained=[…]` list, and one tool-local
+freeze hook. No `_Phase2Module`, no `_DiffWrapper`, no separate
+training driver.
+
+---
+
+## 8. Attribution Module Unification
+
+This section expands on the attribution-module part of the
+implementation plan. The unification of `AttributionTarget` +
+`DifferentialAttributionTarget` is a net simplification worth
+understanding in isolation — its rationale stands on its own even
+if the loss-side simplification ever needed to be rolled back.
 
 ### 8.1 Shape of the unified class
 
@@ -800,13 +1370,22 @@ tractable without adding `if self.reduction == "..."` branches.
 ### 8.3 The `channels` field change
 
 Breaking change in the sense of "attribute type widens". Callers
-that do `target.channel` break; callers that do
-`target.channels[0]` work uniformly. Since most call sites are
-internal (the three tools + tests), the blast radius is small.
+that do `target.channel` break; callers that do `target.channels`
+get `int | tuple[int, int]`.
 
-The back-compat shim under `DifferentialAttributionTarget(
-model, reduction, cond_a_idx, cond_b_idx, ...)` keeps every current
-external call site working.
+In-tree call sites that need updating (Option B commit):
+
+- `tools/train_multitask_differential_bpnet.py` — the interpret
+  path's `DifferentialAttributionTarget(...)` call becomes
+  `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))`.
+- `tools/run_tpcav.py` — already uses `AttributionTarget`;
+  untouched.
+- `tests/test_attribution.py` — the differential test block's
+  imports and call sites update.
+- `src/cerberus/__init__.py` — `DifferentialAttributionTarget` and
+  `DIFFERENTIAL_TARGET_REDUCTIONS` removed from exports.
+
+No back-compat shim. The whole change lands in one commit.
 
 ### 8.4 Gains vs. cost
 
@@ -843,12 +1422,15 @@ Under Option B:
 
 | Path | Breaking? | Migration |
 |---|---|---|
-| `from cerberus.attribution import DifferentialAttributionTarget` | No (shim) | None |
-| `from cerberus.attribution import AttributionTarget` with `.channel` | Yes | `.channels` (union type); bare int still accepted via positional arg |
-| `DifferentialCountLoss(log2fc=tensor)` kwarg | No | None |
-| `DifferentialCountLoss(targets=(B, 1, 1))` scalar fallback | No | None (legacy path preserved) |
-| `DifferentialCountLoss(targets=(B, 2, L))` with no kwarg | **Semantic change**: previously garbage; now returns correct derived delta | Intentional fix — no migration for well-behaved callers |
-| `tools/train_multitask_differential_bpnet.py --flag-x` (CLI surface) | No | Same flags, internal refactor only |
+| `from cerberus.attribution import DifferentialAttributionTarget` | **Yes — removed** | Use `AttributionTarget(reduction=..., channels=(a, b))`. In-tree call sites updated in the same commit. |
+| `from cerberus.attribution import DIFFERENTIAL_TARGET_REDUCTIONS` | **Yes — removed** | Check `reduction.startswith("delta_")` or maintain a local constant; no in-tree caller uses this export. |
+| `cerberus.DifferentialAttributionTarget` top-level export | **Yes — removed** | Same as above. |
+| `AttributionTarget.channel` attribute | **Yes — renamed** | `AttributionTarget.channels` (`int` for single-channel reductions, `tuple[int, int]` for delta reductions). |
+| `DifferentialCountLoss(log2fc=tensor)` kwarg | **Yes — removed** | Pass `(B, N, L)` absolute-signal `targets` (the default Phase 2 dataset shape); delta is derived inline. See §13 for future re-entry if external labels become a requirement. |
+| `DifferentialCountLoss(targets=(B, 1, 1))` scalar fallback | **Yes — removed** | Same as above. No in-tree caller uses this path. |
+| `DifferentialCountLoss(abs_weight=...)` argument | **Yes — removed** | See §13 for future re-entry if an in-tree caller appears. No current caller sets this. |
+| `DifferentialCountLoss(targets=(B, 2, L))` with no other args | **Semantic change**: previously silently averaged the whole tensor; now returns correct derived delta | Intentional fix. |
+| `tools/train_multitask_differential_bpnet.py --flag-x` (CLI surface) | CLI mostly unchanged | `--abs-weight` and `--diff-pseudocount` flags dropped (no corresponding library feature). Other flags preserved. |
 
 Within-repo call sites that need updates:
 
@@ -884,17 +1466,13 @@ Not affected:
    module-level `setup` override). Scan `train.py` during
    implementation to pick the idiomatic option.
 
-3. **Should the `log2fc` kwarg stay in the library public API, or
-   become a hidden / internal mechanism?** The only external caller
-   in the joanne-feature design was the training tool itself, which
-   is internal. If DESeq2-style external labels are a real use case,
-   document them; otherwise consider privatizing the kwarg in a
-   later pass.
+3. **Should the provenance TSV survive in any form?** See §7.4.
+   Decision during implementation. Under the redesign there is
+   nothing to precompute, so the TSV would be a post-hoc audit
+   artifact (run the target-derivation over one epoch's worth of
+   batches and dump). Nice-to-have, not blocking.
 
-4. **Should the provenance TSV survive in any form?** See §7.4.
-   Decision during implementation.
-
-5. **Do we want Phase 2 to be callable on a Phase 1 *run*, not a
+4. **Do we want Phase 2 to be callable on a Phase 1 *run*, not a
    *checkpoint*?** i.e., `train_multitask_differential_bpnet.py
    --resume-from-phase1 <path>` where `<path>` points at a full
    multi-fold training output and Phase 2 picks up each fold. The
@@ -903,13 +1481,13 @@ Not affected:
    logic is easy under the redesign since Phase 2 is now a regular
    `train_multi` call.
 
-6. **Generalization to N ≥ 3 conditions.** MultitaskBPNet already
+5. **Generalization to N ≥ 3 conditions.** MultitaskBPNet already
    supports it (`output_channels` list length ≥ 2). The current
    `DifferentialCountLoss` hardcodes a single pair. A generalization
    would be `list[tuple[int, int]]` — all-pairs or a user-specified
    pattern. Out of scope for this doc; flag for future work.
 
-7. **Training-time differential attribution as a regularizer.**
+6. **Training-time differential attribution as a regularizer.**
    Some papers propose regularizing attribution consistency across
    conditions during training. This would need per-sample scalars
    derived from *gradients*, not from inputs, and is genuinely
@@ -952,35 +1530,209 @@ implementation):
 - Removing `differential_targets.tsv` as part of the CLI behaviour.
   Decide during implementation.
 - Changes to the TPCAV adapter (`src/cerberus/tpcav.py`). Orthogonal.
+- **Support for externally-computed delta targets** (DESeq2, edgeR,
+  etc.). Not a current requirement; §13 sketches how it could be
+  re-added later, but the planned code does not depend on it.
 
 ---
 
-## 13. Summary Diff (projected, under Option B)
+## 13. Future Extensions (Not Required)
 
-**Added:**
+This section describes features **removed** under the current
+redesign and how they could be restored in a later pass **if and
+when** a real in-tree consumer appears. None of this is a
+requirement. The code landed under Options A, B, or C does not need
+to accommodate these extensions in advance.
 
-- `src/cerberus/loss.py`: ~20 lines of inline log2FC derivation in
-  `_resolve_delta_target`.
-- `src/cerberus/attribution.py`: ~15 lines for the reduction-dispatch
-  registry.
-- `tests/`: ~60 lines of new tests per §7.5.
-- `docs/usage.md`: ~30 lines of unified differential-workflow docs.
+### 13.1 External Delta Targets (DESeq2 / edgeR / custom)
 
-**Changed:**
+**When would this be needed?**
 
-- `tools/train_multitask_differential_bpnet.py`: 1068 → ~390 lines
-  (net −678).
-- `src/cerberus/attribution.py`: two classes → one class + shim
-  (net −70).
-- `src/cerberus/loss.py`: `_resolve_delta_target` fallback rewired
-  (net +10).
+- A user with biological replicates who wants DESeq2 / edgeR shrunk
+  log2FC as the supervision target instead of the raw bigwig ratio.
+- A user with *custom* delta scores (e.g. from a differential
+  chromatin-state caller, peak-by-peak significance-weighted FC)
+  that are not computable from `targets.sum(dim=-1)`.
+- A benchmarking setup that wants to compare models trained on
+  different delta definitions.
 
-**Removed:**
+None of these exist in-tree today.
 
-- Inlined helpers in the tool: `_compute_log2fc_from_bigwigs`,
-  `_DifferentialRecord`, `_write_differential_targets`,
-  `_DiffWrapper`, `_Phase2Module` (net −180).
+**Sketch: transform-based per-sample labels.**
 
-**Net ≈ −900 lines across the tree, zero public-API breakage**
-(via the `DifferentialAttributionTarget` shim and the preservation
-of the `log2fc` kwarg).
+The cleanest re-entry point is a label *source* tied to the dataset,
+not a kwarg on the loss. Approximate shape:
+
+```
+# src/cerberus/differential.py  (new, minimal)
+@dataclass(frozen=True)
+class DeltaTargetRecord:
+    chrom: str
+    start: int
+    end: int
+    log2fc: float
+
+def load_delta_targets(path: Path) -> dict[tuple[str, int, int], float]:
+    """Parse a 4-col TSV (chrom start end log2fc) into a coord-keyed dict."""
+    ...
+
+# src/cerberus/transform.py  (extended)
+class AttachDeltaTarget(DataTransform):
+    """Looks up log2fc by (chrom, start, end); attaches to sample dict."""
+    def __init__(self, table: dict[tuple[str, int, int], float],
+                 default: float = 0.0): ...
+    def __call__(self, inputs, targets, interval, *, extras: dict):
+        key = (interval.chrom, interval.start, interval.end)
+        extras["log2fc"] = self.table.get(key, self.default)
+        return inputs, targets, interval, extras
+```
+
+The transform API extension (adding an `extras: dict` out-parameter
+that flows into the sample dict) is the only core-cerberus change
+required. Once that exists, a second loss class —
+`ExternalDifferentialCountLoss` or similar — reads the kwarg
+unconditionally (no fallback). Keeps `DifferentialCountLoss` pure.
+
+**What can be resurrected from git history.**
+
+Joanne-feature's `src/cerberus/differential.py` contained:
+
+- `DifferentialRecord` dataclass (lines ~250-293).
+- `load_differential_targets` TSV parser (lines ~301-376).
+- `DifferentialTargetIndex` coord-keyed lookup (lines ~405-482).
+
+These can be re-ported at feature-ship time rather than carried now.
+
+### 13.2 Absolute-Count Regularizer (`abs_weight`)
+
+**When would this be needed?**
+
+- An in-tree workflow that observes count-head drift during Phase 2
+  fine-tuning and wants the heads anchored to their absolute tracks.
+  Naqvi et al. 2025 discuss this as an optional regularizer; their
+  default is `abs_weight = 0.0`.
+
+None of this is exercised today.
+
+**Sketch: restoration path.**
+
+The restored feature would be additive to `DifferentialCountLoss`,
+but behind a cleaner interface than the current "abs_weight > 0
+triggers a whole new computation path":
+
+- **Option α**: a separate `AnchoredDifferentialCountLoss` subclass
+  that adds the abs term. Composition > overloading; keeps
+  `DifferentialCountLoss` a single-path function.
+- **Option β**: a generic "composite loss" helper that weights
+  arbitrary sub-losses, so Phase 2 becomes `compose(delta_loss,
+  abs_loss_a, abs_loss_b, weights=...)`. Lines up with existing
+  `MSEMultinomialLoss` + `count_weight` + `profile_weight`
+  pattern.
+
+Decision is deferred to whoever actually needs it. What the current
+redesign removes is the *conjoined* "regularizer hidden inside
+`DifferentialCountLoss`" interface.
+
+### 13.3 Why not keep these features "just in case"
+
+The argument for keeping `log2fc` kwarg / `abs_weight` ahead of real
+demand:
+
+> "Removing them means future re-addition will be a breaking change."
+
+The counter-argument:
+
+- **Adding a kwarg back to an `nn.Module.forward` is not
+  breaking.** Existing callers pass `forward(outputs, targets)`;
+  a future version that accepts an optional `log2fc=` kwarg accepts
+  the same call shape.
+- **Adding a new subclass is not breaking.** `AnchoredDifferentialCountLoss`
+  can ship next quarter without touching anyone using
+  `DifferentialCountLoss` today.
+- **Keeping the features now preserves the four-row truth table**
+  (§2.2) that made `DifferentialCountLoss` hackish in the first
+  place.
+- **Neither feature has ever had a non-internal caller.** Removing
+  unused flexibility is cheap; keeping it costs every future reader
+  who has to understand the overloading.
+
+Net: drop now, re-add later only when a real consumer appears.
+
+### 13.4 Architectural invariant worth preserving
+
+Whatever the future-work path, the core invariant should be:
+
+> **Each loss class in `src/cerberus/loss.py` has exactly one way to
+> produce its target per call.** The way is determined at
+> construction (by which class you picked), not at call time (via
+> kwarg presence or shape overloading).
+
+Concretely: `DifferentialCountLoss` *always* derives its delta from
+`targets.sum(dim=-1)`. `ExternalDifferentialCountLoss` (hypothetical)
+*always* reads an external per-sample kwarg.
+`AnchoredDifferentialCountLoss` (hypothetical) *always* adds the
+abs regularizer. The per-call "which protocol are we on today"
+ambiguity stays gone.
+
+---
+
+## 14. Summary Diff (projected)
+
+**Library (`src/cerberus/`)** — net ~−180 lines, everything simpler:
+
+- `loss.py`: `DifferentialCountLoss` collapses from ~170 lines to
+  ~35. Removes `_resolve_delta_target`, `log2fc` kwarg handling,
+  `(B, 1, 1)` scalar fallback, `abs_weight` regularizer branch,
+  `loss_components`/forward decomposition. One class, one
+  `__init__`, one `forward`. Net −135.
+- `attribution.py`: `DifferentialAttributionTarget` class removed
+  entirely. `AttributionTarget` gains delta reductions and a
+  `channels: int | tuple[int, int]` field. `DIFFERENTIAL_TARGET_REDUCTIONS`
+  removed. Registry-based dispatch tightens the `forward` body.
+  Net −70.
+- `__init__.py`: `DifferentialAttributionTarget` and
+  `DIFFERENTIAL_TARGET_REDUCTIONS` removed from exports. Net −4.
+- Net library delta: **−209 lines, zero optional protocols, zero
+  overloading, zero `abs_weight`-style dormant features**.
+
+**Tool (`tools/train_multitask_differential_bpnet.py`)** — net
+~−680 lines:
+
+- 1068 → ~390. The tool now contains the BED merge, two-phase
+  coordination, trunk freezing, checkpoint glob, and DeepLIFTSHAP
+  pipe — exactly the workflow-specific code that has no business
+  in the library. No `_DiffWrapper`, no `_Phase2Module`, no
+  offline log2FC precompute.
+
+**Tests** — net ~−80 lines:
+
+- ~4 new tests (~50 lines): delta derivation from targets,
+  channels-arity validation, delta-reduction correctness, index
+  validation.
+- ~6 removed tests (~130 lines): log2fc-kwarg protocol tests,
+  abs_weight tests, scalar-fallback test,
+  `DifferentialAttributionTarget`-shim tests.
+- Existing tests updated to use the unified `AttributionTarget`
+  (mechanical).
+
+**Docs** — net +~30 lines:
+
+- `docs/usage.md`: short section describing the two-phase workflow
+  pointing at the tool.
+- `CHANGELOG.md`: one entry under `### Changed` describing the
+  `DifferentialCountLoss` / `AttributionTarget` API simplification.
+
+**Net across the tree: ≈ −940 lines.**
+
+**Intentional breaking changes** (all have zero known external
+callers, all documented with §13 re-entry plans):
+
+1. `DifferentialCountLoss(log2fc=...)` kwarg removed.
+2. `DifferentialCountLoss(abs_weight=...)` argument removed.
+3. `DifferentialCountLoss` scalar-fallback protocol removed.
+4. `DifferentialAttributionTarget` class removed.
+5. `DIFFERENTIAL_TARGET_REDUCTIONS` export removed.
+6. `AttributionTarget.channel` → `AttributionTarget.channels`.
+
+All six land in one commit; no migration period; no compatibility
+shim.

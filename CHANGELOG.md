@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Internal
+- **Differential-learning workflow redesign design doc**
+  (`docs/internal/differential_workflow_redesign.md`). Selects Option B:
+  collapse `DifferentialCountLoss` to a single-path loss that derives the
+  delta from the `(B, N, L)` `targets` tensor, unify `AttributionTarget`
+  and `DifferentialAttributionTarget` into a single class dispatched by
+  `reduction` (with `channels: int | tuple[int, int]`), and rewrite
+  `tools/train_multitask_differential_bpnet.py` Phase 2 on the standard
+  `train_single` / `train_multi` path (no `_DiffWrapper`, no offline log2FC
+  precompute, no `_Phase2Module`). Guides the commits that follow.
+
 ### Added
 - **Two-phase multitask-differential BPNet workflow.** New library primitives
   plus an end-to-end CLI for training a shared-trunk BPNet on N conditions
