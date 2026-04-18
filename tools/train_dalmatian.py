@@ -26,6 +26,7 @@ import torch
 import cerberus
 from cerberus.config import (
     DataConfig,
+    FreezeSpec,
     ModelConfig,
     PretrainedConfig,
     SamplerConfig,
@@ -413,17 +414,23 @@ def main():
         "count_pseudocount": args.count_pseudocount,
     }
 
-    # Build pretrained weight configs
+    # Build pretrained weight + freeze configs. Freezing uses the
+    # declarative ModelConfig.freeze surface so Dropout/BatchNorm
+    # inside the bias branch stop firing (vs. leaving them stochastic
+    # via PretrainedConfig's requires_grad-only freeze).
     pretrained: list[PretrainedConfig] = []
+    freeze: list[FreezeSpec] = []
     if args.pretrained_bias:
         pretrained.append(
             PretrainedConfig(
                 weights_path=args.pretrained_bias,
                 source=None,
                 target="bias_model",
-                freeze=args.freeze_bias,
+                freeze=False,
             )
         )
+        if args.freeze_bias:
+            freeze.append(FreezeSpec(pattern="bias_model", eval_mode=True))
 
     model_config = ModelConfig(
         name="Dalmatian",
@@ -434,6 +441,7 @@ def main():
         metrics_args={},
         model_args=model_args,
         pretrained=pretrained,
+        freeze=freeze,
         count_pseudocount=args.count_pseudocount * target_scale,
     )
 
