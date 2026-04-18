@@ -53,7 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dependency. Documented in `docs/usage.md`; tests in `tests/test_tpcav.py`
   and `tests/test_package_api.py` (verifies the TPCAV helpers stay off the
   top-level `cerberus.*` API surface).
-
 - **Interval-aligned attribution export.** `tools/export_tfmodisco_inputs.py`
   now emits `intervals.tsv` (row-aligned to the NPZ outputs) and
   `attribution_meta.json` (full provenance: checkpoint, fold, seed, method,
@@ -66,6 +65,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nearest-center midpoint overlap splitting. Covered by
   `tests/test_export_attribution_bigwig.py`. `docs/usage.md` documents the
   new outputs and BigWig workflow.
+
+### Fixed
+- **`ModelEnsemble(fold=N)` now uses fold-specific `hparams.yaml`.** In a
+  `train_multi` layout each fold writes its own `hparams.yaml` with
+  fold-specific `test_fold` / `val_fold` values. Previously
+  `find_latest_hparams` was called on the training root, which by `mtime`
+  returned the most-recently-trained fold's hparams — so attribution /
+  TF-MoDISco exports that load a non-latest fold would silently sample
+  peaks from the wrong held-out split. Now prefers
+  `root/fold_N/…/hparams.yaml` when present, falling back to the root for
+  the pretrained single-fold layout (hparams directly at the training
+  root). Regression test in `tests/test_model_ensemble_fold_resolution.py`.
+- **`DifferentialCountLoss` rejects negative `cond_*_idx`** (previously
+  silently selected from the end of the tensor via Python slice semantics
+  and supervised the wrong channel pair).
+- **`DifferentialCountLoss._resolve_delta_target` now raises a clear
+  error** when the `log2fc` kwarg's batch size does not match `targets`.
+  Previously the mismatch surfaced as a generic `delta_pred.shape != ...`
+  error that did not identify `log2fc` as the culprit.
+- **`_DiffWrapper` in `tools/train_multitask_differential_bpnet.py` now
+  validates `len(log2fc) == len(dataset)` at construction time.**
+  Previously a short `log2fc` array (e.g. from an upstream filter that
+  silently dropped intervals) would raise `IndexError` partway through
+  Phase 2 training, wasting compute before surfacing the mismatch.
+- **`get_precision_kwargs` rejects unknown precision strings** (e.g.
+  `"bf16-mixed"`, `"fp16"`, `""`) instead of silently falling through to
+  the bf16 branch.
 
 ### Changed
 - **`ModelEnsemble` now accepts `fold: int | None`.** When set, only the

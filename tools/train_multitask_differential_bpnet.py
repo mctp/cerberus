@@ -369,6 +369,15 @@ class _DiffWrapper(Dataset):
     """
 
     def __init__(self, base_dataset: Dataset, log2fc: np.ndarray) -> None:
+        base_len = len(base_dataset)  # type: ignore[arg-type]
+        if len(log2fc) != base_len:
+            raise ValueError(
+                f"log2fc length ({len(log2fc)}) must equal dataset length "
+                f"({base_len}); mismatched arrays produce silent index-misaligned "
+                f"supervision. Check that the intervals passed to "
+                f"_compute_log2fc_from_bigwigs came from the same sampler as "
+                f"base_dataset."
+            )
         self.base = base_dataset
         self.log2fc = torch.tensor(log2fc, dtype=torch.float32)
 

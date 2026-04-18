@@ -95,6 +95,11 @@ def get_precision_kwargs(
     ``"auto"``; callers can disable the DDP override with
     ``use_ddp_find_unused_parameters_false=False``.
     """
+    if precision not in ("full", "mps", "bf16"):
+        raise ValueError(
+            f"precision must be one of 'full', 'mps', 'bf16'; got {precision!r}"
+        )
+
     if precision == "full":
         return {
             "precision": "32-true",

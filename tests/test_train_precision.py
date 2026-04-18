@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
 import pytorch_lightning as pl
 
 from cerberus.config import DataConfig, ModelConfig, TrainConfig
@@ -152,3 +153,14 @@ def test_get_precision_kwargs_can_disable_ddp_override():
     )
 
     assert kwargs["strategy"] == "auto"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["bf16-mixed", "32-true", "fp16", "BF16", "", "auto"],
+)
+def test_get_precision_kwargs_rejects_unknown_precision(bad):
+    """Typo-proofing: unknown precision strings must raise, not silently fall
+    through to the bf16 branch."""
+    with pytest.raises(ValueError, match="must be one of"):
+        get_precision_kwargs(bad, "gpu", 1)

@@ -605,6 +605,9 @@ class DifferentialCountLoss(nn.Module):
             raise ValueError(
                 f"cond_a_idx and cond_b_idx must differ, got both={cond_a_idx}"
             )
+        for name, idx in (("cond_a_idx", cond_a_idx), ("cond_b_idx", cond_b_idx)):
+            if idx < 0:
+                raise ValueError(f"{name} must be non-negative, got {idx}")
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
         self.abs_weight = abs_weight
@@ -624,7 +627,13 @@ class DifferentialCountLoss(nn.Module):
                 raise TypeError(
                     f"log2fc kwarg must be a torch.Tensor, got {type(log2fc)}"
                 )
-            return log2fc.float().flatten()
+            flat = log2fc.float().flatten()
+            if flat.shape[0] != targets.shape[0]:
+                raise ValueError(
+                    f"log2fc kwarg has batch size {flat.shape[0]}, "
+                    f"expected {targets.shape[0]} to match the batch."
+                )
+            return flat
         # Fallback: squeeze targets (B, 1, 1) or average constant-value track
         return targets.float().reshape(targets.shape[0], -1).mean(dim=-1)
 

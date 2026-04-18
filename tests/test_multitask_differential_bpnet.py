@@ -253,6 +253,26 @@ def test_differential_count_loss_log2fc_wrong_type():
         loss_fn.loss_components(out, targets, log2fc=[1.0, 2.0])
 
 
+@pytest.mark.parametrize(
+    "cond_a,cond_b",
+    [(-1, 1), (0, -2), (-3, -1)],
+)
+def test_differential_count_loss_rejects_negative_idx(cond_a, cond_b):
+    """Negative indices silently select the last channel — reject at init."""
+    with pytest.raises(ValueError, match="must be non-negative"):
+        DifferentialCountLoss(cond_a_idx=cond_a, cond_b_idx=cond_b)
+
+
+def test_differential_count_loss_log2fc_batch_size_mismatch():
+    """log2fc with a batch size that differs from targets must raise clearly."""
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    out = _make_output(torch.zeros(2, 2))
+    targets = torch.zeros(2, 1, 1)
+    bad_log2fc = torch.tensor([0.0, 1.0, 2.0])  # shape (3,), batch is 2
+    with pytest.raises(ValueError, match="log2fc kwarg has batch size"):
+        loss_fn.loss_components(out, targets, log2fc=bad_log2fc)
+
+
 # ---------------------------------------------------------------------------
 # Phase 2 round-trip
 # ---------------------------------------------------------------------------
