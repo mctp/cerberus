@@ -912,7 +912,7 @@ def run_interpretation(
     # 2. DifferentialAttributionTarget: outputs log_counts_B − log_counts_A
     diff_target = DifferentialAttributionTarget(
         model=model,
-        mode="delta_log_counts",
+        reduction="delta_log_counts",
         cond_a_idx=0,
         cond_b_idx=1,
     )
