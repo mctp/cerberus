@@ -544,6 +544,176 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
         )
 
 
+class DifferentialCountLoss(nn.Module):
+    """Phase 2 fine-tuning loss for differential accessibility prediction.
+
+    Supervises ``log_counts[:, cond_b_idx] - log_counts[:, cond_a_idx]``
+    with an external differential target such as DESeq2 / edgeR log2FC.
+    Profile loss is disabled (weight 0) following Naqvi et al. (2025), who
+    showed that only the count head needs to be retargeted: the profile heads
+    already encode condition-specific TF footprint grammar from Phase 1
+    multi-task training and do not require further adjustment.
+
+    **Differential target resolution** (in priority order):
+
+    1. ``log2fc`` keyword argument — a ``(B,)`` float tensor passed through
+       the batch context dict (analogous to how :class:`DalmatianLoss`
+       reads ``interval_source``).
+    2. Fallback — ``targets`` reshaped to ``(B, -1)`` and averaged over all
+       non-batch dimensions.  Handles a scalar stored as ``(B, 1, 1)`` or a
+       constant-valued track ``(B, 1, L)``.
+
+    **Optional absolute regularisation** (``abs_weight > 0``):
+
+    When set, ``targets`` must be ``(B, N, L)`` absolute ATAC count tracks
+    (one channel per condition), and an additional MSE term anchors the two
+    relevant count heads to their absolute values.  This prevents the count
+    heads from collapsing (e.g. both drifting to zero) during fine-tuning.
+    Following Naqvi et al., ``abs_weight=0`` is the default — the trunk
+    adapts freely to the differential signal.
+
+    Args:
+        cond_a_idx: Index of condition A in the ``log_counts`` output.
+            Default: 0.
+        cond_b_idx: Index of condition B in the ``log_counts`` output.
+            Default: 1.
+        abs_weight: Weight for absolute count regularisation.  Default: 0.0
+            (disabled, matching Naqvi et al. 2025).
+        count_pseudocount: Additive pseudocount applied when computing
+            target log-counts for the absolute regularisation term.
+            Must match the value used in Phase 1 training.  Default: 1.0.
+
+    References:
+        - Naqvi et al. (2025). *Transfer learning reveals sequence
+          determinants of the quantitative response to transcription factor
+          dosage.* Cell Genomics. PMC11160683.
+        - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity
+          models by increasing model resolution.* bioRxiv 2025.01.24.634804.
+    """
+
+    uses_count_pseudocount: bool = True
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        abs_weight: float = 0.0,
+        count_pseudocount: float = 1.0,
+    ) -> None:
+        super().__init__()
+        if cond_a_idx == cond_b_idx:
+            raise ValueError(
+                f"cond_a_idx and cond_b_idx must differ, got both={cond_a_idx}"
+            )
+        self.cond_a_idx = cond_a_idx
+        self.cond_b_idx = cond_b_idx
+        self.abs_weight = abs_weight
+        self.count_pseudocount = count_pseudocount
+
+    def _resolve_delta_target(
+        self, targets: torch.Tensor, kwargs: dict[str, object]
+    ) -> torch.Tensor:
+        """Extract the per-sequence log2FC target.
+
+        Reads ``log2fc`` from kwargs first; falls back to averaging
+        ``targets`` over all non-batch dimensions.
+        """
+        log2fc = kwargs.get("log2fc")
+        if log2fc is not None:
+            if not isinstance(log2fc, torch.Tensor):
+                raise TypeError(
+                    f"log2fc kwarg must be a torch.Tensor, got {type(log2fc)}"
+                )
+            return log2fc.float().flatten()
+        # Fallback: squeeze targets (B, 1, 1) or average constant-value track
+        return targets.float().reshape(targets.shape[0], -1).mean(dim=-1)
+
+    def loss_components(
+        self,
+        outputs: object,
+        targets: torch.Tensor,
+        **kwargs: object,
+    ) -> dict[str, torch.Tensor]:
+        """Compute differential and (optionally) absolute loss components.
+
+        Args:
+            outputs: :class:`~cerberus.output.ProfileCountOutput` with
+                ``log_counts`` of shape ``(B, N_conditions)``.
+            targets: Differential target as ``(B, 1, 1)`` / ``(B, 1, L)``
+                scalar, or absolute count tracks ``(B, N, L)`` when
+                ``abs_weight > 0``.  Can also be ignored in favour of a
+                ``log2fc`` kwarg.
+            **kwargs: Optional batch context.  If ``log2fc`` (``torch.Tensor``
+                of shape ``(B,)``) is present it is used as the differential
+                target; otherwise ``targets`` is averaged down to ``(B,)``.
+
+        Returns:
+            Dict with ``"delta_loss"`` (always) and ``"abs_loss_a"``,
+            ``"abs_loss_b"`` (when ``abs_weight > 0``).
+        """
+        if not isinstance(outputs, ProfileCountOutput):
+            raise TypeError(
+                f"DifferentialCountLoss requires ProfileCountOutput, "
+                f"got {type(outputs).__name__}"
+            )
+
+        log_counts = outputs.log_counts  # (B, N)
+        n_channels = log_counts.shape[-1]
+        for name, idx in (("cond_a_idx", self.cond_a_idx), ("cond_b_idx", self.cond_b_idx)):
+            if idx >= n_channels:
+                raise ValueError(
+                    f"{name}={idx} is out of range for log_counts with "
+                    f"{n_channels} channels"
+                )
+
+        delta_pred = log_counts[:, self.cond_b_idx] - log_counts[:, self.cond_a_idx]
+        target_delta = self._resolve_delta_target(targets, dict(kwargs))
+
+        if delta_pred.shape != target_delta.shape:
+            raise ValueError(
+                f"delta_pred shape {delta_pred.shape} != "
+                f"target_delta shape {target_delta.shape}"
+            )
+
+        delta_loss = F.mse_loss(delta_pred, target_delta)
+        components: dict[str, torch.Tensor] = {"delta_loss": delta_loss}
+
+        if self.abs_weight > 0.0:
+            targets_f = targets.float()
+            n_cond_needed = max(self.cond_a_idx, self.cond_b_idx) + 1
+            if targets_f.ndim < 3 or targets_f.shape[1] < n_cond_needed:
+                raise ValueError(
+                    f"abs_weight > 0 requires targets with shape (B, N, L) "
+                    f"where N >= {n_cond_needed} (to cover cond_a_idx={self.cond_a_idx} "
+                    f"and cond_b_idx={self.cond_b_idx}), "
+                    f"but got shape {tuple(targets_f.shape)}"
+                )
+            for idx, label in ((self.cond_a_idx, "a"), (self.cond_b_idx, "b")):
+                target_counts = targets_f[:, idx, :].sum(dim=-1)
+                target_log = torch.log(target_counts + self.count_pseudocount)
+                components[f"abs_loss_{label}"] = F.mse_loss(
+                    log_counts[:, idx], target_log
+                )
+
+        return components
+
+    def forward(
+        self,
+        outputs: object,
+        targets: torch.Tensor,
+        **kwargs: object,
+    ) -> torch.Tensor:
+        """Return the combined scalar loss."""
+        components = self.loss_components(outputs, targets, **kwargs)
+        total = components["delta_loss"]
+        if self.abs_weight > 0.0:
+            abs_total = sum(
+                v for k, v in components.items() if k.startswith("abs_loss_")
+            )
+            total = total + self.abs_weight * abs_total
+        return total
+
+
 class DalmatianLoss(nn.Module):
     """Peak-conditioned factorized loss for the Dalmatian architecture.
 
