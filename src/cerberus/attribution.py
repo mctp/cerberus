@@ -24,6 +24,11 @@ TARGET_REDUCTIONS = {
     "pred_count_window_sum",
 }
 
+DIFFERENTIAL_TARGET_REDUCTIONS = {
+    "delta_log_counts",
+    "delta_profile_window_sum",
+}
+
 
 class AttributionTarget(torch.nn.Module):
     """Wrap Cerberus model output into a scalar target tensor.
@@ -125,6 +130,104 @@ class AttributionTarget(torch.nn.Module):
             return pred_counts[:, start:end].sum(dim=-1)
 
         raise ValueError(f"Unsupported reduction: {self.reduction}")
+
+
+class DifferentialAttributionTarget(torch.nn.Module):
+    """Reduce a multi-condition model output to ``f_B - f_A`` for attribution.
+
+    The returned scalar is the *difference* between two condition channels, so
+    attribution methods (ISM, TISM, IG, DLS) see a single delta target and
+    produce sequence features that drive the differential. This wrapping is
+    necessary for nonlinear attribution (DeepLIFT / DeepLIFTSHAP) where
+    ``attr(f_B) - attr(f_A)`` does not equal ``attr(f_B - f_A)``; for linear
+    methods (ISM, TISM, plain gradients) it is just a convenience.
+
+    Two reductions:
+
+    ``"delta_log_counts"``
+        ``log_counts[:, cond_b_idx] - log_counts[:, cond_a_idx]``. Attributes
+        features that change total binding / accessibility. Aligned with the
+        :class:`~cerberus.loss.DifferentialCountLoss` training objective
+        (Naqvi et al. 2025).
+
+    ``"delta_profile_window_sum"``
+        ``(logits_B - logits_A)[:, window_start:window_end].sum(-1)``.
+        Attributes features that change the binding footprint shape. Works on
+        the Phase 1 model without Phase 2 fine-tuning.
+
+    Args:
+        model: Model returning :class:`~cerberus.output.ProfileCountOutput`
+            with ``log_counts`` of shape ``(B, N_conditions)`` — typically
+            :class:`~cerberus.models.bpnet.MultitaskBPNet`.
+        reduction: One of :data:`DIFFERENTIAL_TARGET_REDUCTIONS`.
+        cond_a_idx: Channel index for condition A (reference). Default 0.
+        cond_b_idx: Channel index for condition B (query). Default 1.
+        window_start: Inclusive start of the output-profile window used by
+            ``"delta_profile_window_sum"``. ``None`` → 0.
+        window_end: Exclusive end. ``None`` → full output length.
+    """
+
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        reduction: str,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        window_start: int | None = None,
+        window_end: int | None = None,
+    ) -> None:
+        super().__init__()
+        if reduction not in DIFFERENTIAL_TARGET_REDUCTIONS:
+            raise ValueError(
+                f"Unsupported reduction: {reduction!r}. "
+                f"Must be one of {sorted(DIFFERENTIAL_TARGET_REDUCTIONS)}."
+            )
+        if cond_a_idx == cond_b_idx:
+            raise ValueError(
+                f"cond_a_idx and cond_b_idx must differ, got both={cond_a_idx}"
+            )
+        self.model = model
+        self.reduction = reduction
+        self.cond_a_idx = cond_a_idx
+        self.cond_b_idx = cond_b_idx
+        self.window_start = window_start
+        self.window_end = window_end
+
+    def _resolve_window(self, length: int) -> tuple[int, int]:
+        start = 0 if self.window_start is None else self.window_start
+        end = length if self.window_end is None else self.window_end
+        if not (0 <= start < end <= length):
+            raise ValueError(
+                f"Invalid window [{start}, {end}) for output length {length}."
+            )
+        return start, end
+
+    def _check_channels(self, n_channels: int) -> None:
+        for name, idx in (("cond_a_idx", self.cond_a_idx), ("cond_b_idx", self.cond_b_idx)):
+            if not (0 <= idx < n_channels):
+                raise ValueError(
+                    f"{name}={idx} is out of range for output with {n_channels} channels."
+                )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.model(x)
+        log_counts = out.log_counts
+        logits = out.logits
+
+        self._check_channels(log_counts.shape[-1])
+
+        if self.reduction == "delta_log_counts":
+            return log_counts[:, self.cond_b_idx] - log_counts[:, self.cond_a_idx]
+
+        if self.reduction == "delta_profile_window_sum":
+            start, end = self._resolve_window(logits.shape[-1])
+            delta = (
+                logits[:, self.cond_b_idx, start:end]
+                - logits[:, self.cond_a_idx, start:end]
+            )
+            return delta.sum(dim=-1)
+
+        raise ValueError(f"Unsupported reduction: {self.reduction!r}")
 
 
 def resolve_ism_span(seq_len: int, span: IsmSpan) -> tuple[int, int]:

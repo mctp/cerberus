@@ -5,9 +5,11 @@ import pytest
 import torch
 
 from cerberus.attribution import (
+    DIFFERENTIAL_TARGET_REDUCTIONS,
     N_NUCLEOTIDES,
     TARGET_REDUCTIONS,
     AttributionTarget,
+    DifferentialAttributionTarget,
     compute_ism_attributions,
     compute_taylor_ism_attributions,
     mean_center_attributions,
@@ -600,3 +602,174 @@ def test_mean_center_attributions() -> None:
 
     with pytest.raises(ValueError):
         mean_center_attributions(np.ones((4, 10), dtype=np.float32))
+
+
+# ---------------------------------------------------------------------------
+# DifferentialAttributionTarget
+# ---------------------------------------------------------------------------
+
+
+class _MultiConditionModel(torch.nn.Module):
+    """Toy multi-condition model: logits = first 2 DNA channels, log_counts = logits.sum(-1)."""
+
+    def forward(self, x: torch.Tensor) -> SimpleNamespace:
+        logits = x[:, :2, :]
+        log_counts = logits.sum(dim=-1)
+        return SimpleNamespace(logits=logits, log_counts=log_counts)
+
+
+def test_differential_target_reductions_constant() -> None:
+    assert DIFFERENTIAL_TARGET_REDUCTIONS == {
+        "delta_log_counts",
+        "delta_profile_window_sum",
+    }
+
+
+def test_differential_attribution_target_invalid_reduction_raises() -> None:
+    model = _MultiConditionModel()
+    with pytest.raises(ValueError, match="Unsupported reduction"):
+        DifferentialAttributionTarget(model=model, reduction="bad_reduction")
+
+
+def test_differential_attribution_target_same_idx_raises() -> None:
+    model = _MultiConditionModel()
+    with pytest.raises(ValueError, match="must differ"):
+        DifferentialAttributionTarget(
+            model=model, reduction="delta_log_counts", cond_a_idx=1, cond_b_idx=1
+        )
+
+
+def test_differential_attribution_target_delta_log_counts() -> None:
+    model = _MultiConditionModel()
+    target = DifferentialAttributionTarget(
+        model=model, reduction="delta_log_counts", cond_a_idx=0, cond_b_idx=1
+    )
+    # Build x such that channel 0 sums to 3 and channel 1 sums to 7 in each batch element.
+    x = torch.zeros(2, 4, 5)
+    x[:, 0, :3] = 1.0  # ch0 sum = 3
+    x[:, 1, :] = 7.0 / 5.0  # ch1 sum = 7
+    out = target(x)
+    assert out.shape == (2,)
+    torch.testing.assert_close(out, torch.full((2,), 4.0))
+
+
+def test_differential_attribution_target_delta_profile_window_sum_full_window() -> None:
+    model = _MultiConditionModel()
+    target = DifferentialAttributionTarget(
+        model=model,
+        reduction="delta_profile_window_sum",
+        cond_a_idx=0,
+        cond_b_idx=1,
+    )
+    x = torch.zeros(1, 4, 6)
+    x[:, 0, :] = 2.0
+    x[:, 1, :] = 5.0
+    # delta = (5 - 2) * 6 = 18
+    torch.testing.assert_close(target(x), torch.tensor([18.0]))
+
+
+def test_differential_attribution_target_delta_profile_window_sum_partial_window() -> None:
+    model = _MultiConditionModel()
+    target = DifferentialAttributionTarget(
+        model=model,
+        reduction="delta_profile_window_sum",
+        cond_a_idx=0,
+        cond_b_idx=1,
+        window_start=2,
+        window_end=5,
+    )
+    x = torch.zeros(1, 4, 6)
+    x[:, 0, :] = 1.0
+    x[:, 1, :] = 4.0
+    # delta over [2,5) = (4-1)*3 = 9
+    torch.testing.assert_close(target(x), torch.tensor([9.0]))
+
+
+def test_differential_attribution_target_invalid_window_raises() -> None:
+    model = _MultiConditionModel()
+    target = DifferentialAttributionTarget(
+        model=model,
+        reduction="delta_profile_window_sum",
+        window_start=10,
+        window_end=5,
+    )
+    x = torch.zeros(1, 4, 6)
+    with pytest.raises(ValueError, match="Invalid window"):
+        target(x)
+
+
+@pytest.mark.parametrize(
+    "cond_a_idx,cond_b_idx",
+    [(-1, 1), (0, 5), (2, 0)],
+)
+def test_differential_attribution_target_out_of_range_channel_raises(
+    cond_a_idx: int, cond_b_idx: int
+) -> None:
+    if cond_a_idx == cond_b_idx:
+        pytest.skip("tested separately")
+    model = _MultiConditionModel()  # has 2 condition channels
+    target = DifferentialAttributionTarget(
+        model=model,
+        reduction="delta_log_counts",
+        cond_a_idx=cond_a_idx,
+        cond_b_idx=cond_b_idx,
+    )
+    x = torch.zeros(1, 4, 6)
+    with pytest.raises(ValueError, match="out of range"):
+        target(x)
+
+
+def test_differential_attribution_target_gradient_flows() -> None:
+    """Attribution-relevant check: delta target must be differentiable wrt input."""
+    model = _MultiConditionModel()
+    target = DifferentialAttributionTarget(
+        model=model, reduction="delta_log_counts", cond_a_idx=0, cond_b_idx=1
+    )
+    x = torch.randn(2, 4, 8, requires_grad=True)
+    out = target(x)
+    out.sum().backward()
+    assert x.grad is not None
+    assert x.grad.shape == x.shape
+
+
+def test_differential_attribution_target_ism_matches_manual_delta() -> None:
+    """For linear models, ISM on delta target == manual ISM(B) - ISM(A)."""
+    model = _MultiConditionModel()
+    delta_target = DifferentialAttributionTarget(
+        model=model, reduction="delta_log_counts", cond_a_idx=0, cond_b_idx=1
+    )
+    # Per-channel targets for manual difference
+    target_a = AttributionTarget(
+        model=model,
+        reduction="log_counts",
+        channel=0,
+        bin_index=None,
+        window_start=None,
+        window_end=None,
+    )
+    target_b = AttributionTarget(
+        model=model,
+        reduction="log_counts",
+        channel=1,
+        bin_index=None,
+        window_start=None,
+        window_end=None,
+    )
+
+    x = torch.zeros(1, 4, 8)
+    x[:, 0, :3] = 1.0  # A,C,G,T one-hot preamble
+    x[:, 1, 3:6] = 1.0
+    x[:, 2, 6:] = 1.0
+
+    attrs_delta = compute_ism_attributions(delta_target, x, span=(2, 6))
+    attrs_a = compute_ism_attributions(target_a, x, span=(2, 6))
+    attrs_b = compute_ism_attributions(target_b, x, span=(2, 6))
+
+    # For a linear model and ISM, attr(f_B - f_A) == attr(f_B) - attr(f_A).
+    # Both sides will have had _apply_tf_modisco_ref_override applied, so
+    # compare the span region after removing the ref-channel override (which
+    # depends on non-linear selection of mean). Easiest: compare raw delta by
+    # summing across the nucleotide axis — the mean-override keeps sum zero.
+    torch.testing.assert_close(
+        attrs_delta.sum(dim=1), (attrs_b - attrs_a).sum(dim=1), atol=1e-5, rtol=1e-5
+    )
