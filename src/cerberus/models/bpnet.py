@@ -424,6 +424,137 @@ class BPNetLoss(MSEMultinomialLoss):
         )
 
 
+class MultitaskBPNet(BPNet):
+    """Multi-task BPNet: shared dilated tower with N condition-specific output channels.
+
+    Phase 1 of the two-phase differential accessibility workflow.  Each
+    condition gets its own profile head channel and its own count head
+    output, enabling cross-condition comparisons that are not confounded by
+    separate model training runs — the architecture principle of bpAI-TAC
+    (Chandra et al. 2025, bioRxiv 2025.01.24.634804).
+
+    The model is architecturally identical to :class:`BPNet` with
+    ``predict_total_count=False`` enforced.  Per-channel count prediction is
+    a hard requirement: Phase 2 differential fine-tuning supervises the
+    *difference* of two specific count heads, so each condition must produce
+    an independent scalar output.
+
+    Args:
+        output_channels: List of condition names (one per steady-state
+            condition).  Must contain at least 2 entries.
+        input_len: Length of input sequence. Default: 2114.
+        output_len: Length of output sequence. Default: 1000.
+        output_bin_size: Output resolution bin size. Default: 1.
+        input_channels: Input channel names. Default: ``["A","C","G","T"]``.
+        filters: Number of conv filters. Default: 64.
+        n_dilated_layers: Number of dilated residual layers. Default: 8.
+        conv_kernel_size: Kernel size for initial conv. Default: 21.
+        dil_kernel_size: Kernel size for dilated convs. Default: 3.
+        profile_kernel_size: Kernel size for profile head. Default: 75.
+        activation: Activation function (``"relu"`` or ``"gelu"``). Default: ``"relu"``.
+        weight_norm: Apply weight normalisation. Default: ``False``.
+        residual_architecture: Residual block formulation. Default:
+            ``"residual_pre-activation_conv"``.
+
+    References:
+        - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity
+          models by increasing model resolution.* bioRxiv 2025.01.24.634804.
+        - Naqvi et al. (2025). *Transfer learning reveals sequence determinants
+          of the quantitative response to transcription factor dosage.*
+          Cell Genomics. PMC11160683.
+    """
+
+    def __init__(
+        self,
+        output_channels: list[str],
+        input_len: int = 2114,
+        output_len: int = 1000,
+        output_bin_size: int = 1,
+        input_channels: list[str] | None = None,
+        filters: int = 64,
+        n_dilated_layers: int = 8,
+        conv_kernel_size: int = 21,
+        dil_kernel_size: int = 3,
+        profile_kernel_size: int = 75,
+        activation: str = "relu",
+        weight_norm: bool = False,
+        residual_architecture: str = "residual_pre-activation_conv",
+    ):
+        if len(output_channels) < 2:
+            raise ValueError(
+                f"MultitaskBPNet requires at least 2 output_channels, "
+                f"got {len(output_channels)}: {output_channels!r}. "
+                "Each entry represents one steady-state condition."
+            )
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            output_bin_size=output_bin_size,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            filters=filters,
+            n_dilated_layers=n_dilated_layers,
+            conv_kernel_size=conv_kernel_size,
+            dil_kernel_size=dil_kernel_size,
+            profile_kernel_size=profile_kernel_size,
+            predict_total_count=False,
+            activation=activation,
+            weight_norm=weight_norm,
+            residual_architecture=residual_architecture,
+        )
+        logger.info(
+            "MultitaskBPNet initialized: n_conditions=%d, conditions=%s",
+            len(output_channels),
+            output_channels,
+        )
+
+
+class MultitaskBPNetLoss(MSEMultinomialLoss):
+    """Phase 1 loss for :class:`MultitaskBPNet`.
+
+    Applies the BPNet profile + count loss independently per condition
+    channel.  Profile loss is averaged across conditions (following
+    bpAI-TAC).  Count loss is computed per channel, requiring
+    ``predict_total_count=False`` in the model.
+
+    Parameters ``alpha`` and ``beta`` map to ``count_weight`` and
+    ``profile_weight`` respectively, matching the :class:`BPNetLoss`
+    convention.
+
+    Args:
+        alpha: Weight for per-channel count MSE loss. Default: 1.0.
+        beta: Weight for per-channel profile multinomial NLL loss. Default: 1.0.
+    """
+
+    def __init__(self, alpha: float = 1.0, beta: float = 1.0, **kwargs):
+        _fixed = {
+            "count_per_channel": True,
+            "average_channels": True,
+            "flatten_channels": False,
+            "log1p_targets": False,
+            "count_weight": alpha,
+            "profile_weight": beta,
+        }
+        for key, fixed_val in _fixed.items():
+            caller_val = kwargs.pop(key, None)
+            if caller_val is not None and caller_val != fixed_val:
+                logger.warning(
+                    "MultitaskBPNetLoss: ignoring %s=%r, using fixed value %r",
+                    key,
+                    caller_val,
+                    fixed_val,
+                )
+        super().__init__(
+            count_per_channel=True,
+            average_channels=True,
+            flatten_channels=False,
+            log1p_targets=False,
+            count_weight=alpha,
+            profile_weight=beta,
+            **kwargs,
+        )
+
+
 class BPNetMetricCollection(MetricCollection):
     """
     MetricCollection for BPNet models.

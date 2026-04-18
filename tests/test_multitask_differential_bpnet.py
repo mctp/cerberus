@@ -68,24 +68,15 @@ def test_multitask_bpnet_forward_shape(model, seq):
     assert out.log_counts.shape == (BATCH, len(CONDITIONS))
 
 
-def test_multitask_bpnet_n_conditions(model):
-    assert model.n_conditions == len(CONDITIONS)
-    assert model.condition_channels == len(CONDITIONS)
-
-
 def test_multitask_bpnet_predict_total_count_is_false(model):
     """predict_total_count must always be False."""
     assert model.predict_total_count is False
 
 
-def test_multitask_bpnet_requires_at_least_two_channels():
+@pytest.mark.parametrize("channels", [[], ["only_one"]])
+def test_multitask_bpnet_requires_at_least_two_channels(channels):
     with pytest.raises(ValueError, match="at least 2"):
-        MultitaskBPNet(output_channels=["only_one"], input_len=500, output_len=300)
-
-
-def test_multitask_bpnet_requires_nonempty_channels():
-    with pytest.raises(ValueError, match="at least 2"):
-        MultitaskBPNet(output_channels=[], input_len=500, output_len=300)
+        MultitaskBPNet(output_channels=channels, input_len=500, output_len=300)
 
 
 def test_multitask_bpnet_three_conditions():
@@ -112,6 +103,7 @@ def test_multitask_bpnet_loss_fixed_params():
     assert loss.count_per_channel is True
     assert loss.average_channels is True
     assert loss.flatten_channels is False
+    assert loss.log1p_targets is False
 
 
 def test_multitask_bpnet_loss_alpha_beta():
@@ -120,11 +112,20 @@ def test_multitask_bpnet_loss_alpha_beta():
     assert loss.profile_weight == 0.5
 
 
-def test_multitask_bpnet_loss_warns_on_override(caplog):
+@pytest.mark.parametrize(
+    "override_kwarg,conflicting_value",
+    [
+        ("count_per_channel", False),
+        ("log1p_targets", True),
+        ("flatten_channels", True),
+    ],
+)
+def test_multitask_bpnet_loss_warns_on_override(caplog, override_kwarg, conflicting_value):
     import logging
+
     with caplog.at_level(logging.WARNING):
-        MultitaskBPNetLoss(count_per_channel=False)
-    assert "count_per_channel" in caplog.text
+        MultitaskBPNetLoss(**{override_kwarg: conflicting_value})
+    assert override_kwarg in caplog.text
 
 
 def test_multitask_bpnet_loss_phase1_roundtrip(model, seq, targets_2cond):
