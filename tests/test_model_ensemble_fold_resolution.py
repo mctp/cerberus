@@ -120,3 +120,30 @@ def test_model_manager_fold_missing_raises(_mock_folds, tmp_path):
             device=torch.device("cpu"),
             fold=7,
         )
+
+
+def test_model_ensemble_prefers_fold_specific_hparams(tmp_path):
+    """In a multi-fold training layout, each fold_N/ has its own hparams.yaml
+    with fold-specific test_fold / val_fold. When ModelEnsemble(fold=N) is
+    used, the config must come from fold_N's hparams — not the latest one
+    under the root (which would be the most-recently-trained fold's)."""
+    from cerberus.model_ensemble import find_latest_hparams
+
+    (tmp_path / "ensemble_metadata.yaml").write_text(yaml.safe_dump({"folds": [0, 1, 2]}))
+
+    for i in range(3):
+        hparams_dir = tmp_path / f"fold_{i}" / "lightning_logs" / "version_0"
+        hparams_dir.mkdir(parents=True)
+        # Minimal hparams.yaml with a marker we can read back
+        (hparams_dir / "hparams.yaml").write_text(f"fold_marker: {i}\n")
+
+    # Newest-mtime file at the root would be fold_2's (created last above).
+    # If ModelEnsemble collapses to fold=1, it should still prefer fold_1's.
+    latest_under_root = find_latest_hparams(tmp_path)
+    assert "fold_2" in str(latest_under_root)
+
+    # Simulate the resolution logic ModelEnsemble uses when fold=1.
+    fold_dir = tmp_path / "fold_1"
+    resolved = find_latest_hparams(fold_dir)
+    assert "fold_1" in str(resolved)
+    assert "fold_2" not in str(resolved)

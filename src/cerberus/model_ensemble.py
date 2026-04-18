@@ -203,8 +203,21 @@ class ModelEnsemble(nn.ModuleDict):
         if not path.is_dir():
             raise ValueError(f"checkpoint_path must be a directory: {path}")
 
-        # Resolve configuration
-        hparams_path = find_latest_hparams(path)
+        # Resolve configuration. When a specific fold is requested, prefer the
+        # hparams.yaml inside that fold's directory (train_multi writes
+        # fold-specific test_fold / val_fold values there); fall back to the
+        # latest hparams under the root if the fold-specific one is absent
+        # (e.g. single-fold train_single layout with no fold_N subdir).
+        hparams_search_root: Path = path
+        if fold is not None:
+            fold_dir_candidate = path / f"fold_{fold}"
+            if fold_dir_candidate.is_dir():
+                try:
+                    find_latest_hparams(fold_dir_candidate)
+                    hparams_search_root = fold_dir_candidate
+                except FileNotFoundError:
+                    pass
+        hparams_path = find_latest_hparams(hparams_search_root)
         self.cerberus_config: CerberusConfig = parse_hparams_config(hparams_path)
 
         overrides = {}
