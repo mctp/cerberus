@@ -290,6 +290,176 @@ def test_differential_count_loss_rejects_negative_idx(cond_a, cond_b):
 
 
 # ---------------------------------------------------------------------------
+# DifferentialCountLoss — hidden-assumption regression guards
+# ---------------------------------------------------------------------------
+
+
+def test_differential_count_loss_swapping_idx_negates_prediction_term():
+    """Sign convention: ``delta = log_counts[:, B] - log_counts[:, A]``.
+
+    Swapping ``cond_a_idx`` and ``cond_b_idx`` must negate the predicted-
+    delta term. Regression guard against anyone flipping the subtraction
+    order in :meth:`DifferentialCountLoss._delta_loss` (which would produce
+    numerically-valid but sign-inverted supervision).
+    """
+    pc = 1.0
+    sum_a = torch.tensor([3.0, 7.0])
+    sum_b = torch.tensor([15.0, 1.0])
+    targets = _bnl_targets_with_known_delta(sum_a, sum_b, 2, OUTPUT_LEN)
+
+    log_counts = torch.tensor([[0.0, 2.0], [1.0, 3.0]])  # B - A is positive here
+    out = _make_output(log_counts)
+
+    ab = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)(out, targets)
+    ba = DifferentialCountLoss(cond_a_idx=1, cond_b_idx=0)(out, targets)
+
+    # target_delta also flips sign under the swap, and MSE is invariant to a
+    # shared sign flip (since (-x) - (-y) == -(x - y) and MSE squares). The
+    # two calls should produce IDENTICAL scalars — if they diverge, either
+    # the predicted or target term isn't symmetric with respect to the swap.
+    torch.testing.assert_close(ab, ba)
+
+    # Stronger: sanity-check the reversed (B, A) loss against hand-computed.
+    expected_delta_ba = torch.log2((sum_a + pc) / (sum_b + pc))
+    delta_pred_ba = log_counts[:, 0] - log_counts[:, 1]
+    expected_loss_ba = ((delta_pred_ba - expected_delta_ba) ** 2).mean()
+    assert ba.item() == pytest.approx(expected_loss_ba.item(), rel=1e-6)
+
+
+def test_differential_count_loss_ignores_batch_context_kwargs():
+    """``forward`` must accept arbitrary batch-context kwargs without raising.
+
+    :class:`cerberus.module.CerberusModule._shared_step` passes the full
+    batch context (everything except ``inputs`` / ``targets``) as kwargs;
+    :class:`DalmatianLoss` uses ``interval_source``. If a future refactor
+    makes ``DifferentialCountLoss.forward`` strict about kwargs, multi-task
+    training with e.g. a peak sampler would break at the first batch.
+    """
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    out = _make_output(torch.zeros(2, 2))
+    targets = torch.zeros(2, 2, OUTPUT_LEN)
+    # Typical batch-context keys that flow through _shared_step.
+    loss = loss_fn(
+        out,
+        targets,
+        interval_source=["IntervalSampler"] * 2,
+        intervals=None,
+        log2fc=torch.zeros(2),   # formerly a supported kwarg — must be ignored, not raise.
+    )
+    assert loss.ndim == 0
+
+
+def test_differential_count_loss_components_matches_forward():
+    """``loss_components['delta_loss']`` and ``forward`` return equal scalars.
+
+    Both paths share ``_delta_loss``; this guards against anyone introducing
+    divergence (e.g. applying a reduction in one path and not the other).
+    """
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    log_counts = torch.tensor([[1.0, 2.5], [0.0, 1.0]])
+    out = _make_output(log_counts)
+    targets = _bnl_targets_with_known_delta(
+        torch.tensor([3.0, 5.0]),
+        torch.tensor([11.0, 1.0]),
+        2,
+        OUTPUT_LEN,
+    )
+    loss = loss_fn(out, targets)
+    components = loss_fn.loss_components(out, targets)
+    torch.testing.assert_close(components["delta_loss"], loss)
+
+
+def test_differential_count_loss_gradient_reaches_log_counts():
+    """Gradient of the loss wrt ``outputs.log_counts`` must be nonzero
+    for a nonzero residual. Regression guard against anyone detaching
+    ``log_counts`` before the subtraction or otherwise breaking the
+    differentiable path from loss → model count head.
+    """
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    log_counts = torch.tensor([[0.0, 0.5], [1.0, 2.0]], requires_grad=True)
+    out = ProfileCountOutput(
+        logits=torch.zeros(2, 2, OUTPUT_LEN),
+        log_counts=log_counts,
+    )
+    # Non-trivial target so the residual is nonzero.
+    targets = _bnl_targets_with_known_delta(
+        torch.tensor([3.0, 7.0]),
+        torch.tensor([15.0, 3.0]),
+        2,
+        OUTPUT_LEN,
+    )
+    loss_fn(out, targets).backward()
+    assert log_counts.grad is not None
+    assert torch.any(log_counts.grad != 0.0)
+    # Gradient on the unused channels (there are none here — only 2 conds)
+    # would also be zero; channels 0 and 1 should both see signal.
+    assert log_counts.grad[:, 0].abs().sum() > 0
+    assert log_counts.grad[:, 1].abs().sum() > 0
+
+
+def test_differential_count_loss_integer_targets_work():
+    """Integer-dtype targets must produce the right answer (not crash)."""
+    pc = 1.0
+    loss_fn = DifferentialCountLoss(count_pseudocount=pc)
+    # ``targets.float().sum(-1)`` should cast correctly.
+    targets = torch.zeros(1, 2, OUTPUT_LEN, dtype=torch.int64)
+    targets[0, 0, :3] = 1  # sum_a = 3
+    targets[0, 1, :7] = 1  # sum_b = 7
+
+    log_counts = torch.zeros(1, 2)
+    out = _make_output(log_counts)
+    loss = loss_fn(out, targets)
+    expected = (torch.log2(torch.tensor((7.0 + pc) / (3.0 + pc))) ** 2)
+    assert loss.item() == pytest.approx(expected.item(), rel=1e-6)
+
+
+def test_differential_count_loss_rejects_1d_targets():
+    """Shape contract: targets must be 3-D. A bare ``(B,)`` raises cleanly."""
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    out = _make_output(torch.zeros(2, 2))
+    with pytest.raises(ValueError, match=r"shape \(B, N, L\)"):
+        loss_fn(out, torch.zeros(2))
+
+
+def test_differential_count_loss_rejects_4d_targets():
+    """Shape contract: 4-D inputs are not supported even if one dim == 1."""
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    out = _make_output(torch.zeros(2, 2))
+    with pytest.raises(ValueError, match=r"shape \(B, N, L\)"):
+        loss_fn(out, torch.zeros(2, 2, OUTPUT_LEN, 1))
+
+
+def test_differential_count_loss_pseudocount_injected_via_model_config():
+    """``ModelConfig.count_pseudocount`` must be injected into
+    :class:`DifferentialCountLoss` by :func:`instantiate_metrics_and_loss`.
+
+    This is the contract that keeps Phase 1 and Phase 2 log-spaces aligned
+    under the standard :func:`cerberus.train.train_single` pipeline — a
+    future refactor that bypasses the injection would silently mis-scale
+    Phase 2's derived delta target.
+    """
+    from cerberus.config import ModelConfig
+    from cerberus.module import instantiate_metrics_and_loss
+
+    config = ModelConfig.model_construct(
+        name="p2",
+        model_cls="cerberus.models.bpnet.MultitaskBPNet",
+        loss_cls="cerberus.loss.DifferentialCountLoss",
+        loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+        metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+        metrics_args={},
+        model_args={"output_channels": ["a", "b"]},
+        pretrained=[],
+        count_pseudocount=42.0,
+    )
+    _, criterion = instantiate_metrics_and_loss(config)
+    assert isinstance(criterion, DifferentialCountLoss)
+    assert criterion.count_pseudocount == 42.0
+    assert criterion.cond_a_idx == 0
+    assert criterion.cond_b_idx == 1
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 round-trip
 # ---------------------------------------------------------------------------
 

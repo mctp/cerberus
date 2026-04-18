@@ -750,3 +750,112 @@ def test_attribution_target_delta_ism_matches_manual_delta() -> None:
     torch.testing.assert_close(
         attrs_delta.sum(dim=1), (attrs_b - attrs_a).sum(dim=1), atol=1e-5, rtol=1e-5
     )
+
+
+# ---------------------------------------------------------------------------
+# AttributionTarget — hidden-assumption regression guards
+# ---------------------------------------------------------------------------
+
+
+def test_attribution_target_delta_sign_flips_under_channel_swap() -> None:
+    """Sign convention: ``delta = log_counts[:, b] - log_counts[:, a]``.
+
+    Swapping the tuple order must negate the output. Regression guard
+    against anyone flipping the subtraction in ``forward`` (which would
+    still produce a valid tensor but with sign-inverted attribution).
+    """
+    model = _MultiConditionModel()
+    x = torch.zeros(1, 4, 5)
+    x[:, 0, :2] = 1.0   # ch0 sum = 2
+    x[:, 1, :] = 1.0    # ch1 sum = 5
+    forward = AttributionTarget(
+        model=model, reduction="delta_log_counts", channels=(0, 1)
+    )(x)
+    reverse = AttributionTarget(
+        model=model, reduction="delta_log_counts", channels=(1, 0)
+    )(x)
+    torch.testing.assert_close(reverse, -forward)
+
+
+@pytest.mark.parametrize("bad_channels", [(0.0, 1), (0, 1.5), ("a", "b")])
+def test_attribution_target_delta_rejects_non_int_tuple_elements(bad_channels) -> None:
+    """Delta arity check rejects tuples whose elements aren't plain ints."""
+    model = _MultiConditionModel()
+    with pytest.raises(TypeError, match="2-tuple of ints"):
+        AttributionTarget(
+            model=model, reduction="delta_log_counts", channels=bad_channels
+        )
+
+
+@pytest.mark.parametrize("bad_channels", [(0, 1, 2), (0,), ()])
+def test_attribution_target_delta_rejects_wrong_arity(bad_channels) -> None:
+    """Delta reductions require exactly 2 elements."""
+    model = _MultiConditionModel()
+    with pytest.raises(TypeError, match="2-tuple of ints"):
+        AttributionTarget(
+            model=model, reduction="delta_log_counts", channels=bad_channels
+        )
+
+
+def test_attribution_target_rejects_bool_channel() -> None:
+    """``bool`` is a subclass of ``int``; validation must still reject
+    ``channels=True`` on single-channel reductions and ``(True, False)`` on
+    delta reductions. The explicit ``not isinstance(c, bool)`` guard exists
+    precisely because of this footgun.
+    """
+    model = _MultiConditionModel()
+    with pytest.raises(TypeError, match="channels: int"):
+        AttributionTarget(model=model, reduction="log_counts", channels=True)
+    with pytest.raises(TypeError, match="2-tuple of ints"):
+        AttributionTarget(
+            model=model, reduction="delta_log_counts", channels=(False, True)
+        )
+
+
+def test_attribution_target_single_channel_model_log_counts() -> None:
+    """Single-task BPNet produces ``log_counts`` of shape ``(B, 1)``.
+    ``AttributionTarget(reduction="log_counts", channels=0)`` must return
+    the single scalar head (special-case branch in ``forward``). Regression
+    guard for TPCAV, which builds targets off single-task BPNet outputs.
+    """
+    class _SingleTaskModel(torch.nn.Module):
+        def forward(self, x: torch.Tensor) -> SimpleNamespace:
+            logits = x[:, :1, :]                      # (B, 1, L)
+            log_counts = logits.sum(dim=-1)           # (B, 1)
+            return SimpleNamespace(logits=logits, log_counts=log_counts)
+
+    model = _SingleTaskModel()
+    target = AttributionTarget(model=model, reduction="log_counts", channels=0)
+    x = torch.zeros(2, 4, 5)
+    x[:, 0, :3] = 1.0  # ch0 sum = 3 → log_counts[:, 0] = 3
+    out = target(x)
+    assert out.shape == (2,)
+    torch.testing.assert_close(out, torch.full((2,), 3.0))
+
+
+def test_attribution_target_silently_ignores_unused_fields() -> None:
+    """``bin_index`` / ``window_start`` / ``window_end`` are silently
+    ignored on reductions that don't use them (documented contract, see
+    ``docs/internal/differential_workflow_redesign.md`` §7a.3). If a future
+    refactor starts rejecting these, callers that currently pass them
+    defensively would break.
+    """
+    model = _MultiConditionModel()
+    # log_counts uses none of the three — all ignored.
+    AttributionTarget(
+        model=model,
+        reduction="log_counts",
+        channels=0,
+        bin_index=99,
+        window_start=1,
+        window_end=3,
+    )
+    # delta_log_counts uses none of the three either.
+    AttributionTarget(
+        model=model,
+        reduction="delta_log_counts",
+        channels=(0, 1),
+        bin_index=99,
+        window_start=1,
+        window_end=3,
+    )

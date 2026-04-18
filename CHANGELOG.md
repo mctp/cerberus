@@ -120,6 +120,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `torch`'s re-exports don't expose in `__all__`, drowning out the 3
   real errors. No source code change required.
 
+### Tests
+- **Regression guards for the differential-workflow public surface.**
+  Added tests for hidden assumptions the Option B rewrite now depends on:
+  sign convention (`DifferentialCountLoss` negates predictably when
+  `cond_a_idx` / `cond_b_idx` swap; `AttributionTarget(channels=(b, a))`
+  returns the negation of `(a, b)`), batch-context `**kwargs` are
+  silently ignored by the loss (required by
+  `CerberusModule._shared_step`), `loss_components["delta_loss"]` equals
+  `forward(...)`, integer-dtype targets work, `(B,)` / 4D targets raise
+  cleanly, `ModelConfig.count_pseudocount` injects through
+  `instantiate_metrics_and_loss` into `DifferentialCountLoss`, the
+  `log_counts.shape[1] == 1` single-task branch of `AttributionTarget`,
+  `bool` rejection in `channels` arity validation, the wrong-arity /
+  non-int-tuple paths, and the training tool's Phase 2 DDP strategy
+  override (`ddp_find_unused_parameters_false` →
+  `ddp_find_unused_parameters_true`). Tests live in
+  `tests/test_multitask_differential_bpnet.py`,
+  `tests/test_attribution.py`, and
+  `tests/test_train_multitask_differential_tool.py`.
+
 ### Fixed
 - **`ModelEnsemble(fold=N)` now uses fold-specific `hparams.yaml`.** In a
   `train_multi` layout each fold writes its own `hparams.yaml` with
