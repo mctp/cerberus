@@ -435,7 +435,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     target_model = AttributionTarget(
         model=model,
         reduction=args.target_mode,
-        channel=args.target_channel,
+        channels=args.target_channel,
         bin_index=args.bin_index,
         window_start=args.window_start,
         window_end=args.window_end,

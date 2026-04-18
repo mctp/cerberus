@@ -14,8 +14,8 @@ Two-phase training for comparing chromatin accessibility between two conditions:
     the count heads to predict the differential signal.
 
   Interpretation (optional --interpret)
-    Runs DeepLIFTSHAP through DifferentialAttributionTarget (delta_log_counts
-    mode) on the test-fold peaks and pipes the result into TF-MoDISco.
+    Runs DeepLIFTSHAP through AttributionTarget(reduction="delta_log_counts")
+    on the test-fold peaks and pipes the result into TF-MoDISco.
 
 Usage:
     python tools/train_multitask_differential_bpnet.py \\
@@ -887,7 +887,7 @@ def run_interpretation(
         )
         return
 
-    from cerberus.attribution import DifferentialAttributionTarget
+    from cerberus.attribution import AttributionTarget
 
     interp_dir = output_dir / "interpretation"
     interp_dir.mkdir(parents=True, exist_ok=True)
@@ -918,12 +918,11 @@ def run_interpretation(
     model.load_state_dict(state_dict)
     model.eval().to(device)
 
-    # 2. DifferentialAttributionTarget: outputs log_counts_B − log_counts_A
-    diff_target = DifferentialAttributionTarget(
+    # 2. AttributionTarget(delta_log_counts): outputs log_counts_B − log_counts_A
+    diff_target = AttributionTarget(
         model=model,
         reduction="delta_log_counts",
-        cond_a_idx=0,
-        cond_b_idx=1,
+        channels=(0, 1),
     )
     diff_target.eval().to(device)
 

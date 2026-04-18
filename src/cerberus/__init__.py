@@ -1,8 +1,6 @@
 from .attribution import (
-    DIFFERENTIAL_TARGET_REDUCTIONS,
     TARGET_REDUCTIONS,
     AttributionTarget,
-    DifferentialAttributionTarget,
     compute_ism_attributions,
     compute_taylor_ism_attributions,
     mean_center_attributions,
@@ -80,8 +78,6 @@ __all__ = [
     # Attribution utilities
     "TARGET_REDUCTIONS",
     "AttributionTarget",
-    "DIFFERENTIAL_TARGET_REDUCTIONS",
-    "DifferentialAttributionTarget",
     "resolve_ism_span",
     "compute_ism_attributions",
     "compute_taylor_ism_attributions",

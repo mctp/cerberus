@@ -5,11 +5,9 @@ import pytest
 import torch
 
 from cerberus.attribution import (
-    DIFFERENTIAL_TARGET_REDUCTIONS,
     N_NUCLEOTIDES,
     TARGET_REDUCTIONS,
     AttributionTarget,
-    DifferentialAttributionTarget,
     compute_ism_attributions,
     compute_taylor_ism_attributions,
     mean_center_attributions,
@@ -41,17 +39,16 @@ def test_attribution_target_invalid_reduction_raises() -> None:
         AttributionTarget(
             model=model,
             reduction="bad_reduction",
-            channel=0,
-            bin_index=None,
-            window_start=None,
-            window_end=None,
+            channels=0,
         )
 
 
 def test_target_reductions_constant() -> None:
     assert "log_counts" in TARGET_REDUCTIONS
     assert "profile_bin" in TARGET_REDUCTIONS
-    assert len(TARGET_REDUCTIONS) == 5
+    assert "delta_log_counts" in TARGET_REDUCTIONS
+    assert "delta_profile_window_sum" in TARGET_REDUCTIONS
+    assert len(TARGET_REDUCTIONS) == 7
 
 
 def test_n_nucleotides_constant() -> None:
@@ -63,10 +60,7 @@ def test_attribution_target_log_counts_channel() -> None:
     target = AttributionTarget(
         model=model,
         reduction="log_counts",
-        channel=1,
-        bin_index=None,
-        window_start=None,
-        window_end=None,
+        channels=1,
     )
 
     x = torch.tensor(
@@ -88,10 +82,7 @@ def test_attribution_target_profile_bin_center_default() -> None:
     target = AttributionTarget(
         model=model,
         reduction="profile_bin",
-        channel=0,
-        bin_index=None,
-        window_start=None,
-        window_end=None,
+        channels=0,
     )
 
     x = torch.tensor(
@@ -128,8 +119,7 @@ def test_attribution_target_profile_window_sum() -> None:
     target = AttributionTarget(
         model=model,
         reduction="profile_window_sum",
-        channel=0,
-        bin_index=None,
+        channels=0,
         window_start=0,
         window_end=2,
     )
@@ -152,10 +142,8 @@ def test_attribution_target_pred_count_bin() -> None:
     target = AttributionTarget(
         model=model,
         reduction="pred_count_bin",
-        channel=0,
+        channels=0,
         bin_index=1,
-        window_start=None,
-        window_end=None,
     )
     # Build logits [[0, 0, 0], [0, 0, 0]] via two rows of zeros; softmax → uniform 1/3.
     # log_counts = logits.sum(-1) = [0, 0]; exp(log_counts[:, 0]) = 1.
@@ -170,10 +158,7 @@ def test_attribution_target_invalid_channel_raises() -> None:
     target = AttributionTarget(
         model=model,
         reduction="log_counts",
-        channel=99,
-        bin_index=None,
-        window_start=None,
-        window_end=None,
+        channels=99,
     )
     x = torch.zeros((1, 4, 3))
     with pytest.raises(ValueError, match="Requested channel=99"):
@@ -185,10 +170,8 @@ def test_attribution_target_invalid_bin_index_raises() -> None:
     target = AttributionTarget(
         model=model,
         reduction="profile_bin",
-        channel=0,
+        channels=0,
         bin_index=99,
-        window_start=None,
-        window_end=None,
     )
     x = torch.zeros((1, 4, 3))
     with pytest.raises(ValueError, match="Invalid bin_index=99"):
@@ -200,8 +183,7 @@ def test_attribution_target_invalid_window_raises() -> None:
     target = AttributionTarget(
         model=model,
         reduction="profile_window_sum",
-        channel=0,
-        bin_index=None,
+        channels=0,
         window_start=5,
         window_end=2,
     )
@@ -605,7 +587,7 @@ def test_mean_center_attributions() -> None:
 
 
 # ---------------------------------------------------------------------------
-# DifferentialAttributionTarget
+# AttributionTarget — delta reductions
 # ---------------------------------------------------------------------------
 
 
@@ -618,31 +600,36 @@ class _MultiConditionModel(torch.nn.Module):
         return SimpleNamespace(logits=logits, log_counts=log_counts)
 
 
-def test_differential_target_reductions_constant() -> None:
-    assert DIFFERENTIAL_TARGET_REDUCTIONS == {
-        "delta_log_counts",
-        "delta_profile_window_sum",
-    }
+def test_attribution_target_delta_reductions_in_target_reductions() -> None:
+    assert {"delta_log_counts", "delta_profile_window_sum"}.issubset(TARGET_REDUCTIONS)
 
 
-def test_differential_attribution_target_invalid_reduction_raises() -> None:
+def test_attribution_target_delta_requires_tuple_channels() -> None:
+    """Arity guard: delta reduction with ``channels: int`` must raise."""
     model = _MultiConditionModel()
-    with pytest.raises(ValueError, match="Unsupported reduction"):
-        DifferentialAttributionTarget(model=model, reduction="bad_reduction")
+    with pytest.raises(TypeError, match="channels=\\(cond_a_idx, cond_b_idx\\)"):
+        AttributionTarget(model=model, reduction="delta_log_counts", channels=0)
 
 
-def test_differential_attribution_target_same_idx_raises() -> None:
+def test_attribution_target_single_rejects_tuple_channels() -> None:
+    """Arity guard: single-channel reduction with tuple channels must raise."""
+    model = _MultiConditionModel()
+    with pytest.raises(TypeError, match="channels: int"):
+        AttributionTarget(model=model, reduction="log_counts", channels=(0, 1))
+
+
+def test_attribution_target_delta_same_idx_raises() -> None:
     model = _MultiConditionModel()
     with pytest.raises(ValueError, match="must differ"):
-        DifferentialAttributionTarget(
-            model=model, reduction="delta_log_counts", cond_a_idx=1, cond_b_idx=1
+        AttributionTarget(
+            model=model, reduction="delta_log_counts", channels=(1, 1)
         )
 
 
-def test_differential_attribution_target_delta_log_counts() -> None:
+def test_attribution_target_delta_log_counts() -> None:
     model = _MultiConditionModel()
-    target = DifferentialAttributionTarget(
-        model=model, reduction="delta_log_counts", cond_a_idx=0, cond_b_idx=1
+    target = AttributionTarget(
+        model=model, reduction="delta_log_counts", channels=(0, 1)
     )
     # Build x such that channel 0 sums to 3 and channel 1 sums to 7 in each batch element.
     x = torch.zeros(2, 4, 5)
@@ -653,13 +640,12 @@ def test_differential_attribution_target_delta_log_counts() -> None:
     torch.testing.assert_close(out, torch.full((2,), 4.0))
 
 
-def test_differential_attribution_target_delta_profile_window_sum_full_window() -> None:
+def test_attribution_target_delta_profile_window_sum_full_window() -> None:
     model = _MultiConditionModel()
-    target = DifferentialAttributionTarget(
+    target = AttributionTarget(
         model=model,
         reduction="delta_profile_window_sum",
-        cond_a_idx=0,
-        cond_b_idx=1,
+        channels=(0, 1),
     )
     x = torch.zeros(1, 4, 6)
     x[:, 0, :] = 2.0
@@ -668,13 +654,12 @@ def test_differential_attribution_target_delta_profile_window_sum_full_window() 
     torch.testing.assert_close(target(x), torch.tensor([18.0]))
 
 
-def test_differential_attribution_target_delta_profile_window_sum_partial_window() -> None:
+def test_attribution_target_delta_profile_window_sum_partial_window() -> None:
     model = _MultiConditionModel()
-    target = DifferentialAttributionTarget(
+    target = AttributionTarget(
         model=model,
         reduction="delta_profile_window_sum",
-        cond_a_idx=0,
-        cond_b_idx=1,
+        channels=(0, 1),
         window_start=2,
         window_end=5,
     )
@@ -685,11 +670,12 @@ def test_differential_attribution_target_delta_profile_window_sum_partial_window
     torch.testing.assert_close(target(x), torch.tensor([9.0]))
 
 
-def test_differential_attribution_target_invalid_window_raises() -> None:
+def test_attribution_target_delta_invalid_window_raises() -> None:
     model = _MultiConditionModel()
-    target = DifferentialAttributionTarget(
+    target = AttributionTarget(
         model=model,
         reduction="delta_profile_window_sum",
+        channels=(0, 1),
         window_start=10,
         window_end=5,
     )
@@ -702,28 +688,25 @@ def test_differential_attribution_target_invalid_window_raises() -> None:
     "cond_a_idx,cond_b_idx",
     [(-1, 1), (0, 5), (2, 0)],
 )
-def test_differential_attribution_target_out_of_range_channel_raises(
+def test_attribution_target_delta_out_of_range_channel_raises(
     cond_a_idx: int, cond_b_idx: int
 ) -> None:
-    if cond_a_idx == cond_b_idx:
-        pytest.skip("tested separately")
     model = _MultiConditionModel()  # has 2 condition channels
-    target = DifferentialAttributionTarget(
+    target = AttributionTarget(
         model=model,
         reduction="delta_log_counts",
-        cond_a_idx=cond_a_idx,
-        cond_b_idx=cond_b_idx,
+        channels=(cond_a_idx, cond_b_idx),
     )
     x = torch.zeros(1, 4, 6)
     with pytest.raises(ValueError, match="out of range"):
         target(x)
 
 
-def test_differential_attribution_target_gradient_flows() -> None:
+def test_attribution_target_delta_gradient_flows() -> None:
     """Attribution-relevant check: delta target must be differentiable wrt input."""
     model = _MultiConditionModel()
-    target = DifferentialAttributionTarget(
-        model=model, reduction="delta_log_counts", cond_a_idx=0, cond_b_idx=1
+    target = AttributionTarget(
+        model=model, reduction="delta_log_counts", channels=(0, 1)
     )
     x = torch.randn(2, 4, 8, requires_grad=True)
     out = target(x)
@@ -732,28 +715,22 @@ def test_differential_attribution_target_gradient_flows() -> None:
     assert x.grad.shape == x.shape
 
 
-def test_differential_attribution_target_ism_matches_manual_delta() -> None:
+def test_attribution_target_delta_ism_matches_manual_delta() -> None:
     """For linear models, ISM on delta target == manual ISM(B) - ISM(A)."""
     model = _MultiConditionModel()
-    delta_target = DifferentialAttributionTarget(
-        model=model, reduction="delta_log_counts", cond_a_idx=0, cond_b_idx=1
+    delta_target = AttributionTarget(
+        model=model, reduction="delta_log_counts", channels=(0, 1)
     )
     # Per-channel targets for manual difference
     target_a = AttributionTarget(
         model=model,
         reduction="log_counts",
-        channel=0,
-        bin_index=None,
-        window_start=None,
-        window_end=None,
+        channels=0,
     )
     target_b = AttributionTarget(
         model=model,
         reduction="log_counts",
-        channel=1,
-        bin_index=None,
-        window_start=None,
-        window_end=None,
+        channels=1,
     )
 
     x = torch.zeros(1, 4, 8)

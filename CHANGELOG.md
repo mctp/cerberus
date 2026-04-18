@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`AttributionTarget` unifies single-channel and delta reductions.** The
+  `channels` field is now `int | tuple[int, int]` — `int` for the five
+  single-channel reductions (`log_counts`, `profile_bin`,
+  `profile_window_sum`, `pred_count_bin`, `pred_count_window_sum`), and
+  `(cond_a_idx, cond_b_idx)` for the two delta reductions
+  (`delta_log_counts`, `delta_profile_window_sum`). The constructor
+  validates arity at construction time. `bin_index`, `window_start`, and
+  `window_end` now default to `None` (previously required positional).
+
+### Removed
+- **`DifferentialAttributionTarget` removed.** Use
+  `AttributionTarget(reduction="delta_log_counts", channels=(a, b))` (or
+  `"delta_profile_window_sum"`) instead. In-tree callers in
+  `tools/train_multitask_differential_bpnet.py` and `tests/test_attribution.py`
+  were updated in the same commit; no compatibility shim is kept.
+- **`DIFFERENTIAL_TARGET_REDUCTIONS` constant removed.** The two delta
+  reduction names are members of `TARGET_REDUCTIONS` (now 7 entries).
+- **`AttributionTarget.channel` attribute renamed to `.channels`.**
+  Callers constructing the target with `channel=` (kwarg) must update to
+  `channels=`. Call sites in `tools/export_tfmodisco_inputs.py`,
+  `src/cerberus/tpcav.py`, and the ISM-vs-Taylor notebook updated in the
+  same commit.
+
 ### Internal
 - **Differential-learning workflow redesign design doc**
   (`docs/internal/differential_workflow_redesign.md`). Selects Option B:

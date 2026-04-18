@@ -105,10 +105,7 @@ print(f"Random peak (seed={PEAK_SEED}, idx={peak_idx}): {peak_interval}")
 target_model = AttributionTarget(
     model=model,
     reduction="log_counts",
-    channel=0,
-    bin_index=None,
-    window_start=None,
-    window_end=None,
+    channels=0,
 ).to(device)
 target_model.eval();  # noqa: E702 — suppress repr in Jupyter
 
@@ -288,10 +285,7 @@ pomeranian_model.eval();  # noqa: E702 — suppress repr in Jupyter
 pomeranian_target = AttributionTarget(
     model=pomeranian_model,
     reduction="log_counts",
-    channel=0,
-    bin_index=None,
-    window_start=None,
-    window_end=None,
+    channels=0,
 ).to(device)
 pomeranian_target.eval();  # noqa: E702 — suppress repr in Jupyter
 

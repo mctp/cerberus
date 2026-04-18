@@ -2,5 +2,6 @@
   "include": ["src/", "tests/"],
   "pythonVersion": "3.12",
   "typeCheckingMode": "basic",
-  "reportMissingParameterType": "warning"
+  "reportMissingParameterType": "warning",
+  "reportPrivateImportUsage": "none"
 }

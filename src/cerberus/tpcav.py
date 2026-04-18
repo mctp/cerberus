@@ -46,7 +46,7 @@ def build_tpcav_target_model(
     return AttributionTarget(
         model=model,
         reduction=reduction,
-        channel=channel,
+        channels=channel,
         bin_index=bin_index,
         window_start=window_start,
         window_end=window_end,
