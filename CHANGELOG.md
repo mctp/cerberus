@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Interval-aligned attribution export.** `tools/export_tfmodisco_inputs.py`
+  now emits `intervals.tsv` (row-aligned to the NPZ outputs) and
+  `attribution_meta.json` (full provenance: checkpoint, fold, seed, method,
+  target config, DLS convergence stats). Adds `--intervals-name` /
+  `--meta-name` flags. Strictly validates that each batch carries `intervals`
+  metadata with a count matching the batch size.
+- **BigWig attribution exporter.** New `tools/export_attribution_bigwig.py`
+  converts `ohe`/`attr` NPZ + `intervals.tsv` to a BigWig of projected
+  attributions `(ohe * attr).sum(axis=1)` using chrombpnet-style
+  nearest-center midpoint overlap splitting. Covered by
+  `tests/test_export_attribution_bigwig.py`. `docs/usage.md` documents the
+  new outputs and BigWig workflow.
+
 ### Changed
 - **`load_intervals_bed` now reads gzipped files transparently**
   (`src/cerberus/interval.py`). `.gz`-suffixed paths are opened with
