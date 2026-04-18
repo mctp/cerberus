@@ -39,38 +39,13 @@ from cerberus.attribution import (
     resolve_ism_span,
 )
 from cerberus.datamodule import CerberusDataModule
-from cerberus.model_ensemble import (
-    find_latest_hparams,
-    load_backbone_weights_from_fold_dir,
-    parse_hparams_config,
-)
-from cerberus.module import instantiate_model
+from cerberus.model_ensemble import ModelEnsemble
 from cerberus.utils import resolve_device
 
 logger = logging.getLogger(__name__)
 
 _INTERVAL_WITH_STRAND_RE = re.compile(r"^([^:]+):(\d+)-(\d+)\(([+-])\)$")
 _INTERVAL_NO_STRAND_RE = re.compile(r"^([^:]+):(\d+)-(\d+)$")
-
-
-def _resolve_fold_dir(checkpoint_dir: Path, fold: int) -> Path:
-    # Direct fold directory
-    if (checkpoint_dir / "model.pt").exists() or list(checkpoint_dir.glob("*.ckpt")):
-        return checkpoint_dir
-
-    # Common train root layout: root/fold_{i}
-    direct = checkpoint_dir / f"fold_{fold}"
-    if direct.is_dir():
-        return direct
-
-    # Recursive fallback
-    recursive = sorted([p for p in checkpoint_dir.rglob(f"fold_{fold}") if p.is_dir()])
-    if recursive:
-        return recursive[0]
-
-    raise FileNotFoundError(
-        f"Could not locate fold directory for fold={fold} under {checkpoint_dir}."
-    )
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -86,15 +61,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         help=(
-            "Training output directory. Can be a fold directory (contains model.pt) "
-            "or a parent directory with fold_* subdirectories."
+            "Training root directory containing ensemble_metadata.yaml, "
+            "hparams.yaml, and fold_N/ subdirectories "
+            "(the standard ModelEnsemble layout)."
         ),
     )
     parser.add_argument(
         "--fold",
         type=int,
         default=0,
-        help="Fold index to load if --checkpoint-dir is a parent directory.",
+        help="Fold index to load from the ensemble.",
     )
 
     parser.add_argument(
@@ -422,16 +398,13 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
             ) from exc
         DeepLiftShap = _DeepLiftShap
 
-    fold_dir = _resolve_fold_dir(args.checkpoint_dir.resolve(), args.fold)
-    try:
-        hparams_path = find_latest_hparams(fold_dir)
-    except FileNotFoundError:
-        # Fallback for custom checkpoint layouts where hparams live above fold_dir.
-        hparams_path = find_latest_hparams(args.checkpoint_dir.resolve())
-    logger.info("Using fold dir: %s", fold_dir)
-    logger.info("Using hparams: %s", hparams_path)
+    device = resolve_device(args.device)
+    logger.info("Using device: %s", device)
 
-    cfg = parse_hparams_config(hparams_path)
+    ensemble = ModelEnsemble(
+        args.checkpoint_dir.resolve(), device=device, fold=args.fold
+    )
+    cfg = ensemble.cerberus_config
     if not cfg.data_config.use_sequence:
         raise ValueError(
             "data_config.use_sequence is False; sequence attributions unavailable."
@@ -457,13 +430,7 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         )
         logger.info("Overriding sampler intervals_path with: %s", intervals_path)
 
-    device = resolve_device(args.device)
-    logger.info("Using device: %s", device)
-
-    model = instantiate_model(cfg.model_config_, cfg.data_config, compile=False)
-    load_backbone_weights_from_fold_dir(model, fold_dir, device, strict=True)
-    model.to(device)
-    model.eval()
+    model = ensemble[str(args.fold)]
 
     target_model = AttributionTarget(
         model=model,

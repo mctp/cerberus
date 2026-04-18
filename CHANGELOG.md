@@ -54,6 +54,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new outputs and BigWig workflow.
 
 ### Changed
+- **`ModelEnsemble` now accepts `fold: int | None`.** When set, only the
+  requested fold is loaded (raises `ValueError` if absent from
+  `ensemble_metadata.yaml`); when `None` (default), behaviour is unchanged —
+  all folds listed in the metadata are loaded. Lets per-fold tools avoid the
+  memory/disk cost of loading unused folds.
+- **`tools/export_tfmodisco_inputs.py` now uses `ModelEnsemble(fold=...)`**
+  instead of its own manual fold-resolution + hparams parsing + model
+  instantiation chain. Drops ~35 lines of duplicated logic; the
+  `--checkpoint-dir` argument now requires the standard training-root layout
+  (containing `ensemble_metadata.yaml` and `fold_N/` subdirs) — previously
+  it also accepted a direct fold directory or nested intermediate, but no
+  caller was exercising those shapes.
 - **Training CLIs share `get_precision_kwargs`.** `tools/train_asap.py`,
   `tools/train_biasnet.py`, `tools/train_bpnet.py`, `tools/train_dalmatian.py`,
   `tools/train_dalmatian_multitask.py`, `tools/train_gopher.py`,

@@ -180,7 +180,20 @@ class ModelEnsemble(nn.ModuleDict):
         data_config: DataConfig | None = None,
         genome_config: GenomeConfig | None = None,
         device: torch.device | str | None = None,
+        fold: int | None = None,
     ):
+        """
+        Args:
+            checkpoint_path: Training root directory containing
+                ``ensemble_metadata.yaml`` and ``fold_N/`` subdirs.
+            model_config / data_config / genome_config: Optional overrides
+                of the values parsed from the training-root ``hparams.yaml``.
+            device: Inference device. Auto-selects CUDA → CPU if ``None``.
+            fold: Load only this specific fold's model. When ``None`` (default),
+                load every fold in ``ensemble_metadata.yaml``. Useful for
+                per-fold tools (attribution, TF-MoDISco export) that would
+                otherwise waste memory loading unused folds.
+        """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         elif isinstance(device, str):
@@ -208,7 +221,9 @@ class ModelEnsemble(nn.ModuleDict):
         data_config = self.cerberus_config.data_config
         genome_config = self.cerberus_config.genome_config
 
-        loader = _ModelManager(path, model_config, data_config, genome_config, device)
+        loader = _ModelManager(
+            path, model_config, data_config, genome_config, device, fold=fold
+        )
         models, folds = loader.load_models_and_folds()
 
         super().__init__(models)
@@ -689,6 +704,7 @@ class _ModelManager:
         data_config: DataConfig,
         genome_config: GenomeConfig,
         device: torch.device,
+        fold: int | None = None,
     ):
         self.checkpoint_path = Path(checkpoint_path)
         self.model_config = model_config
@@ -703,7 +719,17 @@ class _ModelManager:
 
         with open(meta_path) as f:
             meta = yaml.safe_load(f)
-            self.fold_indices = meta.get("folds", [])
+            all_folds = meta.get("folds", [])
+
+        if fold is not None:
+            if fold not in all_folds:
+                raise ValueError(
+                    f"fold={fold} is not present in ensemble_metadata.yaml "
+                    f"(available folds: {all_folds})"
+                )
+            self.fold_indices = [fold]
+        else:
+            self.fold_indices = all_folds
 
         # Create fold mappings for routing
         self.folds = create_genome_folds(

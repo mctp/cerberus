@@ -1,7 +1,11 @@
+from unittest.mock import MagicMock, patch
+
+import pytest
 import torch
 import torch.nn as nn
+import yaml
 
-from cerberus.model_ensemble import ModelEnsemble
+from cerberus.model_ensemble import ModelEnsemble, _ModelManager
 
 
 class MockModel(nn.Module):
@@ -64,3 +68,55 @@ def test_resolve_use_folds_multi_model_large():
 
     resolved = ens._resolve_use_folds(None)
     assert set(resolved) == {"test", "val"}
+
+
+# ---------------------------------------------------------------------------
+# _ModelManager fold= filter (backs ModelEnsemble(fold=...))
+# ---------------------------------------------------------------------------
+
+
+def _write_meta(tmp_path, folds: list[int]):
+    (tmp_path / "ensemble_metadata.yaml").write_text(yaml.safe_dump({"folds": folds}))
+    return tmp_path
+
+
+@patch("cerberus.model_ensemble.create_genome_folds", return_value=[])
+def test_model_manager_fold_none_loads_all(_mock_folds, tmp_path):
+    _write_meta(tmp_path, [0, 1, 2])
+    mgr = _ModelManager(
+        tmp_path,
+        model_config=MagicMock(),
+        data_config=MagicMock(),
+        genome_config=MagicMock(chrom_sizes={}, fold_type=None, fold_args={}),
+        device=torch.device("cpu"),
+        fold=None,
+    )
+    assert mgr.fold_indices == [0, 1, 2]
+
+
+@patch("cerberus.model_ensemble.create_genome_folds", return_value=[])
+def test_model_manager_fold_set_filters_to_one(_mock_folds, tmp_path):
+    _write_meta(tmp_path, [0, 1, 2])
+    mgr = _ModelManager(
+        tmp_path,
+        model_config=MagicMock(),
+        data_config=MagicMock(),
+        genome_config=MagicMock(chrom_sizes={}, fold_type=None, fold_args={}),
+        device=torch.device("cpu"),
+        fold=1,
+    )
+    assert mgr.fold_indices == [1]
+
+
+@patch("cerberus.model_ensemble.create_genome_folds", return_value=[])
+def test_model_manager_fold_missing_raises(_mock_folds, tmp_path):
+    _write_meta(tmp_path, [0, 1, 2])
+    with pytest.raises(ValueError, match="fold=7 is not present"):
+        _ModelManager(
+            tmp_path,
+            model_config=MagicMock(),
+            data_config=MagicMock(),
+            genome_config=MagicMock(chrom_sizes={}, fold_type=None, fold_args={}),
+            device=torch.device("cpu"),
+            fold=7,
+        )
