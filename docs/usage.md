@@ -334,6 +334,15 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap --multi
     ```
 
+*   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
+    ```bash
+    python tools/train_multitask_differential_bpnet.py \
+        --bigwig-a LNCAP.rpm.bw --peaks-a LNCAP-macs2.bed.gz \
+        --bigwig-b 22Rv1.rpm.bw --peaks-b 22Rv1-macs2.bed.gz \
+        --name-a LNCAP --name-b 22Rv1 \
+        --output-dir models/foxa1_differential --stable --interpret
+    ```
+
 All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
 
 | Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_dalmatian.py` | `train_gopher.py` | `train_asap.py` |
@@ -346,6 +355,55 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 | `--output-len` | `1000` | `1024` | `1024` | `1024` | `2048` |
 | `--output-bin-size` | `1` | `1` | `1` | `4` | `4` |
 | Loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | `mse` (DalmatianLoss) | — (ProfilePoissonNLLLoss) | — (ProfilePoissonNLLLoss) |
+
+## Two-phase multitask-differential training
+
+`tools/train_multitask_differential_bpnet.py` trains a [MultitaskBPNet](models.md#multitaskbpnet) on two conditions in two phases, following the recipe from bpAI-TAC (Chandra et al. 2025) and Naqvi et al. 2025:
+
+- **Phase 1 — multi-task absolute model.** Jointly trains a shared BPNet trunk on condition A and condition B with `MultitaskBPNetLoss` (per-condition profile + count heads). The trunk learns sequence features that matter for *both* conditions, not the confound of separately-trained solo models.
+- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises `log_counts_B − log_counts_A` on the per-peak log2 fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log2FC table.
+- **Optional interpretation.** With `--interpret`, runs DeepLIFTSHAP on the fine-tuned model through `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` and pipes the result into TF-MoDISco.
+
+Both phases run on the standard `train_single` / `train_multi` pipeline. The companion library primitives are [MultitaskBPNet](models.md#multitaskbpnet), [MultitaskBPNetLoss](models.md#loss-multitaskbpnetloss), and [DifferentialCountLoss](models.md#differentialcountloss).
+
+```bash
+# Single-fold two-condition training + interpretation in one call.
+python tools/train_multitask_differential_bpnet.py \
+    --bigwig-a LNCAP.rpm.bw --peaks-a LNCAP-macs2.bed.gz \
+    --bigwig-b 22Rv1.rpm.bw --peaks-b 22Rv1-macs2.bed.gz \
+    --name-a LNCAP --name-b 22Rv1 \
+    --output-dir models/foxa1_differential \
+    --stable --interpret
+```
+
+Output layout:
+```
+models/foxa1_differential/
+├── merged_peaks.bed            # union of peaks-a + peaks-b
+├── phase1/single-fold/         # standard train_single output
+│   └── fold_.../model.pt       # Phase 1 weights
+├── phase2/single-fold/         # standard train_single output
+│   └── fold_.../model.pt       # Phase 2 fine-tuned weights
+└── interpretation/             # only with --interpret
+    ├── ohe.npz, attr.npz
+    ├── modisco_results.h5
+    └── report/
+```
+
+Key flags (see `--help` for the full list):
+
+| Flag | Purpose |
+|---|---|
+| `--bigwig-a` / `--peaks-a` / `--name-a` | Condition A inputs and label |
+| `--bigwig-b` / `--peaks-b` / `--name-b` | Condition B inputs and label |
+| `--stable` | Phase 1 stable-mode overrides (AdamW + cosine + weight-norm + GELU) |
+| `--multi` | Cross-validation (both phases run `train_multi`) |
+| `--skip-phase1 --phase1-dir <path>` | Reuse an existing Phase 1 output |
+| `--skip-phase2` | Phase 1 + interpretation only |
+| `--count-pseudocount` | Pseudocount on *linear* scale, shared by Phase 1 `MSEMultinomialLoss` and Phase 2 `DifferentialCountLoss` so both phases operate in the same log-space |
+| `--interpret` | Run DeepLIFTSHAP + TF-MoDISco on the Phase 2 model |
+
+The Phase 2 loss derives the per-peak log2FC inline from the `(B, N, L)` targets tensor, so no `--diff-pseudocount` or external log2FC file is required — for external-labels support see `docs/internal/differential_workflow_redesign.md` §13.
 
 ## scATAC-seq Pseudobulk Tools
 
@@ -586,6 +644,40 @@ Common interpretation target modes (`--target-mode`):
 | `profile_window_sum` | Attribution to summed profile logits in `[start:end)` (`--window-start`, `--window-end`) |
 | `pred_count_bin` | Attribution to one predicted count bin (softmax(logits) × exp(log_counts)) |
 | `pred_count_window_sum` | Attribution to summed predicted counts in a window |
+
+`tools/export_tfmodisco_inputs.py` drives the first five (single-channel) modes. The two delta modes — `delta_log_counts` and `delta_profile_window_sum` — are produced by `tools/train_multitask_differential_bpnet.py --interpret` for multi-condition models; see [Scalar attribution targets](#scalar-attribution-targets) below for direct library-level use.
+
+### Scalar attribution targets
+
+All cerberus attribution paths (Captum IG / DeepLIFTSHAP, exact ISM, Taylor-ISM, TPCAV) require a scalar-output `nn.Module` to differentiate. `cerberus.attribution.AttributionTarget` is the wrapper that reduces a cerberus model's multi-channel / multi-bin output to one scalar per batch element.
+
+One class, seven reductions. `channels` is an `int` for the five single-channel reductions and a `(cond_a_idx, cond_b_idx)` pair for the two delta reductions; arity is validated at construction time.
+
+| Reduction | `channels` | Extra fields | Output |
+|---|---|---|---|
+| `log_counts` | `int` | — | `log_counts[:, channels]` |
+| `profile_bin` | `int` | `bin_index` *(defaults to center)* | `logits[:, channels, bin_index]` |
+| `profile_window_sum` | `int` | `window_start` / `window_end` *(default full)* | `logits[:, channels, start:end].sum(-1)` |
+| `pred_count_bin` | `int` | `bin_index` | softmax(logits) × exp(log_counts), one bin |
+| `pred_count_window_sum` | `int` | `window_start` / `window_end` | softmax(logits) × exp(log_counts), summed over window |
+| `delta_log_counts` | `(int, int)` | — | `log_counts[:, b] − log_counts[:, a]` |
+| `delta_profile_window_sum` | `(int, int)` | `window_start` / `window_end` | `(logits[:, b] − logits[:, a])[:, start:end].sum(-1)` |
+
+```python
+from cerberus.attribution import AttributionTarget
+
+# Single-channel: total log-counts of channel 0 (the default BPNet target).
+target = AttributionTarget(model=model, reduction="log_counts", channels=0)
+
+# Delta: log_counts_B − log_counts_A of a MultitaskBPNet.
+delta_target = AttributionTarget(
+    model=multitask_model,
+    reduction="delta_log_counts",
+    channels=(0, 1),          # (cond_a_idx, cond_b_idx)
+)
+```
+
+The delta reductions are required for **nonlinear** attribution (DeepLIFT / DeepLIFTSHAP) on a difference target, where `attr(f_B) − attr(f_A) ≠ attr(f_B − f_A)`. For linear methods (ISM, TISM, plain gradients) the two coincide, so the delta wrapper is a convenience rather than a correctness requirement.
 
 Notes:
 

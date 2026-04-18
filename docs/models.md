@@ -166,6 +166,104 @@ model = BPNet1024(
 # Both return ProfileCountOutput(logits=..., log_counts=...)
 ```
 
+## MultitaskBPNet
+
+**Implementation**: `cerberus.models.bpnet.MultitaskBPNet`
+**Source**: `src/cerberus/models/bpnet.py`
+
+Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to [BPNet](#bpnet) with `predict_total_count=False` enforced, so each condition produces an independent per-channel scalar count head. This is Phase 1 of the two-phase differential-accessibility workflow (see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training) in `docs/usage.md`).
+
+The split pays off when you want to compare two or more steady-state conditions on the same sequences: a joint shared-trunk model sees both conditions during training, so the trunk encodes cross-condition sequence grammar rather than whatever each condition's solo-trained model happened to pick up. This is the architectural principle of bpAI-TAC (Chandra et al. 2025) and the starting point for Naqvi et al. 2025's differential fine-tuning recipe.
+
+### Key Features
+* **One profile + count head per condition**: `output_channels=[name_a, name_b, ...]` defines the condition names. Must contain at least 2 entries.
+* **`predict_total_count=False` enforced**: each condition gets its own scalar count-head output. Phase 2 differential fine-tuning supervises the *difference* of two of those scalars, so per-channel counts are a hard requirement.
+* **Same trunk as BPNet**: all trunk knobs (`filters`, `n_dilated_layers`, `residual_architecture`, `activation`, `weight_norm`, …) behave identically to BPNet.
+
+### Loss: MultitaskBPNetLoss
+
+Wraps `MSEMultinomialLoss` with the four settings Phase 1 multi-task training requires: `count_per_channel=True`, `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.
+
+Parameters `alpha` and `beta` map to `count_weight` and `profile_weight` respectively, matching the [BPNetLoss](#loss-bpnetloss) convention. `alpha="adaptive"` is supported the same way as BPNetLoss.
+
+```python
+from cerberus.config import ModelConfig
+
+model_config = ModelConfig(
+    name="MultitaskBPNet",
+    model_cls="cerberus.models.bpnet.MultitaskBPNet",
+    loss_cls="cerberus.models.bpnet.MultitaskBPNetLoss",
+    loss_args={"alpha": "adaptive", "beta": 1.0},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
+)
+```
+
+### Usage
+
+```python
+from cerberus.models.bpnet import MultitaskBPNet
+
+# Two-condition FOXA1 ChIP-seq example (LNCaP vs 22Rv1).
+model = MultitaskBPNet(
+    output_channels=["LNCAP", "22Rv1"],
+    input_len=2114,
+    output_len=1000,
+    filters=64,
+    n_dilated_layers=8,
+)
+# Returns ProfileCountOutput(logits=..., log_counts=...)
+# logits:     (batch, 2, 1000)
+# log_counts: (batch, 2)
+```
+
+For the companion Phase 2 differential loss see [DifferentialCountLoss](#differentialcountloss) below; for the end-to-end two-phase CLI see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training).
+
+### DifferentialCountLoss
+
+**Implementation**: `cerberus.loss.DifferentialCountLoss`
+
+Phase 2 fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak log2 fold-change derived inline from the two-channel `(B, N, L)` targets tensor Phase 1 already trained against:
+
+```
+target_delta = log2((sum_B + pc) / (sum_A + pc))
+```
+
+where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). Setting `count_pseudocount` to match Phase 1's keeps both phases in the same log-space. Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
+
+Single path: `forward(outputs, targets)` returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be `(B, N, L)` with `N >= max(cond_a_idx, cond_b_idx) + 1`.
+
+```python
+from cerberus.config import ModelConfig, PretrainedConfig
+
+# Phase 2 ModelConfig: same MultitaskBPNet architecture as Phase 1,
+# DifferentialCountLoss in place of MultitaskBPNetLoss, and the Phase 1
+# checkpoint listed under pretrained=[...].
+model_config = ModelConfig(
+    name="MultitaskBPNet_Phase2",
+    model_cls="cerberus.models.bpnet.MultitaskBPNet",
+    loss_cls="cerberus.loss.DifferentialCountLoss",
+    loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
+    pretrained=[
+        PretrainedConfig(
+            weights_path="models/foxa1/phase1/single-fold/fold_0/model.pt",
+            source=None, target=None, freeze=False,
+        )
+    ],
+    count_pseudocount=150.0,  # raw × target_scale, same as Phase 1
+)
+```
+
+`DifferentialCountLoss` is exported from `cerberus.loss`. For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+
+### References
+- bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.
+- Naqvi et al. (2025). *Transfer learning reveals sequence determinants of the quantitative response to transcription factor dosage.* Cell Genomics. PMC11160683.
+
 ## ConvNeXtDCNN (ASAP)
 
 **Implementation**: `cerberus.models.ConvNeXtDCNN`

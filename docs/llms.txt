@@ -165,7 +165,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss)`** — Poisson Multinomial Loss (Coupled/Global Count).
 - **`class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss)`** — Negative Binomial Multinomial Loss.
 - **`class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss)`** — Negative Binomial Multinomial Loss (Coupled).
-- **`class DifferentialCountLoss(nn.Module)`** — Phase 2 fine-tuning loss for differential accessibility prediction.
+- **`class DifferentialCountLoss(nn.Module)`** — Phase 2 fine-tuning loss supervising ``log_counts[:, B] - log_counts[:, A]``.
 - **`class DalmatianLoss(nn.Module)`** — Peak-conditioned factorized loss for the Dalmatian architecture.
 
 ### `cerberus.metrics`

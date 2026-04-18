@@ -1,7 +1,10 @@
 # Differential-Learning Workflow Redesign
 
 **Date:** 2026-04-18
-**Status:** Design selected — **Option B**. No implementation yet.
+**Status:** Design selected — **Option B**. **Implemented** in commits
+`b461a6e` (design doc) → `74e3999` (attribution unification) →
+`e86ddaa` (loss simplification + Phase 2 tool rewrite), landed on
+`marcin-feature` on 2026-04-18.
 **Predecessors:**
 - `docs/internal/multitask-differential-bpnet.md` (joanne-feature internal design, not ported)
 - `docs/internal/variant_tool_design.md` (same proposal shape; adapted here)
@@ -9,11 +12,79 @@
 
 ---
 
-> **TL;DR — Option B is the chosen design.** Sections §5 and §6
-> document the alternatives considered and the rationale for the
-> choice. §7 and §7a are the implementation plan. §8 covers the
-> attribution-module unification (a part of Option B). §13 covers
-> future extensions that are **not** required for the current work.
+> **TL;DR — Option B is the chosen design and shipped as described.**
+> Sections §5 and §6 document the alternatives considered and the
+> rationale for the choice. §7 and §7a are the implementation plan;
+> see also §7.7 for notes on where the landed code deviates from the
+> sketched plan. §8 covers the attribution-module unification (a
+> part of Option B). §13 covers future extensions that are **not**
+> required for the current work.
+
+---
+
+## Implementation notes (2026-04-18)
+
+Added after implementation landed. The doc's concrete predictions
+were mostly correct; the deviations worth flagging:
+
+1. **`DifferentialCountLoss.loss_components` was kept, not removed.**
+   `CerberusModule._shared_step` ([src/cerberus/module.py:169](src/cerberus/module.py#L169))
+   calls `criterion.loss_components(...)` to log per-component
+   metrics; every cerberus loss must provide it. Under Option B it
+   returns a single entry: `{"delta_loss": <scalar>}`.
+
+2. **`forward(outputs, targets, **kwargs)` keeps `**kwargs`.** The
+   `CerberusLoss` protocol includes `**kwargs: object`, and
+   `_shared_step` passes the full batch context (everything except
+   `inputs` / `targets`) through. `DifferentialCountLoss.forward`
+   accepts and ignores these. Interpreting the doc's
+   `forward(outputs, targets)` as a *protocol change* would break
+   every other caller; the contract stays the same, only the loss's
+   use of the kwargs goes to zero.
+
+3. **No explicit trunk-freeze hook was needed.** The design sketched
+   a `_freeze_phase2_trunk(model)` helper (§7.2, §7a.7). In
+   practice `DifferentialCountLoss` only touches the count heads, so
+   the profile heads naturally receive no gradient; multi-GPU DDP
+   handles this via a `ddp_find_unused_parameters_true` strategy
+   override in [`_select_phase2_strategy`](tools/train_multitask_differential_bpnet.py).
+   Freezing can be added later if a workflow demands it.
+
+4. **`_data_config_two_channel` was not split out.** The Phase 1 and
+   Phase 2 `DataConfig`s are inlined in `run_phase1` / `run_phase2`
+   — cheaper than factoring out a 30-line helper called from two
+   places.
+
+5. **Line-count projections were optimistic.** Actual shrinks:
+   `src/cerberus/loss.py` **−60** (doc projected −135),
+   `src/cerberus/attribution.py` **−24** (projected −70),
+   `tools/train_multitask_differential_bpnet.py` **−227** (projected
+   −680). Net across tree ≈ **−379** lines (projected −940). The gap
+   comes from (a) `loss_components` staying, (b) `run_interpretation`
+   keeping its own DataModule setup, (c) `run_phase2` mirroring
+   `run_phase1`'s scheduler / optimizer plumbing instead of a
+   library-level helper.
+
+6. **Test names drifted from the sketch.** Actual names on
+   `marcin-feature`:
+   - `test_differential_count_loss_derives_delta_from_targets`
+   - `test_differential_count_loss_nonzero_when_prediction_off`
+   - `test_differential_count_loss_pseudocount_affects_target`
+   - `test_differential_count_loss_components_has_only_delta_loss`
+   - `test_differential_count_loss_rejects_2d_targets`
+   - `test_differential_count_loss_rejects_too_few_target_channels`
+   - `test_attribution_target_delta_requires_tuple_channels`
+   - `test_attribution_target_single_rejects_tuple_channels`
+   - `test_attribution_target_delta_{log_counts,profile_window_sum_*,...}`
+   Scope matches the plan (delta derivation, arity validation,
+   channel-range validation); the breakdown is finer.
+
+7. **Pyright config change.** The rewrite
+   silences `reportPrivateImportUsage` project-wide in
+   `pyrightconfig.json`; the rule was flagging 1769 legitimate
+   `torch.*` references and drowning out real errors. Not part of
+   the design but a prerequisite for treating pyright output as
+   signal during the refactor.
 
 ---
 
@@ -669,7 +740,7 @@ the way it does.
 ### 7.1 Library changes
 
 **`src/cerberus/loss.py`** — `DifferentialCountLoss` collapses to
-a single-path, single-concept loss. Whole body:
+a single-path, single-concept loss. Landed body (schematic):
 
 ```
 class DifferentialCountLoss(nn.Module):
@@ -698,10 +769,8 @@ class DifferentialCountLoss(nn.Module):
         self.cond_b_idx = cond_b_idx
         self.count_pseudocount = count_pseudocount
 
-    def forward(
-        self,
-        outputs: ProfileCountOutput,
-        targets: torch.Tensor,
+    def _delta_loss(
+        self, outputs: object, targets: torch.Tensor
     ) -> torch.Tensor:
         if not isinstance(outputs, ProfileCountOutput):
             raise TypeError(...)
@@ -709,6 +778,10 @@ class DifferentialCountLoss(nn.Module):
         a, b = self.cond_a_idx, self.cond_b_idx
         n = outputs.log_counts.shape[-1]
         if max(a, b) >= n:
+            raise ValueError(...)
+        if targets.ndim != 3:
+            raise ValueError(...)
+        if targets.shape[1] < max(a, b) + 1:
             raise ValueError(...)
 
         counts = targets.float().sum(dim=-1)              # (B, N)
@@ -718,12 +791,25 @@ class DifferentialCountLoss(nn.Module):
         delta_pred = (outputs.log_counts[:, b]
                       - outputs.log_counts[:, a])         # (B,)
         return F.mse_loss(delta_pred, target_delta)
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object,
+    ) -> dict[str, torch.Tensor]:
+        return {"delta_loss": self._delta_loss(outputs, targets)}
+
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object,
+    ) -> torch.Tensor:
+        return self._delta_loss(outputs, targets)
 ```
 
 No `abs_weight`, no `log2fc` kwarg, no `_resolve_delta_target`, no
-`loss_components` decomposition (one component, one return). Roughly
-35 lines including docstring and imports — down from the current
-~170 lines.
+shape overloading, no 4-row truth table. `loss_components` is kept
+(required by `CerberusModule._shared_step` for per-component
+logging) but returns a single entry. `**kwargs` is kept on the
+public methods to match the `CerberusLoss` protocol; the loss
+ignores all batch-context kwargs. Landed class body is ~120 lines
+including docstring and validation (down from ~170).
 
 Pseudocount semantics: use the loss's own `count_pseudocount`. In the
 bpAI-TAC / Naqvi recipe this is the *same* pseudocount Phase 1 used
@@ -775,7 +861,7 @@ do today).
 Everything workflow-specific stays in the tool. The library exposes
 a model, a loss, and an attribution target; the tool composes them.
 
-**`tools/train_multitask_differential_bpnet.py` new structure:**
+**`tools/train_multitask_differential_bpnet.py` landed structure:**
 
 ```
 get_args()
@@ -783,25 +869,23 @@ get_args()
 # Workflow-specific one-offs (tool-only):
 _read_bed_intervals(path)               # BED/narrowPeak parser
 _merge_and_write_peaks(a, b, out)       # union BED merge
-_find_phase1_checkpoint(path, fold)     # Phase 1 output layout glob
-_freeze_phase2_trunk(model)             # for p in model.trunk/profile_*:
-                                        #     p.requires_grad = False
+_find_phase1_checkpoint(path)           # glob **/model.pt
+_plot_phase2_losses(phase2_dir)         # CSVLogger metrics.csv plot
+_select_phase2_strategy(kwargs)         # override to ddp_find_unused_parameters_true
 _dinuc_shuffle(...)                     # DLS baseline gen
-_data_config_two_channel(args)          # {name_a: bw_a, name_b: bw_b}
 
 # Workflow phases (compositions of library primitives):
 run_phase1(args):
     # ModelConfig: MultitaskBPNet + MultitaskBPNetLoss.
-    # train_single / train_multi on the merged peaks. No tool-specific
-    # data wiring beyond _data_config_two_channel + peak merge.
+    # train_single / train_multi on the merged peaks.
 
-run_phase2(args, phase1_ckpt_dir):
-    # Same DataConfig (same two bigwigs).
+run_phase2(args, phase1_ckpt):
+    # Same DataConfig shape (same two bigwigs).
     # ModelConfig: MultitaskBPNet + DifferentialCountLoss, with
-    # pretrained=[PretrainedConfig(phase1_ckpt_dir, strict=True)].
-    # After model construction, call _freeze_phase2_trunk(model) via
-    # a lightweight Lightning callback or a post-instantiate hook.
-    # train_single / train_multi unchanged.
+    # pretrained=[PretrainedConfig(phase1_ckpt, ...)].
+    # train_single / train_multi unchanged. DDP strategy overridden
+    # to ddp_find_unused_parameters_true so the un-gradiented profile
+    # heads don't trip DDP's bucket rebuild.
 
 run_interpretation(args):
     # AttributionTarget(reduction="delta_log_counts", channels=(0, 1)).
@@ -810,43 +894,51 @@ run_interpretation(args):
 main()
 ```
 
-The tool collapses to:
+No `_freeze_phase2_trunk` (the profile heads naturally get no
+gradient under `DifferentialCountLoss`, so DDP's
+`find_unused_parameters=True` is sufficient). No
+`_data_config_two_channel` (the Phase 1 and Phase 2 `DataConfig`s
+are inlined).
 
-| Section | Current lines | Projected lines |
+Tool line counts (before → after, 2026-04-18):
+
+| Section | Before | After |
 |---|---|---|
 | Argument parser + main | ~250 | ~230 |
-| `_merge_and_write_peaks` + related BED helpers | ~50 | ~50 (tool-only, not library) |
-| `_data_config_two_channel` | inline | ~30 |
-| `_find_phase1_checkpoint` | inline (~10) | ~15 |
-| `_freeze_phase2_trunk` | `_Phase2Module.__init__` loop | ~15 |
-| `run_phase1` | ~140 | ~130 |
-| `run_phase2` | ~200 | ~50 (drop wrapper+module, reuse train_single) |
-| `run_interpretation` | ~200 | ~200 (argparse `choices` updated for delta) |
+| `_merge_and_write_peaks` + BED helpers | ~50 | ~40 |
+| `_find_phase1_checkpoint` | ~10 | ~10 |
+| `run_phase1` | ~140 | ~140 |
+| `run_phase2` | ~200 | ~160 (drop wrapper+module, reuse `train_single`) |
+| `_plot_phase2_losses` / `_select_phase2_strategy` | — | ~55 |
+| `run_interpretation` | ~200 | ~175 |
 | `_dinuc_shuffle` | ~20 | ~20 |
-| Inlined differential helpers (`_compute_log2fc_from_bigwigs`, `_DifferentialRecord`, `_write_differential_targets`) | ~50 | 0 (dropped; derived in loss) |
-| `_DiffWrapper` / `_Phase2Module` | ~100 | 0 (dropped) |
-| **Total** | **~1068** | **~390** |
+| Inlined differential helpers (`_compute_log2fc_from_bigwigs`, `_DifferentialRecord`, `_write_differential_targets`, `_get_pos_intervals`) | ~60 | 0 |
+| `_DiffWrapper` / `_Phase2Module` | ~100 | 0 |
+| **Total** | **~1134** | **~907** |
 
-Phase 2 specifically becomes (schematically):
+Phase 2 specifically became (schematically):
 
 ```
-run_phase2(args, phase1_ckpt_dir):
-    data_config = _data_config_two_channel(args)   # same bigwigs as Phase 1
+run_phase2(args, phase1_ckpt_path):
+    data_config = DataConfig(
+        targets={name_a: bw_a, name_b: bw_b}, max_jitter=0, ...)
     model_config = ModelConfig(
         name="MultitaskBPNet_Phase2",
         model_cls="cerberus.models.bpnet.MultitaskBPNet",
         loss_cls="cerberus.loss.DifferentialCountLoss",
         loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
-        pretrained=[PretrainedConfig(path=phase1_ckpt_dir, strict=True)],
+        pretrained=[PretrainedConfig(
+            weights_path=str(phase1_ckpt_path),
+            source=None, target=None, freeze=False)],
         model_args={...},
         count_pseudocount=args.count_pseudocount * args.target_scale,
     )
-    # Trunk freezing: either a post-instantiate hook, a Lightning
-    # callback, or a direct call after train_single returns the
-    # module — whichever is simplest given the current _train
-    # dispatcher. Implementation detail; the library does not need
-    # to know that this workflow freezes anything.
-    train_single(... model_config ... train_config ... )
+    precision_kwargs = get_precision_kwargs(args.precision, accel, devices)
+    # Override the multi-GPU strategy: DifferentialCountLoss only
+    # touches count heads, so profile heads receive no gradient.
+    precision_kwargs = _select_phase2_strategy(precision_kwargs)
+    train_fn = train_multi if args.multi else train_single
+    train_fn(... model_config ... train_config ... **precision_kwargs)
 ```
 
 That's it. No `_DiffWrapper`, no `_Phase2Module`, no offline log2FC
@@ -856,22 +948,25 @@ derives the delta target from `targets` in the training step.
 
 ### 7.3 Pretrained-weight loading for Phase 2
 
-Phase 2 needs to initialize from Phase 1's weights. Cerberus already
-supports this via `ModelConfig.pretrained: list[PretrainedConfig]`;
-the Phase 2 `ModelConfig` just lists the Phase 1 checkpoint in that
-field. The current tool implements this manually in
-[`_find_phase1_model`](tools/train_multitask_differential_bpnet.py#L327-L334);
-the rewrite should verify that `ModelConfig.pretrained` + a matching
-architecture (same `MultitaskBPNet`) reproduces the existing
-behaviour. If there are subtle load-strict issues (head shape
-retained, trunk frozen at specific layers), those can be expressed
-via `PretrainedConfig` fields.
+Phase 2 initializes from Phase 1's weights via
+`ModelConfig.pretrained: list[PretrainedConfig]`. On the landed
+tool, `_find_phase1_checkpoint` globs `**/model.pt` under the Phase
+1 output dir and feeds the path into
+`PretrainedConfig(weights_path=..., source=None, target=None,
+freeze=False)`. `load_pretrained_weights` ([src/cerberus/pretrained.py](src/cerberus/pretrained.py))
+then calls `target.load_state_dict(state_dict, strict=True)` on the
+freshly-built `MultitaskBPNet`, which succeeds because the Phase 1
+and Phase 2 architectures are byte-identical (same
+`output_channels`, `filters`, `n_dilated_layers`, ...).
 
-**Optional fine-tuning shapes:** the current tool supports
-trunk-freeze variants via explicit `requires_grad = False` loops on
-the PL module; under the redesign, freezing is typically expressed
-via `TrainConfig.freeze_patterns` or an equivalent if present —
-needs a small scan of `train.py` during implementation.
+**Optional fine-tuning shapes** (freeze trunk, freeze profile heads,
+etc.) are not implemented in the landed tool: the
+`DifferentialCountLoss` path naturally zeroes gradient on the
+profile heads, and the DDP strategy override handles the multi-GPU
+case. If a future workflow wants explicit freezing, express it
+either via a new `PretrainedConfig(target="trunk", freeze=True)`
+entry or a PL callback — both supported by the current cerberus
+pipeline without library changes.
 
 ### 7.4 Back-compat and migration
 
@@ -903,30 +998,49 @@ diff is in §9. Summary:
 
 ### 7.5 Tests
 
-New tests required under Option B:
+Tests that landed under Option B (see `tests/test_multitask_differential_bpnet.py`
+and `tests/test_attribution.py`):
 
-- `test_differential_count_loss_derives_from_targets` — parametrized
-  over `(cond_a_idx, cond_b_idx)` combos. Constructs a known
-  `(B, N, L)` target tensor whose per-channel sums are known; asserts
-  `loss(outputs, targets)` returns
-  `MSE(delta_pred, log2((sum_b + pc) / (sum_a + pc)))`.
-- `test_differential_count_loss_rejects_bad_indices` — negative
-  indices, `cond_a == cond_b`, and out-of-range vs `log_counts`
-  shape all raise.
-- `test_attribution_target_delta_reduction` —
-  `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))`
-  on a toy model returns `f_B - f_A`.
-- `test_attribution_target_channels_arity_validation` —
-  `AttributionTarget(reduction="log_counts", channels=(0, 1))`
-  raises (wrong arity: single-channel reduction with 2-tuple);
-  `AttributionTarget(reduction="delta_log_counts", channels=0)`
-  also raises.
+- **`test_differential_count_loss_derives_delta_from_targets`** —
+  zero-MSE round-trip on a `(B, N, L)` target tensor with known
+  per-channel length-sums.
+- **`test_differential_count_loss_nonzero_when_prediction_off`** —
+  MSE = mean(expected_delta ²) when the prediction is zero.
+- **`test_differential_count_loss_pseudocount_affects_target`** —
+  larger `count_pseudocount` → smaller |log2 ratio| → smaller MSE.
+- **`test_differential_count_loss_components_has_only_delta_loss`**
+  — the `loss_components` dict has a single `"delta_loss"` entry.
+- **`test_differential_count_loss_rejects_2d_targets`** — targets
+  must be `(B, N, L)`; `(B, N)` raises.
+- **`test_differential_count_loss_rejects_too_few_target_channels`**
+  — targets with fewer channels than `max(cond_a, cond_b) + 1` raise.
+- **`test_differential_count_loss_same_idx_raises`,
+  `test_differential_count_loss_out_of_range_idx`,
+  `test_differential_count_loss_rejects_negative_idx`** — index
+  validation (construction time for same-idx / negative, forward
+  time for out-of-range).
+- **`test_differential_count_loss_wrong_output_type`** — rejects
+  non-`ProfileCountOutput`.
+- **`test_attribution_target_delta_requires_tuple_channels`,
+  `test_attribution_target_single_rejects_tuple_channels`** — arity
+  validation on `channels`.
+- **`test_attribution_target_delta_same_idx_raises`** — delta
+  reduction with `channels=(k, k)` raises.
+- **`test_attribution_target_delta_log_counts`,
+  `test_attribution_target_delta_profile_window_sum_{full,partial}_window`,
+  `test_attribution_target_delta_invalid_window_raises`,
+  `test_attribution_target_delta_out_of_range_channel_raises`,
+  `test_attribution_target_delta_gradient_flows`,
+  `test_attribution_target_delta_ism_matches_manual_delta`** —
+  delta-reduction math, window handling, gradient flow, and linear-
+  model ISM parity (`attr(f_B - f_A) == attr(f_B) - attr(f_A)`).
+- **`test_attribution_target_delta_reductions_in_target_reductions`**
+  — `{delta_log_counts, delta_profile_window_sum} ⊂ TARGET_REDUCTIONS`.
 
-Tests to **remove** under Option B (they encode protocols that no
-longer exist):
+Tests removed (they encoded protocols that no longer exist):
 
-- `test_differential_count_loss_basic` — uses `(B, 1, 1)` scalar
-  fallback path. Rewrite against `(B, N, L)` primary.
+- `test_differential_count_loss_basic` — used `(B, 1, 1)` scalar
+  fallback; rewritten against `(B, N, L)` primary.
 - `test_differential_count_loss_log2fc_kwarg`,
   `test_differential_count_loss_log2fc_wrong_type`,
   `test_differential_count_loss_log2fc_batch_size_mismatch` — kwarg
@@ -934,12 +1048,19 @@ longer exist):
 - `test_differential_count_loss_abs_weight_components`,
   `test_differential_count_loss_abs_weight_scalar_targets_raises` —
   `abs_weight` is gone.
-- `test_differential_count_loss_wrong_output_type` — keep but
-  simplify (still asserts the ProfileCountOutput type check).
-- All tests importing `DifferentialAttributionTarget` — update to
-  `AttributionTarget(reduction=..., channels=(a, b))`.
+- `test_differential_count_loss_components_keys` — the components
+  dict shape changed (now asserted by
+  `…_components_has_only_delta_loss`).
+- Tests that imported `DifferentialAttributionTarget` — rewritten
+  against `AttributionTarget(reduction=…, channels=(a, b))`.
+- `tests/test_train_multitask_differential_tool.py` was deleted
+  (tested the removed `_DiffWrapper`).
 
-Net: ~4 new tests, ~6 removed, ~3 updated. The test module shrinks.
+Net on the landed state:
+`tests/test_multitask_differential_bpnet.py` gained a handful of
+single-path derivation tests; `tests/test_attribution.py` kept the
+same coverage under a unified class; the `_DiffWrapper` test file
+is gone.
 
 ### 7.6 Documentation
 
@@ -1110,9 +1231,16 @@ twice — once offline for precompute, once online for `targets`.
   │ }                                                     │
   ├───────────────────────────────────────────────────────┤
   │ _resolve_window()  (once)                             │
-  │ _REDUCTIONS: dict[str, Callable]  (registry dispatch) │
+  │ _check_single_channel / _check_delta_channels         │
+  │ (arity-specific validators, if/elif dispatch in       │
+  │  forward — no separate registry)                      │
   └───────────────────────────────────────────────────────┘
 ```
+
+As landed, the `forward` body stayed as an `if reduction == ...`
+chain rather than a dict-of-callables registry — one file, seven
+cases, same shape the old class already used. A registry can be
+introduced later if the reduction set grows.
 
 ### 7a.3 Reduction × field compatibility matrix
 
@@ -1121,51 +1249,55 @@ Which `AttributionTarget` fields each reduction uses:
 | Reduction | `channels` arity | `bin_index` | `window_start` / `window_end` |
 |---|---|---|---|
 | `log_counts` | `int` | — | — |
-| `profile_bin` | `int` | **required\*** | — |
-| `profile_window_sum` | `int` | — | **required\*** |
-| `pred_count_bin` | `int` | **required\*** | — |
-| `pred_count_window_sum` | `int` | — | **required\*** |
+| `profile_bin` | `int` | optional *(defaults to center)* | — |
+| `profile_window_sum` | `int` | — | optional *(defaults to full)* |
+| `pred_count_bin` | `int` | optional *(defaults to center)* | — |
+| `pred_count_window_sum` | `int` | — | optional *(defaults to full)* |
 | `delta_log_counts` | `tuple[int, int]` | — | — |
-| `delta_profile_window_sum` | `tuple[int, int]` | — | **required\*** |
+| `delta_profile_window_sum` | `tuple[int, int]` | — | optional *(defaults to full)* |
 
-\* *"Required" with defaults — `bin_index` defaults to `length // 2`
-and `window_start`/`window_end` default to `0` / `length`, so
-callers may omit them and get the sensible behaviour.*
+As landed, unused fields are silently ignored — not raised. The
+constructor validates `channels` arity against the reduction name;
+it does not enforce that e.g. `bin_index` is `None` for
+`log_counts`. If that stricter check is wanted, add it in a
+follow-up; no in-tree caller relies on either behaviour today.
 
-Fields that are `—` are checked at `__init__`: passing them with a
-reduction that does not use them raises `ValueError`.
+### 7a.4 `DifferentialCountLoss`: current vs. landed
 
-### 7a.4 `DifferentialCountLoss`: current vs. redesigned
-
-| Property | Current | Redesigned (Option B) |
+| Property | Before | Landed (Option B) |
 |---|---|---|
 | Constructor args | `cond_a_idx`, `cond_b_idx`, `abs_weight`, `count_pseudocount` | `cond_a_idx`, `cond_b_idx`, `count_pseudocount` |
-| Instance methods | `__init__`, `_resolve_delta_target`, `loss_components`, `forward` | `__init__`, `forward` |
-| Supported `targets` shapes | `(B, 1, 1)`, `(B, 1, L)`, `(B, N, L)` | `(B, N, L)` |
-| Supported kwargs | `log2fc: Tensor \| None` | — |
+| Instance methods | `__init__`, `_resolve_delta_target`, `loss_components`, `forward` | `__init__`, `_delta_loss`, `loss_components`, `forward` |
+| Supported `targets` shapes | `(B, 1, 1)`, `(B, 1, L)`, `(B, N, L)` | `(B, N, L)` only |
+| Supported kwargs | `log2fc: Tensor \| None` | `**kwargs` accepted and ignored (protocol contract) |
 | Return shape of `forward` | `Tensor` (sum of weighted components) | `Tensor` (MSE scalar) |
-| Return of `loss_components` | `{"delta_loss", "abs_loss_a", "abs_loss_b"}` (conditionally) | **method removed** |
+| Return of `loss_components` | `{"delta_loss", "abs_loss_a", "abs_loss_b"}` (conditionally) | `{"delta_loss"}` (always single-entry; required by `CerberusModule._shared_step`) |
 | Optional behaviours | `abs_weight` regularizer | none |
 | Branches inside `forward` | 4 (see §2.2 truth table) | 0 |
-| Source line count | ~170 | ~35 |
+| Source line count *(incl. docstring + validation)* | ~170 | ~120 |
 | `uses_count_pseudocount` class flag | `True` | `True` |
 
-### 7a.5 File-by-file change summary
+### 7a.5 File-by-file change summary *(landed)*
 
 | File | Before | After | Δ lines | What changes |
 |---|---|---|---|---|
-| `src/cerberus/loss.py` | has `DifferentialCountLoss` with kwarg, fallback, `abs_weight` (~170 lines of the class) | single-path class (~35 lines) | **−135** | Remove `_resolve_delta_target`, `log2fc` kwarg, scalar fallback, abs-weight branch, `loss_components` decomposition. |
-| `src/cerberus/attribution.py` | two classes (`AttributionTarget`, `DifferentialAttributionTarget`) + duplicated `_resolve_window` + two reduction sets | single `AttributionTarget` + registry dispatch + one reduction set | **−70** | Delete `DifferentialAttributionTarget` class. Rename `channel` → `channels`. Fold delta reductions into `TARGET_REDUCTIONS`. Delete `DIFFERENTIAL_TARGET_REDUCTIONS`. |
+| `src/cerberus/loss.py` | has `DifferentialCountLoss` with kwarg, fallback, `abs_weight` (~170 lines of the class) | single-path class (~120 lines incl. docstring + validation) | **−60** | Remove `_resolve_delta_target`, `log2fc` kwarg, scalar fallback, abs-weight branch. Add `(B, N, L)` shape validation. `loss_components` kept (returns a single `{"delta_loss": ...}` entry). |
+| `src/cerberus/attribution.py` | two classes (`AttributionTarget`, `DifferentialAttributionTarget`) + duplicated `_resolve_window` + two reduction sets | single `AttributionTarget` + one `TARGET_REDUCTIONS` set | **−24** | Delete `DifferentialAttributionTarget` class. Rename `channel` → `channels`. Fold delta reductions into `TARGET_REDUCTIONS` (now 7 entries). Delete `DIFFERENTIAL_TARGET_REDUCTIONS`. Arity-validated in `__init__`. Dispatch stayed as an `if/elif` chain. |
 | `src/cerberus/__init__.py` | exports `DifferentialAttributionTarget`, `DIFFERENTIAL_TARGET_REDUCTIONS` | doesn't | **−4** | Remove from `from .attribution import …` and from `__all__`. |
-| `tools/train_multitask_differential_bpnet.py` | 1068 lines: `_DiffWrapper`, `_Phase2Module`, 4 inlined helpers, Phase 2 bespoke training loop | ~390 lines: `_merge_and_write_peaks`, `_find_phase1_checkpoint`, `_freeze_phase2_trunk`, standard `train_single` call for both phases | **−680** | Drop wrapper, PL module, log2FC precompute, `_DifferentialRecord`, TSV writer. Phase 2 rewritten as a regular `ModelConfig`-driven `train_single` invocation. |
-| `tests/test_multitask_differential_bpnet.py` | 22 tests incl. log2fc kwarg path, abs-weight branch, scalar fallback | ~18 tests against single path + channel validation | **−80** | Remove: 4 log2fc-kwarg tests, 2 abs-weight tests, 1 scalar-fallback test. Add: 4 single-path tests. |
-| `tests/test_attribution.py` | has `DifferentialAttributionTarget` tests | uses unified `AttributionTarget` with `channels=(a, b)` | ≈0 | Mechanical: update imports, rename `channel` → `channels`, update call sites. |
-| `tests/test_package_api.py` | asserts `DifferentialAttributionTarget` import-survives | removed (assertion is vacuous after removal) | −15 | Delete or simplify. |
-| `tests/test_train_multitask_differential_tool.py` | tests `_DiffWrapper` length invariant | **deleted** (wrapper no longer exists) | −50 | The invariant being tested doesn't apply — no wrapper to wrap. |
-| `CHANGELOG.md` | — | `### Changed` entry | +8 | Document the 6 breaking changes. |
-| `docs/usage.md` | — | short "Differential workflow" subsection | +30 | Point at the tool and the unified AttributionTarget docs. |
+| `tools/train_multitask_differential_bpnet.py` | 1134 lines: `_DiffWrapper`, `_Phase2Module`, 4 inlined helpers, Phase 2 bespoke training loop | 907 lines: `_merge_and_write_peaks`, `_find_phase1_checkpoint`, `_plot_phase2_losses`, `_select_phase2_strategy`, `_dinuc_shuffle`, standard `train_single` / `train_multi` for both phases | **−227** | Drop wrapper, PL module, log2FC precompute, `_DifferentialRecord`, TSV writer, `_get_pos_intervals`. Drop `--abs-weight` / `--diff-pseudocount`. Phase 2 rewritten as a regular `ModelConfig`-driven `train_single` invocation with `pretrained=[...]`. |
+| `tests/test_multitask_differential_bpnet.py` | 22 tests incl. log2fc kwarg path, abs-weight branch, scalar fallback | 25 tests against single path + channel/shape validation | **+12** | Remove: log2fc-kwarg tests, abs-weight tests, scalar-fallback test. Add: delta-derivation, pseudocount-effect, `(B, N, L)` shape validation, components-dict-shape. |
+| `tests/test_attribution.py` | has `DifferentialAttributionTarget` tests | uses unified `AttributionTarget` with `channels=(a, b)` | **−23** | Mechanical: update imports, rename `channel` → `channels`, update call sites. Add arity-validation tests. |
+| `tests/test_package_api.py` | — | — | **0** | No change (this file tests TPCAV helpers, not `DifferentialAttributionTarget` — prior claim in the draft was wrong). |
+| `tests/test_train_multitask_differential_tool.py` | tests `_DiffWrapper` length invariant | **deleted** (wrapper no longer exists) | **−53** | The invariant being tested doesn't apply — no wrapper to wrap. |
+| `CHANGELOG.md` | — | `### Added` / `### Changed` / `### Removed` / `### Internal` entries | +~90 | Document the breaking changes and new Phase 2 shape. |
+| `docs/usage.md` | — | "Two-phase multitask-differential training" + "Scalar attribution targets" sections | +~90 | Added after the fact in a docs-only commit — see §7.6. |
+| `docs/models.md` | — | "MultitaskBPNet" / "Loss: MultitaskBPNetLoss" / "DifferentialCountLoss" sections | +~100 | Same docs-only commit. |
+| `pyrightconfig.json` | — | `"reportPrivateImportUsage": "none"` | +1 | Prerequisite for treating pyright output as signal; 1769 false positives on `torch.*` were drowning real errors. |
 
-**Net across the tree: ≈ −1000 lines.**
+**Net across the tree (code + tests, excluding docs and design
+doc):** **≈ −380 lines.** The design doc's original projection of
+≈ −1000 was optimistic — see the Implementation notes at the top
+of this doc for where the gap comes from.
 
 ### 7a.6 Call-site migrations
 
@@ -1195,27 +1327,32 @@ diff_target = AttributionTarget(
 )
 ```
 
-**2. Phase 2 loss construction (same tool, different section):**
+**2. Phase 2 loss construction (same tool, run_phase2):**
 
 ```python
-# Before
+# Before — tool instantiated the loss directly and called it from a
+# bespoke _Phase2Module that passed log2fc via a dataset wrapper.
 loss_fn = DifferentialCountLoss(
     cond_a_idx=0,
     cond_b_idx=1,
     abs_weight=args.abs_weight,
     count_pseudocount=args.count_pseudocount * args.target_scale,
 )
-# ...in training step:
-loss = loss_fn(outputs, targets, log2fc=log2fc)   # or kwargs
+# ...inside _Phase2Module._step:
+loss = loss_fn(outputs, targets, log2fc=log2fc)
 
-# After
-loss_fn = DifferentialCountLoss(
-    cond_a_idx=0,
-    cond_b_idx=1,
+# After — tool no longer instantiates or calls the loss; it builds a
+# ModelConfig that names it, and train_single / train_multi handle
+# instantiation (with count_pseudocount injection) and invocation.
+model_config = ModelConfig(
+    ...,
+    loss_cls="cerberus.loss.DifferentialCountLoss",
+    loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+    pretrained=[PretrainedConfig(
+        weights_path=str(phase1_ckpt_path),
+        source=None, target=None, freeze=False)],
     count_pseudocount=args.count_pseudocount * args.target_scale,
 )
-# ...in training step:
-loss = loss_fn(outputs, targets)
 ```
 
 **3. `tests/test_attribution.py` (differential test block):**
@@ -1267,6 +1404,26 @@ __all__ = [
     ...,
 ]
 ```
+
+**5. `channel=` → `channels=` rename (additional call sites):**
+
+`AttributionTarget.channel` renamed to `.channels`. The kwarg
+change touches three additional files, all updated in the same
+commit:
+
+- `src/cerberus/tpcav.py` — `build_tpcav_target_model`'s internal
+  call to `AttributionTarget(... channel=channel ...)` becomes
+  `AttributionTarget(... channels=channel ...)`. The helper's own
+  public signature still takes `channel: int` (the TPCAV MVP
+  supports only single-task BPNet, so exposing a tuple here would
+  just be noise).
+- `tools/export_tfmodisco_inputs.py` — `--target-channel` CLI flag
+  preserved; internal `AttributionTarget(channel=...)` call
+  updates.
+- `notebooks/chip_ar_mdapca2b_attribution_ism_vs_taylor.py` — two
+  `AttributionTarget(channel=0, bin_index=None, ...)` call sites
+  updated to `AttributionTarget(channels=0)` (the `None`-valued
+  positional arguments disappear because the new defaults match).
 
 ### 7a.7 Phase 1 / Phase 2 symmetry
 
@@ -1349,10 +1506,9 @@ class AttributionTarget(nn.Module):
   match the type of `channels`. Matrix of allowed combinations lives
   on a single class-level dict, not scattered.
 
-### 8.2 Reduction registry
+### 8.2 Reduction dispatch
 
-Internally, a dict mapping reduction-name → callable cleans up the
-`if/elif` dispatch in `forward`:
+The design considered a dict-of-callables registry:
 
 ```
 _REDUCTIONS: dict[str, Callable[[AttributionTarget, Output], Tensor]] = {
@@ -1364,8 +1520,13 @@ _REDUCTIONS: dict[str, Callable[[AttributionTarget, Output], Tensor]] = {
 }
 ```
 
-The dispatch table is a one-screen diff — makes adding new reductions
-tractable without adding `if self.reduction == "..."` branches.
+**Landed:** the `forward` body is still an `if reduction == ...` chain
+— seven cases, one file, matches the shape the old class already had.
+The `if/elif` is easy to read and keeps per-reduction validation
+(channel arity, bin-index / window-end defaults, branch-specific
+error messages) inline with the math. Swap to a registry if the
+reduction set grows or if adding reductions starts requiring
+cross-cutting changes.
 
 ### 8.3 The `channels` field change
 
@@ -1390,9 +1551,14 @@ No back-compat shim. The whole change lands in one commit.
 ### 8.4 Gains vs. cost
 
 Gains:
-- One class instead of two. ~70 lines deleted.
-- Single `_resolve_window`, `_check_channel(s)` helper.
-- Registry-based dispatch; easier to extend.
+- One class instead of two. ~24 lines deleted
+  (`src/cerberus/attribution.py` shrinks from 415 → 391 lines).
+- Single `_resolve_window`, `_resolve_bin`, `_check_single_channel`
+  / `_check_delta_channels` helpers (no duplication).
+- Inline `if/elif` dispatch — one file, seven cases, same shape as
+  before. A registry was considered (§8.2) but not adopted;
+  per-reduction validation and error messages stay inline with the
+  math.
 - API discoverability: users find one `AttributionTarget` with
   seven reductions, not two classes with five + two.
 
@@ -1410,7 +1576,8 @@ Rejected: "each reduction becomes a subclass of
 - Multiply class count from 2 to 7.
 - Force users to pick a class rather than a reduction string (harder
   to parameterize from config).
-- Lose the clean registry pattern.
+- Push per-reduction validation into a base-class abstract method,
+  further away from the math it guards.
 
 The reduction-string-dispatched single class is the sweet spot.
 
@@ -1676,53 +1843,73 @@ ambiguity stays gone.
 
 ---
 
-## 14. Summary Diff (projected)
+## 14. Summary Diff (landed)
 
-**Library (`src/cerberus/`)** — net ~−180 lines, everything simpler:
+Measured against `b461a6e..e86ddaa` (2026-04-18):
+
+**Library (`src/cerberus/`)** — net ~−90 lines, everything simpler:
 
 - `loss.py`: `DifferentialCountLoss` collapses from ~170 lines to
-  ~35. Removes `_resolve_delta_target`, `log2fc` kwarg handling,
-  `(B, 1, 1)` scalar fallback, `abs_weight` regularizer branch,
-  `loss_components`/forward decomposition. One class, one
-  `__init__`, one `forward`. Net −135.
+  ~120 (validation + docstring included). Removes
+  `_resolve_delta_target`, `log2fc` kwarg handling, `(B, 1, 1)`
+  scalar fallback, `abs_weight` regularizer branch. Adds `(B, N, L)`
+  shape validation. `loss_components` is kept (required by
+  `CerberusModule._shared_step`) and returns a single
+  `{"delta_loss": …}` entry. Net **−60**.
 - `attribution.py`: `DifferentialAttributionTarget` class removed
-  entirely. `AttributionTarget` gains delta reductions and a
-  `channels: int | tuple[int, int]` field. `DIFFERENTIAL_TARGET_REDUCTIONS`
-  removed. Registry-based dispatch tightens the `forward` body.
-  Net −70.
+  entirely. `AttributionTarget` gains delta reductions, a
+  `channels: int | tuple[int, int]` field, and arity validation in
+  `__init__`. `DIFFERENTIAL_TARGET_REDUCTIONS` removed; dispatch
+  stayed as an `if/elif` chain. Net **−24**.
 - `__init__.py`: `DifferentialAttributionTarget` and
-  `DIFFERENTIAL_TARGET_REDUCTIONS` removed from exports. Net −4.
-- Net library delta: **−209 lines, zero optional protocols, zero
-  overloading, zero `abs_weight`-style dormant features**.
+  `DIFFERENTIAL_TARGET_REDUCTIONS` removed from exports. Net **−4**.
+- Net library delta: **~−90 lines, zero optional protocols, zero
+  overloading, zero `abs_weight`-style dormant features.**
 
 **Tool (`tools/train_multitask_differential_bpnet.py`)** — net
-~−680 lines:
+**−227** lines:
 
-- 1068 → ~390. The tool now contains the BED merge, two-phase
-  coordination, trunk freezing, checkpoint glob, and DeepLIFTSHAP
-  pipe — exactly the workflow-specific code that has no business
-  in the library. No `_DiffWrapper`, no `_Phase2Module`, no
-  offline log2FC precompute.
+- 1134 → 907. The tool still contains the BED merge, two-phase
+  coordination, checkpoint glob, and DeepLIFTSHAP pipe — exactly
+  the workflow-specific code that has no business in the library.
+  No `_DiffWrapper`, no `_Phase2Module`, no offline log2FC
+  precompute, no TSV writer, no `--abs-weight` / `--diff-pseudocount`
+  flags. Phase 2 is a regular `train_single` / `train_multi` call
+  with `pretrained=[PretrainedConfig(...)]`. The
+  `run_interpretation` block is essentially unchanged (~175 lines)
+  and was a larger fraction of the surviving tool than the design
+  sketch anticipated.
 
-**Tests** — net ~−80 lines:
+**Tests** — net **−63** lines across differential + attribution + tool test files:
 
-- ~4 new tests (~50 lines): delta derivation from targets,
-  channels-arity validation, delta-reduction correctness, index
-  validation.
-- ~6 removed tests (~130 lines): log2fc-kwarg protocol tests,
-  abs_weight tests, scalar-fallback test,
-  `DifferentialAttributionTarget`-shim tests.
-- Existing tests updated to use the unified `AttributionTarget`
-  (mechanical).
+- +8 new tests on the single-path loss (delta derivation,
+  pseudocount effect, shape / channel-count validation,
+  components-dict shape).
+- +~8 new tests on `AttributionTarget` delta reductions and
+  `channels` arity validation.
+- Removed: log2fc-kwarg tests, abs-weight tests, scalar-fallback
+  test, the `_DiffWrapper` test file (53 lines).
+- Existing attribution tests updated to use the unified
+  `AttributionTarget` (mechanical; `channel=` → `channels=`).
 
-**Docs** — net +~30 lines:
+**Docs** — net +~190 lines:
 
-- `docs/usage.md`: short section describing the two-phase workflow
-  pointing at the tool.
-- `CHANGELOG.md`: one entry under `### Changed` describing the
-  `DifferentialCountLoss` / `AttributionTarget` API simplification.
+- `CHANGELOG.md`: consolidated `[Unreleased]` block with
+  `### Added` / `### Changed` / `### Fixed` / `### Removed` /
+  `### Internal` sections.
+- `docs/models.md`: new "MultitaskBPNet" / "DifferentialCountLoss"
+  sections (~100 lines).
+- `docs/usage.md`: new "Two-phase multitask-differential training"
+  and "Scalar attribution targets" sections (~90 lines).
+- `docs/internal/taylor_ism_integration.md`: one-word fix for the
+  `channel=` → `channels=` rename.
 
-**Net across the tree: ≈ −940 lines.**
+**Net across the tree (code + tests, excluding docs and this
+design doc): ≈ −380 lines.** The design's original
+≈ −940 estimate was optimistic — the gap is mostly (a)
+`loss_components` staying, (b) `run_interpretation` not being a
+library-level helper, (c) no library changes to avoid the
+`run_phase2` scheduler/optimizer boilerplate.
 
 **Intentional breaking changes** (all have zero known external
 callers, all documented with §13 re-entry plans):
@@ -1733,6 +1920,11 @@ callers, all documented with §13 re-entry plans):
 4. `DifferentialAttributionTarget` class removed.
 5. `DIFFERENTIAL_TARGET_REDUCTIONS` export removed.
 6. `AttributionTarget.channel` → `AttributionTarget.channels`.
+7. `DifferentialCountLoss.loss_components` returns a single
+   `"delta_loss"` key (the `abs_loss_a` / `abs_loss_b` conditional
+   entries are gone).
+8. Tool CLI flags `--abs-weight` and `--diff-pseudocount` dropped.
 
-All six land in one commit; no migration period; no compatibility
-shim.
+Commits: `74e3999` (attribution unification + pyrightconfig) and
+`e86ddaa` (loss simplification + Phase 2 tool rewrite). No
+deprecation shim on either side.

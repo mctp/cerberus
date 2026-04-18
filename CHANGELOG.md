@@ -7,87 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- **`DifferentialCountLoss` collapses to a single-path loss.** The constructor
-  is now ``DifferentialCountLoss(cond_a_idx, cond_b_idx, count_pseudocount)``;
-  ``forward(outputs, targets)`` returns a single MSE scalar. The delta target
-  is derived inline from the ``(B, N, L)`` targets tensor as
-  ``log2((sum_B + pc) / (sum_A + pc))`` (pseudocount on linear scale, same
-  units as the length-summed signal — keeps Phase 1 and Phase 2 in the same
-  log-space). No ``log2fc`` kwarg, no ``(B, 1, 1)`` scalar fallback, no
-  ``abs_weight`` regularizer, no four-row truth table. See
-  ``docs/internal/differential_workflow_redesign.md`` §13 for the re-entry
-  plans if external delta labels or the absolute-count regularizer become
-  required.
-- **Phase 2 training runs on the standard cerberus pipeline.**
-  ``tools/train_multitask_differential_bpnet.py``'s Phase 2 is now a regular
-  ``train_single`` / ``train_multi`` call with a ``ModelConfig`` pointing at
-  ``MultitaskBPNet`` + ``DifferentialCountLoss`` + ``pretrained=[PretrainedConfig(...)]``.
-  Dropped the tool-private ``_DiffWrapper`` / ``_Phase2Module`` /
-  ``_compute_log2fc_from_bigwigs`` / ``_DifferentialRecord`` /
-  ``_write_differential_targets`` / ``_get_pos_intervals`` helpers (~350
-  lines). Multi-GPU DDP strategy is overridden to
-  ``ddp_find_unused_parameters_true`` because the profile heads receive no
-  gradient under the differential loss.
-
-### Removed
-- **``DifferentialCountLoss(log2fc=...)`` kwarg** — delta is derived inline.
-- **``DifferentialCountLoss(abs_weight=...)`` argument** — absolute-count
-  regularizer was never set by any in-tree caller and its default was 0.0
-  per Naqvi et al. 2025.
-- **``(B, 1, 1)`` scalar-fallback protocol** for ``targets`` — targets must
-  now be ``(B, N, L)`` with ``N >= max(cond_a_idx, cond_b_idx) + 1``.
-- **``DifferentialCountLoss.loss_components`` no longer returns
-  ``abs_loss_a`` / ``abs_loss_b``** — only ``delta_loss`` remains.
-- **``--abs-weight`` CLI flag** in
-  ``tools/train_multitask_differential_bpnet.py`` — no corresponding loss
-  feature.
-- **``--diff-pseudocount`` CLI flag** — Phase 2 reuses Phase 1's pseudocount
-  (``--count-pseudocount * --target-scale``) for log-space consistency.
-- **Phase 2 ``differential_targets.tsv`` provenance output** — no log2FC is
-  precomputed any more; derivable on demand from the val dataset + loss.
-- **``tests/test_train_multitask_differential_tool.py``** deleted —
-  ``_DiffWrapper`` no longer exists.
-
-### Changed
-- **`AttributionTarget` unifies single-channel and delta reductions.** The
-  `channels` field is now `int | tuple[int, int]` — `int` for the five
-  single-channel reductions (`log_counts`, `profile_bin`,
-  `profile_window_sum`, `pred_count_bin`, `pred_count_window_sum`), and
-  `(cond_a_idx, cond_b_idx)` for the two delta reductions
-  (`delta_log_counts`, `delta_profile_window_sum`). The constructor
-  validates arity at construction time. `bin_index`, `window_start`, and
-  `window_end` now default to `None` (previously required positional).
-
-### Removed
-- **`DifferentialAttributionTarget` removed.** Use
-  `AttributionTarget(reduction="delta_log_counts", channels=(a, b))` (or
-  `"delta_profile_window_sum"`) instead. In-tree callers in
-  `tools/train_multitask_differential_bpnet.py` and `tests/test_attribution.py`
-  were updated in the same commit; no compatibility shim is kept.
-- **`DIFFERENTIAL_TARGET_REDUCTIONS` constant removed.** The two delta
-  reduction names are members of `TARGET_REDUCTIONS` (now 7 entries).
-- **`AttributionTarget.channel` attribute renamed to `.channels`.**
-  Callers constructing the target with `channel=` (kwarg) must update to
-  `channels=`. Call sites in `tools/export_tfmodisco_inputs.py`,
-  `src/cerberus/tpcav.py`, and the ISM-vs-Taylor notebook updated in the
-  same commit.
-
-### Internal
-- **Differential-learning workflow redesign design doc**
-  (`docs/internal/differential_workflow_redesign.md`). Selects Option B:
-  collapse `DifferentialCountLoss` to a single-path loss that derives the
-  delta from the `(B, N, L)` `targets` tensor, unify `AttributionTarget`
-  and `DifferentialAttributionTarget` into a single class dispatched by
-  `reduction` (with `channels: int | tuple[int, int]`), and rewrite
-  `tools/train_multitask_differential_bpnet.py` Phase 2 on the standard
-  `train_single` / `train_multi` path (no `_DiffWrapper`, no offline log2FC
-  precompute, no `_Phase2Module`). Guides the commits that follow.
-
 ### Added
 - **Two-phase multitask-differential BPNet workflow.** New library primitives
   plus an end-to-end CLI for training a shared-trunk BPNet on N conditions
-  and fine-tuning its count heads on an external log2FC target:
+  and fine-tuning its count heads on the per-peak log2FC derived from the
+  two-condition signal:
   - `MultitaskBPNet` / `MultitaskBPNetLoss` (`src/cerberus/models/bpnet.py`):
     Phase 1 shared-trunk model with one profile + count output per condition
     (bpAI-TAC style, Chandra et al. 2025). Enforces `predict_total_count=False`
@@ -95,27 +19,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`
     and maps `alpha`/`beta` to `count_weight`/`profile_weight`.
   - `DifferentialCountLoss` (`src/cerberus/loss.py`): Phase 2 fine-tuning loss
-    supervising `log_counts[:, B] - log_counts[:, A]` against an external
-    log2FC target read from the `log2fc` batch-context kwarg. Profile loss
-    is disabled (Naqvi et al. 2025). Optional `abs_weight > 0` regularises
-    the two count heads to their absolute log-counts.
-  - `DifferentialAttributionTarget` + `DIFFERENTIAL_TARGET_REDUCTIONS`
-    (`src/cerberus/attribution.py`): wraps a multi-condition model output
-    into a scalar `f_B - f_A` target for ISM/TISM/IG/DLS attribution. Two
-    reductions: `delta_log_counts` (total binding delta) and
-    `delta_profile_window_sum` (footprint-shape delta over a window).
-    Required for correct differential attribution with nonlinear methods
-    (DeepLIFT/DeepLIFTSHAP). Exported from the top-level package.
+    supervising `log_counts[:, B] - log_counts[:, A]` on the per-peak log2FC
+    derived inline from the `(B, N, L)` targets tensor as
+    `log2((sum_B + pc) / (sum_A + pc))`. Pseudocount is on linear scale
+    (same units as the length-summed signal, shared with Phase 1's
+    `MSEMultinomialLoss.count_pseudocount`). Profile loss is disabled
+    following Naqvi et al. 2025. Constructor:
+    `DifferentialCountLoss(cond_a_idx, cond_b_idx, count_pseudocount)`;
+    `forward(outputs, targets)` returns a single MSE scalar.
+  - `AttributionTarget` delta reductions (`src/cerberus/attribution.py`):
+    two new reductions `delta_log_counts` and `delta_profile_window_sum`
+    wrap a multi-condition model output into a scalar `f_B - f_A` target
+    for ISM/TISM/IG/DLS attribution. Activated by passing
+    `channels=(cond_a_idx, cond_b_idx)` — the same class handles both
+    single-channel and delta attributions. Required for nonlinear
+    attribution (DeepLIFT/DeepLIFTSHAP) where
+    `attr(f_B) - attr(f_A) != attr(f_B - f_A)`.
   - `tools/train_multitask_differential_bpnet.py`: end-to-end CLI running
-    Phase 1 multi-task training → Phase 2 log2FC fine-tuning (log2FC
-    derived per-peak from the input bigwigs, one float per sampler-ordered
-    peak) → optional DeepLIFTSHAP + TF-MoDISco interpretation.
+    Phase 1 multi-task training → Phase 2 differential fine-tuning via the
+    standard `train_single` / `train_multi` pipeline with
+    `pretrained=[PretrainedConfig(path=phase1_ckpt)]` → optional
+    DeepLIFTSHAP + TF-MoDISco interpretation.
 - **`get_precision_kwargs`** (`src/cerberus/utils.py`): shared helper
   returning standardized PyTorch Lightning trainer precision kwargs for the
   three supported modes (`full` / `mps` / `bf16`). Auto-opts into
   `ddp_find_unused_parameters_false` for multi-GPU CUDA runs; callers can
   disable the DDP override via `use_ddp_find_unused_parameters_false=False`
-  (used by BiasNet). Covered by `tests/test_train_precision.py`.
+  (used by BiasNet). Rejects unknown precision strings. Covered by
+  `tests/test_train_precision.py`.
 - **Minimal TPCAV adapter for single-task BPNet.** New `cerberus.tpcav`
   module providing `build_tpcav_target_model` (wraps a BPNet output through
   `AttributionTarget` so upstream [tpcav](https://github.com/seqcode/TPCAV)
@@ -143,6 +74,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/test_export_attribution_bigwig.py`. `docs/usage.md` documents the
   new outputs and BigWig workflow.
 
+### Changed
+- **`AttributionTarget` unifies single-channel and delta reductions into one
+  class.** The `channels` field is now `int | tuple[int, int]` — `int` for
+  the five single-channel reductions (`log_counts`, `profile_bin`,
+  `profile_window_sum`, `pred_count_bin`, `pred_count_window_sum`) and
+  `(cond_a_idx, cond_b_idx)` for the two delta reductions
+  (`delta_log_counts`, `delta_profile_window_sum`, new — see **Added**).
+  Arity is validated at construction time. `bin_index`, `window_start`,
+  `window_end` now default to `None` (previously required positional).
+  `TARGET_REDUCTIONS` now has 7 entries (was 5).
+- **`ModelEnsemble` now accepts `fold: int | None`.** When set, only the
+  requested fold is loaded (raises `ValueError` if absent from
+  `ensemble_metadata.yaml`); when `None` (default), behaviour is unchanged —
+  all folds listed in the metadata are loaded. Lets per-fold tools avoid the
+  memory/disk cost of loading unused folds.
+- **`tools/export_tfmodisco_inputs.py` now uses `ModelEnsemble(fold=...)`**
+  instead of its own manual fold-resolution + hparams parsing + model
+  instantiation chain. Drops ~35 lines of duplicated logic; the
+  `--checkpoint-dir` argument now requires the standard training-root layout
+  (containing `ensemble_metadata.yaml` and `fold_N/` subdirs) — previously
+  it also accepted a direct fold directory or nested intermediate, but no
+  caller was exercising those shapes.
+- **Training CLIs share `get_precision_kwargs`.** `tools/train_asap.py`,
+  `tools/train_biasnet.py`, `tools/train_bpnet.py`, `tools/train_dalmatian.py`,
+  `tools/train_dalmatian_multitask.py`, `tools/train_gopher.py`,
+  `tools/train_pomeranian.py`, and
+  `tools/train_multitask_differential_bpnet.py` now call the shared helper
+  instead of each carrying a private `_get_precision_kwargs` copy.
+- **`load_intervals_bed` now reads gzipped files transparently**
+  (`src/cerberus/interval.py`). `.gz`-suffixed paths are opened with
+  `gzip.open(..., "rt")`; plain-text paths keep the previous behavior.
+  Matches the format of the shipped test fixtures (e.g.
+  `tests/data/fixtures/chip_ar_mdapca2b_intervals_test.bed.gz`) so notebooks
+  no longer need to inline their own `gzip.open` read loops.
+- **ISM-vs-Taylor notebook now bypasses the dataset pipeline.** Previously
+  built a full `CerberusDataset` + fold-split just to extract one peak's
+  one-hot; now uses `load_intervals_bed` (fixture) + `SequenceExtractor`
+  directly, shaving ~5 s of setup and removing unnecessary `download_*` /
+  fold-split overhead. No API change — just a consumer migration to
+  existing, lighter-weight primitives.
+- **Pyright: silence `reportPrivateImportUsage` project-wide**
+  (`pyrightconfig.json`). The rule was flagging 1769 legitimate
+  `torch.*` references (`torch.zeros`, `torch.softmax`, etc.) that
+  `torch`'s re-exports don't expose in `__all__`, drowning out the 3
+  real errors. No source code change required.
+
 ### Fixed
 - **`ModelEnsemble(fold=N)` now uses fold-specific `hparams.yaml`.** In a
   `train_multi` layout each fold writes its own `hparams.yaml` with
@@ -157,18 +134,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`DifferentialCountLoss` rejects negative `cond_*_idx`** (previously
   silently selected from the end of the tensor via Python slice semantics
   and supervised the wrong channel pair).
-- **`DifferentialCountLoss._resolve_delta_target` now raises a clear
-  error** when the `log2fc` kwarg's batch size does not match `targets`.
-  Previously the mismatch surfaced as a generic `delta_pred.shape != ...`
-  error that did not identify `log2fc` as the culprit.
-- **`_DiffWrapper` in `tools/train_multitask_differential_bpnet.py` now
-  validates `len(log2fc) == len(dataset)` at construction time.**
-  Previously a short `log2fc` array (e.g. from an upstream filter that
-  silently dropped intervals) would raise `IndexError` partway through
-  Phase 2 training, wasting compute before surfacing the mismatch.
-- **`get_precision_kwargs` rejects unknown precision strings** (e.g.
-  `"bf16-mixed"`, `"fp16"`, `""`) instead of silently falling through to
-  the bf16 branch.
+
+### Removed
+- **`DifferentialAttributionTarget` class and `DIFFERENTIAL_TARGET_REDUCTIONS`
+  constant.** Folded into `AttributionTarget` (see **Changed** above). Use
+  `AttributionTarget(reduction="delta_log_counts", channels=(a, b))` (or
+  `"delta_profile_window_sum"`). No compatibility shim. In-tree callers
+  in `tools/train_multitask_differential_bpnet.py` and
+  `tests/test_attribution.py` were updated in the same commit.
+- **`AttributionTarget.channel` attribute renamed to `.channels`.** Callers
+  constructing the target with `channel=` (kwarg) must update to
+  `channels=`. Call sites in `tools/export_tfmodisco_inputs.py`,
+  `src/cerberus/tpcav.py`, and the ISM-vs-Taylor notebook updated in the
+  same commit.
+
+### Internal
+- **Differential-learning workflow redesign design doc**
+  (`docs/internal/differential_workflow_redesign.md`). Selects Option B:
+  collapse `DifferentialCountLoss` to a single-path loss that derives the
+  delta from the `(B, N, L)` `targets` tensor, unify `AttributionTarget`
+  and `DifferentialAttributionTarget` into a single class dispatched by
+  `reduction` (with `channels: int | tuple[int, int]`), and run
+  `tools/train_multitask_differential_bpnet.py` Phase 2 on the standard
+  `train_single` / `train_multi` path (no `_DiffWrapper`, no offline log2FC
+  precompute, no `_Phase2Module`). Drives the other entries in this
+  release.
 
 ### Changed
 - **`ModelEnsemble` now accepts `fold: int | None`.** When set, only the

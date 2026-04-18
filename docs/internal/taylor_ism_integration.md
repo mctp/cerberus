@@ -101,7 +101,7 @@ The old `ATTRIBUTION_MODES` constant named `AttributionTarget` **reductions** (`
 TISM accepts baseline as `None` → uniform `1/N`, `(N,)` per-base frequencies, `(N, L)` per-position, or full `(B, N, L)` per-sample ([torch_grad.py:76-95](../../s2f-models/repos/TISM/tism/torch_grad.py#L76-L95)). Required for `hypothetical`, `global`, and for DeepLiftShap semantics. Cerberus has **no** baseline anywhere in `attribution.py`; DLS baselines live only inside `tools/export_tfmodisco_inputs.py` (shuffle vs zero strategy flags). Any future port of `hypothetical` or `global` modes needs a baseline surface in the library.
 
 ### 5. No native multi-track
-`AttributionTarget` reduces to a scalar by construction; multi-track attribution means looping `AttributionTarget(channel=k)` for `k in tracks` and redoing the forward each time. TISM's `takegrad(tracks=[...])` and `ism(tracks=[...])` iterate tracks sharing one cached forward per sample. Phase 4 addresses this computationally, but the **class design** (one target = one scalar) is the root constraint.
+`AttributionTarget` reduces to a scalar by construction; multi-track attribution means looping `AttributionTarget(channels=k)` for `k in tracks` and redoing the forward each time. TISM's `takegrad(tracks=[...])` and `ism(tracks=[...])` iterate tracks sharing one cached forward per sample. Phase 4 addresses this computationally, but the **class design** (one target = one scalar) is the root constraint.
 
 ### 6. No `multiply_by_inputs` switch
 Standard "gradient × input" visualization is one line in TISM (`ismout * x.unsqueeze(1)`). Cerberus has no hook for it — it's usable only via users re-implementing the multiply outside the library.

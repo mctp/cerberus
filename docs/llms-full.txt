@@ -416,6 +416,15 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap --multi
     ```
 
+*   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
+    ```bash
+    python tools/train_multitask_differential_bpnet.py \
+        --bigwig-a LNCAP.rpm.bw --peaks-a LNCAP-macs2.bed.gz \
+        --bigwig-b 22Rv1.rpm.bw --peaks-b 22Rv1-macs2.bed.gz \
+        --name-a LNCAP --name-b 22Rv1 \
+        --output-dir models/foxa1_differential --stable --interpret
+    ```
+
 All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
 
 | Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_dalmatian.py` | `train_gopher.py` | `train_asap.py` |
@@ -428,6 +437,55 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 | `--output-len` | `1000` | `1024` | `1024` | `1024` | `2048` |
 | `--output-bin-size` | `1` | `1` | `1` | `4` | `4` |
 | Loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | `mse` (DalmatianLoss) | — (ProfilePoissonNLLLoss) | — (ProfilePoissonNLLLoss) |
+
+## Two-phase multitask-differential training
+
+`tools/train_multitask_differential_bpnet.py` trains a [MultitaskBPNet](models.md#multitaskbpnet) on two conditions in two phases, following the recipe from bpAI-TAC (Chandra et al. 2025) and Naqvi et al. 2025:
+
+- **Phase 1 — multi-task absolute model.** Jointly trains a shared BPNet trunk on condition A and condition B with `MultitaskBPNetLoss` (per-condition profile + count heads). The trunk learns sequence features that matter for *both* conditions, not the confound of separately-trained solo models.
+- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises `log_counts_B − log_counts_A` on the per-peak log2 fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log2FC table.
+- **Optional interpretation.** With `--interpret`, runs DeepLIFTSHAP on the fine-tuned model through `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` and pipes the result into TF-MoDISco.
+
+Both phases run on the standard `train_single` / `train_multi` pipeline. The companion library primitives are [MultitaskBPNet](models.md#multitaskbpnet), [MultitaskBPNetLoss](models.md#loss-multitaskbpnetloss), and [DifferentialCountLoss](models.md#differentialcountloss).
+
+```bash
+# Single-fold two-condition training + interpretation in one call.
+python tools/train_multitask_differential_bpnet.py \
+    --bigwig-a LNCAP.rpm.bw --peaks-a LNCAP-macs2.bed.gz \
+    --bigwig-b 22Rv1.rpm.bw --peaks-b 22Rv1-macs2.bed.gz \
+    --name-a LNCAP --name-b 22Rv1 \
+    --output-dir models/foxa1_differential \
+    --stable --interpret
+```
+
+Output layout:
+```
+models/foxa1_differential/
+├── merged_peaks.bed            # union of peaks-a + peaks-b
+├── phase1/single-fold/         # standard train_single output
+│   └── fold_.../model.pt       # Phase 1 weights
+├── phase2/single-fold/         # standard train_single output
+│   └── fold_.../model.pt       # Phase 2 fine-tuned weights
+└── interpretation/             # only with --interpret
+    ├── ohe.npz, attr.npz
+    ├── modisco_results.h5
+    └── report/
+```
+
+Key flags (see `--help` for the full list):
+
+| Flag | Purpose |
+|---|---|
+| `--bigwig-a` / `--peaks-a` / `--name-a` | Condition A inputs and label |
+| `--bigwig-b` / `--peaks-b` / `--name-b` | Condition B inputs and label |
+| `--stable` | Phase 1 stable-mode overrides (AdamW + cosine + weight-norm + GELU) |
+| `--multi` | Cross-validation (both phases run `train_multi`) |
+| `--skip-phase1 --phase1-dir <path>` | Reuse an existing Phase 1 output |
+| `--skip-phase2` | Phase 1 + interpretation only |
+| `--count-pseudocount` | Pseudocount on *linear* scale, shared by Phase 1 `MSEMultinomialLoss` and Phase 2 `DifferentialCountLoss` so both phases operate in the same log-space |
+| `--interpret` | Run DeepLIFTSHAP + TF-MoDISco on the Phase 2 model |
+
+The Phase 2 loss derives the per-peak log2FC inline from the `(B, N, L)` targets tensor, so no `--diff-pseudocount` or external log2FC file is required — for external-labels support see `docs/internal/differential_workflow_redesign.md` §13.
 
 ## scATAC-seq Pseudobulk Tools
 
@@ -668,6 +726,40 @@ Common interpretation target modes (`--target-mode`):
 | `profile_window_sum` | Attribution to summed profile logits in `[start:end)` (`--window-start`, `--window-end`) |
 | `pred_count_bin` | Attribution to one predicted count bin (softmax(logits) × exp(log_counts)) |
 | `pred_count_window_sum` | Attribution to summed predicted counts in a window |
+
+`tools/export_tfmodisco_inputs.py` drives the first five (single-channel) modes. The two delta modes — `delta_log_counts` and `delta_profile_window_sum` — are produced by `tools/train_multitask_differential_bpnet.py --interpret` for multi-condition models; see [Scalar attribution targets](#scalar-attribution-targets) below for direct library-level use.
+
+### Scalar attribution targets
+
+All cerberus attribution paths (Captum IG / DeepLIFTSHAP, exact ISM, Taylor-ISM, TPCAV) require a scalar-output `nn.Module` to differentiate. `cerberus.attribution.AttributionTarget` is the wrapper that reduces a cerberus model's multi-channel / multi-bin output to one scalar per batch element.
+
+One class, seven reductions. `channels` is an `int` for the five single-channel reductions and a `(cond_a_idx, cond_b_idx)` pair for the two delta reductions; arity is validated at construction time.
+
+| Reduction | `channels` | Extra fields | Output |
+|---|---|---|---|
+| `log_counts` | `int` | — | `log_counts[:, channels]` |
+| `profile_bin` | `int` | `bin_index` *(defaults to center)* | `logits[:, channels, bin_index]` |
+| `profile_window_sum` | `int` | `window_start` / `window_end` *(default full)* | `logits[:, channels, start:end].sum(-1)` |
+| `pred_count_bin` | `int` | `bin_index` | softmax(logits) × exp(log_counts), one bin |
+| `pred_count_window_sum` | `int` | `window_start` / `window_end` | softmax(logits) × exp(log_counts), summed over window |
+| `delta_log_counts` | `(int, int)` | — | `log_counts[:, b] − log_counts[:, a]` |
+| `delta_profile_window_sum` | `(int, int)` | `window_start` / `window_end` | `(logits[:, b] − logits[:, a])[:, start:end].sum(-1)` |
+
+```python
+from cerberus.attribution import AttributionTarget
+
+# Single-channel: total log-counts of channel 0 (the default BPNet target).
+target = AttributionTarget(model=model, reduction="log_counts", channels=0)
+
+# Delta: log_counts_B − log_counts_A of a MultitaskBPNet.
+delta_target = AttributionTarget(
+    model=multitask_model,
+    reduction="delta_log_counts",
+    channels=(0, 1),          # (cond_a_idx, cond_b_idx)
+)
+```
+
+The delta reductions are required for **nonlinear** attribution (DeepLIFT / DeepLIFTSHAP) on a difference target, where `attr(f_B) − attr(f_A) ≠ attr(f_B − f_A)`. For linear methods (ISM, TISM, plain gradients) the two coincide, so the delta wrapper is a convenience rather than a correctness requirement.
 
 Notes:
 
@@ -2309,6 +2401,104 @@ model = BPNet1024(
 # Both return ProfileCountOutput(logits=..., log_counts=...)
 ```
 
+## MultitaskBPNet
+
+**Implementation**: `cerberus.models.bpnet.MultitaskBPNet`
+**Source**: `src/cerberus/models/bpnet.py`
+
+Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to [BPNet](#bpnet) with `predict_total_count=False` enforced, so each condition produces an independent per-channel scalar count head. This is Phase 1 of the two-phase differential-accessibility workflow (see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training) in `docs/usage.md`).
+
+The split pays off when you want to compare two or more steady-state conditions on the same sequences: a joint shared-trunk model sees both conditions during training, so the trunk encodes cross-condition sequence grammar rather than whatever each condition's solo-trained model happened to pick up. This is the architectural principle of bpAI-TAC (Chandra et al. 2025) and the starting point for Naqvi et al. 2025's differential fine-tuning recipe.
+
+### Key Features
+* **One profile + count head per condition**: `output_channels=[name_a, name_b, ...]` defines the condition names. Must contain at least 2 entries.
+* **`predict_total_count=False` enforced**: each condition gets its own scalar count-head output. Phase 2 differential fine-tuning supervises the *difference* of two of those scalars, so per-channel counts are a hard requirement.
+* **Same trunk as BPNet**: all trunk knobs (`filters`, `n_dilated_layers`, `residual_architecture`, `activation`, `weight_norm`, …) behave identically to BPNet.
+
+### Loss: MultitaskBPNetLoss
+
+Wraps `MSEMultinomialLoss` with the four settings Phase 1 multi-task training requires: `count_per_channel=True`, `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.
+
+Parameters `alpha` and `beta` map to `count_weight` and `profile_weight` respectively, matching the [BPNetLoss](#loss-bpnetloss) convention. `alpha="adaptive"` is supported the same way as BPNetLoss.
+
+```python
+from cerberus.config import ModelConfig
+
+model_config = ModelConfig(
+    name="MultitaskBPNet",
+    model_cls="cerberus.models.bpnet.MultitaskBPNet",
+    loss_cls="cerberus.models.bpnet.MultitaskBPNetLoss",
+    loss_args={"alpha": "adaptive", "beta": 1.0},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
+)
+```
+
+### Usage
+
+```python
+from cerberus.models.bpnet import MultitaskBPNet
+
+# Two-condition FOXA1 ChIP-seq example (LNCaP vs 22Rv1).
+model = MultitaskBPNet(
+    output_channels=["LNCAP", "22Rv1"],
+    input_len=2114,
+    output_len=1000,
+    filters=64,
+    n_dilated_layers=8,
+)
+# Returns ProfileCountOutput(logits=..., log_counts=...)
+# logits:     (batch, 2, 1000)
+# log_counts: (batch, 2)
+```
+
+For the companion Phase 2 differential loss see [DifferentialCountLoss](#differentialcountloss) below; for the end-to-end two-phase CLI see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training).
+
+### DifferentialCountLoss
+
+**Implementation**: `cerberus.loss.DifferentialCountLoss`
+
+Phase 2 fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak log2 fold-change derived inline from the two-channel `(B, N, L)` targets tensor Phase 1 already trained against:
+
+```
+target_delta = log2((sum_B + pc) / (sum_A + pc))
+```
+
+where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). Setting `count_pseudocount` to match Phase 1's keeps both phases in the same log-space. Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
+
+Single path: `forward(outputs, targets)` returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be `(B, N, L)` with `N >= max(cond_a_idx, cond_b_idx) + 1`.
+
+```python
+from cerberus.config import ModelConfig, PretrainedConfig
+
+# Phase 2 ModelConfig: same MultitaskBPNet architecture as Phase 1,
+# DifferentialCountLoss in place of MultitaskBPNetLoss, and the Phase 1
+# checkpoint listed under pretrained=[...].
+model_config = ModelConfig(
+    name="MultitaskBPNet_Phase2",
+    model_cls="cerberus.models.bpnet.MultitaskBPNet",
+    loss_cls="cerberus.loss.DifferentialCountLoss",
+    loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
+    pretrained=[
+        PretrainedConfig(
+            weights_path="models/foxa1/phase1/single-fold/fold_0/model.pt",
+            source=None, target=None, freeze=False,
+        )
+    ],
+    count_pseudocount=150.0,  # raw × target_scale, same as Phase 1
+)
+```
+
+`DifferentialCountLoss` is exported from `cerberus.loss`. For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+
+### References
+- bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.
+- Naqvi et al. (2025). *Transfer learning reveals sequence determinants of the quantitative response to transcription factor dosage.* Cell Genomics. PMC11160683.
+
 ## ConvNeXtDCNN (ASAP)
 
 **Implementation**: `cerberus.models.ConvNeXtDCNN`
@@ -3068,10 +3258,8 @@ We recommend setting `Pomeranian` (K9) as the default configuration for future e
 ## src/cerberus/__init__.py
 
 from .attribution import (
-    DIFFERENTIAL_TARGET_REDUCTIONS,
     TARGET_REDUCTIONS,
     AttributionTarget,
-    DifferentialAttributionTarget,
     compute_ism_attributions,
     compute_taylor_ism_attributions,
     mean_center_attributions,
@@ -3149,8 +3337,6 @@ __all__ = [
     # Attribution utilities
     "TARGET_REDUCTIONS",
     "AttributionTarget",
-    "DIFFERENTIAL_TARGET_REDUCTIONS",
-    "DifferentialAttributionTarget",
     "resolve_ism_span",
     "compute_ism_attributions",
     "compute_taylor_ism_attributions",
@@ -10118,43 +10304,38 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
 
 
 class DifferentialCountLoss(nn.Module):
-    """Phase 2 fine-tuning loss for differential accessibility prediction.
+    """Phase 2 fine-tuning loss supervising ``log_counts[:, B] - log_counts[:, A]``.
 
-    Supervises ``log_counts[:, cond_b_idx] - log_counts[:, cond_a_idx]``
-    with an external differential target such as DESeq2 / edgeR log2FC.
-    Profile loss is disabled (weight 0) following Naqvi et al. (2025), who
-    showed that only the count head needs to be retargeted: the profile heads
-    already encode condition-specific TF footprint grammar from Phase 1
-    multi-task training and do not require further adjustment.
+    The delta target is derived inline from the ``(B, N, L)`` ``targets``
+    tensor (the per-condition absolute-signal tracks Phase 1 already
+    supervised against): for each sample,
 
-    **Differential target resolution** (in priority order):
+    .. math::
 
-    1. ``log2fc`` keyword argument — a ``(B,)`` float tensor passed through
-       the batch context dict (analogous to how :class:`DalmatianLoss`
-       reads ``interval_source``).
-    2. Fallback — ``targets`` reshaped to ``(B, -1)`` and averaged over all
-       non-batch dimensions.  Handles a scalar stored as ``(B, 1, 1)`` or a
-       constant-valued track ``(B, 1, L)``.
+        \\Delta_{\\mathrm{target}} = \\log_2\\left(
+          \\frac{\\sum_\\ell \\mathrm{targets}[:, B, \\ell] + \\mathrm{pc}}{
+                 \\sum_\\ell \\mathrm{targets}[:, A, \\ell] + \\mathrm{pc}}
+        \\right)
 
-    **Optional absolute regularisation** (``abs_weight > 0``):
+    where the sum is over the length axis and ``pc`` is
+    ``count_pseudocount`` (use the same value Phase 1 used so ``log_counts``
+    live in the same log-space). The returned loss is
+    ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
 
-    When set, ``targets`` must be ``(B, N, L)`` absolute ATAC count tracks
-    (one channel per condition), and an additional MSE term anchors the two
-    relevant count heads to their absolute values.  This prevents the count
-    heads from collapsing (e.g. both drifting to zero) during fine-tuning.
-    Following Naqvi et al., ``abs_weight=0`` is the default — the trunk
-    adapts freely to the differential signal.
+    Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
+    the count head needs to be retargeted. The profile heads already encode
+    condition-specific TF footprint grammar from Phase 1 multi-task
+    training.
+
+    Single code path: ``forward(outputs, targets)`` with no optional
+    kwargs, no shape overloading, no absolute-count regularizer.
 
     Args:
-        cond_a_idx: Index of condition A in the ``log_counts`` output.
-            Default: 0.
-        cond_b_idx: Index of condition B in the ``log_counts`` output.
-            Default: 1.
-        abs_weight: Weight for absolute count regularisation.  Default: 0.0
-            (disabled, matching Naqvi et al. 2025).
-        count_pseudocount: Additive pseudocount applied when computing
-            target log-counts for the absolute regularisation term.
-            Must match the value used in Phase 1 training.  Default: 1.0.
+        cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
+        cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
+        count_pseudocount: Additive pseudocount used in the log2FC
+            derivation. Must match the value Phase 1 used so the two
+            phases share a log-space. Default 1.0.
 
     References:
         - Naqvi et al. (2025). *Transfer learning reveals sequence
@@ -10170,7 +10351,6 @@ class DifferentialCountLoss(nn.Module):
         self,
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
-        abs_weight: float = 0.0,
         count_pseudocount: float = 1.0,
     ) -> None:
         super().__init__()
@@ -10183,56 +10363,11 @@ class DifferentialCountLoss(nn.Module):
                 raise ValueError(f"{name} must be non-negative, got {idx}")
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
-        self.abs_weight = abs_weight
         self.count_pseudocount = count_pseudocount
 
-    def _resolve_delta_target(
-        self, targets: torch.Tensor, kwargs: dict[str, object]
+    def _delta_loss(
+        self, outputs: object, targets: torch.Tensor
     ) -> torch.Tensor:
-        """Extract the per-sequence log2FC target.
-
-        Reads ``log2fc`` from kwargs first; falls back to averaging
-        ``targets`` over all non-batch dimensions.
-        """
-        log2fc = kwargs.get("log2fc")
-        if log2fc is not None:
-            if not isinstance(log2fc, torch.Tensor):
-                raise TypeError(
-                    f"log2fc kwarg must be a torch.Tensor, got {type(log2fc)}"
-                )
-            flat = log2fc.float().flatten()
-            if flat.shape[0] != targets.shape[0]:
-                raise ValueError(
-                    f"log2fc kwarg has batch size {flat.shape[0]}, "
-                    f"expected {targets.shape[0]} to match the batch."
-                )
-            return flat
-        # Fallback: squeeze targets (B, 1, 1) or average constant-value track
-        return targets.float().reshape(targets.shape[0], -1).mean(dim=-1)
-
-    def loss_components(
-        self,
-        outputs: object,
-        targets: torch.Tensor,
-        **kwargs: object,
-    ) -> dict[str, torch.Tensor]:
-        """Compute differential and (optionally) absolute loss components.
-
-        Args:
-            outputs: :class:`~cerberus.output.ProfileCountOutput` with
-                ``log_counts`` of shape ``(B, N_conditions)``.
-            targets: Differential target as ``(B, 1, 1)`` / ``(B, 1, L)``
-                scalar, or absolute count tracks ``(B, N, L)`` when
-                ``abs_weight > 0``.  Can also be ignored in favour of a
-                ``log2fc`` kwarg.
-            **kwargs: Optional batch context.  If ``log2fc`` (``torch.Tensor``
-                of shape ``(B,)``) is present it is used as the differential
-                target; otherwise ``targets`` is averaged down to ``(B,)``.
-
-        Returns:
-            Dict with ``"delta_loss"`` (always) and ``"abs_loss_a"``,
-            ``"abs_loss_b"`` (when ``abs_weight > 0``).
-        """
         if not isinstance(outputs, ProfileCountOutput):
             raise TypeError(
                 f"DifferentialCountLoss requires ProfileCountOutput, "
@@ -10241,43 +10376,42 @@ class DifferentialCountLoss(nn.Module):
 
         log_counts = outputs.log_counts  # (B, N)
         n_channels = log_counts.shape[-1]
-        for name, idx in (("cond_a_idx", self.cond_a_idx), ("cond_b_idx", self.cond_b_idx)):
+        a, b = self.cond_a_idx, self.cond_b_idx
+        for name, idx in (("cond_a_idx", a), ("cond_b_idx", b)):
             if idx >= n_channels:
                 raise ValueError(
                     f"{name}={idx} is out of range for log_counts with "
                     f"{n_channels} channels"
                 )
 
-        delta_pred = log_counts[:, self.cond_b_idx] - log_counts[:, self.cond_a_idx]
-        target_delta = self._resolve_delta_target(targets, dict(kwargs))
-
-        if delta_pred.shape != target_delta.shape:
+        if targets.ndim != 3:
             raise ValueError(
-                f"delta_pred shape {delta_pred.shape} != "
-                f"target_delta shape {target_delta.shape}"
+                f"DifferentialCountLoss requires targets of shape (B, N, L); "
+                f"got {tuple(targets.shape)}"
+            )
+        n_cond_needed = max(a, b) + 1
+        if targets.shape[1] < n_cond_needed:
+            raise ValueError(
+                f"targets must have at least {n_cond_needed} channels to "
+                f"cover cond_a_idx={a} and cond_b_idx={b}, got shape "
+                f"{tuple(targets.shape)}"
             )
 
-        delta_loss = F.mse_loss(delta_pred, target_delta)
-        components: dict[str, torch.Tensor] = {"delta_loss": delta_loss}
+        counts = targets.float().sum(dim=-1)  # (B, N)
+        pc = self.count_pseudocount
+        target_delta = torch.log2(
+            (counts[:, b] + pc) / (counts[:, a] + pc)
+        )  # (B,)
+        delta_pred = log_counts[:, b] - log_counts[:, a]  # (B,)
+        return F.mse_loss(delta_pred, target_delta)
 
-        if self.abs_weight > 0.0:
-            targets_f = targets.float()
-            n_cond_needed = max(self.cond_a_idx, self.cond_b_idx) + 1
-            if targets_f.ndim < 3 or targets_f.shape[1] < n_cond_needed:
-                raise ValueError(
-                    f"abs_weight > 0 requires targets with shape (B, N, L) "
-                    f"where N >= {n_cond_needed} (to cover cond_a_idx={self.cond_a_idx} "
-                    f"and cond_b_idx={self.cond_b_idx}), "
-                    f"but got shape {tuple(targets_f.shape)}"
-                )
-            for idx, label in ((self.cond_a_idx, "a"), (self.cond_b_idx, "b")):
-                target_counts = targets_f[:, idx, :].sum(dim=-1)
-                target_log = torch.log(target_counts + self.count_pseudocount)
-                components[f"abs_loss_{label}"] = F.mse_loss(
-                    log_counts[:, idx], target_log
-                )
-
-        return components
+    def loss_components(
+        self,
+        outputs: object,
+        targets: torch.Tensor,
+        **kwargs: object,
+    ) -> dict[str, torch.Tensor]:
+        return {"delta_loss": self._delta_loss(outputs, targets)}
 
     def forward(
         self,
@@ -10285,15 +10419,7 @@ class DifferentialCountLoss(nn.Module):
         targets: torch.Tensor,
         **kwargs: object,
     ) -> torch.Tensor:
-        """Return the combined scalar loss."""
-        components = self.loss_components(outputs, targets, **kwargs)
-        total = components["delta_loss"]
-        if self.abs_weight > 0.0:
-            abs_total = sum(
-                v for k, v in components.items() if k.startswith("abs_loss_")
-            )
-            total = total + self.abs_weight * abs_total
-        return total
+        return self._delta_loss(outputs, targets)
 
 
 class DalmatianLoss(nn.Module):
