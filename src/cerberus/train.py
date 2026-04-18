@@ -17,6 +17,7 @@ from .config import (
     TrainConfig,
 )
 from .datamodule import CerberusDataModule
+from .freeze import apply_freeze, maybe_promote_ddp_strategy
 from .model_ensemble import update_ensemble_metadata
 from .module import configure_callbacks, instantiate
 from .pretrained import load_pretrained_weights
@@ -174,7 +175,10 @@ def _train(
       3. Module instantiation with the resolved model_config (which internally
          calls instantiate_metrics_and_loss to inject scaled count_pseudocount
          into loss_args and metrics_args).
-      4. trainer.fit().
+      4. Pretrained weight loading + declarative freezing (``model_config.freeze``);
+         DDP strategy is promoted to ``ddp_find_unused_parameters_true`` if any
+         parameter was frozen and the requested strategy was the ``_false`` variant.
+      5. trainer.fit().
 
     Keeping setup before instantiation ensures that loss weights derived from
     training data statistics are always concrete floats by the time the loss
@@ -245,16 +249,6 @@ def _train(
             save_dir = "."
         trainer_kwargs["logger"] = pl_loggers.CSVLogger(save_dir=str(save_dir))
 
-    # Initialize Trainer
-    trainer = pl.Trainer(
-        max_epochs=train_config.max_epochs,
-        callbacks=current_callbacks,
-        precision=precision,
-        reload_dataloaders_every_n_epochs=train_config.reload_dataloaders_every_n_epochs,
-        gradient_clip_val=train_config.gradient_clip_val,
-        **trainer_kwargs,
-    )
-
     # 1. Pre-compute and cache complexity metrics (rank 0 only in DDP).
     datamodule.prepare_data()
 
@@ -288,14 +282,32 @@ def _train(
     if pretrained:
         load_pretrained_weights(module.model, pretrained)
 
-    # 6. Train
+    # 6. Apply declarative freeze rules. Runs after weight loading so
+    #    patterns can target anything in the final model graph, and
+    #    before Trainer construction so the DDP strategy can be promoted
+    #    if any parameter is frozen.
+    if model_config.freeze:
+        freeze_report = apply_freeze(module.model, model_config.freeze)
+        trainer_kwargs = maybe_promote_ddp_strategy(trainer_kwargs, freeze_report)
+
+    # 7. Initialize Trainer
+    trainer = pl.Trainer(
+        max_epochs=train_config.max_epochs,
+        callbacks=current_callbacks,
+        precision=precision,
+        reload_dataloaders_every_n_epochs=train_config.reload_dataloaders_every_n_epochs,
+        gradient_clip_val=train_config.gradient_clip_val,
+        **trainer_kwargs,
+    )
+
+    # 8. Train
     trainer.fit(module, datamodule=datamodule)
 
-    # 7. Save clean state dict for inference (best checkpoint, no Lightning overhead)
+    # 9. Save clean state dict for inference (best checkpoint, no Lightning overhead)
     if root_dir is not None and trainer.is_global_zero:
         _save_model_pt(trainer, root_dir)
 
-    # 8. Save interval manifests for reproducible evaluation (rank-0 only)
+    # 10. Save interval manifests for reproducible evaluation (rank-0 only)
     if root_dir is not None and trainer.is_global_zero:
         datamodule.save_interval_manifests(Path(root_dir))
 
