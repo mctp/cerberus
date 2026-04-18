@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Two-phase multitask-differential BPNet workflow.** New library primitives
+  plus an end-to-end CLI for training a shared-trunk BPNet on N conditions
+  and fine-tuning its count heads on an external log2FC target:
+  - `MultitaskBPNet` / `MultitaskBPNetLoss` (`src/cerberus/models/bpnet.py`):
+    Phase 1 shared-trunk model with one profile + count output per condition
+    (bpAI-TAC style, Chandra et al. 2025). Enforces `predict_total_count=False`
+    and `>=2` output channels; the loss pins `count_per_channel=True`,
+    `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`
+    and maps `alpha`/`beta` to `count_weight`/`profile_weight`.
+  - `DifferentialCountLoss` (`src/cerberus/loss.py`): Phase 2 fine-tuning loss
+    supervising `log_counts[:, B] - log_counts[:, A]` against an external
+    log2FC target read from the `log2fc` batch-context kwarg. Profile loss
+    is disabled (Naqvi et al. 2025). Optional `abs_weight > 0` regularises
+    the two count heads to their absolute log-counts.
+  - `DifferentialAttributionTarget` + `DIFFERENTIAL_TARGET_REDUCTIONS`
+    (`src/cerberus/attribution.py`): wraps a multi-condition model output
+    into a scalar `f_B - f_A` target for ISM/TISM/IG/DLS attribution. Two
+    reductions: `delta_log_counts` (total binding delta) and
+    `delta_profile_window_sum` (footprint-shape delta over a window).
+    Required for correct differential attribution with nonlinear methods
+    (DeepLIFT/DeepLIFTSHAP). Exported from the top-level package.
+  - `tools/train_multitask_differential_bpnet.py`: end-to-end CLI running
+    Phase 1 multi-task training → Phase 2 log2FC fine-tuning (log2FC
+    derived per-peak from the input bigwigs, one float per sampler-ordered
+    peak) → optional DeepLIFTSHAP + TF-MoDISco interpretation.
+  - `examples/foxa1_lncap_22rv1_multitask_differential.sh`: FOXA1
+    LNCaP-vs-22Rv1 differential accessibility example.
 - **Interval-aligned attribution export.** `tools/export_tfmodisco_inputs.py`
   now emits `intervals.tsv` (row-aligned to the NPZ outputs) and
   `attribution_meta.json` (full provenance: checkpoint, fold, seed, method,

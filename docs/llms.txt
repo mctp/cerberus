@@ -165,6 +165,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss)`** — Poisson Multinomial Loss (Coupled/Global Count).
 - **`class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss)`** — Negative Binomial Multinomial Loss.
 - **`class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss)`** — Negative Binomial Multinomial Loss (Coupled).
+- **`class DifferentialCountLoss(nn.Module)`** — Phase 2 fine-tuning loss for differential accessibility prediction.
 - **`class DalmatianLoss(nn.Module)`** — Peak-conditioned factorized loss for the Dalmatian architecture.
 
 ### `cerberus.metrics`
@@ -218,6 +219,8 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class BPNet(nn.Module)`** — BPNet: Base-Resolution Prediction Net.
 - **`class BPNet1024(BPNet)`** — BPNet1024: A configuration of BPNet optimized for 2112 -> 1024 prediction without cropping.
 - **`class BPNetLoss(MSEMultinomialLoss)`** — BPNet Loss with parameters fixed to match chrombpnet-pytorch implementation.
+- **`class MultitaskBPNet(BPNet)`** — Multi-task BPNet: shared dilated tower with N condition-specific output channels.
+- **`class MultitaskBPNetLoss(MSEMultinomialLoss)`** — Phase 1 loss for :class:`MultitaskBPNet`.
 - **`class BPNetMetricCollection(MetricCollection)`** — MetricCollection for BPNet models.
 
 ### `cerberus.models.pomeranian`

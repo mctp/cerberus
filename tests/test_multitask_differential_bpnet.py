@@ -120,12 +120,31 @@ def test_multitask_bpnet_loss_alpha_beta():
         ("flatten_channels", True),
     ],
 )
-def test_multitask_bpnet_loss_warns_on_override(caplog, override_kwarg, conflicting_value):
+def test_multitask_bpnet_loss_warns_on_override(override_kwarg, conflicting_value):
+    """Override a pinned kwarg → a warning record is emitted on the bpnet logger.
+
+    Attaches a local handler to the ``cerberus.models.bpnet`` logger so the
+    assertion is independent of whether ``cerberus.setup_logging`` has been
+    called elsewhere in the test session (which sets propagate=False and
+    breaks caplog capture of ``cerberus.*`` loggers).
+    """
     import logging
 
-    with caplog.at_level(logging.WARNING):
+    records: list[logging.LogRecord] = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _ListHandler(level=logging.WARNING)
+    bpnet_logger = logging.getLogger("cerberus.models.bpnet")
+    bpnet_logger.addHandler(handler)
+    try:
         MultitaskBPNetLoss(**{override_kwarg: conflicting_value})
-    assert override_kwarg in caplog.text
+    finally:
+        bpnet_logger.removeHandler(handler)
+
+    assert any(override_kwarg in r.getMessage() for r in records)
 
 
 def test_multitask_bpnet_loss_phase1_roundtrip(model, seq, targets_2cond):
