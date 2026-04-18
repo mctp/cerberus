@@ -36,13 +36,22 @@ The proposal here is to do three things:
    `channel: int`), but the class count drops from two to one and
    `_resolve_window` is no longer duplicated.
 
-3. **Drop `DifferentialCountLoss`'s `targets` overloading** —
-   `targets` stays `(B, N, L)` absolute-signal always, matching what
-   every other cerberus loss sees. The three fallback branches in
-   `_resolve_delta_target` collapse to a single path: derive log2FC
-   from `targets.sum(dim=-1)` with a pseudocount. The `log2fc` kwarg
-   survives only as an opt-in override for callers that hand-compute
-   the target (e.g. DESeq2-style shrunk estimates).
+3. **Simplify `DifferentialCountLoss` to a single protocol.** `targets`
+   stays `(B, N, L)` absolute-signal always, matching what every other
+   cerberus loss sees. The three fallback branches in
+   `_resolve_delta_target` collapse to one path: derive the delta
+   target from `targets.sum(dim=-1)` with a pseudocount. The
+   `log2fc` kwarg and the `(B, 1, 1)` scalar fallback are both
+   removed; `DifferentialCountLoss.forward` becomes a tight,
+   self-contained function with no caller-facing protocol choice.
+
+External-labels support (DESeq2/edgeR shrunk log2FC, etc.) is **not a
+requirement** for this redesign. No current caller or test in cerberus
+exercises that path. The bigwig-derived log2FC that `SignalExtractor`
+yields is the only delta target the planned code needs to produce.
+§13 sketches how external-label support could be added in a later
+pass if demand appears; the recommended design is **not dependent on
+it**.
 
 After the rewrite the training tool loses `_DiffWrapper`, `_Phase2Module`
 (both become unnecessary), and `_compute_log2fc_from_bigwigs` +
@@ -57,15 +66,18 @@ Overall line count: the current tool is 1068 lines. A version built on
 the design proposed here is expected to be ~350 lines, with the saved
 ~700 lines distributed among (a) reusing `train_single` / `train_multi`,
 (b) dropping the inlined helpers, and (c) dropping the wrapper /
-precompute plumbing. Conversely, `src/cerberus/loss.py` gains
-~40 lines (the inline log2FC derivation) and
-`src/cerberus/attribution.py` shrinks by ~70 lines (single
-`AttributionTarget` instead of two).
+precompute plumbing. Conversely, `src/cerberus/loss.py` **net shrinks**
+(the inline log2FC derivation is smaller than the kwarg + fallback
+machinery it replaces) and `src/cerberus/attribution.py` shrinks by
+~70 lines (single `AttributionTarget` instead of two).
 
 Three design options are presented (§5), with option **B** recommended.
 §7 is a concrete blueprint for option B at the signature / config /
 migration level. §8 spells out the attribution unification
 independently — it is a win regardless of which of A/B/C is chosen.
+§13 describes the optional future-work path for external delta
+labels, with the explicit commitment that the planned code does not
+depend on any of it.
 
 ---
 
@@ -259,14 +271,25 @@ pseudocount, same log2. The difference is that it runs inside the
 training step using the already-extracted tensor, not in a separate
 offline pass.
 
-### 3.2 The precompute path has a legitimate raison d'être — but only for external labels
+### 3.2 External-labels support is not a current requirement
 
-The bigwig-derived log2FC is *one* kind of delta target. A user with
-replicates may prefer DESeq2 or edgeR shrunk estimates, which cerberus
-doesn't compute. The current `log2fc` kwarg mechanism correctly
-handles that case: the user precomputes log2FC offline, the loss
-reads it from the kwarg. This use case stays, but it becomes the
-*opt-in* path rather than the primary one.
+The `log2fc` kwarg exists in `DifferentialCountLoss` to let a caller
+precompute a delta target externally (e.g. DESeq2/edgeR shrunk
+estimates). Audit of the tree on marcin-feature:
+
+- No test exercises the kwarg-override path with anything other than
+  synthetic tensors for shape/type validation.
+- The training tool populates the kwarg from its own bigwig
+  precompute — which is exactly the work the redesign moves inside
+  the loss.
+- No CLI flag, external workflow, or user-facing documentation
+  references an external log2FC source.
+
+The bigwig-derived delta is the only delta any current code path
+produces. Treating external-labels support as a requirement would
+preserve machinery nobody is using. The recommended design drops
+that machinery; §13 describes how to add it back in a targeted way
+if and when a real external-label consumer appears.
 
 ### 3.3 What's missing (and cheap to add)
 
@@ -333,11 +356,11 @@ by the existing `log2fc` kwarg.
          │                      **batch_context)         │
          └──────────────┬────────────────────────────────┘
                         │
-                        │ targets passes through as (B, 2, L)
-                        │ log2fc kwarg NOT required
+                        │ targets passes through as (B, 2, L);
+                        │ no extra kwargs required.
                         ▼
          ┌───────────────────────────────────────────────┐
-         │  DifferentialCountLoss                        │
+         │  DifferentialCountLoss   (single code path)   │
          │     counts = targets.sum(dim=-1)   # (B, 2)   │
          │     target_delta = log2((counts_B + pc) /     │
          │                         (counts_A + pc))      │
@@ -347,24 +370,25 @@ by the existing `log2fc` kwarg.
          └───────────────────────────────────────────────┘
 ```
 
-The `log2fc` kwarg remains supported but becomes purely an opt-in
-override ("I have DESeq2 shrunk estimates, use those instead of the
-bigwig-derived signal").
+Single protocol, one code path: `forward(outputs, targets)` with no
+optional kwargs and no shape overloading. External-label support is
+deferred to §13 as future work.
 
 ---
 
 ## 5. Design Options
 
-### 5.1 Option A — Minimal: inline the log2FC derivation in the loss, keep everything else
+### 5.1 Option A — Minimal: inline the log2FC derivation; drop the kwarg path
 
 **Scope.**
 
-- `DifferentialCountLoss._resolve_delta_target` gains a new branch:
-  if `targets.ndim == 3` and `targets.shape[1] >= max(a, b) + 1`,
-  derive the delta from `targets.sum(dim=-1)` with `count_pseudocount`.
-- Keep the existing `log2fc`-kwarg path as an opt-in override for the
-  DESeq2/edgeR workflow.
-- Keep the `abs_weight > 0` abs-term branch as-is.
+- `DifferentialCountLoss` gains a single-path target derivation:
+  `targets` is always `(B, N, L)`, delta is computed inline from
+  `targets.sum(dim=-1)` with `count_pseudocount`.
+- Remove the `log2fc` kwarg and the `(B, 1, 1)` / `(B, 1, L)` scalar
+  fallback. `_resolve_delta_target` goes away as a distinct method.
+- Keep the `abs_weight > 0` abs-term branch as-is (already operates
+  on `(B, N, L)` targets — no overloading).
 - Rewrite `tools/train_multitask_differential_bpnet.py` to drop
   `_DiffWrapper`, `_Phase2Module`, `_compute_log2fc_from_bigwigs`,
   `_DifferentialRecord`, `_write_differential_targets`. Phase 2
@@ -375,16 +399,15 @@ bigwig-derived signal").
 
 - Cleanest fix for the single biggest issue (the offline precompute +
   wrapper).
-- Loss surface change is additive — the `log2fc`-kwarg callers still
-  work.
+- `DifferentialCountLoss.forward(outputs, targets)` is the entire
+  surface — no optional kwargs, no shape branches.
 - Tool shrinks dramatically (est. 1068 → 350 lines).
-- No core cerberus changes beyond one method.
+- No core cerberus changes beyond the loss.
 
 **Cons.**
 
-- `DifferentialCountLoss` targets overloading persists (still
-  supports three protocols, even if the primary one is the new
-  inline-derivation path).
+- Removes the `log2fc` kwarg as a public API surface (currently
+  unused outside the tool itself; see §3.2).
 - Attribution module keeps both classes; the near-duplication remains.
 
 **Appropriate when:** you want the tool fixed this week and are OK
@@ -433,54 +456,48 @@ recommended option.
 
 - Delete `DifferentialCountLoss`. Phase 2 becomes a generic
   `CoupledChannelDeltaLoss` that supervises `head_b − head_a` against
-  any supplied target-delta function (default: the bigwig-derived
-  log2FC).
+  a supplied target-delta function (default: the bigwig-derived
+  log2FC from `targets.sum(dim=-1)`).
 - Reduction selection (delta between which two channels) is provided
   via a config arg, not a subclass — matches the pattern of
   `BPNetLoss` being a pinned `MSEMultinomialLoss`.
-- Optional: promote the delta-target derivation to a `cerberus.transforms`
-  transform that adds a `log2fc` key to the sample dict at the data
-  pipeline level. The loss then simply reads the kwarg (single
-  protocol, no fallback).
 
 **Pros.**
 
 - Loss module becomes tidier: `DifferentialCountLoss` is literally
-  "BPNet count-head delta, pinned". No overloading of `targets`.
+  "BPNet count-head delta, pinned". No standalone class.
 - Symmetric with the `MultitaskBPNetLoss` / `BPNetLoss` pattern
   (subclass pins parameters of a generic base).
-- Transform-based delta computation becomes a generic capability —
-  other delta workflows (e.g. delta attribution during training) can
-  reuse it.
+- Once the delta-target function is a first-class concept, adding a
+  second delta objective later is cheap.
 
 **Cons.**
 
-- Requires extending the transform API to add per-sample scalars to
-  the sample dict (today: only `inputs`/`targets`/`interval`).
-  That is a cerberus-wide change with implications for the
-  deterministic-transforms guarantee and the random-augmentation
-  composition story.
-- Longest to land. Some of the work only makes sense once a second
-  derived-quantity use case exists (today there is only one).
+- Premature generalization if only one delta objective ever
+  materialises.
+- Touches more files: `DifferentialCountLoss` callers, the
+  tool's `ModelConfig`, and any doc/test that references the class
+  by name.
+- Slightly more surface than Option B for the same primary problem.
 
 **Appropriate when:** delta-learning is a *growing* area (multiple
 delta objectives, training-time attribution regularizers,
 comparative multi-condition readouts) and you want the plumbing
 ready for it.
 
-### 5.4 Option D — Rejected: "log2FC transform on dataset, loss unchanged"
+### 5.4 Option D — Rejected: "log2FC transform on dataset"
 
 Considered during research: make log2FC a transform that adds a
-`log2fc` key to the sample dict; `DifferentialCountLoss` stays as it
-is and just reads the kwarg.
+`log2fc` key to the sample dict; the loss reads that key.
 
 Rejected because:
 - The transform API cannot add new keys today (§3.3).
-- Even if extended, this forces every differential workflow to use
-  a transform to populate `log2fc`, when the derivation is a
-  one-liner over a tensor that already exists inside the loss.
-- Pays the broader-API cost of Option C without dropping
-  `DifferentialCountLoss`'s `targets` overloading.
+- The log2FC derivation is a one-liner inside the loss; pushing it
+  up into the data pipeline adds machinery without solving a
+  problem.
+- The kwarg-based delivery path was already used by the offline
+  precompute the redesign is removing. Reintroducing it via a
+  transform repeats the same mistake through a different door.
 
 ---
 
