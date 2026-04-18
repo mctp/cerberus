@@ -9,6 +9,7 @@ from .attribution import (
 from .config import (
     CerberusConfig,
     DataConfig,
+    FreezeSpec,
     GenomeConfig,
     ModelConfig,
     PretrainedConfig,
@@ -56,6 +57,7 @@ __all__ = [
     "TrainConfig",
     "ModelConfig",
     "PretrainedConfig",
+    "FreezeSpec",
     "CerberusConfig",
     # Dataset
     "CerberusDataset",

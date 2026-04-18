@@ -171,6 +171,29 @@ class PretrainedConfig(BaseModel):
     freeze: bool
 
 
+class FreezeSpec(BaseModel):
+    """Declarative freeze rule applied after model instantiation.
+
+    Patterns are matched with ``fnmatch.fnmatchcase`` against every
+    ``named_modules()`` and ``named_parameters()`` path on the model.
+
+    Attributes:
+        pattern: Glob pattern selecting the module or parameter to freeze.
+            Note that ``*`` matches dots: ``"iconv*"`` matches both
+            ``"iconv.weight"`` and ``"iconv_act"``. Prefer ``"iconv.*"``
+            to scope to a subtree.
+        eval_mode: If ``True`` (default), call ``.eval()`` on matched
+            module roots. Required for Dropout / BatchNorm layers inside
+            a frozen subtree to stop firing / drifting. Parameter-only
+            matches ignore this flag.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pattern: str
+    eval_mode: bool = True
+
+
 class ModelConfig(BaseModel):
     """Configuration for the model architecture.
 
@@ -184,6 +207,10 @@ class ModelConfig(BaseModel):
         model_args: Model constructor keyword arguments.
         pretrained: List of pretrained-weight configs to apply after
             instantiation.  Empty list means train from scratch.
+        freeze: List of freeze rules applied after the model is built
+            and pretrained weights (if any) are loaded.  Empty list
+            means all parameters remain trainable.  See
+            :class:`FreezeSpec` for pattern semantics.
         count_pseudocount: Additive offset before log-transforming count
             targets, in scaled units (raw coverage × ``target_scale``).
             Set to ``0.0`` for losses that do not use a pseudocount
@@ -200,6 +227,7 @@ class ModelConfig(BaseModel):
     metrics_args: dict[str, Any]
     model_args: dict[str, Any]
     pretrained: list[PretrainedConfig] = Field(default_factory=list)
+    freeze: list[FreezeSpec] = Field(default_factory=list)
     count_pseudocount: float = Field(default=0.0, ge=0)
 
 
