@@ -9,9 +9,9 @@ Two-phase training for comparing chromatin accessibility between two conditions:
     latent representation encodes cross-condition sequence grammar.
 
   Phase 2 — Differential fine-tuning (DifferentialCountLoss)
-    Loads the Phase 1 checkpoint, computes log2FC directly from the
-    depth-normalised bigwig files (no BAM counting needed), and fine-tunes
-    the count heads to predict the differential signal.
+    Loads the Phase 1 checkpoint via ``ModelConfig.pretrained`` and fine-tunes
+    the count heads on the per-peak log2FC derived inline from the shared
+    two-channel targets tensor (no offline precompute, no wrapper dataset).
 
   Interpretation (optional --interpret)
     Runs DeepLIFTSHAP through AttributionTarget(reduction="delta_log_counts")
@@ -29,7 +29,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-from typing import Any
 import gzip
 import logging
 import os
@@ -43,17 +42,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
 import torch
-import torch.nn as nn
-from pytorch_lightning.callbacks import (
-    EarlyStopping,
-    LearningRateMonitor,
-    ModelCheckpoint,
-)
-from pytorch_lightning.loggers import CSVLogger
-from pytorch_lightning.strategies import DDPStrategy
-from torch.utils.data import DataLoader, Dataset
 
 import cerberus
 from cerberus import (
@@ -63,6 +52,7 @@ from cerberus import (
 from cerberus.config import (
     DataConfig,
     ModelConfig,
+    PretrainedConfig,
     SamplerConfig,
     TrainConfig,
 )
@@ -70,74 +60,11 @@ from cerberus.download import download_human_reference
 from cerberus.config import GenomeConfig
 from cerberus.genome import create_genome_config
 from cerberus.interval import Interval, merge_intervals
-from cerberus.loss import DifferentialCountLoss
-from cerberus.models.bpnet import MultitaskBPNet, MultitaskBPNetLoss
+from cerberus.models.bpnet import MultitaskBPNet
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
 
-import pybigtools
-from dataclasses import dataclass
-
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Inlined differential-label helpers.
-#
-# TODO: replace with SignalExtractor-based inline log2FC computation once the
-# Phase 2 loss is refactored to derive log2FC from the existing (B, 2, L)
-# targets tensor. Keeping these here (vs. a shared cerberus.differential module)
-# while that refactor is pending — only the training tool uses them.
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class _DifferentialRecord:
-    """Single-peak differential label for TSV provenance output."""
-
-    chrom: str
-    start: int
-    end: int
-    log2fc: float
-
-
-def _compute_log2fc_from_bigwigs(
-    bigwig_a: str | Path,
-    bigwig_b: str | Path,
-    intervals: list[Interval],
-    pseudocount: float = 1.0,
-) -> np.ndarray:
-    """Per-peak log2((sum_b + pc) / (sum_a + pc)) from depth-normalised bigwigs.
-
-    Bigwigs are assumed RPM-normalised so no library-size correction is applied.
-    NaN positions count as zero.  Chromosomes absent from a bigwig return 0.
-    """
-
-    def _sum_bw(path: str | Path, ivs: list[Interval]) -> np.ndarray:
-        bw = pybigtools.open(str(path))  # type: ignore[attr-defined]
-        out = np.zeros(len(ivs), dtype=np.float64)
-        for i, iv in enumerate(ivs):
-            try:
-                vals = bw.values(iv.chrom, iv.start, iv.end)
-                out[i] = float(np.nansum(np.asarray(vals, dtype=np.float64)))
-            except RuntimeError:
-                out[i] = 0.0
-        return out
-
-    counts_a = _sum_bw(bigwig_a, intervals)
-    counts_b = _sum_bw(bigwig_b, intervals)
-    return np.log2((counts_b + pseudocount) / (counts_a + pseudocount))
-
-
-def _write_differential_targets(
-    path: str | Path, records: list[_DifferentialRecord]
-) -> None:
-    """Write a 4-column TSV: chrom, start, end, log2fc.  Provenance only."""
-    with open(path, "w") as fh:
-        fh.write("chrom\tstart\tend\tlog2fc\n")
-        for r in records:
-            fh.write(f"{r.chrom}\t{r.start}\t{r.end}\t{r.log2fc:.6g}\n")
-    logger.info("Wrote %d differential records to %s", len(records), path)
 
 
 # ---------------------------------------------------------------------------
@@ -240,19 +167,16 @@ def get_args() -> argparse.Namespace:
     grp.add_argument("--min-lr", type=float, default=1e-6)
 
     # --- Phase 2 hyperparameters ---
+    #
+    # Phase 2 reuses Phase 1's pseudocount (``--count-pseudocount *
+    # --target-scale``) so both phases derive log-counts in the same linear-to-
+    # log space. The pseudocount is on *linear scale* (added to length-summed
+    # signal before taking ``log2``), not a log-scale offset.
     grp = p.add_argument_group("Phase 2 (DifferentialCountLoss)")
     grp.add_argument("--phase2-epochs", type=int, default=20)
     grp.add_argument("--phase2-lr", type=float, default=1e-4)
     grp.add_argument("--phase2-batch-size", type=int, default=64)
     grp.add_argument("--phase2-patience", type=int, default=7)
-    grp.add_argument(
-        "--diff-pseudocount", type=float, default=1.0,
-        help="Pseudocount for log2FC computation (bigwig signal units)"
-    )
-    grp.add_argument(
-        "--abs-weight", type=float, default=0.0,
-        help="Weight for absolute count regularisation in DifferentialCountLoss (0 = Naqvi default)"
-    )
 
     # --- Workflow control ---
     grp = p.add_argument_group("Workflow control")
@@ -324,131 +248,12 @@ def _merge_and_write_peaks(peaks_a: Path, peaks_b: Path, out_bed: Path) -> Path:
     return out_bed
 
 
-def _find_phase1_model(phase1_dir: Path) -> Path:
-    """Find the model.pt saved by train_single/train_multi in *phase1_dir*."""
-    # train_single saves model.pt at the fold root
+def _find_phase1_checkpoint(phase1_dir: Path) -> Path:
+    """Find the ``model.pt`` written by ``train_single`` / ``train_multi``."""
     candidates = sorted(phase1_dir.glob("**/model.pt"))
     if not candidates:
         raise FileNotFoundError(f"No model.pt found under {phase1_dir}")
-    # Prefer the shallowest one (fold directory)
     return candidates[0]
-
-
-def _get_pos_intervals(dataset: Any) -> list[Interval]:
-    """Materialize sampler intervals in the same order used by ``dataset[idx]``.
-
-    Phase 2 precomputes one ``log2fc`` target per interval, then
-    :class:`_DiffWrapper` injects that target back into samples by integer
-    index. This helper therefore must return intervals in the exact order that
-    :class:`CerberusDataset` uses for ``__getitem__``; otherwise sample ``idx``
-    would receive the fold-change label for the wrong peak.
-
-    All sampler types implement ``__iter__``. For mixed samplers such as
-    :class:`MultiSampler`, iteration and indexed access both traverse the same
-    internal ``_indices`` list, so ``list(dataset.sampler)[idx]`` matches
-    ``dataset.sampler[idx]``.
-    """
-    return list(dataset.sampler)
-
-
-# ---------------------------------------------------------------------------
-# Phase 2 dataset wrapper
-# ---------------------------------------------------------------------------
-
-
-class _DiffWrapper(Dataset):
-    """Wraps a CerberusDataset to inject per-peak log2FC into each batch dict.
-
-    The cerberus training step passes all batch keys except 'inputs' and
-    'targets' as **kwargs to the loss function.  Adding 'log2fc' here means
-    DifferentialCountLoss.forward() will receive it automatically.
-
-    ``log2fc[idx]`` must correspond to the interval that the base dataset
-    returns for ``dataset[idx]``, i.e. it must be pre-computed in the same
-    order as the sampler's positive-interval list.
-    """
-
-    def __init__(self, base_dataset: Dataset, log2fc: np.ndarray) -> None:
-        base_len = len(base_dataset)  # type: ignore[arg-type]
-        if len(log2fc) != base_len:
-            raise ValueError(
-                f"log2fc length ({len(log2fc)}) must equal dataset length "
-                f"({base_len}); mismatched arrays produce silent index-misaligned "
-                f"supervision. Check that the intervals passed to "
-                f"_compute_log2fc_from_bigwigs came from the same sampler as "
-                f"base_dataset."
-            )
-        self.base = base_dataset
-        self.log2fc = torch.tensor(log2fc, dtype=torch.float32)
-
-    def __len__(self) -> int:
-        return len(self.base)  # type: ignore[arg-type]
-
-    def __getitem__(self, idx: int) -> dict:
-        item = dict(self.base[idx])
-        item["log2fc"] = self.log2fc[idx]
-        return item
-
-
-# ---------------------------------------------------------------------------
-# Phase 2 PyTorch Lightning module
-# ---------------------------------------------------------------------------
-
-
-class _Phase2Module(pl.LightningModule):
-    """Lightweight PL module for Phase 2 differential fine-tuning.
-
-    Supervises ``log_counts_B − log_counts_A`` with the precomputed log2FC
-    (passed via the 'log2fc' batch key).  Optionally regularises absolute
-    count heads via ``abs_weight``.
-    """
-
-    def __init__(
-        self,
-        model: nn.Module,
-        loss_fn: DifferentialCountLoss,
-        lr: float = 1e-4,
-        weight_decay: float = 0.01,
-    ) -> None:
-        super().__init__()
-        self.model = model
-        self.loss_fn = loss_fn
-        self.lr = lr
-        self.weight_decay = weight_decay
-
-    def configure_optimizers(self):  # type: ignore[override]
-        opt = torch.optim.AdamW(
-            self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        )
-        return opt
-
-    def _step(self, batch: dict, split: str) -> torch.Tensor:
-        # turn a batch into outputs, loss, and logged metrics
-        inputs = batch["inputs"]
-        targets = batch["targets"]
-        log2fc = batch.get("log2fc")  # (B,) — injected by _DiffWrapper
-
-        outputs = self.model(inputs)
-
-        kwargs: dict = {}
-        if log2fc is not None:
-            kwargs["log2fc"] = log2fc
-
-        components = self.loss_fn.loss_components(outputs, targets, **kwargs)
-        loss = self.loss_fn(outputs, targets, **kwargs)
-
-        bs = inputs.shape[0]
-        sync = split == "val"
-        self.log(f"{split}_loss", loss, prog_bar=True, batch_size=bs, sync_dist=sync)
-        for name, val in components.items():
-            self.log(f"{split}_{name}", val, batch_size=bs, sync_dist=sync)
-        return loss
-
-    def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
-        return self._step(batch, "train")
-
-    def validation_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
-        return self._step(batch, "val")
 
 
 # ---------------------------------------------------------------------------
@@ -599,13 +404,23 @@ def run_phase1(args: argparse.Namespace, merged_peaks: Path, output_dir: Path,
 # ---------------------------------------------------------------------------
 
 
-def _plot_phase2_losses(log_dir: str, out_dir: Path) -> None:
-    """Plot Phase 2 train/val delta_loss from the CSVLogger metrics file."""
-    csv_path = Path(log_dir) / "metrics.csv"
-    if not csv_path.exists():
-        logger.warning("Phase 2 metrics not found at %s — skipping plot.", csv_path)
-        return
+def _plot_phase2_losses(phase2_dir: Path) -> None:
+    """Plot Phase 2 train/val delta loss from the CSVLogger metrics file.
 
+    The standard ``train_single`` / ``train_multi`` path logs metrics via a
+    CSVLogger under ``<phase2_dir>/<name>/version_<n>/metrics.csv``. We pick
+    the newest ``metrics.csv`` under ``phase2_dir`` to stay agnostic to the
+    exact nested layout (single-fold vs. multi-fold).
+    """
+    metrics_paths = sorted(
+        phase2_dir.glob("**/metrics.csv"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not metrics_paths:
+        logger.warning("Phase 2 metrics not found under %s — skipping plot.", phase2_dir)
+        return
+    csv_path = metrics_paths[0]
     df = pd.read_csv(csv_path)
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
@@ -624,25 +439,25 @@ def _plot_phase2_losses(log_dir: str, out_dir: Path) -> None:
         else:
             ax.set_visible(False)
 
-    # Also plot abs losses if present
-    for col in ("train_abs_loss_a", "train_abs_loss_b"):
-        if col in df.columns:
-            vals = df[col].dropna()
-            steps = df.loc[vals.index, "step"] if "step" in df.columns else vals.index
-            axes[0].plot(steps, vals, lw=1, linestyle="--", label=col.replace("train_", ""))
-
-    handles, labels = axes[0].get_legend_handles_labels()
-    if handles:
-        axes[0].legend(fontsize=8)
     fig.suptitle("Phase 2: Differential fine-tuning losses", fontsize=12)
     fig.tight_layout()
 
-    plots_dir = out_dir / "plots"
+    plots_dir = phase2_dir / "plots"
     plots_dir.mkdir(exist_ok=True)
     out_path = plots_dir / "phase2_losses.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info("Phase 2 loss plot saved to %s", out_path)
+
+
+def _select_phase2_strategy(precision_kwargs: dict) -> dict:
+    """Phase 2 supervises only the count-head delta — the profile heads
+    receive no gradient. DDP therefore needs ``find_unused_parameters=True``;
+    override the single-GPU default from :func:`get_precision_kwargs`."""
+    strategy = precision_kwargs.get("strategy")
+    if strategy == "ddp_find_unused_parameters_false":
+        return {**precision_kwargs, "strategy": "ddp_find_unused_parameters_true"}
+    return precision_kwargs
 
 
 def run_phase2(
@@ -652,31 +467,28 @@ def run_phase2(
     output_dir: Path,
     genome_config: GenomeConfig,
 ) -> Path:
-    """Fine-tune with DifferentialCountLoss.  Returns path to Phase 2 model.pt."""
+    """Fine-tune with DifferentialCountLoss via the standard cerberus pipeline.
+
+    Phase 2 is a regular ``train_single`` / ``train_multi`` call with a
+    :class:`DifferentialCountLoss` ``ModelConfig`` that lists the Phase 1
+    checkpoint under ``pretrained=[PretrainedConfig(...)]``. The per-peak
+    log2FC target is derived inline inside the loss from the two-channel
+    ``(B, 2, L)`` targets tensor Phase 1 already supervised against — no
+    offline precompute, no dataset wrapper, no bespoke PL module.
+    """
     phase2_dir = output_dir / "phase2"
+    if args.multi:
+        phase2_dir = phase2_dir / "multi-fold"
+    else:
+        phase2_dir = phase2_dir / "single-fold"
     phase2_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Instantiate Phase 1 architecture
-    activation = "gelu" if args.stable else "relu"
-    model = MultitaskBPNet(
-        output_channels=[args.name_a, args.name_b],
-        input_len=args.input_len,
-        output_len=args.output_len,
-        filters=args.filters,
-        n_dilated_layers=args.n_layers,
-        conv_kernel_size=21,
-        dil_kernel_size=3,
-        profile_kernel_size=75,
-        activation=activation,
-        weight_norm=args.stable,
-        residual_architecture=args.residual_architecture,
-    )
-    state_dict = torch.load(phase1_model_path, map_location="cpu")
-    model.load_state_dict(state_dict)
-    logger.info("Loaded Phase 1 weights from %s", phase1_model_path)
+    # Phase 1 pseudocount in scaled units (raw × target_scale) — keeps Phase 1
+    # and Phase 2 in the same log-space.
+    count_pseudocount_scaled = args.count_pseudocount * args.target_scale
 
-    # 2. Phase 2 data config: no jitter, peaks only, same bigwigs as Phase 1
-    data_config_p2 = DataConfig(
+    # 1. Phase 2 data config: no jitter, peaks only, same bigwigs as Phase 1.
+    data_config = DataConfig(
         inputs={},
         targets={
             args.name_a: args.bigwig_a,
@@ -692,7 +504,7 @@ def run_phase2(
         use_sequence=True,
         target_scale=args.target_scale,
     )
-    sampler_config_p2 = SamplerConfig(
+    sampler_config = SamplerConfig(
         sampler_type="peak",
         padded_size=args.input_len,   # no padding needed (jitter=0)
         sampler_args={
@@ -701,99 +513,68 @@ def run_phase2(
         },
     )
 
-    # 3. Build DataModule and call setup to get train/val intervals
-    datamodule = CerberusDataModule(
-        genome_config=genome_config,
-        data_config=data_config_p2,
-        sampler_config=sampler_config_p2,
-        seed=args.seed,
-    )
-    datamodule.batch_size = args.phase2_batch_size
-    datamodule.val_batch_size = args.phase2_batch_size * 4
-    datamodule.num_workers = args.num_workers
+    # 2. Phase 2 model: same architecture as Phase 1, loaded from the Phase 1
+    #    checkpoint via ``pretrained=[PretrainedConfig(...)]``.
+    activation = "gelu" if args.stable else "relu"
+    model_args: dict = {
+        "output_channels": [args.name_a, args.name_b],
+        "filters": args.filters,
+        "n_dilated_layers": args.n_layers,
+        "conv_kernel_size": 21,
+        "dil_kernel_size": 3,
+        "profile_kernel_size": 75,
+        "activation": activation,
+        "weight_norm": args.stable,
+        "residual_architecture": args.residual_architecture,
+    }
 
-    datamodule.prepare_data()
-    datamodule.setup("fit")
-
-    train_intervals = _get_pos_intervals(datamodule.train_dataset)  # type: ignore[arg-type]
-    val_intervals = _get_pos_intervals(datamodule.val_dataset)      # type: ignore[arg-type]
-
-    logger.info(
-        "Phase 2 intervals: %d train, %d val", len(train_intervals), len(val_intervals)
-    )
-
-    # 4. Compute log2FC directly from bigwigs (already depth-normalised → normalize=False)
-    logger.info("Computing log2FC from bigwigs for train peaks…")
-    train_log2fc = _compute_log2fc_from_bigwigs(
-        args.bigwig_a, args.bigwig_b, train_intervals, pseudocount=args.diff_pseudocount
-    )
-    logger.info("Computing log2FC from bigwigs for val peaks…")
-    val_log2fc = _compute_log2fc_from_bigwigs(
-        args.bigwig_a, args.bigwig_b, val_intervals, pseudocount=args.diff_pseudocount
-    )
-
-    # Write differential targets TSV for provenance
-    diff_tsv = phase2_dir / "differential_targets.tsv"
-    all_intervals = train_intervals + val_intervals
-    all_log2fc = np.concatenate([train_log2fc, val_log2fc])
-    _write_differential_targets(
-        diff_tsv,
-        [
-            _DifferentialRecord(iv.chrom, iv.start, iv.end, float(fc))
-            for iv, fc in zip(all_intervals, all_log2fc)
+    model_config = ModelConfig(
+        name="MultitaskBPNet_Phase2",
+        model_cls="cerberus.models.bpnet.MultitaskBPNet",
+        loss_cls="cerberus.loss.DifferentialCountLoss",
+        loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+        metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+        metrics_args={},
+        model_args=model_args,
+        pretrained=[
+            PretrainedConfig(
+                weights_path=str(phase1_model_path),
+                source=None,
+                target=None,
+                freeze=False,
+            )
         ],
+        count_pseudocount=count_pseudocount_scaled,
     )
-    logger.info("Differential targets written to %s", diff_tsv)
 
-    # 5. Wrap datasets to inject log2fc into each batch dict
-    train_wrapped = _DiffWrapper(datamodule.train_dataset, train_log2fc)  # type: ignore[arg-type]
-    val_wrapped = _DiffWrapper(datamodule.val_dataset, val_log2fc)        # type: ignore[arg-type]
+    # 3. Phase 2 training hyperparameters.
+    optimizer = "adamw" if args.stable else args.optimizer
+    weight_decay = 0.01 if args.stable else args.weight_decay
+    scheduler_type = "cosine" if args.stable else args.scheduler_type
+    warmup_epochs = args.warmup_epochs if args.warmup_epochs > 0 else (
+        5 if args.stable else 0
+    )
 
-    train_loader = DataLoader(
-        train_wrapped,
+    train_config = TrainConfig(
         batch_size=args.phase2_batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        drop_last=True,
-    )
-    val_loader = DataLoader(
-        val_wrapped,
-        batch_size=args.phase2_batch_size * 4,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=True,
-    )
-
-    # 6. Build DifferentialCountLoss
-    loss_fn = DifferentialCountLoss(
-        cond_a_idx=0,
-        cond_b_idx=1,
-        abs_weight=args.abs_weight,
-        count_pseudocount=args.count_pseudocount * args.target_scale,
+        max_epochs=args.phase2_epochs,
+        learning_rate=args.phase2_lr,
+        weight_decay=weight_decay,
+        patience=args.phase2_patience,
+        optimizer=optimizer,
+        filter_bias_and_bn=True,
+        reload_dataloaders_every_n_epochs=0,
+        scheduler_type=scheduler_type,
+        scheduler_args={
+            "num_epochs": args.phase2_epochs,
+            "warmup_epochs": warmup_epochs,
+            "min_lr": args.min_lr,
+        },
+        adam_eps=1e-7,
+        gradient_clip_val=None,
     )
 
-    # 7. Phase 2 module
-    module = _Phase2Module(
-        model=model,
-        loss_fn=loss_fn,
-        lr=args.phase2_lr,
-        weight_decay=0.01 if args.stable else 0.0,
-    )
-
-    # 8. Trainer
-    csv_logger = CSVLogger(str(phase2_dir), name="logs", version=0)
-    ckpt_callback = ModelCheckpoint(
-        monitor="val_delta_loss",
-        mode="min",
-        save_top_k=1,
-        save_last=True,
-        filename="checkpoint-{epoch:02d}-{val_delta_loss:.4f}",
-    )
-    early_stop = EarlyStopping(
-        monitor="val_delta_loss", patience=args.phase2_patience, mode="min"
-    )
-
+    # 4. Parse devices / accelerator / precision.
     devices = args.devices
     if devices != "auto":
         try:
@@ -804,42 +585,34 @@ def run_phase2(
     if accelerator == "auto" and torch.backends.mps.is_available():
         accelerator = "mps"
 
-    precision_map: dict[str, str] = {"bf16": "bf16-mixed", "mps": "16-mixed", "full": "32-true"}
-    precision_str: str = precision_map.get(args.precision, "bf16-mixed")
-    # Phase 2 only supervises the count-head delta; profile-head parameters
-    # receive no gradient.  DDP requires find_unused_parameters=True when any
-    # parameter is unused, otherwise it raises a bucket-rebuild error.
-    trainer = pl.Trainer(
-        max_epochs=args.phase2_epochs,
-        logger=csv_logger,
-        callbacks=[ckpt_callback, early_stop, LearningRateMonitor()],
-        accelerator=accelerator,
-        devices=devices,
-        strategy=DDPStrategy(find_unused_parameters=True),
-        precision=precision_str,  # type: ignore[arg-type]
-        enable_progress_bar=not args.silent,
+    precision_kwargs = get_precision_kwargs(args.precision, accelerator, devices)
+    precision_kwargs = _select_phase2_strategy(precision_kwargs)
+
+    logger.info("Phase 2 config:\n%s", pformat(model_config))
+
+    train_fn = train_multi if args.multi else train_single
+    train_fn(
+        genome_config=genome_config,
+        data_config=data_config,
+        sampler_config=sampler_config,
+        model_config=model_config,
+        train_config=train_config,
+        num_workers=args.num_workers,
+        in_memory=False,
+        root_dir=str(phase2_dir),
+        enable_checkpointing=True,
         log_every_n_steps=10,
+        val_batch_size=args.phase2_batch_size * 4,
+        enable_progress_bar=not args.silent,
+        seed=args.seed,
+        **precision_kwargs,
     )
 
-    trainer.fit(module, train_loader, val_loader)
-
-    # 9. Save best weights as plain .pt (rank 0 only — avoid NFS write races)
-    phase2_model_path = phase2_dir / "model.pt"
+    # 5. Plot losses (rank 0 only — avoid NFS read races).
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-        best_ckpt = ckpt_callback.best_model_path or ckpt_callback.last_model_path
-        raw = torch.load(best_ckpt, map_location="cpu")
-        model_state = {
-            k.removeprefix("model.").removeprefix("_orig_mod."): v
-            for k, v in raw["state_dict"].items()
-            if k.startswith("model.")
-        }
-        torch.save(model_state, phase2_model_path)
-        logger.info("Phase 2 model saved to %s", phase2_model_path)
+        _plot_phase2_losses(phase2_dir)
 
-    # 10. Plot losses
-    _plot_phase2_losses(csv_logger.log_dir, phase2_dir)
-
-    return phase2_model_path
+    return _find_phase1_checkpoint(phase2_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -1101,20 +874,21 @@ def main() -> None:
     else:
         phase1_dir = run_phase1(args, merged_bed, output_dir, genome_config, data_dir)
 
-    phase1_model_path = _find_phase1_model(phase1_dir)
+    phase1_model_path = _find_phase1_checkpoint(phase1_dir)
     logger.info("Phase 1 model: %s", phase1_model_path)
 
     # --- Phase 2 ---
+    phase2_root = output_dir / "phase2" / ("multi-fold" if args.multi else "single-fold")
     if not args.skip_phase2:
         phase2_model_path = run_phase2(
             args, phase1_model_path, merged_bed, output_dir, genome_config
         )
     else:
-        phase2_model_path = output_dir / "phase2" / "model.pt"
-        if not phase2_model_path.exists():
+        if not phase2_root.exists():
             raise FileNotFoundError(
-                f"--skip-phase2 set but {phase2_model_path} not found"
+                f"--skip-phase2 set but {phase2_root} not found"
             )
+        phase2_model_path = _find_phase1_checkpoint(phase2_root)
         logger.info("Skipping Phase 2; using existing %s", phase2_model_path)
 
     # --- Interpretation ---

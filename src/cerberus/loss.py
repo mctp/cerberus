@@ -545,43 +545,38 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
 
 
 class DifferentialCountLoss(nn.Module):
-    """Phase 2 fine-tuning loss for differential accessibility prediction.
+    """Phase 2 fine-tuning loss supervising ``log_counts[:, B] - log_counts[:, A]``.
 
-    Supervises ``log_counts[:, cond_b_idx] - log_counts[:, cond_a_idx]``
-    with an external differential target such as DESeq2 / edgeR log2FC.
-    Profile loss is disabled (weight 0) following Naqvi et al. (2025), who
-    showed that only the count head needs to be retargeted: the profile heads
-    already encode condition-specific TF footprint grammar from Phase 1
-    multi-task training and do not require further adjustment.
+    The delta target is derived inline from the ``(B, N, L)`` ``targets``
+    tensor (the per-condition absolute-signal tracks Phase 1 already
+    supervised against): for each sample,
 
-    **Differential target resolution** (in priority order):
+    .. math::
 
-    1. ``log2fc`` keyword argument — a ``(B,)`` float tensor passed through
-       the batch context dict (analogous to how :class:`DalmatianLoss`
-       reads ``interval_source``).
-    2. Fallback — ``targets`` reshaped to ``(B, -1)`` and averaged over all
-       non-batch dimensions.  Handles a scalar stored as ``(B, 1, 1)`` or a
-       constant-valued track ``(B, 1, L)``.
+        \\Delta_{\\mathrm{target}} = \\log_2\\left(
+          \\frac{\\sum_\\ell \\mathrm{targets}[:, B, \\ell] + \\mathrm{pc}}{
+                 \\sum_\\ell \\mathrm{targets}[:, A, \\ell] + \\mathrm{pc}}
+        \\right)
 
-    **Optional absolute regularisation** (``abs_weight > 0``):
+    where the sum is over the length axis and ``pc`` is
+    ``count_pseudocount`` (use the same value Phase 1 used so ``log_counts``
+    live in the same log-space). The returned loss is
+    ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
 
-    When set, ``targets`` must be ``(B, N, L)`` absolute ATAC count tracks
-    (one channel per condition), and an additional MSE term anchors the two
-    relevant count heads to their absolute values.  This prevents the count
-    heads from collapsing (e.g. both drifting to zero) during fine-tuning.
-    Following Naqvi et al., ``abs_weight=0`` is the default — the trunk
-    adapts freely to the differential signal.
+    Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
+    the count head needs to be retargeted. The profile heads already encode
+    condition-specific TF footprint grammar from Phase 1 multi-task
+    training.
+
+    Single code path: ``forward(outputs, targets)`` with no optional
+    kwargs, no shape overloading, no absolute-count regularizer.
 
     Args:
-        cond_a_idx: Index of condition A in the ``log_counts`` output.
-            Default: 0.
-        cond_b_idx: Index of condition B in the ``log_counts`` output.
-            Default: 1.
-        abs_weight: Weight for absolute count regularisation.  Default: 0.0
-            (disabled, matching Naqvi et al. 2025).
-        count_pseudocount: Additive pseudocount applied when computing
-            target log-counts for the absolute regularisation term.
-            Must match the value used in Phase 1 training.  Default: 1.0.
+        cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
+        cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
+        count_pseudocount: Additive pseudocount used in the log2FC
+            derivation. Must match the value Phase 1 used so the two
+            phases share a log-space. Default 1.0.
 
     References:
         - Naqvi et al. (2025). *Transfer learning reveals sequence
@@ -597,7 +592,6 @@ class DifferentialCountLoss(nn.Module):
         self,
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
-        abs_weight: float = 0.0,
         count_pseudocount: float = 1.0,
     ) -> None:
         super().__init__()
@@ -610,56 +604,11 @@ class DifferentialCountLoss(nn.Module):
                 raise ValueError(f"{name} must be non-negative, got {idx}")
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
-        self.abs_weight = abs_weight
         self.count_pseudocount = count_pseudocount
 
-    def _resolve_delta_target(
-        self, targets: torch.Tensor, kwargs: dict[str, object]
+    def _delta_loss(
+        self, outputs: object, targets: torch.Tensor
     ) -> torch.Tensor:
-        """Extract the per-sequence log2FC target.
-
-        Reads ``log2fc`` from kwargs first; falls back to averaging
-        ``targets`` over all non-batch dimensions.
-        """
-        log2fc = kwargs.get("log2fc")
-        if log2fc is not None:
-            if not isinstance(log2fc, torch.Tensor):
-                raise TypeError(
-                    f"log2fc kwarg must be a torch.Tensor, got {type(log2fc)}"
-                )
-            flat = log2fc.float().flatten()
-            if flat.shape[0] != targets.shape[0]:
-                raise ValueError(
-                    f"log2fc kwarg has batch size {flat.shape[0]}, "
-                    f"expected {targets.shape[0]} to match the batch."
-                )
-            return flat
-        # Fallback: squeeze targets (B, 1, 1) or average constant-value track
-        return targets.float().reshape(targets.shape[0], -1).mean(dim=-1)
-
-    def loss_components(
-        self,
-        outputs: object,
-        targets: torch.Tensor,
-        **kwargs: object,
-    ) -> dict[str, torch.Tensor]:
-        """Compute differential and (optionally) absolute loss components.
-
-        Args:
-            outputs: :class:`~cerberus.output.ProfileCountOutput` with
-                ``log_counts`` of shape ``(B, N_conditions)``.
-            targets: Differential target as ``(B, 1, 1)`` / ``(B, 1, L)``
-                scalar, or absolute count tracks ``(B, N, L)`` when
-                ``abs_weight > 0``.  Can also be ignored in favour of a
-                ``log2fc`` kwarg.
-            **kwargs: Optional batch context.  If ``log2fc`` (``torch.Tensor``
-                of shape ``(B,)``) is present it is used as the differential
-                target; otherwise ``targets`` is averaged down to ``(B,)``.
-
-        Returns:
-            Dict with ``"delta_loss"`` (always) and ``"abs_loss_a"``,
-            ``"abs_loss_b"`` (when ``abs_weight > 0``).
-        """
         if not isinstance(outputs, ProfileCountOutput):
             raise TypeError(
                 f"DifferentialCountLoss requires ProfileCountOutput, "
@@ -668,43 +617,42 @@ class DifferentialCountLoss(nn.Module):
 
         log_counts = outputs.log_counts  # (B, N)
         n_channels = log_counts.shape[-1]
-        for name, idx in (("cond_a_idx", self.cond_a_idx), ("cond_b_idx", self.cond_b_idx)):
+        a, b = self.cond_a_idx, self.cond_b_idx
+        for name, idx in (("cond_a_idx", a), ("cond_b_idx", b)):
             if idx >= n_channels:
                 raise ValueError(
                     f"{name}={idx} is out of range for log_counts with "
                     f"{n_channels} channels"
                 )
 
-        delta_pred = log_counts[:, self.cond_b_idx] - log_counts[:, self.cond_a_idx]
-        target_delta = self._resolve_delta_target(targets, dict(kwargs))
-
-        if delta_pred.shape != target_delta.shape:
+        if targets.ndim != 3:
             raise ValueError(
-                f"delta_pred shape {delta_pred.shape} != "
-                f"target_delta shape {target_delta.shape}"
+                f"DifferentialCountLoss requires targets of shape (B, N, L); "
+                f"got {tuple(targets.shape)}"
+            )
+        n_cond_needed = max(a, b) + 1
+        if targets.shape[1] < n_cond_needed:
+            raise ValueError(
+                f"targets must have at least {n_cond_needed} channels to "
+                f"cover cond_a_idx={a} and cond_b_idx={b}, got shape "
+                f"{tuple(targets.shape)}"
             )
 
-        delta_loss = F.mse_loss(delta_pred, target_delta)
-        components: dict[str, torch.Tensor] = {"delta_loss": delta_loss}
+        counts = targets.float().sum(dim=-1)  # (B, N)
+        pc = self.count_pseudocount
+        target_delta = torch.log2(
+            (counts[:, b] + pc) / (counts[:, a] + pc)
+        )  # (B,)
+        delta_pred = log_counts[:, b] - log_counts[:, a]  # (B,)
+        return F.mse_loss(delta_pred, target_delta)
 
-        if self.abs_weight > 0.0:
-            targets_f = targets.float()
-            n_cond_needed = max(self.cond_a_idx, self.cond_b_idx) + 1
-            if targets_f.ndim < 3 or targets_f.shape[1] < n_cond_needed:
-                raise ValueError(
-                    f"abs_weight > 0 requires targets with shape (B, N, L) "
-                    f"where N >= {n_cond_needed} (to cover cond_a_idx={self.cond_a_idx} "
-                    f"and cond_b_idx={self.cond_b_idx}), "
-                    f"but got shape {tuple(targets_f.shape)}"
-                )
-            for idx, label in ((self.cond_a_idx, "a"), (self.cond_b_idx, "b")):
-                target_counts = targets_f[:, idx, :].sum(dim=-1)
-                target_log = torch.log(target_counts + self.count_pseudocount)
-                components[f"abs_loss_{label}"] = F.mse_loss(
-                    log_counts[:, idx], target_log
-                )
-
-        return components
+    def loss_components(
+        self,
+        outputs: object,
+        targets: torch.Tensor,
+        **kwargs: object,
+    ) -> dict[str, torch.Tensor]:
+        return {"delta_loss": self._delta_loss(outputs, targets)}
 
     def forward(
         self,
@@ -712,15 +660,7 @@ class DifferentialCountLoss(nn.Module):
         targets: torch.Tensor,
         **kwargs: object,
     ) -> torch.Tensor:
-        """Return the combined scalar loss."""
-        components = self.loss_components(outputs, targets, **kwargs)
-        total = components["delta_loss"]
-        if self.abs_weight > 0.0:
-            abs_total = sum(
-                v for k, v in components.items() if k.startswith("abs_loss_")
-            )
-            total = total + self.abs_weight * abs_total
-        return total
+        return self._delta_loss(outputs, targets)
 
 
 class DalmatianLoss(nn.Module):

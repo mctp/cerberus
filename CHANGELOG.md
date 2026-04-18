@@ -8,6 +8,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`DifferentialCountLoss` collapses to a single-path loss.** The constructor
+  is now ``DifferentialCountLoss(cond_a_idx, cond_b_idx, count_pseudocount)``;
+  ``forward(outputs, targets)`` returns a single MSE scalar. The delta target
+  is derived inline from the ``(B, N, L)`` targets tensor as
+  ``log2((sum_B + pc) / (sum_A + pc))`` (pseudocount on linear scale, same
+  units as the length-summed signal — keeps Phase 1 and Phase 2 in the same
+  log-space). No ``log2fc`` kwarg, no ``(B, 1, 1)`` scalar fallback, no
+  ``abs_weight`` regularizer, no four-row truth table. See
+  ``docs/internal/differential_workflow_redesign.md`` §13 for the re-entry
+  plans if external delta labels or the absolute-count regularizer become
+  required.
+- **Phase 2 training runs on the standard cerberus pipeline.**
+  ``tools/train_multitask_differential_bpnet.py``'s Phase 2 is now a regular
+  ``train_single`` / ``train_multi`` call with a ``ModelConfig`` pointing at
+  ``MultitaskBPNet`` + ``DifferentialCountLoss`` + ``pretrained=[PretrainedConfig(...)]``.
+  Dropped the tool-private ``_DiffWrapper`` / ``_Phase2Module`` /
+  ``_compute_log2fc_from_bigwigs`` / ``_DifferentialRecord`` /
+  ``_write_differential_targets`` / ``_get_pos_intervals`` helpers (~350
+  lines). Multi-GPU DDP strategy is overridden to
+  ``ddp_find_unused_parameters_true`` because the profile heads receive no
+  gradient under the differential loss.
+
+### Removed
+- **``DifferentialCountLoss(log2fc=...)`` kwarg** — delta is derived inline.
+- **``DifferentialCountLoss(abs_weight=...)`` argument** — absolute-count
+  regularizer was never set by any in-tree caller and its default was 0.0
+  per Naqvi et al. 2025.
+- **``(B, 1, 1)`` scalar-fallback protocol** for ``targets`` — targets must
+  now be ``(B, N, L)`` with ``N >= max(cond_a_idx, cond_b_idx) + 1``.
+- **``DifferentialCountLoss.loss_components`` no longer returns
+  ``abs_loss_a`` / ``abs_loss_b``** — only ``delta_loss`` remains.
+- **``--abs-weight`` CLI flag** in
+  ``tools/train_multitask_differential_bpnet.py`` — no corresponding loss
+  feature.
+- **``--diff-pseudocount`` CLI flag** — Phase 2 reuses Phase 1's pseudocount
+  (``--count-pseudocount * --target-scale``) for log-space consistency.
+- **Phase 2 ``differential_targets.tsv`` provenance output** — no log2FC is
+  precomputed any more; derivable on demand from the val dataset + loss.
+- **``tests/test_train_multitask_differential_tool.py``** deleted —
+  ``_DiffWrapper`` no longer exists.
+
+### Changed
 - **`AttributionTarget` unifies single-channel and delta reductions.** The
   `channels` field is now `int | tuple[int, int]` — `int` for the five
   single-channel reductions (`log_counts`, `profile_bin`,

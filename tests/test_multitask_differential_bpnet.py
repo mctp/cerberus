@@ -4,9 +4,7 @@ Covers:
 - MultitaskBPNet forward pass shape and per-channel count outputs
 - MultitaskBPNet validation (requires ≥2 output channels, predict_total_count=False)
 - MultitaskBPNetLoss fixed hyperparameter enforcement
-- DifferentialCountLoss basic delta supervision
-- DifferentialCountLoss log2fc kwarg path
-- DifferentialCountLoss abs_weight regularisation
+- DifferentialCountLoss: delta derived from (B, N, L) targets
 - DifferentialCountLoss validation errors
 - Round-trip: MultitaskBPNet → MultitaskBPNetLoss (Phase 1)
 - Round-trip: MultitaskBPNet → DifferentialCountLoss (Phase 2)
@@ -168,62 +166,82 @@ def _make_output(log_counts: torch.Tensor, output_len: int = OUTPUT_LEN) -> Prof
     return ProfileCountOutput(logits=logits, log_counts=log_counts)
 
 
-def test_differential_count_loss_basic():
-    """Delta loss supervises log_counts_B - log_counts_A."""
-    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
-    log_counts = torch.tensor([[1.0, 2.0], [0.5, 1.5], [2.0, 0.0], [1.0, 1.0]])
+def _bnl_targets_with_known_delta(
+    sum_a: torch.Tensor,
+    sum_b: torch.Tensor,
+    n_channels: int,
+    output_len: int,
+) -> torch.Tensor:
+    """Build a ``(B, N, L)`` target tensor whose per-channel length-sums are exact.
+
+    Channels 0 (``A``) and 1 (``B``) get constant per-length values so their
+    length-sums equal ``sum_a`` and ``sum_b`` (non-negative) exactly. All
+    other channels are zero.
+    """
+    B = sum_a.shape[0]
+    t = torch.zeros(B, n_channels, output_len)
+    t[:, 0, :] = (sum_a / output_len).view(B, 1)
+    t[:, 1, :] = (sum_b / output_len).view(B, 1)
+    return t
+
+
+def test_differential_count_loss_derives_delta_from_targets():
+    """Delta is derived from (B, N, L) targets: log2((sum_B + pc) / (sum_A + pc))."""
+    pc = 1.0
+    loss_fn = DifferentialCountLoss(
+        cond_a_idx=0, cond_b_idx=1, count_pseudocount=pc
+    )
+    sum_a = torch.tensor([3.0, 1.0, 7.0, 0.0])
+    sum_b = torch.tensor([15.0, 3.0, 1.0, 0.0])
+    targets = _bnl_targets_with_known_delta(
+        sum_a, sum_b, n_channels=2, output_len=OUTPUT_LEN
+    )
+    # If the model predicts exactly log2((sum_b + pc) / (sum_a + pc)) as
+    # log_counts[:, 1] - log_counts[:, 0], MSE is zero.
+    expected_delta = torch.log2((sum_b + pc) / (sum_a + pc))
+    log_counts = torch.zeros(4, 2)
+    log_counts[:, 1] = expected_delta  # (b - a) = expected_delta since a=0
     out = _make_output(log_counts)
-    # target_delta = log_counts_B - log_counts_A
-    target_delta = torch.tensor([1.0, 1.0, -2.0, 0.0])
-    # Targets as (B, 1, 1) scalar (fallback path)
-    targets = target_delta.view(4, 1, 1)
+
     loss = loss_fn(out, targets)
     assert loss.ndim == 0
-    assert loss.item() == pytest.approx(0.0, abs=1e-5)
+    assert loss.item() == pytest.approx(0.0, abs=1e-6)
 
 
-def test_differential_count_loss_log2fc_kwarg():
-    """log2fc kwarg takes priority over targets."""
+def test_differential_count_loss_nonzero_when_prediction_off():
+    """Shifting the prediction by a constant moves MSE predictably."""
+    pc = 1.0
+    loss_fn = DifferentialCountLoss(
+        cond_a_idx=0, cond_b_idx=1, count_pseudocount=pc
+    )
+    sum_a = torch.tensor([3.0, 7.0])
+    sum_b = torch.tensor([15.0, 1.0])
+    targets = _bnl_targets_with_known_delta(sum_a, sum_b, 2, OUTPUT_LEN)
+    # Zero prediction → MSE equals mean(expected_delta ** 2).
+    expected_delta = torch.log2((sum_b + pc) / (sum_a + pc))
+    out = _make_output(torch.zeros(2, 2))
+    loss = loss_fn(out, targets)
+    assert loss.item() == pytest.approx((expected_delta ** 2).mean().item(), rel=1e-6)
+
+
+def test_differential_count_loss_pseudocount_affects_target():
+    """Changing ``count_pseudocount`` changes the derived delta target."""
+    sum_a = torch.tensor([0.0])
+    sum_b = torch.tensor([1.0])
+    targets = _bnl_targets_with_known_delta(sum_a, sum_b, 2, OUTPUT_LEN)
+    out = _make_output(torch.zeros(1, 2))
+    loss_small = DifferentialCountLoss(count_pseudocount=0.1)(out, targets)
+    loss_large = DifferentialCountLoss(count_pseudocount=100.0)(out, targets)
+    # Larger pseudocount → smaller |log2 ratio| → smaller MSE
+    assert loss_large.item() < loss_small.item()
+
+
+def test_differential_count_loss_components_has_only_delta_loss():
     loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
-    log_counts = torch.tensor([[1.0, 3.0]])
-    out = _make_output(log_counts)
-    # Supply wrong targets (should be ignored)
-    targets = torch.zeros(1, 1, 1)
-    log2fc = torch.tensor([2.0])  # = 3.0 - 1.0, correct delta
-    loss = loss_fn(out, targets, log2fc=log2fc)
-    assert loss.item() == pytest.approx(0.0, abs=1e-5)
-
-
-def test_differential_count_loss_components_keys():
-    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1, abs_weight=0.0)
     out = _make_output(torch.zeros(2, 2))
-    targets = torch.zeros(2, 1, 1)
+    targets = torch.zeros(2, 2, OUTPUT_LEN)
     comps = loss_fn.loss_components(out, targets)
-    assert "delta_loss" in comps
-    assert "abs_loss_a" not in comps
-    assert "abs_loss_b" not in comps
-
-
-def test_differential_count_loss_abs_weight_components():
-    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1, abs_weight=0.1)
-    log_counts = torch.zeros(2, 2)
-    out = _make_output(log_counts)
-    targets_abs = torch.rand(2, 2, OUTPUT_LEN) * 5
-    log2fc = torch.zeros(2)
-    comps = loss_fn.loss_components(out, targets_abs, log2fc=log2fc)
-    assert "delta_loss" in comps
-    assert "abs_loss_a" in comps
-    assert "abs_loss_b" in comps
-
-
-def test_differential_count_loss_abs_weight_scalar_targets_raises():
-    """abs_weight > 0 requires (B, N, L) targets with N >= max_cond_idx+1."""
-    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1, abs_weight=0.5)
-    out = _make_output(torch.zeros(2, 2))
-    # Only 1 channel in targets — not enough for cond_b_idx=1
-    targets = torch.zeros(2, 1, OUTPUT_LEN)
-    with pytest.raises(ValueError, match="abs_weight > 0"):
-        loss_fn.loss_components(out, targets)
+    assert set(comps.keys()) == {"delta_loss"}
 
 
 def test_differential_count_loss_same_idx_raises():
@@ -234,23 +252,31 @@ def test_differential_count_loss_same_idx_raises():
 def test_differential_count_loss_out_of_range_idx():
     loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=5)
     out = _make_output(torch.zeros(2, 2))  # only 2 channels
-    targets = torch.zeros(2, 1, 1)
+    targets = torch.zeros(2, 2, OUTPUT_LEN)
     with pytest.raises(ValueError, match="out of range"):
-        loss_fn.loss_components(out, targets)
+        loss_fn(out, targets)
 
 
 def test_differential_count_loss_wrong_output_type():
     loss_fn = DifferentialCountLoss()
     with pytest.raises(TypeError, match="ProfileCountOutput"):
-        loss_fn.loss_components("not_an_output", torch.zeros(2, 1, 1))
+        loss_fn("not_an_output", torch.zeros(2, 2, OUTPUT_LEN))
 
 
-def test_differential_count_loss_log2fc_wrong_type():
-    loss_fn = DifferentialCountLoss()
+def test_differential_count_loss_rejects_2d_targets():
+    """Targets must be (B, N, L); a (B, N) shape must raise clearly."""
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
     out = _make_output(torch.zeros(2, 2))
-    targets = torch.zeros(2, 1, 1)
-    with pytest.raises(TypeError, match="torch.Tensor"):
-        loss_fn.loss_components(out, targets, log2fc=[1.0, 2.0])
+    with pytest.raises(ValueError, match="shape \\(B, N, L\\)"):
+        loss_fn(out, torch.zeros(2, 2))
+
+
+def test_differential_count_loss_rejects_too_few_target_channels():
+    """Targets with fewer channels than max(cond_a, cond_b)+1 must raise."""
+    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
+    out = _make_output(torch.zeros(2, 2))
+    with pytest.raises(ValueError, match="at least 2 channels"):
+        loss_fn(out, torch.zeros(2, 1, OUTPUT_LEN))
 
 
 @pytest.mark.parametrize(
@@ -263,22 +289,12 @@ def test_differential_count_loss_rejects_negative_idx(cond_a, cond_b):
         DifferentialCountLoss(cond_a_idx=cond_a, cond_b_idx=cond_b)
 
 
-def test_differential_count_loss_log2fc_batch_size_mismatch():
-    """log2fc with a batch size that differs from targets must raise clearly."""
-    loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
-    out = _make_output(torch.zeros(2, 2))
-    targets = torch.zeros(2, 1, 1)
-    bad_log2fc = torch.tensor([0.0, 1.0, 2.0])  # shape (3,), batch is 2
-    with pytest.raises(ValueError, match="log2fc kwarg has batch size"):
-        loss_fn.loss_components(out, targets, log2fc=bad_log2fc)
-
-
 # ---------------------------------------------------------------------------
 # Phase 2 round-trip
 # ---------------------------------------------------------------------------
 
 
-def test_phase2_roundtrip_backward(model, seq):
+def test_phase2_roundtrip_backward(model, seq, targets_2cond):
     """Phase 2: freeze trunk + profile heads, fine-tune count heads on delta."""
     # Simulate partial fine-tuning: only count_dense receives gradients
     for name, param in model.named_parameters():
@@ -286,9 +302,7 @@ def test_phase2_roundtrip_backward(model, seq):
 
     loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
     out = model(seq)
-    log2fc = torch.randn(BATCH)
-    targets = log2fc.view(BATCH, 1, 1)
-    loss = loss_fn(out, targets)
+    loss = loss_fn(out, targets_2cond)
     assert loss.ndim == 0
     loss.backward()
 
@@ -300,7 +314,7 @@ def test_phase2_roundtrip_backward(model, seq):
             assert param.grad is None, f"{name} should not have grad"
 
 
-def test_phase2_end_to_end_all_weights(model, seq):
+def test_phase2_end_to_end_all_weights(model, seq, targets_2cond):
     """Phase 2 end-to-end: trunk and count_dense update; profile_conv does not.
 
     DifferentialCountLoss sets profile loss weight to 0 (following Naqvi et al.).
@@ -310,9 +324,7 @@ def test_phase2_end_to_end_all_weights(model, seq):
     """
     loss_fn = DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1)
     out = model(seq)
-    log2fc = torch.randn(BATCH)
-    targets = log2fc.view(BATCH, 1, 1)
-    loss = loss_fn(out, targets)
+    loss = loss_fn(out, targets_2cond)
     loss.backward()
 
     # Trunk parameters (iconv, res_layers) and count_dense must have gradients
