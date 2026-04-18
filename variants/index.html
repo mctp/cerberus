@@ -881,6 +881,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#generate_variants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        generate_variants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#variant_to_ref_alt" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -975,10 +986,77 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-workflow" class="md-nav__link">
+  <a href="#batched-scoring" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example Workflow
+        Batched Scoring
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Batched Scoring">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#score_variants_from_ensemble" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        score_variants_from_ensemble
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#score_variants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        score_variants
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Tool
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Tool">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#score-variants-toolsscore_variantspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Score Variants (tools/score_variants.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-workflow-low-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Workflow (Low-Level)
       
     </span>
   </a>
@@ -1359,7 +1437,7 @@
 <p>No changes to the model, training pipeline, or core library are required. Variant scoring is purely a prediction-time workflow.</p>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
 <p>Variant effect prediction requires the <code>cyvcf2</code> package for VCF parsing:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>cerberus<span class="o">[</span>variants<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>cerberus<span class="o">[</span>extras<span class="o">]</span>
 </code></pre></div>
 <p>Or install cyvcf2 directly:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span>cyvcf2
@@ -1440,20 +1518,46 @@
 <a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="n">variants</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">load_vcf</span><span class="p">(</span><span class="s2">&quot;variants.vcf.gz&quot;</span><span class="p">,</span> <span class="n">info_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;AF&quot;</span><span class="p">,</span> <span class="s2">&quot;DP&quot;</span><span class="p">]))</span>
 </code></pre></div>
 <p><code>load_vcf</code> returns a <strong>generator</strong> for memory efficiency with large VCFs. Call <code>list()</code> to materialize.</p>
-<h3 id="variant_to_ref_alt">variant_to_ref_alt<a class="headerlink" href="#variant_to_ref_alt" title="Permanent link">&para;</a></h3>
-<p>Constructs paired one-hot encoded ref and alt tensors:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pyfaidx</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.variants</span><span class="w"> </span><span class="kn">import</span> <span class="n">variant_to_ref_alt</span>
+<h3 id="generate_variants">generate_variants<a class="headerlink" href="#generate_variants" title="Permanent link">&para;</a></h3>
+<p>Generates all possible variants (saturation mutagenesis) within a genomic interval:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.variants</span><span class="w"> </span><span class="kn">import</span> <span class="n">generate_variants</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.interval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Interval</span>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">fasta</span> <span class="o">=</span> <span class="n">pyfaidx</span><span class="o">.</span><span class="n">Fasta</span><span class="p">(</span><span class="s2">&quot;reference.fa&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">variant</span> <span class="o">=</span> <span class="n">Variant</span><span class="p">(</span><span class="s2">&quot;chr1&quot;</span><span class="p">,</span> <span class="mi">99</span><span class="p">,</span> <span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">ref_tensor</span><span class="p">,</span> <span class="n">alt_tensor</span><span class="p">,</span> <span class="n">interval</span> <span class="o">=</span> <span class="n">variant_to_ref_alt</span><span class="p">(</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">variant</span><span class="p">,</span> <span class="n">fasta</span><span class="p">,</span> <span class="n">input_len</span><span class="o">=</span><span class="mi">2112</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p">)</span>
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="c1"># ref_tensor: (4, 2112) — one-hot reference sequence</span>
-<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="c1"># alt_tensor: (4, 2112) — one-hot alternative sequence</span>
-<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="c1"># interval:   Interval(&quot;chr1&quot;, ...) — window for fold routing</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># All SNVs in a 1kb region (L positions x 3 alt bases)</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">snvs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">generate_variants</span><span class="p">(</span><span class="n">Interval</span><span class="p">(</span><span class="s2">&quot;chr6&quot;</span><span class="p">,</span> <span class="mi">93940000</span><span class="p">,</span> <span class="mi">93941000</span><span class="p">),</span> <span class="n">fasta</span><span class="p">))</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># SNVs + indels up to 2bp</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="n">all_variants</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">generate_variants</span><span class="p">(</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="n">Interval</span><span class="p">(</span><span class="s2">&quot;chr6&quot;</span><span class="p">,</span> <span class="mi">93940000</span><span class="p">,</span> <span class="mi">93941000</span><span class="p">),</span> <span class="n">fasta</span><span class="p">,</span> <span class="n">max_indel_size</span><span class="o">=</span><span class="mi">2</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="p">))</span>
+</code></pre></div>
+<p>With <code>max_indel_size=0</code> (default), yields only SNVs. With <code>max_indel_size=k</code>, also yields:</p>
+<ul>
+<li><strong>Deletions</strong> from 1 to <em>k</em> bases (anchor base + deleted bases as ref, anchor as alt)</li>
+<li><strong>Insertions</strong> of all <code>4^size</code> possible sequences from 1 to <em>k</em> bases</li>
+</ul>
+<p>Positions with ambiguous bases (N) are skipped. Composes directly with <code>score_variants_from_ensemble</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.predict_variants</span><span class="w"> </span><span class="kn">import</span> <span class="n">score_variants_from_ensemble</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">variants</span> <span class="o">=</span> <span class="n">generate_variants</span><span class="p">(</span><span class="n">Interval</span><span class="p">(</span><span class="s2">&quot;chr6&quot;</span><span class="p">,</span> <span class="mi">93940000</span><span class="p">,</span> <span class="mi">93941000</span><span class="p">),</span> <span class="n">fasta</span><span class="p">)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">results</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">score_variants_from_ensemble</span><span class="p">(</span><span class="n">ensemble</span><span class="p">,</span> <span class="n">variants</span><span class="p">))</span>
+</code></pre></div>
+<h3 id="variant_to_ref_alt">variant_to_ref_alt<a class="headerlink" href="#variant_to_ref_alt" title="Permanent link">&para;</a></h3>
+<p>Constructs paired one-hot encoded ref and alt tensors:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pyfaidx</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.variants</span><span class="w"> </span><span class="kn">import</span> <span class="n">variant_to_ref_alt</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">fasta</span> <span class="o">=</span> <span class="n">pyfaidx</span><span class="o">.</span><span class="n">Fasta</span><span class="p">(</span><span class="s2">&quot;reference.fa&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">variant</span> <span class="o">=</span> <span class="n">Variant</span><span class="p">(</span><span class="s2">&quot;chr1&quot;</span><span class="p">,</span> <span class="mi">99</span><span class="p">,</span> <span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="n">ref_tensor</span><span class="p">,</span> <span class="n">alt_tensor</span><span class="p">,</span> <span class="n">interval</span> <span class="o">=</span> <span class="n">variant_to_ref_alt</span><span class="p">(</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="n">variant</span><span class="p">,</span> <span class="n">fasta</span><span class="p">,</span> <span class="n">input_len</span><span class="o">=</span><span class="mi">2112</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="p">)</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="c1"># ref_tensor: (4, 2112) — one-hot reference sequence</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="c1"># alt_tensor: (4, 2112) — one-hot alternative sequence</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="c1"># interval:   Interval(&quot;chr1&quot;, ...) — window for fold routing</span>
 </code></pre></div>
 <h4 id="window-centering">Window centering<a class="headerlink" href="#window-centering" title="Permanent link">&para;</a></h4>
 <p>The input window is centered on <code>variant.ref_center</code> — the <strong>midpoint of the reference allele footprint</strong>, not the first base of the variant. This ensures the variant is symmetrically placed within the model's receptive field.</p>
@@ -1470,24 +1574,24 @@
 </ul>
 <h3 id="compute_variant_effects">compute_variant_effects<a class="headerlink" href="#compute_variant_effects" title="Permanent link">&para;</a></h3>
 <p>Compares ref and alt model outputs to compute effect metrics:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.variants</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_variant_effects</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_log_count_params</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Get pseudocount settings from model config</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="n">log_counts_include_pseudocount</span><span class="p">,</span> <span class="n">pseudocount</span> <span class="o">=</span> <span class="n">get_log_count_params</span><span class="p">(</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="o">.</span><span class="n">model_config_</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="p">)</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="c1"># Run model on ref and alt</span>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="n">ref_output</span> <span class="o">=</span> <span class="n">ensemble</span><span class="p">(</span><span class="n">ref_batch</span><span class="p">)</span>
-<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="n">alt_output</span> <span class="o">=</span> <span class="n">ensemble</span><span class="p">(</span><span class="n">alt_batch</span><span class="p">)</span>
-<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
-<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="c1"># Compute effects</span>
-<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="n">effects</span> <span class="o">=</span> <span class="n">compute_variant_effects</span><span class="p">(</span>
-<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>    <span class="n">ref_output</span><span class="p">,</span> <span class="n">alt_output</span><span class="p">,</span>
-<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>    <span class="n">log_counts_include_pseudocount</span><span class="o">=</span><span class="n">log_counts_include_pseudocount</span><span class="p">,</span>
-<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>    <span class="n">pseudocount</span><span class="o">=</span><span class="n">pseudocount</span><span class="p">,</span>
-<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.variants</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_variant_effects</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_log_count_params</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Get pseudocount settings from model config</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="n">log_counts_include_pseudocount</span><span class="p">,</span> <span class="n">pseudocount</span> <span class="o">=</span> <span class="n">get_log_count_params</span><span class="p">(</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="o">.</span><span class="n">model_config_</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="p">)</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="c1"># Run model on ref and alt</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="n">ref_output</span> <span class="o">=</span> <span class="n">ensemble</span><span class="p">(</span><span class="n">ref_batch</span><span class="p">)</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="n">alt_output</span> <span class="o">=</span> <span class="n">ensemble</span><span class="p">(</span><span class="n">alt_batch</span><span class="p">)</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="c1"># Compute effects</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="n">effects</span> <span class="o">=</span> <span class="n">compute_variant_effects</span><span class="p">(</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>    <span class="n">ref_output</span><span class="p">,</span> <span class="n">alt_output</span><span class="p">,</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="n">log_counts_include_pseudocount</span><span class="o">=</span><span class="n">log_counts_include_pseudocount</span><span class="p">,</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>    <span class="n">pseudocount</span><span class="o">=</span><span class="n">pseudocount</span><span class="p">,</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="p">)</span>
 </code></pre></div>
 <p>Returns a <code>dict[str, torch.Tensor]</code> with shape <code>(B, C)</code> per metric:</p>
 <table>
@@ -1572,53 +1676,149 @@
 </tbody>
 </table>
 <p>All accept <code>ModelOutput</code> and the <code>(log_counts_include_pseudocount, pseudocount)</code> parameter pair from <code>get_log_count_params()</code>.</p>
-<h2 id="example-workflow">Example Workflow<a class="headerlink" href="#example-workflow" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pyfaidx</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.model_ensemble</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelEnsemble</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_log_count_params</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.predict_misc</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_eval_dataset</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.variants</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="n">Variant</span><span class="p">,</span>
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="n">compute_variant_effects</span><span class="p">,</span>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="n">load_vcf</span><span class="p">,</span>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">variant_to_ref_alt</span><span class="p">,</span>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="p">)</span>
-<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
-<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="c1"># 1. Load model</span>
-<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span><span class="s2">&quot;logs/my_dalmatian&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
-<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="n">config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span>
-<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="n">input_len</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">data_config</span><span class="o">.</span><span class="n">input_len</span>
-<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>
-<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="c1"># 2. Resolve pseudocount settings</span>
-<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="n">lc_include</span><span class="p">,</span> <span class="n">pseudocount</span> <span class="o">=</span> <span class="n">get_log_count_params</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">model_config_</span><span class="p">)</span>
-<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>
-<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="c1"># 3. Load variants</span>
-<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="n">fasta</span> <span class="o">=</span> <span class="n">pyfaidx</span><span class="o">.</span><span class="n">Fasta</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">genome_config</span><span class="o">.</span><span class="n">fasta_path</span><span class="p">))</span>
-<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="n">variants</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">load_vcf</span><span class="p">(</span><span class="s2">&quot;gwas_hits.vcf.gz&quot;</span><span class="p">,</span> <span class="n">pass_only</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
-<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>
-<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a><span class="c1"># 4. Score each variant</span>
-<a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="k">for</span> <span class="n">variant</span> <span class="ow">in</span> <span class="n">variants</span><span class="p">:</span>
-<a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a>        <span class="n">ref_t</span><span class="p">,</span> <span class="n">alt_t</span><span class="p">,</span> <span class="n">interval</span> <span class="o">=</span> <span class="n">variant_to_ref_alt</span><span class="p">(</span><span class="n">variant</span><span class="p">,</span> <span class="n">fasta</span><span class="p">,</span> <span class="n">input_len</span><span class="p">)</span>
-<a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a>    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-<a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a>        <span class="k">continue</span>  <span class="c1"># skip edge-of-chromosome variants</span>
-<a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a>
-<a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a>    <span class="c1"># Batch of 1</span>
-<a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a>    <span class="n">ref_batch</span> <span class="o">=</span> <span class="n">ref_t</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">ensemble</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-<a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a>    <span class="n">alt_batch</span> <span class="o">=</span> <span class="n">alt_t</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">ensemble</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-<a id="__codelineno-11-35" name="__codelineno-11-35" href="#__codelineno-11-35"></a>
-<a id="__codelineno-11-36" name="__codelineno-11-36" href="#__codelineno-11-36"></a>    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-<a id="__codelineno-11-37" name="__codelineno-11-37" href="#__codelineno-11-37"></a>        <span class="n">ref_out</span> <span class="o">=</span> <span class="n">ensemble</span><span class="p">(</span><span class="n">ref_batch</span><span class="p">,</span> <span class="n">intervals</span><span class="o">=</span><span class="p">[</span><span class="n">interval</span><span class="p">])</span>
-<a id="__codelineno-11-38" name="__codelineno-11-38" href="#__codelineno-11-38"></a>        <span class="n">alt_out</span> <span class="o">=</span> <span class="n">ensemble</span><span class="p">(</span><span class="n">alt_batch</span><span class="p">,</span> <span class="n">intervals</span><span class="o">=</span><span class="p">[</span><span class="n">interval</span><span class="p">])</span>
-<a id="__codelineno-11-39" name="__codelineno-11-39" href="#__codelineno-11-39"></a>
-<a id="__codelineno-11-40" name="__codelineno-11-40" href="#__codelineno-11-40"></a>    <span class="n">effects</span> <span class="o">=</span> <span class="n">compute_variant_effects</span><span class="p">(</span>
-<a id="__codelineno-11-41" name="__codelineno-11-41" href="#__codelineno-11-41"></a>        <span class="n">ref_out</span><span class="p">,</span> <span class="n">alt_out</span><span class="p">,</span>
-<a id="__codelineno-11-42" name="__codelineno-11-42" href="#__codelineno-11-42"></a>        <span class="n">log_counts_include_pseudocount</span><span class="o">=</span><span class="n">lc_include</span><span class="p">,</span>
-<a id="__codelineno-11-43" name="__codelineno-11-43" href="#__codelineno-11-43"></a>        <span class="n">pseudocount</span><span class="o">=</span><span class="n">pseudocount</span><span class="p">,</span>
-<a id="__codelineno-11-44" name="__codelineno-11-44" href="#__codelineno-11-44"></a>    <span class="p">)</span>
-<a id="__codelineno-11-45" name="__codelineno-11-45" href="#__codelineno-11-45"></a>
-<a id="__codelineno-11-46" name="__codelineno-11-46" href="#__codelineno-11-46"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">variant</span><span class="si">}</span><span class="s2">  SAD=</span><span class="si">{</span><span class="n">effects</span><span class="p">[</span><span class="s1">&#39;sad&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">  logFC=</span><span class="si">{</span><span class="n">effects</span><span class="p">[</span><span class="s1">&#39;log_fc&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<h2 id="batched-scoring">Batched Scoring<a class="headerlink" href="#batched-scoring" title="Permanent link">&para;</a></h2>
+<h3 id="score_variants_from_ensemble">score_variants_from_ensemble<a class="headerlink" href="#score_variants_from_ensemble" title="Permanent link">&para;</a></h3>
+<p>The recommended way to score variants. Handles batching, config extraction, error handling (skips bad variants with warnings), and fold routing automatically:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.model_ensemble</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelEnsemble</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.predict_variants</span><span class="w"> </span><span class="kn">import</span> <span class="n">score_variants_from_ensemble</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.variants</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_vcf</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span><span class="s2">&quot;logs/my_dalmatian&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="n">variants</span> <span class="o">=</span> <span class="n">load_vcf</span><span class="p">(</span><span class="s2">&quot;gwas_hits.vcf.gz&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">score_variants_from_ensemble</span><span class="p">(</span><span class="n">ensemble</span><span class="p">,</span> <span class="n">variants</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span><span class="p">):</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>    <span class="n">v</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">variant</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>    <span class="n">e</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">effects</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">  SAD=</span><span class="si">{</span><span class="n">e</span><span class="p">[</span><span class="s1">&#39;sad&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">  logFC=</span><span class="si">{</span><span class="n">e</span><span class="p">[</span><span class="s1">&#39;log_fc&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Each <code>VariantResult</code> contains:</p>
+<ul>
+<li><code>variant</code> — the scored <code>Variant</code></li>
+<li><code>effects</code> — <code>dict[str, torch.Tensor]</code> with per-channel metrics (shape <code>(C,)</code>)</li>
+<li><code>interval</code> — the reference-coordinate input window used for scoring</li>
+</ul>
+<p>Parameters like <code>input_len</code>, <code>fasta_path</code>, and pseudocount settings are extracted from <code>ensemble.cerberus_config</code> automatically. Pass a <code>fasta</code> argument to override the FASTA path.</p>
+<h3 id="score_variants">score_variants<a class="headerlink" href="#score_variants" title="Permanent link">&para;</a></h3>
+<p>Lower-level function for use with a plain <code>nn.Module</code> or when you need full control over parameters:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.predict_variants</span><span class="w"> </span><span class="kn">import</span> <span class="n">score_variants</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">score_variants</span><span class="p">(</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="n">model</span><span class="o">=</span><span class="n">my_model</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="n">variants</span><span class="o">=</span><span class="n">variants</span><span class="p">,</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    <span class="n">fasta</span><span class="o">=</span><span class="n">fasta</span><span class="p">,</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2112</span><span class="p">,</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>    <span class="n">log_counts_include_pseudocount</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>    <span class="n">pseudocount</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>    <span class="n">device</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s2">&quot;cuda&quot;</span><span class="p">),</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>    <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="p">):</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    <span class="o">...</span>
+</code></pre></div>
+<p>Both functions are <strong>generators</strong> — results are yielded as they are computed, so memory usage is bounded by <code>batch_size</code>, not the total number of variants.</p>
+<h2 id="cli-tool">CLI Tool<a class="headerlink" href="#cli-tool" title="Permanent link">&para;</a></h2>
+<h3 id="score-variants-toolsscore_variantspy">Score Variants (<code>tools/score_variants.py</code>)<a class="headerlink" href="#score-variants-toolsscore_variantspy" title="Permanent link">&para;</a></h3>
+<p>Scores variant effects from the command line, writing results to a TSV file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># From a VCF</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>python<span class="w"> </span>tools/score_variants.py<span class="w"> </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span>--vcf<span class="w"> </span>variants.vcf.gz<span class="w"> </span>--output<span class="w"> </span>effects.tsv
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="c1"># From a tab-delimited variant file</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>python<span class="w"> </span>tools/score_variants.py<span class="w"> </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">    </span>--variants<span class="w"> </span>variants.tsv<span class="w"> </span>--output<span class="w"> </span>effects.tsv
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="c1"># With region filter and custom folds</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>python<span class="w"> </span>tools/score_variants.py<span class="w"> </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">    </span>--vcf<span class="w"> </span>variants.vcf.gz<span class="w"> </span>--output<span class="w"> </span>effects.tsv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">    </span>--region<span class="w"> </span>chr1:1000000-2000000<span class="w"> </span>--use_folds<span class="w"> </span>test+val
+</code></pre></div>
+<p>Output columns: <code>chrom</code>, <code>pos_0based</code>, <code>ref</code>, <code>alt</code>, <code>id</code>, and per-channel effect metrics (e.g. <code>sad_ch0</code>, <code>log_fc_ch0</code>, <code>jsd_ch0</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--vcf</code> / <code>--variants</code></td>
+<td>Variant source (mutually exclusive, required).</td>
+</tr>
+<tr>
+<td><code>--output</code></td>
+<td>Output TSV path (default: <code>variant_effects.tsv</code>). Supports <code>.gz</code>.</td>
+</tr>
+<tr>
+<td><code>--fasta</code></td>
+<td>Override FASTA path (default: from model config).</td>
+</tr>
+<tr>
+<td><code>--region</code></td>
+<td>Restrict to variants in a region (e.g. <code>chr1:1000000-2000000</code>).</td>
+</tr>
+<tr>
+<td><code>--batch_size</code></td>
+<td>Variants per inference batch (default: 64).</td>
+</tr>
+<tr>
+<td><code>--use_folds</code></td>
+<td>Folds for ensemble prediction (e.g. <code>test</code>, <code>test+val</code>, <code>all</code>).</td>
+</tr>
+<tr>
+<td><code>--device</code></td>
+<td>Device override (<code>cuda</code>, <code>mps</code>, <code>cpu</code>).</td>
+</tr>
+<tr>
+<td><code>--zero-based</code></td>
+<td>Interpret <code>--variants</code> positions as 0-based (default: 1-based).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="manual-workflow-low-level">Manual Workflow (Low-Level)<a class="headerlink" href="#manual-workflow-low-level" title="Permanent link">&para;</a></h2>
+<p>For custom scoring logic where <code>score_variants</code> doesn't fit:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pyfaidx</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.model_ensemble</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelEnsemble</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_log_count_params</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.variants</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>    <span class="n">compute_variant_effects</span><span class="p">,</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>    <span class="n">load_vcf</span><span class="p">,</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="n">variant_to_ref_alt</span><span class="p">,</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="p">)</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="c1"># 1. Load model</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span><span class="s2">&quot;logs/my_dalmatian&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="n">config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="n">input_len</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">data_config</span><span class="o">.</span><span class="n">input_len</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="c1"># 2. Resolve pseudocount settings</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="n">lc_include</span><span class="p">,</span> <span class="n">pseudocount</span> <span class="o">=</span> <span class="n">get_log_count_params</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">model_config_</span><span class="p">)</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="c1"># 3. Load variants</span>
+<a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a><span class="n">fasta</span> <span class="o">=</span> <span class="n">pyfaidx</span><span class="o">.</span><span class="n">Fasta</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">genome_config</span><span class="o">.</span><span class="n">fasta_path</span><span class="p">))</span>
+<a id="__codelineno-16-21" name="__codelineno-16-21" href="#__codelineno-16-21"></a><span class="n">variants</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">load_vcf</span><span class="p">(</span><span class="s2">&quot;gwas_hits.vcf.gz&quot;</span><span class="p">,</span> <span class="n">pass_only</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+<a id="__codelineno-16-22" name="__codelineno-16-22" href="#__codelineno-16-22"></a>
+<a id="__codelineno-16-23" name="__codelineno-16-23" href="#__codelineno-16-23"></a><span class="c1"># 4. Score each variant</span>
+<a id="__codelineno-16-24" name="__codelineno-16-24" href="#__codelineno-16-24"></a><span class="k">for</span> <span class="n">variant</span> <span class="ow">in</span> <span class="n">variants</span><span class="p">:</span>
+<a id="__codelineno-16-25" name="__codelineno-16-25" href="#__codelineno-16-25"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-16-26" name="__codelineno-16-26" href="#__codelineno-16-26"></a>        <span class="n">ref_t</span><span class="p">,</span> <span class="n">alt_t</span><span class="p">,</span> <span class="n">interval</span> <span class="o">=</span> <span class="n">variant_to_ref_alt</span><span class="p">(</span><span class="n">variant</span><span class="p">,</span> <span class="n">fasta</span><span class="p">,</span> <span class="n">input_len</span><span class="p">)</span>
+<a id="__codelineno-16-27" name="__codelineno-16-27" href="#__codelineno-16-27"></a>    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+<a id="__codelineno-16-28" name="__codelineno-16-28" href="#__codelineno-16-28"></a>        <span class="k">continue</span>  <span class="c1"># skip edge-of-chromosome variants</span>
+<a id="__codelineno-16-29" name="__codelineno-16-29" href="#__codelineno-16-29"></a>
+<a id="__codelineno-16-30" name="__codelineno-16-30" href="#__codelineno-16-30"></a>    <span class="n">ref_batch</span> <span class="o">=</span> <span class="n">ref_t</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">ensemble</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+<a id="__codelineno-16-31" name="__codelineno-16-31" href="#__codelineno-16-31"></a>    <span class="n">alt_batch</span> <span class="o">=</span> <span class="n">alt_t</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">ensemble</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+<a id="__codelineno-16-32" name="__codelineno-16-32" href="#__codelineno-16-32"></a>
+<a id="__codelineno-16-33" name="__codelineno-16-33" href="#__codelineno-16-33"></a>    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+<a id="__codelineno-16-34" name="__codelineno-16-34" href="#__codelineno-16-34"></a>        <span class="n">ref_out</span> <span class="o">=</span> <span class="n">ensemble</span><span class="p">(</span><span class="n">ref_batch</span><span class="p">,</span> <span class="n">intervals</span><span class="o">=</span><span class="p">[</span><span class="n">interval</span><span class="p">])</span>
+<a id="__codelineno-16-35" name="__codelineno-16-35" href="#__codelineno-16-35"></a>        <span class="n">alt_out</span> <span class="o">=</span> <span class="n">ensemble</span><span class="p">(</span><span class="n">alt_batch</span><span class="p">,</span> <span class="n">intervals</span><span class="o">=</span><span class="p">[</span><span class="n">interval</span><span class="p">])</span>
+<a id="__codelineno-16-36" name="__codelineno-16-36" href="#__codelineno-16-36"></a>
+<a id="__codelineno-16-37" name="__codelineno-16-37" href="#__codelineno-16-37"></a>    <span class="n">effects</span> <span class="o">=</span> <span class="n">compute_variant_effects</span><span class="p">(</span>
+<a id="__codelineno-16-38" name="__codelineno-16-38" href="#__codelineno-16-38"></a>        <span class="n">ref_out</span><span class="p">,</span> <span class="n">alt_out</span><span class="p">,</span>
+<a id="__codelineno-16-39" name="__codelineno-16-39" href="#__codelineno-16-39"></a>        <span class="n">log_counts_include_pseudocount</span><span class="o">=</span><span class="n">lc_include</span><span class="p">,</span>
+<a id="__codelineno-16-40" name="__codelineno-16-40" href="#__codelineno-16-40"></a>        <span class="n">pseudocount</span><span class="o">=</span><span class="n">pseudocount</span><span class="p">,</span>
+<a id="__codelineno-16-41" name="__codelineno-16-41" href="#__codelineno-16-41"></a>    <span class="p">)</span>
+<a id="__codelineno-16-42" name="__codelineno-16-42" href="#__codelineno-16-42"></a>
+<a id="__codelineno-16-43" name="__codelineno-16-43" href="#__codelineno-16-43"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">variant</span><span class="si">}</span><span class="s2">  SAD=</span><span class="si">{</span><span class="n">effects</span><span class="p">[</span><span class="s1">&#39;sad&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">  logFC=</span><span class="si">{</span><span class="n">effects</span><span class="p">[</span><span class="s1">&#39;log_fc&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 
 
@@ -1642,7 +1842,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 8, 2026 13:48:39 UTC">April 8, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 15, 2026 00:30:09 UTC">April 15, 2026</span>
   </span>
 
     

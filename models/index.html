@@ -1033,6 +1033,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#pretrained-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pretrained Models
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pomeranian" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1161,6 +1172,78 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#multitaskbpnet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MultitaskBPNet
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MultitaskBPNet">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-features_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Features
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loss-multitaskbpnetloss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loss: MultitaskBPNetLoss
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#differentialcountloss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DifferentialCountLoss
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#convnextdcnn-asap" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1173,7 +1256,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#key-features_2" class="md-nav__link">
+  <a href="#key-features_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Key Features
@@ -1206,7 +1289,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#usage_1" class="md-nav__link">
+  <a href="#usage_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Usage
@@ -1245,7 +1328,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#key-features_3" class="md-nav__link">
+  <a href="#key-features_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Key Features
@@ -1278,7 +1361,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#usage_2" class="md-nav__link">
+  <a href="#usage_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Usage
@@ -1317,7 +1400,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#key-features_4" class="md-nav__link">
+  <a href="#key-features_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Key Features
@@ -1350,7 +1433,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#usage_3" class="md-nav__link">
+  <a href="#usage_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Usage
@@ -1411,7 +1494,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#key-features_5" class="md-nav__link">
+  <a href="#key-features_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         Key Features
@@ -1433,7 +1516,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#usage_4" class="md-nav__link">
+  <a href="#usage_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Usage
@@ -1461,7 +1544,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#key-features_6" class="md-nav__link">
+  <a href="#key-features_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         Key Features
@@ -1494,7 +1577,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#usage_5" class="md-nav__link">
+  <a href="#usage_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         Usage
@@ -1631,6 +1714,37 @@
 
 <h1 id="models">Models<a class="headerlink" href="#models" title="Permanent link">&para;</a></h1>
 <p>Cerberus provides implementations of standard deep learning architectures for genomic sequence modeling.</p>
+<h2 id="pretrained-models">Pretrained Models<a class="headerlink" href="#pretrained-models" title="Permanent link">&para;</a></h2>
+<p>Ready-to-use models are shipped in the <code>pretrained/</code> directory:</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Path</th>
+<th>Dataset</th>
+<th>Architecture</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BPNet (AR ChIP-seq)</td>
+<td><code>pretrained/chip_ar_mdapca2b_bpnet/</code></td>
+<td>MDA-PCA-2b AR (hg38)</td>
+<td>BPNet (kernel 21, 8 dilated layers, 64 filters)</td>
+</tr>
+<tr>
+<td>Pomeranian (AR ChIP-seq)</td>
+<td><code>pretrained/chip_ar_mdapca2b_pomeranian/</code></td>
+<td>MDA-PCA-2b AR (hg38)</td>
+<td>Pomeranian (ConvNeXtV2 stem, 8 PGC layers, 64 filters)</td>
+</tr>
+</tbody>
+</table>
+<p>Load with <code>ModelEnsemble</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.model_ensemble</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelEnsemble</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span><span class="s2">&quot;pretrained/chip_ar_mdapca2b_bpnet&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>See <a href="../prediction/">Prediction</a> for inference examples.</p>
 <h2 id="pomeranian">Pomeranian<a class="headerlink" href="#pomeranian" title="Permanent link">&para;</a></h2>
 <p><strong>Implementation</strong>: <code>cerberus.models.Pomeranian</code> (Default) / <code>PomeranianK5</code><br />
 <strong>Source</strong>: <code>src/cerberus/models/pomeranian.py</code></p>
@@ -1753,15 +1867,15 @@
 </tbody>
 </table>
 <p>From the training script:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span>--stable<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>peaks.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_model
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span>--stable<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>peaks.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_model
 </code></pre></div></p>
 <p>From Python:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet</span><span class="p">(</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2114</span><span class="p">,</span> <span class="n">output_len</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">filters</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">n_dilated_layers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span> <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">activation</span><span class="o">=</span><span class="s2">&quot;gelu&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">weight_norm</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet</span><span class="p">(</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2114</span><span class="p">,</span> <span class="n">output_len</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">filters</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">n_dilated_layers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span> <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">activation</span><span class="o">=</span><span class="s2">&quot;gelu&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">weight_norm</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span>
 </code></pre></div></p>
 <h3 id="residual-architecture-variants">Residual Architecture Variants<a class="headerlink" href="#residual-architecture-variants" title="Permanent link">&para;</a></h3>
 <p>The <code>residual_architecture</code> parameter controls the residual block formulation in the dilated tower:</p>
@@ -1792,53 +1906,130 @@
 </tbody>
 </table>
 <p>The default is <code>residual_pre-activation_conv</code>. To override it from the training script:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span>--residual-architecture<span class="w"> </span>residual_pre-activation_conv<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>peaks.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_model
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>tools/train_bpnet.py<span class="w"> </span>--residual-architecture<span class="w"> </span>residual_pre-activation_conv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>peaks.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_model
 </code></pre></div></p>
 <h3 id="loss-bpnetloss">Loss: BPNetLoss<a class="headerlink" href="#loss-bpnetloss" title="Permanent link">&para;</a></h3>
 <p><code>BPNetLoss</code> computes the sum of a multinomial profile loss and a counts MSE loss:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>L = L_profile + alpha * L_counts
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>L = L_profile + alpha * L_counts
 </code></pre></div>
 <p>The <code>alpha</code> parameter balances the two terms. Because the multinomial NLL scales linearly with total signal depth N while the counts MSE scales as <code>(log N)²</code>, a fixed alpha cannot stay balanced as dataset depth varies.</p>
 <p><strong>Recommended</strong>: set <code>alpha="adaptive"</code> in <code>ModelConfig.loss_args</code>. Cerberus will compute <code>alpha = median_total_counts / 10</code> from the training set before the module is instantiated, automatically matching the dataset depth:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;BPNet_AR&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.BPNet&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.BPNetLoss&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="s2">&quot;adaptive&quot;</span><span class="p">},</span>  <span class="c1"># resolved from training data at fit time</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.BPNetMetricCollection&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;n_dilated_layers&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">]},</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;BPNet_AR&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.BPNet&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.BPNetLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="s2">&quot;adaptive&quot;</span><span class="p">},</span>  <span class="c1"># resolved from training data at fit time</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.BPNetMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;n_dilated_layers&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">]},</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="p">)</span>
 </code></pre></div>
 <p>See <code>docs/internal/adaptive_counts_loss_weight.md</code> for the full mathematical derivation.</p>
 <h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">BPNet</span><span class="p">,</span> <span class="n">BPNet1024</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># Standard BPNet: 2114bp -&gt; 1000bp</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet</span><span class="p">(</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2114</span><span class="p">,</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">filters</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">n_dilated_layers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="p">)</span>
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
-<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="c1"># BPNet1024: 2112bp -&gt; 1024bp (no center-cropping, comparable to Pomeranian)</span>
-<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet1024</span><span class="p">(</span>
-<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
-<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="p">)</span>
-<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="c1"># Both return ProfileCountOutput(logits=..., log_counts=...)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">BPNet</span><span class="p">,</span> <span class="n">BPNet1024</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># Standard BPNet: 2114bp -&gt; 1000bp</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet</span><span class="p">(</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2114</span><span class="p">,</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">filters</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">n_dilated_layers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="p">)</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="c1"># BPNet1024: 2112bp -&gt; 1024bp (no center-cropping, comparable to Pomeranian)</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BPNet1024</span><span class="p">(</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="p">)</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="c1"># Both return ProfileCountOutput(logits=..., log_counts=...)</span>
 </code></pre></div>
+<h2 id="multitaskbpnet">MultitaskBPNet<a class="headerlink" href="#multitaskbpnet" title="Permanent link">&para;</a></h2>
+<p><strong>Implementation</strong>: <code>cerberus.models.bpnet.MultitaskBPNet</code>
+<strong>Source</strong>: <code>src/cerberus/models/bpnet.py</code></p>
+<p>Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to <a href="#bpnet">BPNet</a> with <code>predict_total_count=False</code> enforced, so each condition produces an independent per-channel scalar count head. This is Phase 1 of the two-phase differential-accessibility workflow (see <a href="../usage/#two-phase-multitask-differential-training">Two-phase multitask-differential training</a> in <code>docs/usage.md</code>).</p>
+<p>The split pays off when you want to compare two or more steady-state conditions on the same sequences: a joint shared-trunk model sees both conditions during training, so the trunk encodes cross-condition sequence grammar rather than whatever each condition's solo-trained model happened to pick up. This is the architectural principle of bpAI-TAC (Chandra et al. 2025) and the starting point for Naqvi et al. 2025's differential fine-tuning recipe.</p>
+<h3 id="key-features_2">Key Features<a class="headerlink" href="#key-features_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>One profile + count head per condition</strong>: <code>output_channels=[name_a, name_b, ...]</code> defines the condition names. Must contain at least 2 entries.</li>
+<li><strong><code>predict_total_count=False</code> enforced</strong>: each condition gets its own scalar count-head output. Phase 2 differential fine-tuning supervises the <em>difference</em> of two of those scalars, so per-channel counts are a hard requirement.</li>
+<li><strong>Same trunk as BPNet</strong>: all trunk knobs (<code>filters</code>, <code>n_dilated_layers</code>, <code>residual_architecture</code>, <code>activation</code>, <code>weight_norm</code>, …) behave identically to BPNet.</li>
+</ul>
+<h3 id="loss-multitaskbpnetloss">Loss: MultitaskBPNetLoss<a class="headerlink" href="#loss-multitaskbpnetloss" title="Permanent link">&para;</a></h3>
+<p>Wraps <code>MSEMultinomialLoss</code> with the four settings Phase 1 multi-task training requires: <code>count_per_channel=True</code>, <code>average_channels=True</code>, <code>flatten_channels=False</code>, <code>log1p_targets=False</code>. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.</p>
+<p>Parameters <code>alpha</code> and <code>beta</code> map to <code>count_weight</code> and <code>profile_weight</code> respectively, matching the <a href="#loss-bpnetloss">BPNetLoss</a> convention. <code>alpha="adaptive"</code> is supported the same way as BPNetLoss.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;MultitaskBPNet&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.MultitaskBPNet&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.MultitaskBPNetLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="s2">&quot;adaptive&quot;</span><span class="p">,</span> <span class="s2">&quot;beta&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.BPNetMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;LNCAP&quot;</span><span class="p">,</span> <span class="s2">&quot;22Rv1&quot;</span><span class="p">],</span> <span class="s2">&quot;n_dilated_layers&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">},</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="usage_1">Usage<a class="headerlink" href="#usage_1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models.bpnet</span><span class="w"> </span><span class="kn">import</span> <span class="n">MultitaskBPNet</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># Two-condition FOXA1 ChIP-seq example (LNCaP vs 22Rv1).</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">MultitaskBPNet</span><span class="p">(</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;LNCAP&quot;</span><span class="p">,</span> <span class="s2">&quot;22Rv1&quot;</span><span class="p">],</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2114</span><span class="p">,</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="n">filters</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">n_dilated_layers</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="p">)</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="c1"># Returns ProfileCountOutput(logits=..., log_counts=...)</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="c1"># logits:     (batch, 2, 1000)</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="c1"># log_counts: (batch, 2)</span>
+</code></pre></div>
+<p>For the companion Phase 2 differential loss see <a href="#differentialcountloss">DifferentialCountLoss</a> below; for the end-to-end two-phase CLI see <a href="../usage/#two-phase-multitask-differential-training">Two-phase multitask-differential training</a>.</p>
+<h3 id="differentialcountloss">DifferentialCountLoss<a class="headerlink" href="#differentialcountloss" title="Permanent link">&para;</a></h3>
+<p><strong>Implementation</strong>: <code>cerberus.loss.DifferentialCountLoss</code></p>
+<p>Phase 2 fine-tuning loss. Supervises <code>log_counts[:, B] - log_counts[:, A]</code> against a per-peak log2 fold-change derived inline from the two-channel <code>(B, N, L)</code> targets tensor Phase 1 already trained against:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>target_delta = log2((sum_B + pc) / (sum_A + pc))
+</code></pre></div>
+<p>where <code>sum_A</code> / <code>sum_B</code> are the length-sums of channels A / B and <code>pc</code> is <code>count_pseudocount</code> (on <em>linear</em> scale — same units as the length-summed signal, not a log-space offset). Setting <code>count_pseudocount</code> to match Phase 1's keeps both phases in the same log-space. Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.</p>
+<p>Single path: <code>forward(outputs, targets)</code> returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be <code>(B, N, L)</code> with <code>N &gt;= max(cond_a_idx, cond_b_idx) + 1</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span><span class="p">,</span> <span class="n">PretrainedConfig</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># Phase 2 ModelConfig: same MultitaskBPNet architecture as Phase 1,</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># DifferentialCountLoss in place of MultitaskBPNetLoss, and the Phase 1</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="c1"># checkpoint listed under pretrained=[...].</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;MultitaskBPNet_Phase2&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.MultitaskBPNet&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.DifferentialCountLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;cond_a_idx&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;cond_b_idx&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.bpnet.BPNetMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;LNCAP&quot;</span><span class="p">,</span> <span class="s2">&quot;22Rv1&quot;</span><span class="p">],</span> <span class="s2">&quot;n_dilated_layers&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">},</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>    <span class="n">pretrained</span><span class="o">=</span><span class="p">[</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>        <span class="n">PretrainedConfig</span><span class="p">(</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>            <span class="n">weights_path</span><span class="o">=</span><span class="s2">&quot;models/foxa1/phase1/single-fold/fold_0/model.pt&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>            <span class="n">source</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">freeze</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>        <span class="p">)</span>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>    <span class="p">],</span>
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>    <span class="n">count_pseudocount</span><span class="o">=</span><span class="mf">150.0</span><span class="p">,</span>  <span class="c1"># raw × target_scale, same as Phase 1</span>
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a><span class="p">)</span>
+</code></pre></div>
+<p><code>DifferentialCountLoss</code> is exported from <code>cerberus.loss</code>. For differential <em>attribution</em> on the fine-tuned model, pair it with <code>AttributionTarget(reduction="delta_log_counts", channels=(0, 1))</code> — see <a href="../usage/#scalar-attribution-targets">Scalar attribution targets</a>.</p>
+<h3 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h3>
+<ul>
+<li>bpAI-TAC: Chandra et al. (2025). <em>Refining sequence-to-activity models by increasing model resolution.</em> bioRxiv 2025.01.24.634804.</li>
+<li>Naqvi et al. (2025). <em>Transfer learning reveals sequence determinants of the quantitative response to transcription factor dosage.</em> Cell Genomics. PMC11160683.</li>
+</ul>
 <h2 id="convnextdcnn-asap">ConvNeXtDCNN (ASAP)<a class="headerlink" href="#convnextdcnn-asap" title="Permanent link">&para;</a></h2>
 <p><strong>Implementation</strong>: <code>cerberus.models.ConvNeXtDCNN</code>
 <strong>Source</strong>: <code>src/cerberus/models/asap.py</code></p>
 <p>A large-capacity architecture combining a ConvNeXtV2 stem with a Basenji-style dilated residual tower (DCNN). Designed for high-resolution profile prediction over a wide genomic context.</p>
-<h3 id="key-features_2">Key Features<a class="headerlink" href="#key-features_2" title="Permanent link">&para;</a></h3>
+<h3 id="key-features_3">Key Features<a class="headerlink" href="#key-features_3" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>ConvNeXtV2 Stem</strong>: Modern CNN building block with LayerScale and Global Response Normalization (GRN) for initial feature extraction.</li>
 <li><strong>MaxPool Downsampling</strong>: 2× stride after the stem to halve the spatial resolution before the residual tower.</li>
@@ -1884,37 +2075,37 @@
 </table>
 <h3 id="loss-profilepoissonnllloss">Loss: ProfilePoissonNLLLoss<a class="headerlink" href="#loss-profilepoissonnllloss" title="Permanent link">&para;</a></h3>
 <p>ASAP outputs log-rates and is trained with Poisson NLL directly on the profile (no separate count head). The data config sets <code>log_transform=True</code> so targets are log1p-transformed before computing the loss:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;ConvNeXtDCNN&quot;</span><span class="p">,</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.asap.ConvNeXtDCNN&quot;</span><span class="p">,</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.ProfilePoissonNLLLoss&quot;</span><span class="p">,</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;log_input&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;log1p_targets&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.metrics.DefaultMetricCollection&quot;</span><span class="p">,</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>        <span class="s2">&quot;residual_blocks&quot;</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span>
-<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>        <span class="s2">&quot;filters0&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">,</span>
-<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>        <span class="s2">&quot;filters1&quot;</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
-<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>        <span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span>
-<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>    <span class="p">},</span>
-<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;ConvNeXtDCNN&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.asap.ConvNeXtDCNN&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.ProfilePoissonNLLLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;log_input&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;log1p_targets&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.metrics.DefaultMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>        <span class="s2">&quot;residual_blocks&quot;</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>        <span class="s2">&quot;filters0&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">,</span>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>        <span class="s2">&quot;filters1&quot;</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>        <span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span>
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>    <span class="p">},</span>
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="p">)</span>
 </code></pre></div>
-<h3 id="usage_1">Usage<a class="headerlink" href="#usage_1" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models.asap</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConvNeXtDCNN</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># Default: 2048bp -&gt; 512 bins (2048bp at 4bp resolution)</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">ConvNeXtDCNN</span><span class="p">(</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">output_bin_size</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="p">)</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="c1"># Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 512)</span>
+<h3 id="usage_2">Usage<a class="headerlink" href="#usage_2" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models.asap</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConvNeXtDCNN</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Default: 2048bp -&gt; 512 bins (2048bp at 4bp resolution)</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">ConvNeXtDCNN</span><span class="p">(</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="n">output_bin_size</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="p">)</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="c1"># Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 512)</span>
 </code></pre></div>
 <h2 id="biasnet">BiasNet<a class="headerlink" href="#biasnet" title="Permanent link">&para;</a></h2>
 <p><strong>Implementation</strong>: <code>cerberus.models.BiasNet</code>
@@ -1929,7 +2120,7 @@
 <li><strong>Count</strong>: GlobalAvgPool → Linear → ReLU → Linear</li>
 </ul>
 <p>Default configuration: 12 filters, 105bp RF, ~9.3K params.</p>
-<h3 id="key-features_3">Key Features<a class="headerlink" href="#key-features_3" title="Permanent link">&para;</a></h3>
+<h3 id="key-features_4">Key Features<a class="headerlink" href="#key-features_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>DeepLIFT/DeepSHAP compatible</strong>: Only Conv1d, ReLU, and residual add — all have well-defined captum propagation rules.</li>
 <li><strong>Linear profile head</strong>: A single spatial convolution (no pointwise + ReLU) maximizes interpretability for attribution methods.</li>
@@ -1977,36 +2168,36 @@
 </table>
 <h3 id="training-tool">Training Tool<a class="headerlink" href="#training-tool" title="Permanent link">&para;</a></h3>
 <p>Use <code>tools/train_biasnet.py</code> for command-line training:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Train on negative peaks (default — bias-only training)</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>python<span class="w"> </span>tools/train_biasnet.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span>--bigwig<span class="w"> </span>path/to/signal.bw<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span>--peaks<span class="w"> </span>path/to/peaks.narrowPeak<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_bias_model
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># Train on peaks + background (like Pomeranian)</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>python<span class="w"> </span>tools/train_biasnet.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">    </span>--bigwig<span class="w"> </span>path/to/signal.bw<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span>--peaks<span class="w"> </span>path/to/peaks.narrowPeak<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_bias_model<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="w">    </span>--sampler-type<span class="w"> </span>peak
-<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>
-<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="c1"># Cosine schedule with warmup</span>
-<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>python<span class="w"> </span>tools/train_biasnet.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="w">    </span>--bigwig<span class="w"> </span>path/to/signal.bw<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="w">    </span>--peaks<span class="w"> </span>path/to/peaks.narrowPeak<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_bias_model<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="w">    </span>--scheduler-type<span class="w"> </span>cosine<span class="w"> </span>--warmup-epochs<span class="w"> </span><span class="m">10</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Train on negative peaks (default — bias-only training)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>python<span class="w"> </span>tools/train_biasnet.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span>--bigwig<span class="w"> </span>path/to/signal.bw<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span>--peaks<span class="w"> </span>path/to/peaks.narrowPeak<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_bias_model
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="c1"># Train on peaks + background (like Pomeranian)</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>python<span class="w"> </span>tools/train_biasnet.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">    </span>--bigwig<span class="w"> </span>path/to/signal.bw<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">    </span>--peaks<span class="w"> </span>path/to/peaks.narrowPeak<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_bias_model<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">    </span>--sampler-type<span class="w"> </span>peak
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="c1"># Cosine schedule with warmup</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>python<span class="w"> </span>tools/train_biasnet.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">    </span>--bigwig<span class="w"> </span>path/to/signal.bw<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a><span class="w">    </span>--peaks<span class="w"> </span>path/to/peaks.narrowPeak<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_bias_model<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a><span class="w">    </span>--scheduler-type<span class="w"> </span>cosine<span class="w"> </span>--warmup-epochs<span class="w"> </span><span class="m">10</span>
 </code></pre></div>
-<h3 id="usage_2">Usage<a class="headerlink" href="#usage_2" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">BiasNet</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BiasNet</span><span class="p">(</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">1128</span><span class="p">,</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">filters</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="p">)</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># Returns ProfileCountOutput(logits=..., log_counts=...)</span>
+<h3 id="usage_3">Usage<a class="headerlink" href="#usage_3" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">BiasNet</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">model</span> <span class="o">=</span> <span class="n">BiasNet</span><span class="p">(</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">1128</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    <span class="n">filters</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    <span class="n">n_layers</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="p">)</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="c1"># Returns ProfileCountOutput(logits=..., log_counts=...)</span>
 </code></pre></div>
 <h2 id="dalmatian">Dalmatian<a class="headerlink" href="#dalmatian" title="Permanent link">&para;</a></h2>
 <p><strong>Implementation</strong>: <code>cerberus.models.Dalmatian</code>
@@ -2022,7 +2213,7 @@
 <p>Their outputs are combined:
 - <strong>Profile</strong>: logit addition (<code>combined_logits = bias_logits + signal_logits</code>)
 - <strong>Counts</strong>: log-space addition via logsumexp (<code>combined_log_counts = logsumexp(bias_log_counts, signal_log_counts)</code>)</p>
-<h3 id="key-features_4">Key Features<a class="headerlink" href="#key-features_4" title="Permanent link">&para;</a></h3>
+<h3 id="key-features_5">Key Features<a class="headerlink" href="#key-features_5" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Gradient separation</strong>: Bias outputs are <code>.detach()</code>-ed before combining with signal outputs, so the combined reconstruction loss (L_recon) trains only SignalNet. BiasNet receives gradients exclusively from L_bias (background reconstruction). This replicates ChromBPNet's freeze-bias design without requiring a two-stage training procedure.</li>
 <li><strong>Signal presets</strong>: <code>signal_preset="large"</code> (f=256, expansion=2, ~3.9M params) or <code>signal_preset="standard"</code> (default, f=64, expansion=1, ~150K params — matches standalone Pomeranian K9). Individual <code>signal_args</code> entries override the preset. Experiments (exp20) show the 24x parameter difference buys &lt;0.01 profile Pearson.</li>
@@ -2035,18 +2226,18 @@
 </ul>
 <h3 id="output-factorizedprofilecountoutput">Output: FactorizedProfileCountOutput<a class="headerlink" href="#output-factorizedprofilecountoutput" title="Permanent link">&para;</a></h3>
 <p>Returns a <code>FactorizedProfileCountOutput</code> (extends <code>ProfileCountOutput</code>) containing both the combined predictions and the decomposed bias/signal components:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nd">@dataclass</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">FactorizedProfileCountOutput</span><span class="p">(</span><span class="n">ProfileCountOutput</span><span class="p">):</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">bias_logits</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>       <span class="c1"># (B, C, L)</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">bias_log_counts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>   <span class="c1"># (B, C)</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">signal_logits</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>     <span class="c1"># (B, C, L)</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">signal_log_counts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="c1"># (B, C)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nd">@dataclass</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">FactorizedProfileCountOutput</span><span class="p">(</span><span class="n">ProfileCountOutput</span><span class="p">):</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="n">bias_logits</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>       <span class="c1"># (B, C, L)</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">bias_log_counts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>   <span class="c1"># (B, C)</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">signal_logits</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>     <span class="c1"># (B, C, L)</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="n">signal_log_counts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="c1"># (B, C)</span>
 </code></pre></div>
 <p>This is fully compatible with existing losses and metrics that expect <code>ProfileCountOutput</code> (they see <code>logits</code> and <code>log_counts</code>), while the decomposed fields enable the peak-conditioned <code>DalmatianLoss</code>.</p>
 <h3 id="loss-dalmatianloss">Loss: DalmatianLoss<a class="headerlink" href="#loss-dalmatianloss" title="Permanent link">&para;</a></h3>
 <p><code>DalmatianLoss</code> wraps any profile+count base loss (e.g., <code>MSEMultinomialLoss</code>) and adds a peak-conditioned bias term:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>L = L_recon(combined, target)                          # all examples
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  + bias_weight * L_bias(bias_only, target)            # background only
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>L = L_recon(combined, target)                          # all examples
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  + bias_weight * L_bias(bias_only, target)            # background only
 </code></pre></div>
 <ul>
 <li><strong>L_recon</strong>: Standard reconstruction loss on the combined output (all examples). Gradients flow only to SignalNet (bias outputs are detached before combining).</li>
@@ -2054,123 +2245,123 @@
 <li><strong><code>interval_source</code></strong>: A per-example string identifying the sub-sampler that produced each interval (e.g. <code>"IntervalSampler"</code> for peaks, <code>"ComplexityMatchedSampler"</code> for background). Passed as batch context via <code>**kwargs</code> — <code>CerberusModule._shared_step</code> automatically forwards all non-input/target batch fields as keyword arguments. <code>DalmatianLoss</code> converts this to a peak mask internally.</li>
 </ul>
 <p>No explicit signal suppression term is needed — gradient detach already prevents SignalNet from activating on background (verified in exp21: removing the L1 penalty had zero measurable effect).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Single-task Dalmatian</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Dalmatian&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.dalmatian.Dalmatian&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.DalmatianLoss&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>        <span class="s2">&quot;base_loss_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.loss.MSEMultinomialLoss&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>        <span class="s2">&quot;base_loss_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;count_per_channel&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>        <span class="s2">&quot;bias_weight&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
-<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>    <span class="p">},</span>
-<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.pomeranian.PomeranianMetricCollection&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
-<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
-<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>        <span class="s2">&quot;signal_preset&quot;</span><span class="p">:</span> <span class="s2">&quot;standard&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>        <span class="s2">&quot;bias_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;filters&quot;</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span> <span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
-<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>        <span class="s2">&quot;signal_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
-<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>    <span class="p">},</span>
-<a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a><span class="p">)</span>
-<a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a>
-<a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a><span class="c1"># Multi-task Dalmatian with shared bias (scATAC-seq)</span>
-<a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a><span class="n">model_config_multitask</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
-<a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Dalmatian&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-27" name="__codelineno-12-27" href="#__codelineno-12-27"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.dalmatian.Dalmatian&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.DalmatianLoss&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-29" name="__codelineno-12-29" href="#__codelineno-12-29"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-12-30" name="__codelineno-12-30" href="#__codelineno-12-30"></a>        <span class="s2">&quot;base_loss_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.loss.MSEMultinomialLoss&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-31" name="__codelineno-12-31" href="#__codelineno-12-31"></a>        <span class="s2">&quot;base_loss_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;count_per_channel&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-<a id="__codelineno-12-32" name="__codelineno-12-32" href="#__codelineno-12-32"></a>        <span class="s2">&quot;bias_weight&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>  <span class="c1"># frozen bias, no L_bias needed</span>
-<a id="__codelineno-12-33" name="__codelineno-12-33" href="#__codelineno-12-33"></a>    <span class="p">},</span>
-<a id="__codelineno-12-34" name="__codelineno-12-34" href="#__codelineno-12-34"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.pomeranian.PomeranianMetricCollection&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-35" name="__codelineno-12-35" href="#__codelineno-12-35"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
-<a id="__codelineno-12-36" name="__codelineno-12-36" href="#__codelineno-12-36"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-12-37" name="__codelineno-12-37" href="#__codelineno-12-37"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-12-38" name="__codelineno-12-38" href="#__codelineno-12-38"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;cell_type_1&quot;</span><span class="p">,</span> <span class="s2">&quot;cell_type_2&quot;</span><span class="p">,</span> <span class="s2">&quot;cell_type_3&quot;</span><span class="p">],</span>
-<a id="__codelineno-12-39" name="__codelineno-12-39" href="#__codelineno-12-39"></a>        <span class="s2">&quot;signal_preset&quot;</span><span class="p">:</span> <span class="s2">&quot;standard&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-40" name="__codelineno-12-40" href="#__codelineno-12-40"></a>        <span class="s2">&quot;shared_bias&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>  <span class="c1"># 1-channel BiasNet, N-channel SignalNet</span>
-<a id="__codelineno-12-41" name="__codelineno-12-41" href="#__codelineno-12-41"></a>    <span class="p">},</span>
-<a id="__codelineno-12-42" name="__codelineno-12-42" href="#__codelineno-12-42"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="c1"># Single-task Dalmatian</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Dalmatian&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.dalmatian.Dalmatian&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.DalmatianLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>        <span class="s2">&quot;base_loss_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.loss.MSEMultinomialLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>        <span class="s2">&quot;base_loss_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;count_per_channel&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>        <span class="s2">&quot;bias_weight&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>    <span class="p">},</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.pomeranian.PomeranianMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>        <span class="s2">&quot;signal_preset&quot;</span><span class="p">:</span> <span class="s2">&quot;standard&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a>        <span class="s2">&quot;bias_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;filters&quot;</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span> <span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>        <span class="s2">&quot;signal_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+<a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a>    <span class="p">},</span>
+<a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a><span class="p">)</span>
+<a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a>
+<a id="__codelineno-17-24" name="__codelineno-17-24" href="#__codelineno-17-24"></a><span class="c1"># Multi-task Dalmatian with shared bias (scATAC-seq)</span>
+<a id="__codelineno-17-25" name="__codelineno-17-25" href="#__codelineno-17-25"></a><span class="n">model_config_multitask</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
+<a id="__codelineno-17-26" name="__codelineno-17-26" href="#__codelineno-17-26"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Dalmatian&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-27" name="__codelineno-17-27" href="#__codelineno-17-27"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.dalmatian.Dalmatian&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-28" name="__codelineno-17-28" href="#__codelineno-17-28"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.DalmatianLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-29" name="__codelineno-17-29" href="#__codelineno-17-29"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-17-30" name="__codelineno-17-30" href="#__codelineno-17-30"></a>        <span class="s2">&quot;base_loss_cls&quot;</span><span class="p">:</span> <span class="s2">&quot;cerberus.loss.MSEMultinomialLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-31" name="__codelineno-17-31" href="#__codelineno-17-31"></a>        <span class="s2">&quot;base_loss_args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;count_per_channel&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+<a id="__codelineno-17-32" name="__codelineno-17-32" href="#__codelineno-17-32"></a>        <span class="s2">&quot;bias_weight&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>  <span class="c1"># frozen bias, no L_bias needed</span>
+<a id="__codelineno-17-33" name="__codelineno-17-33" href="#__codelineno-17-33"></a>    <span class="p">},</span>
+<a id="__codelineno-17-34" name="__codelineno-17-34" href="#__codelineno-17-34"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.pomeranian.PomeranianMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-35" name="__codelineno-17-35" href="#__codelineno-17-35"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
+<a id="__codelineno-17-36" name="__codelineno-17-36" href="#__codelineno-17-36"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-17-37" name="__codelineno-17-37" href="#__codelineno-17-37"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-17-38" name="__codelineno-17-38" href="#__codelineno-17-38"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;cell_type_1&quot;</span><span class="p">,</span> <span class="s2">&quot;cell_type_2&quot;</span><span class="p">,</span> <span class="s2">&quot;cell_type_3&quot;</span><span class="p">],</span>
+<a id="__codelineno-17-39" name="__codelineno-17-39" href="#__codelineno-17-39"></a>        <span class="s2">&quot;signal_preset&quot;</span><span class="p">:</span> <span class="s2">&quot;standard&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-40" name="__codelineno-17-40" href="#__codelineno-17-40"></a>        <span class="s2">&quot;shared_bias&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>  <span class="c1"># 1-channel BiasNet, N-channel SignalNet</span>
+<a id="__codelineno-17-41" name="__codelineno-17-41" href="#__codelineno-17-41"></a>    <span class="p">},</span>
+<a id="__codelineno-17-42" name="__codelineno-17-42" href="#__codelineno-17-42"></a><span class="p">)</span>
 </code></pre></div>
-<h3 id="usage_3">Usage<a class="headerlink" href="#usage_3" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dalmatian</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.loss</span><span class="w"> </span><span class="kn">import</span> <span class="n">DalmatianLoss</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># Single-task: 2112bp -&gt; 1024bp</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Dalmatian</span><span class="p">(</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2112</span><span class="p">,</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="p">)</span>
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>
-<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="c1"># Multi-task with shared bias (e.g. 14 scATAC-seq cell types)</span>
-<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="n">model_mt</span> <span class="o">=</span> <span class="n">Dalmatian</span><span class="p">(</span>
-<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ct1&quot;</span><span class="p">,</span> <span class="s2">&quot;ct2&quot;</span><span class="p">,</span> <span class="s2">&quot;ct3&quot;</span><span class="p">],</span>
-<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>    <span class="n">shared_bias</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>  <span class="c1"># 1-channel BiasNet, 3-channel SignalNet</span>
-<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>    <span class="n">bias_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;filters&quot;</span><span class="p">:</span> <span class="mi">12</span><span class="p">},</span>
-<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>    <span class="n">signal_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
-<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="p">)</span>
-<a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a>
-<a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a><span class="n">loss</span> <span class="o">=</span> <span class="n">DalmatianLoss</span><span class="p">(</span>
-<a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a>    <span class="n">base_loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.MSEMultinomialLoss&quot;</span><span class="p">,</span>
-<a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a>    <span class="n">bias_weight</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
-<a id="__codelineno-13-23" name="__codelineno-13-23" href="#__codelineno-13-23"></a><span class="p">)</span>
-<a id="__codelineno-13-24" name="__codelineno-13-24" href="#__codelineno-13-24"></a>
-<a id="__codelineno-13-25" name="__codelineno-13-25" href="#__codelineno-13-25"></a><span class="c1"># Returns FactorizedProfileCountOutput with combined + decomposed fields</span>
-<a id="__codelineno-13-26" name="__codelineno-13-26" href="#__codelineno-13-26"></a><span class="n">out</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">2112</span><span class="p">))</span>
-<a id="__codelineno-13-27" name="__codelineno-13-27" href="#__codelineno-13-27"></a><span class="c1"># out.logits, out.log_counts       -- combined</span>
-<a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a><span class="c1"># out.bias_logits, out.bias_log_counts    -- bias component</span>
-<a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a><span class="c1"># out.signal_logits, out.signal_log_counts -- signal component</span>
+<h3 id="usage_4">Usage<a class="headerlink" href="#usage_4" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dalmatian</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.loss</span><span class="w"> </span><span class="kn">import</span> <span class="n">DalmatianLoss</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="c1"># Single-task: 2112bp -&gt; 1024bp</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="n">model</span> <span class="o">=</span> <span class="n">Dalmatian</span><span class="p">(</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2112</span><span class="p">,</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="p">)</span>
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="c1"># Multi-task with shared bias (e.g. 14 scATAC-seq cell types)</span>
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="n">model_mt</span> <span class="o">=</span> <span class="n">Dalmatian</span><span class="p">(</span>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ct1&quot;</span><span class="p">,</span> <span class="s2">&quot;ct2&quot;</span><span class="p">,</span> <span class="s2">&quot;ct3&quot;</span><span class="p">],</span>
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>    <span class="n">shared_bias</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>  <span class="c1"># 1-channel BiasNet, 3-channel SignalNet</span>
+<a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a>    <span class="n">bias_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;filters&quot;</span><span class="p">:</span> <span class="mi">12</span><span class="p">},</span>
+<a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a>    <span class="n">signal_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+<a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="p">)</span>
+<a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a>
+<a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a><span class="n">loss</span> <span class="o">=</span> <span class="n">DalmatianLoss</span><span class="p">(</span>
+<a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a>    <span class="n">base_loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.MSEMultinomialLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-22" name="__codelineno-18-22" href="#__codelineno-18-22"></a>    <span class="n">bias_weight</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-18-23" name="__codelineno-18-23" href="#__codelineno-18-23"></a><span class="p">)</span>
+<a id="__codelineno-18-24" name="__codelineno-18-24" href="#__codelineno-18-24"></a>
+<a id="__codelineno-18-25" name="__codelineno-18-25" href="#__codelineno-18-25"></a><span class="c1"># Returns FactorizedProfileCountOutput with combined + decomposed fields</span>
+<a id="__codelineno-18-26" name="__codelineno-18-26" href="#__codelineno-18-26"></a><span class="n">out</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">2112</span><span class="p">))</span>
+<a id="__codelineno-18-27" name="__codelineno-18-27" href="#__codelineno-18-27"></a><span class="c1"># out.logits, out.log_counts       -- combined</span>
+<a id="__codelineno-18-28" name="__codelineno-18-28" href="#__codelineno-18-28"></a><span class="c1"># out.bias_logits, out.bias_log_counts    -- bias component</span>
+<a id="__codelineno-18-29" name="__codelineno-18-29" href="#__codelineno-18-29"></a><span class="c1"># out.signal_logits, out.signal_log_counts -- signal component</span>
 </code></pre></div>
 <h3 id="training-tool_1">Training Tool<a class="headerlink" href="#training-tool_1" title="Permanent link">&para;</a></h3>
 <p>Use <code>tools/train_dalmatian.py</code> for command-line training:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Bulk pseudobulk (all cell types merged)</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>python<span class="w"> </span>tools/train_dalmatian.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span>--bigwig<span class="w"> </span><span class="s2">&quot;tests/data/scatac_kidney_pseudobulk/bulk.bw&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span>--peaks<span class="w"> </span><span class="s2">&quot;tests/data/scatac_kidney_pseudobulk/bulk_merge.narrowPeak.bed.gz&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/kidney_dalmatian
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="c1"># Or use the example script</span>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>bash<span class="w"> </span>examples/scatac_kidney_dalmatian.sh
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Bulk pseudobulk (all cell types merged)</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>python<span class="w"> </span>tools/train_dalmatian.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">    </span>--bigwig<span class="w"> </span><span class="s2">&quot;tests/data/scatac_kidney_pseudobulk/bulk.bw&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">    </span>--peaks<span class="w"> </span><span class="s2">&quot;tests/data/scatac_kidney_pseudobulk/bulk_merge.narrowPeak.bed.gz&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/kidney_dalmatian
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1"># Or use the example script</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>bash<span class="w"> </span>examples/scatac_kidney_dalmatian.sh
 </code></pre></div>
 <h3 id="multi-task-training">Multi-Task Training<a class="headerlink" href="#multi-task-training" title="Permanent link">&para;</a></h3>
 <p>Use <code>tools/train_dalmatian_multitask.py</code> for multi-task training on multiple BigWig targets (e.g. scATAC-seq cell-type pseudobulk). Targets are specified via a JSON file:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">{</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">&quot;cell_type_1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;bigwig&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;path/to/ct1.bw&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;peaks&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;path/to/ct1.bed&quot;</span><span class="p">},</span>
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="nt">&quot;cell_type_2&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;bigwig&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;path/to/ct2.bw&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;peaks&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;path/to/ct2.bed&quot;</span><span class="p">}</span>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="p">{</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">  </span><span class="nt">&quot;cell_type_1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;bigwig&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;path/to/ct1.bw&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;peaks&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;path/to/ct1.bed&quot;</span><span class="p">},</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">  </span><span class="nt">&quot;cell_type_2&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;bigwig&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;path/to/ct2.bw&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;peaks&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;path/to/ct2.bed&quot;</span><span class="p">}</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="p">}</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>python<span class="w"> </span>tools/train_dalmatian_multitask.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span>--targets-json<span class="w"> </span>targets.json<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span>--peaks<span class="w"> </span>merged_peaks.bed<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span>--shared-bias<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span>--pretrained-bias<span class="w"> </span>bias_model.pt<span class="w"> </span>--freeze-bias<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">    </span>--bias-weight<span class="w"> </span><span class="m">0</span>.0<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/multitask
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>
-<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="c1"># Or use the example script</span>
-<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>bash<span class="w"> </span>examples/scatac_kidney_dalmatian_multitask.sh
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>python<span class="w"> </span>tools/train_dalmatian_multitask.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">    </span>--targets-json<span class="w"> </span>targets.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">    </span>--peaks<span class="w"> </span>merged_peaks.bed<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">    </span>--shared-bias<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">    </span>--pretrained-bias<span class="w"> </span>bias_model.pt<span class="w"> </span>--freeze-bias<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">    </span>--bias-weight<span class="w"> </span><span class="m">0</span>.0<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/multitask
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="c1"># Or use the example script</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>bash<span class="w"> </span>examples/scatac_kidney_dalmatian_multitask.sh
 </code></pre></div>
 <h3 id="pretrained-bias-loading">Pretrained Bias Loading<a class="headerlink" href="#pretrained-bias-loading" title="Permanent link">&para;</a></h3>
 <p>Load a pre-trained BiasNet to skip bias re-training. This is equivalent to ChromBPNet's two-stage approach (freeze bias, train signal) but in a single training run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Frozen pre-trained bias (ChromBPNet-equivalent)</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>python<span class="w"> </span>tools/train_dalmatian.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>peaks.bed<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">    </span>--pretrained-bias<span class="w"> </span>pretrained/biasnet/atac_k562.pt<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">    </span>--freeze-bias<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/dalmatian_frozen_bias
-<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
-<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="c1"># Warm-start bias (fine-tune both sub-models)</span>
-<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>python<span class="w"> </span>tools/train_dalmatian.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="w">    </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>peaks.bed<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="w">    </span>--pretrained-bias<span class="w"> </span>pretrained/biasnet/atac_k562.pt<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/dalmatian_finetuned
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="c1"># Frozen pre-trained bias (ChromBPNet-equivalent)</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>python<span class="w"> </span>tools/train_dalmatian.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">    </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>peaks.bed<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">    </span>--pretrained-bias<span class="w"> </span>pretrained/biasnet/atac_k562.pt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">    </span>--freeze-bias<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/dalmatian_frozen_bias
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="c1"># Warm-start bias (fine-tune both sub-models)</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>python<span class="w"> </span>tools/train_dalmatian.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="w">    </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>peaks.bed<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="w">    </span>--pretrained-bias<span class="w"> </span>pretrained/biasnet/atac_k562.pt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/dalmatian_finetuned
 </code></pre></div>
 <p>The pretrained weight loading system is generic — any training tool supports <code>--pretrained</code> for whole-model warm-starting (e.g., <code>python tools/train_pomeranian.py --pretrained model.pt ...</code>).</p>
 <p>Internally, pretrained configs use <code>source</code> and <code>target</code> fields to support flexible weight mapping:</p>
@@ -2209,7 +2400,7 @@
 <p><strong>Location</strong>: <code>debug/pwm_model/pwm_bias.py</code> (not part of cerberus public API)</p>
 <p>A structured bias model that learns <code>n_motifs</code> position-weight matrix (PWM) filters of fixed <code>motif_width</code> and combines them via linear mixing. Designed for capturing enzymatic sequence bias (e.g., Tn5 transposase preference in ATAC-seq), where the bias is a short motif (~21bp) with low information content (~2 bits total).</p>
 <p>Self-contained in <code>debug/pwm_model/</code> with its own output type (<code>RegularizedProfileCountOutput</code>), loss wrapper (<code>RegularizedMSEMultinomialLoss</code>), and tests. Compatible with cerberus training infrastructure via <code>import_class</code>.</p>
-<h3 id="key-features_5">Key Features<a class="headerlink" href="#key-features_5" title="Permanent link">&para;</a></h3>
+<h3 id="key-features_6">Key Features<a class="headerlink" href="#key-features_6" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Learnable PWM filters</strong>: <code>Conv1d(4, n_motifs, motif_width, valid)</code> — each filter is a learnable PWM that can be extracted and visualized as a sequence logo.</li>
 <li><strong>Linear mixing</strong>: <code>Conv1d(n_motifs, n_output_channels, 1)</code> — pointwise linear combination of filter activations. With linear mixing, multiple filters are mathematically equivalent to a single effective filter (provably via einsum folding).</li>
@@ -2262,26 +2453,26 @@
 </tr>
 </tbody>
 </table>
-<h3 id="usage_4">Usage<a class="headerlink" href="#usage_4" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Add debug/ to sys.path first</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pwm_model.pwm_bias</span><span class="w"> </span><span class="kn">import</span> <span class="n">PWMBiasModel</span>
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">PWMBiasModel</span><span class="p">(</span>
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">1044</span><span class="p">,</span> <span class="n">output_len</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>    <span class="n">n_motifs</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">motif_width</span><span class="o">=</span><span class="mi">21</span><span class="p">,</span>
-<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>    <span class="n">nonneg_mixing</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">relu_activation</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>    <span class="n">decorrelation_weight</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
-<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="p">)</span>
-<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>
-<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="c1"># After training, extract filters for visualization:</span>
-<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="n">pwm_weights</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_pwm_weights</span><span class="p">()</span>   <span class="c1"># (n_motifs, 4, motif_width)</span>
-<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="n">mixing</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_mixing_weights</span><span class="p">()</span>      <span class="c1"># (n_output_channels, n_motifs, 1)</span>
+<h3 id="usage_5">Usage<a class="headerlink" href="#usage_5" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1"># Add debug/ to sys.path first</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pwm_model.pwm_bias</span><span class="w"> </span><span class="kn">import</span> <span class="n">PWMBiasModel</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">PWMBiasModel</span><span class="p">(</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">1044</span><span class="p">,</span> <span class="n">output_len</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>    <span class="n">n_motifs</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">motif_width</span><span class="o">=</span><span class="mi">21</span><span class="p">,</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>    <span class="n">nonneg_mixing</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">relu_activation</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>    <span class="n">decorrelation_weight</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="p">)</span>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="c1"># After training, extract filters for visualization:</span>
+<a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a><span class="n">pwm_weights</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_pwm_weights</span><span class="p">()</span>   <span class="c1"># (n_motifs, 4, motif_width)</span>
+<a id="__codelineno-23-13" name="__codelineno-23-13" href="#__codelineno-23-13"></a><span class="n">mixing</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_mixing_weights</span><span class="p">()</span>      <span class="c1"># (n_output_channels, n_motifs, 1)</span>
 </code></pre></div>
 <h2 id="globalprofilecnn-gopher">GlobalProfileCNN (Gopher)<a class="headerlink" href="#globalprofilecnn-gopher" title="Permanent link">&para;</a></h2>
 <p><strong>Implementation</strong>: <code>cerberus.models.GlobalProfileCNN</code>
 <strong>Source</strong>: <code>src/cerberus/models/gopher.py</code></p>
 <p>A baseline architecture corresponding to the "Baseline CNN" from the Gopher manuscript (<code>conv_profile_all_base</code>). It uses a standard convolutional body followed by a global dense bottleneck that compresses the full sequence into a fixed-size representation, then projects back to a spatial grid.</p>
-<h3 id="key-features_6">Key Features<a class="headerlink" href="#key-features_6" title="Permanent link">&para;</a></h3>
+<h3 id="key-features_7">Key Features<a class="headerlink" href="#key-features_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>3 Convolutional Blocks</strong>: Conv1D → BatchNorm → ReLU → MaxPool (pooling factors: 8×, 4×, 4× = 128× total), with increasing filter counts (192, 256, 512).</li>
 <li><strong>Global Dense Bottleneck</strong>: Flattens the pooled feature map into a single vector (Dense → BN → ReLU → Dropout).</li>
@@ -2327,35 +2518,35 @@
 </table>
 <h3 id="loss-profilepoissonnllloss_1">Loss: ProfilePoissonNLLLoss<a class="headerlink" href="#loss-profilepoissonnllloss_1" title="Permanent link">&para;</a></h3>
 <p>Gopher outputs log-rates and is trained with Poisson NLL directly on the profile (no separate count head). The data config should set <code>log_transform=True</code> so targets are log1p-transformed before computing the loss:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;GlobalProfileCNN&quot;</span><span class="p">,</span>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.gopher.GlobalProfileCNN&quot;</span><span class="p">,</span>
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.ProfilePoissonNLLLoss&quot;</span><span class="p">,</span>
-<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;log_input&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;log1p_targets&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.metrics.DefaultMetricCollection&quot;</span><span class="p">,</span>
-<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
-<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
-<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>        <span class="s2">&quot;bottleneck_channels&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
-<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>    <span class="p">},</span>
-<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;GlobalProfileCNN&quot;</span><span class="p">,</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>    <span class="n">model_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.models.gopher.GlobalProfileCNN&quot;</span><span class="p">,</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>    <span class="n">loss_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.loss.ProfilePoissonNLLLoss&quot;</span><span class="p">,</span>
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a>    <span class="n">loss_args</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;log_input&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;log1p_targets&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>    <span class="n">metrics_cls</span><span class="o">=</span><span class="s2">&quot;cerberus.metrics.DefaultMetricCollection&quot;</span><span class="p">,</span>
+<a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>    <span class="n">metrics_args</span><span class="o">=</span><span class="p">{},</span>
+<a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a>    <span class="n">model_args</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a>        <span class="s2">&quot;input_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>        <span class="s2">&quot;output_channels&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a>        <span class="s2">&quot;bottleneck_channels&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-24-14" name="__codelineno-24-14" href="#__codelineno-24-14"></a>    <span class="p">},</span>
+<a id="__codelineno-24-15" name="__codelineno-24-15" href="#__codelineno-24-15"></a><span class="p">)</span>
 </code></pre></div>
-<h3 id="usage_5">Usage<a class="headerlink" href="#usage_5" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">GlobalProfileCNN</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>
-<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="c1"># Default: 2048bp -&gt; 256 bins (1024bp at 4bp resolution)</span>
-<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">GlobalProfileCNN</span><span class="p">(</span>
-<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
-<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
-<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>    <span class="n">output_bin_size</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
-<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
-<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
-<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>    <span class="n">bottleneck_channels</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
-<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a><span class="p">)</span>
-<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a><span class="c1"># Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 256)</span>
+<h3 id="usage_6">Usage<a class="headerlink" href="#usage_6" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">GlobalProfileCNN</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="c1"># Default: 2048bp -&gt; 256 bins (1024bp at 4bp resolution)</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">GlobalProfileCNN</span><span class="p">(</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>    <span class="n">input_len</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>    <span class="n">output_len</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>    <span class="n">output_bin_size</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>    <span class="n">input_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;T&quot;</span><span class="p">],</span>
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a>    <span class="n">output_channels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;signal&quot;</span><span class="p">],</span>
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a>    <span class="n">bottleneck_channels</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a><span class="p">)</span>
+<a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a><span class="c1"># Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 256)</span>
 </code></pre></div>
 
 
@@ -2379,7 +2570,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 9, 2026 02:13:42 UTC">April 9, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 18, 2026 14:46:04 UTC">April 18, 2026</span>
   </span>
 
     

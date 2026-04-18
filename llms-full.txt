@@ -416,6 +416,15 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap --multi
     ```
 
+*   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
+    ```bash
+    python tools/train_multitask_differential_bpnet.py \
+        --bigwig-a LNCAP.rpm.bw --peaks-a LNCAP-macs2.bed.gz \
+        --bigwig-b 22Rv1.rpm.bw --peaks-b 22Rv1-macs2.bed.gz \
+        --name-a LNCAP --name-b 22Rv1 \
+        --output-dir models/foxa1_differential --stable --interpret
+    ```
+
 All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--precision` (`bf16`/`mps`/`full`), `--accelerator`, `--devices`, and `--fasta`/`--blacklist`/`--gaps` for custom genome references. Key default differences reflect each model's canonical training recipe:
 
 | Flag | `train_bpnet.py` | `train_pomeranian.py` | `train_dalmatian.py` | `train_gopher.py` | `train_asap.py` |
@@ -428,6 +437,55 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 | `--output-len` | `1000` | `1024` | `1024` | `1024` | `2048` |
 | `--output-bin-size` | `1` | `1` | `1` | `4` | `4` |
 | Loss | `adaptive` (BPNetLoss) | `adaptive` (BPNetLoss) | `mse` (DalmatianLoss) | — (ProfilePoissonNLLLoss) | — (ProfilePoissonNLLLoss) |
+
+## Two-phase multitask-differential training
+
+`tools/train_multitask_differential_bpnet.py` trains a [MultitaskBPNet](models.md#multitaskbpnet) on two conditions in two phases, following the recipe from bpAI-TAC (Chandra et al. 2025) and Naqvi et al. 2025:
+
+- **Phase 1 — multi-task absolute model.** Jointly trains a shared BPNet trunk on condition A and condition B with `MultitaskBPNetLoss` (per-condition profile + count heads). The trunk learns sequence features that matter for *both* conditions, not the confound of separately-trained solo models.
+- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises `log_counts_B − log_counts_A` on the per-peak log2 fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log2FC table.
+- **Optional interpretation.** With `--interpret`, runs DeepLIFTSHAP on the fine-tuned model through `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` and pipes the result into TF-MoDISco.
+
+Both phases run on the standard `train_single` / `train_multi` pipeline. The companion library primitives are [MultitaskBPNet](models.md#multitaskbpnet), [MultitaskBPNetLoss](models.md#loss-multitaskbpnetloss), and [DifferentialCountLoss](models.md#differentialcountloss).
+
+```bash
+# Single-fold two-condition training + interpretation in one call.
+python tools/train_multitask_differential_bpnet.py \
+    --bigwig-a LNCAP.rpm.bw --peaks-a LNCAP-macs2.bed.gz \
+    --bigwig-b 22Rv1.rpm.bw --peaks-b 22Rv1-macs2.bed.gz \
+    --name-a LNCAP --name-b 22Rv1 \
+    --output-dir models/foxa1_differential \
+    --stable --interpret
+```
+
+Output layout:
+```
+models/foxa1_differential/
+├── merged_peaks.bed            # union of peaks-a + peaks-b
+├── phase1/single-fold/         # standard train_single output
+│   └── fold_.../model.pt       # Phase 1 weights
+├── phase2/single-fold/         # standard train_single output
+│   └── fold_.../model.pt       # Phase 2 fine-tuned weights
+└── interpretation/             # only with --interpret
+    ├── ohe.npz, attr.npz
+    ├── modisco_results.h5
+    └── report/
+```
+
+Key flags (see `--help` for the full list):
+
+| Flag | Purpose |
+|---|---|
+| `--bigwig-a` / `--peaks-a` / `--name-a` | Condition A inputs and label |
+| `--bigwig-b` / `--peaks-b` / `--name-b` | Condition B inputs and label |
+| `--stable` | Phase 1 stable-mode overrides (AdamW + cosine + weight-norm + GELU) |
+| `--multi` | Cross-validation (both phases run `train_multi`) |
+| `--skip-phase1 --phase1-dir <path>` | Reuse an existing Phase 1 output |
+| `--skip-phase2` | Phase 1 + interpretation only |
+| `--count-pseudocount` | Pseudocount on *linear* scale, shared by Phase 1 `MSEMultinomialLoss` and Phase 2 `DifferentialCountLoss` so both phases operate in the same log-space |
+| `--interpret` | Run DeepLIFTSHAP + TF-MoDISco on the Phase 2 model |
+
+The Phase 2 loss derives the per-peak log2FC inline from the `(B, N, L)` targets tensor, so no `--diff-pseudocount` or external log2FC file is required — for external-labels support see `docs/internal/differential_workflow_redesign.md` §13.
 
 ## scATAC-seq Pseudobulk Tools
 
@@ -533,6 +591,8 @@ What the export script does:
 3. Exports:
    - `ohe.npz` (DNA one-hot sequence; shape `(N, 4, L)`)
    - `shap.npz` (attribution scores; shape `(N, 4, L)`)
+   - `intervals.tsv` (one row/example aligned to NPZ order)
+   - `attribution_meta.json` (method/target/export provenance)
 
 What the TF-MoDISco runner script does:
 
@@ -543,17 +603,12 @@ What the TF-MoDISco runner script does:
 Prerequisites:
 
 ```bash
-pip install modisco
+pip install modisco-lite
 # Optional (only if export uses --attribution-method integrated_gradients):
 pip install captum
 
-# Or install cerberus extras:
-pip install -e ".[tfmodisco]"
-pip install -e ".[attribution]"
-# (combined)
-pip install -e ".[interpret]"
-# (development + attribution)
-pip install -e ".[dev,attribution]"
+# Or install all cerberus extras:
+pip install -e ".[extras]"
 ```
 
 Step 1: export attribution NPZ files:
@@ -581,6 +636,25 @@ python tools/export_tfmodisco_inputs.py \
     --ism-end 1200
 ```
 
+Export with Taylor-approximated ISM (first-order, one forward + one backward
+pass per batch — typically ~100× faster than exact ISM at peak widths, and
+bit-identical on linear models; see Sasse et al. 2024 *iScience*):
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_pomeranian/single-fold \
+    --fold 0 \
+    --output-dir models/my_pomeranian/single-fold/tfmodisco \
+    --attribution-method taylor_ism \
+    --ism-start 800 \
+    --ism-end 1200
+```
+
+The `--ism-start` / `--ism-end` window applies to both `ism` and `taylor_ism`;
+positions outside the window are zero in the output. The exported
+`ohe.npz` / `shap.npz` shapes are identical across methods, so downstream
+`run_tfmodisco.py` needs no flag changes.
+
 Step 2: run TF-MoDISco motifs on exported NPZ files:
 
 ```bash
@@ -589,6 +663,22 @@ python tools/run_tfmodisco.py \
     --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
     --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5
 ```
+
+Optional: export attributions to IGV/UCSC BigWig (chrombpnet-style projected SHAP):
+
+```bash
+python tools/export_attribution_bigwig.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --intervals-tsv models/my_pomeranian/single-fold/tfmodisco/intervals.tsv \
+    --chrom-sizes data/genome/chrom.sizes \
+    --output-bw models/my_pomeranian/single-fold/tfmodisco/shap.bw
+```
+
+Notes for BigWig export:
+- Coordinates come from exported `intervals.tsv` (realized examples), not the raw peaks BED.
+- Overlap resolution is fixed nearest-center midpoint splitting (chrombpnet-style).
+- The written track is `projected = (ohe * attr).sum(axis=1)` (one scalar per genomic base).
 
 Generate HTML report after motifs:
 
@@ -637,6 +727,40 @@ Common interpretation target modes (`--target-mode`):
 | `pred_count_bin` | Attribution to one predicted count bin (softmax(logits) × exp(log_counts)) |
 | `pred_count_window_sum` | Attribution to summed predicted counts in a window |
 
+`tools/export_tfmodisco_inputs.py` drives the first five (single-channel) modes. The two delta modes — `delta_log_counts` and `delta_profile_window_sum` — are produced by `tools/train_multitask_differential_bpnet.py --interpret` for multi-condition models; see [Scalar attribution targets](#scalar-attribution-targets) below for direct library-level use.
+
+### Scalar attribution targets
+
+All cerberus attribution paths (Captum IG / DeepLIFTSHAP, exact ISM, Taylor-ISM, TPCAV) require a scalar-output `nn.Module` to differentiate. `cerberus.attribution.AttributionTarget` is the wrapper that reduces a cerberus model's multi-channel / multi-bin output to one scalar per batch element.
+
+One class, seven reductions. `channels` is an `int` for the five single-channel reductions and a `(cond_a_idx, cond_b_idx)` pair for the two delta reductions; arity is validated at construction time.
+
+| Reduction | `channels` | Extra fields | Output |
+|---|---|---|---|
+| `log_counts` | `int` | — | `log_counts[:, channels]` |
+| `profile_bin` | `int` | `bin_index` *(defaults to center)* | `logits[:, channels, bin_index]` |
+| `profile_window_sum` | `int` | `window_start` / `window_end` *(default full)* | `logits[:, channels, start:end].sum(-1)` |
+| `pred_count_bin` | `int` | `bin_index` | softmax(logits) × exp(log_counts), one bin |
+| `pred_count_window_sum` | `int` | `window_start` / `window_end` | softmax(logits) × exp(log_counts), summed over window |
+| `delta_log_counts` | `(int, int)` | — | `log_counts[:, b] − log_counts[:, a]` |
+| `delta_profile_window_sum` | `(int, int)` | `window_start` / `window_end` | `(logits[:, b] − logits[:, a])[:, start:end].sum(-1)` |
+
+```python
+from cerberus.attribution import AttributionTarget
+
+# Single-channel: total log-counts of channel 0 (the default BPNet target).
+target = AttributionTarget(model=model, reduction="log_counts", channels=0)
+
+# Delta: log_counts_B − log_counts_A of a MultitaskBPNet.
+delta_target = AttributionTarget(
+    model=multitask_model,
+    reduction="delta_log_counts",
+    channels=(0, 1),          # (cond_a_idx, cond_b_idx)
+)
+```
+
+The delta reductions are required for **nonlinear** attribution (DeepLIFT / DeepLIFTSHAP) on a difference target, where `attr(f_B) − attr(f_A) ≠ attr(f_B − f_A)`. For linear methods (ISM, TISM, plain gradients) the two coincide, so the delta wrapper is a convenience rather than a correctness requirement.
+
 Notes:
 
 1. Use the same `--seed` as training for comparable sampler behavior (`tools/train_*.py` defaults to `42`).
@@ -646,6 +770,87 @@ Notes:
    - `ism` (forward-pass mutation deltas; can be expensive over full input length)
 4. `tools/run_tfmodisco.py` can consume any compatible attribution NPZ, not just outputs from `tools/export_tfmodisco_inputs.py`.
 5. `modisco motifs` expects NPZ key `arr_0`; export scripts should write NPZ in that format.
+
+## Model Interpretation (TPCAV)
+
+`tools/run_tpcav.py` is a thin Cerberus adapter around the upstream
+[`tpcav`](https://github.com/seqcode/TPCAV) package.
+
+The current MVP intentionally supports only:
+
+- single-task `BPNet`
+- sequence-only concepts (motif files)
+- scalar targets wrapped through `AttributionTarget`
+
+What the script does:
+
+1. Loads the checkpoint via `ModelEnsemble(fold=args.fold)` (same layout as
+   every other Cerberus inference tool).
+2. Pulls the fold-specific model out of the ensemble.
+3. Wraps it in `AttributionTarget` so upstream TPCAV sees a scalar-output `nn.Module`.
+4. Resolves Cerberus-friendly probe-layer aliases such as `tower_out`.
+5. Delegates concept construction, PCA fitting, CAV training, and HTML reporting to the upstream `tpcav` package.
+
+Prerequisites:
+
+```bash
+pip install -e ".[tpcav]"
+```
+
+Inspect available probe layers for a checkpoint:
+
+```bash
+python tools/run_tpcav.py \
+    --checkpoint-dir models/my_bpnet/single-fold \
+    --fold 0 \
+    --list-layers
+```
+
+Default BPNet probe-layer aliases:
+
+| Alias | Meaning |
+|---|---|
+| `initial_conv` | Initial sequence convolution (`iconv`) |
+| `tower_block_0`, `tower_block_1`, ... | Individual dilated residual blocks |
+| `tower_out` | Final shared tower representation before the heads |
+| `profile_head` | Profile readout convolution |
+| `count_head` | Count readout dense layer |
+
+For BPNet, `tower_out` is the recommended default:
+
+- `residual_pre-activation_conv` and `activated_residual_pre-activation_conv`:
+  `final_tower_relu`
+- `residual_post-activation_conv`:
+  the last residual block output (`res_layers.<last>`)
+
+Run TPCAV on motif concepts:
+
+```bash
+python tools/run_tpcav.py \
+    --checkpoint-dir models/my_bpnet/single-fold \
+    --fold 0 \
+    --motif-file data/motifs/my_concepts.meme \
+    --motif-file-fmt meme \
+    --layer tower_out \
+    --target-mode log_counts \
+    --num-motif-insertions 4 8 16 \
+    --num-samples-for-pca 10 \
+    --num-samples-for-cav 1000 \
+    --output-dir models/my_bpnet/single-fold/tpcav
+```
+
+Outputs:
+
+- `run_config.json`: Cerberus-side run metadata
+- `motif_auc_fscores.tsv`: saved when upstream TPCAV returns motif AUC/F-score summary
+- upstream `cav_trainer.pt` artifacts (optional)
+- upstream `report.html` (optional)
+
+Notes:
+
+1. `tools/run_tpcav.py` requires the upstream `tpcav` Python package in the active environment.
+2. The script is deliberately thin: it does not reimplement concept generation or TCAV scoring.
+3. Large motif databases can create very long-running jobs because upstream TPCAV trains one CAV per motif concept.
 
 ## Next Steps
 
@@ -718,7 +923,7 @@ For a detailed guide, see [**Prediction**](prediction.md).
     *   This automatically switches the data pipeline to use **deterministic transforms**.
 4.  **Run Prediction**: Use `model_ensemble.predict_intervals()` or `predict_output_intervals()`.
 
-**Example Reference**: `notebooks/chip_ar_mdapca2b_predict_bpnet.py` shows how to load a trained BPNet model and run inference on test set peaks.
+**Example Reference**: `notebooks/chip_ar_mdapca2b_predict_bpnet.py` shows how to load a trained BPNet model and run inference on test set peaks. `notebooks/chip_ar_mdapca2b_compare_models.py` extends this to compare both pretrained ensembles (BPNet and Pomeranian) on the full test interval fixture and produces predicted vs observed log-count scatter plots.
 
 ---
 
@@ -1150,7 +1355,7 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 ## Specific Implementations
 
 ### IntervalSampler
-*   **Function**: Loads a static list of intervals from a file (BED or narrowPeak).
+*   **Function**: Loads a static list of intervals from a file (BED or narrowPeak). narrowPeak detection is case-insensitive and supports compound extensions (`.narrowPeak.bed.gz`, `.narrowPeak.bb`, etc.).
 *   **Seeding**: Not applicable (deterministic data).
 *   **Resampling**: No-op (data is static).
 *   **Splitting**: Filters the loaded intervals based on the fold definitions.
@@ -1262,7 +1467,7 @@ The `CerberusDataModule` class (`src/cerberus/datamodule.py`) wraps the dataset 
 Samplers determine *where* the model looks during training. They yield `Interval` objects (chromosome, start, end, strand).
 
 ### IntervalSampler
-Used when you have a specific set of regions of interest, such as ChIP-seq peaks or TSS sites. Reads from BED or narrowPeak files.
+Used when you have a specific set of regions of interest, such as ChIP-seq peaks or TSS sites. Reads from BED or narrowPeak files. Detection is case-insensitive and supports compound extensions: `.narrowPeak`, `.narrowPeak.gz`, `.narrowPeak.bed`, `.narrowPeak.bed.gz`, and `.narrowPeak.bb`.
 *   **Use Case**: Training on peaks, fine-tuning on specific loci.
 *   **Behavior**: Centers the window on the interval (or summit for narrowPeak) and pads to `padded_size`.
 
@@ -1630,6 +1835,21 @@ When multiple models predict on the same interval, or when tiling produces overl
     **Note on Alignment**: When merging overlapping predictions (e.g. from tiling), if `output_bin_size > 1`, Cerberus performs a **"snap-to-grid"** alignment. 
     Prediction starts are floored to the nearest bin relative to the merged interval start. This ensures consistent binning but means sub-bin shifts (e.g. from jitter) are quantized.
 
+## Pretrained Models
+
+Cerberus ships a pretrained BPNet model in the `pretrained/` directory, ready for inference without retraining:
+
+| Model | Path | Dataset | Architecture |
+|---|---|---|---|
+| BPNet (AR ChIP-seq) | `pretrained/chip_ar_mdapca2b_bpnet/` | MDA-PCA-2b AR (hg38) | BPNet (kernel 21, 8 dilated layers) |
+| Pomeranian (AR ChIP-seq) | `pretrained/chip_ar_mdapca2b_pomeranian/` | MDA-PCA-2b AR (hg38) | Pomeranian (ConvNeXtV2 stem, 8 PGC layers) |
+
+```python
+from cerberus.model_ensemble import ModelEnsemble
+
+ensemble = ModelEnsemble("pretrained/chip_ar_mdapca2b_bpnet", device="cuda")
+```
+
 ## Setup for Prediction
 
 To perform prediction, you need to instantiate a `ModelEnsemble`.
@@ -1812,6 +2032,27 @@ where `p = count_pseudocount`, rather than the naive `logsumexp`, which would gi
 | `--max_batches` | Limit the number of batches processed (useful for quick checks). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
 
+### Score Variants (`tools/score_variants.py`)
+Scores the predicted effect of genomic variants (from VCF or TSV) by comparing model predictions on reference vs alternative sequences. See [Variant Effect Prediction](variants.md) for full documentation.
+
+```bash
+python tools/score_variants.py path/to/model_dir \
+    --vcf variants.vcf.gz \
+    --output effects.tsv \
+    --batch_size 64 \
+    --device cuda
+```
+
+| Argument | Description |
+|---|---|
+| `--vcf` / `--variants` | Variant source (mutually exclusive, required). |
+| `--output` | Output TSV path (default: `variant_effects.tsv`). Supports `.gz`. |
+| `--fasta` | Override FASTA path (default: from model config). |
+| `--region` | Restrict to variants in a region (e.g. `chr1:1000000-2000000`). |
+| `--batch_size` | Variants per inference batch (default: 64). |
+| `--use_folds` | Folds for ensemble prediction (e.g. `test`, `test+val`, `all`). |
+| `--device` | Device override (`cuda`, `mps`, `cpu`). |
+
 ## Model Outputs
 
 Predictions return `ModelOutput` objects (defined in `cerberus.output`), which contain the raw tensors.
@@ -1841,6 +2082,31 @@ The `log_counts_include_pseudocount` parameter matters only for multi-channel `P
 - **`log_counts_include_pseudocount=True`**: assumes `log_counts` per channel is in `log(count + count_pseudocount)` space (MSE loss). Inverts per channel, sums, then reapplies: `log(Σ(exp(lc) - p) + p)`.
 
 Using the wrong value with a multi-channel MSE model would give `log(n_channels * count_pseudocount + total_counts)` instead of `log(count_pseudocount + total_counts)`.
+
+### Predicted vs observed log-counts
+
+For evaluation (e.g. scatter plots of predicted vs ground-truth log-counts on a held-out fold), `cerberus.predict_misc` exposes mirrored helpers:
+
+```python
+from cerberus.predict_misc import (
+    create_eval_dataset,
+    observed_log_counts,
+    predict_log_counts,
+)
+
+dataset = create_eval_dataset(ensemble.cerberus_config)
+
+# Predicted total log-counts (one float per interval)
+pred = predict_log_counts(ensemble, dataset, intervals)
+
+# Observed total log-counts on the same intervals — extracted from the
+# dataset's target signal over the model's output window.  Pseudocount and
+# scaling are auto-detected from config.model_config_.loss_cls so the two
+# arrays are guaranteed to be in the same log-space.
+obs = observed_log_counts(dataset, intervals, ensemble.cerberus_config)
+```
+
+Both functions take the same input-length intervals; `observed_log_counts` internally crops to `output_len` before signal extraction, and `predict_log_counts` runs the ensemble's batched fold-routing inference.
 
 ## Multi-GPU  [multi_gpu.md]
 
@@ -1918,7 +2184,7 @@ Setting `reload_dataloaders_every_n_epochs=1` in `TrainConfig` triggers `resampl
 ## Setup (one time)
 
 ```bash
-pip install -e ".[docs]"
+pip install -e ".[dev]"
 ```
 
 ## Editing docs
@@ -1970,6 +2236,24 @@ mkdocs gh-deploy
 # Models
 
 Cerberus provides implementations of standard deep learning architectures for genomic sequence modeling.
+
+## Pretrained Models
+
+Ready-to-use models are shipped in the `pretrained/` directory:
+
+| Model | Path | Dataset | Architecture |
+|---|---|---|---|
+| BPNet (AR ChIP-seq) | `pretrained/chip_ar_mdapca2b_bpnet/` | MDA-PCA-2b AR (hg38) | BPNet (kernel 21, 8 dilated layers, 64 filters) |
+| Pomeranian (AR ChIP-seq) | `pretrained/chip_ar_mdapca2b_pomeranian/` | MDA-PCA-2b AR (hg38) | Pomeranian (ConvNeXtV2 stem, 8 PGC layers, 64 filters) |
+
+Load with `ModelEnsemble`:
+
+```python
+from cerberus.model_ensemble import ModelEnsemble
+ensemble = ModelEnsemble("pretrained/chip_ar_mdapca2b_bpnet", device="cuda")
+```
+
+See [Prediction](prediction.md) for inference examples.
 
 ## Pomeranian
 
@@ -2116,6 +2400,104 @@ model = BPNet1024(
 )
 # Both return ProfileCountOutput(logits=..., log_counts=...)
 ```
+
+## MultitaskBPNet
+
+**Implementation**: `cerberus.models.bpnet.MultitaskBPNet`
+**Source**: `src/cerberus/models/bpnet.py`
+
+Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to [BPNet](#bpnet) with `predict_total_count=False` enforced, so each condition produces an independent per-channel scalar count head. This is Phase 1 of the two-phase differential-accessibility workflow (see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training) in `docs/usage.md`).
+
+The split pays off when you want to compare two or more steady-state conditions on the same sequences: a joint shared-trunk model sees both conditions during training, so the trunk encodes cross-condition sequence grammar rather than whatever each condition's solo-trained model happened to pick up. This is the architectural principle of bpAI-TAC (Chandra et al. 2025) and the starting point for Naqvi et al. 2025's differential fine-tuning recipe.
+
+### Key Features
+* **One profile + count head per condition**: `output_channels=[name_a, name_b, ...]` defines the condition names. Must contain at least 2 entries.
+* **`predict_total_count=False` enforced**: each condition gets its own scalar count-head output. Phase 2 differential fine-tuning supervises the *difference* of two of those scalars, so per-channel counts are a hard requirement.
+* **Same trunk as BPNet**: all trunk knobs (`filters`, `n_dilated_layers`, `residual_architecture`, `activation`, `weight_norm`, …) behave identically to BPNet.
+
+### Loss: MultitaskBPNetLoss
+
+Wraps `MSEMultinomialLoss` with the four settings Phase 1 multi-task training requires: `count_per_channel=True`, `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.
+
+Parameters `alpha` and `beta` map to `count_weight` and `profile_weight` respectively, matching the [BPNetLoss](#loss-bpnetloss) convention. `alpha="adaptive"` is supported the same way as BPNetLoss.
+
+```python
+from cerberus.config import ModelConfig
+
+model_config = ModelConfig(
+    name="MultitaskBPNet",
+    model_cls="cerberus.models.bpnet.MultitaskBPNet",
+    loss_cls="cerberus.models.bpnet.MultitaskBPNetLoss",
+    loss_args={"alpha": "adaptive", "beta": 1.0},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
+)
+```
+
+### Usage
+
+```python
+from cerberus.models.bpnet import MultitaskBPNet
+
+# Two-condition FOXA1 ChIP-seq example (LNCaP vs 22Rv1).
+model = MultitaskBPNet(
+    output_channels=["LNCAP", "22Rv1"],
+    input_len=2114,
+    output_len=1000,
+    filters=64,
+    n_dilated_layers=8,
+)
+# Returns ProfileCountOutput(logits=..., log_counts=...)
+# logits:     (batch, 2, 1000)
+# log_counts: (batch, 2)
+```
+
+For the companion Phase 2 differential loss see [DifferentialCountLoss](#differentialcountloss) below; for the end-to-end two-phase CLI see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training).
+
+### DifferentialCountLoss
+
+**Implementation**: `cerberus.loss.DifferentialCountLoss`
+
+Phase 2 fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak log2 fold-change derived inline from the two-channel `(B, N, L)` targets tensor Phase 1 already trained against:
+
+```
+target_delta = log2((sum_B + pc) / (sum_A + pc))
+```
+
+where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). Setting `count_pseudocount` to match Phase 1's keeps both phases in the same log-space. Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
+
+Single path: `forward(outputs, targets)` returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be `(B, N, L)` with `N >= max(cond_a_idx, cond_b_idx) + 1`.
+
+```python
+from cerberus.config import ModelConfig, PretrainedConfig
+
+# Phase 2 ModelConfig: same MultitaskBPNet architecture as Phase 1,
+# DifferentialCountLoss in place of MultitaskBPNetLoss, and the Phase 1
+# checkpoint listed under pretrained=[...].
+model_config = ModelConfig(
+    name="MultitaskBPNet_Phase2",
+    model_cls="cerberus.models.bpnet.MultitaskBPNet",
+    loss_cls="cerberus.loss.DifferentialCountLoss",
+    loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
+    pretrained=[
+        PretrainedConfig(
+            weights_path="models/foxa1/phase1/single-fold/fold_0/model.pt",
+            source=None, target=None, freeze=False,
+        )
+    ],
+    count_pseudocount=150.0,  # raw × target_scale, same as Phase 1
+)
+```
+
+`DifferentialCountLoss` is exported from `cerberus.loss`. For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+
+### References
+- bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.
+- Naqvi et al. (2025). *Transfer learning reveals sequence determinants of the quantitative response to transcription factor dosage.* Cell Genomics. PMC11160683.
 
 ## ConvNeXtDCNN (ASAP)
 
@@ -2800,7 +3182,7 @@ These are the main entry points.
 ### Prediction (`model_ensemble.py`, `predict_bigwig.py`, `predict_misc.py`)
 *   `model_ensemble.py`: Manages loading models (single or multi-fold) and selecting models for intervals. Delegates aggregation to `output.py`.
 *   `predict_bigwig.py`: Streamlines genome-wide prediction generation into BigWig files.
-*   `predict_misc.py`: High-level inference utilities — `create_eval_dataset`, `load_bed_intervals`, `get_eval_intervals`, `predict_log_counts`.
+*   `predict_misc.py`: High-level inference utilities — `create_eval_dataset`, `load_bed_intervals`, `get_eval_intervals`, `predict_log_counts`, `observed_log_counts`.
 
 ### Variant Effect Prediction (`variants.py`)
 *   `variants.py`: Variant representation (`Variant` dataclass), VCF loading (`load_vcf`), TSV loading (`load_variants`), ref/alt sequence construction (`variant_to_ref_alt`), and effect size computation (`compute_variant_effects`). See the [Variant Effect Prediction](variants.md) guide.
@@ -2876,10 +3258,11 @@ We recommend setting `Pomeranian` (K9) as the default configuration for future e
 ## src/cerberus/__init__.py
 
 from .attribution import (
-    ATTRIBUTION_MODES,
+    TARGET_REDUCTIONS,
     AttributionTarget,
-    apply_off_simplex_gradient_correction,
     compute_ism_attributions,
+    compute_taylor_ism_attributions,
+    mean_center_attributions,
     resolve_ism_span,
 )
 from .config import (
@@ -2902,7 +3285,9 @@ from .genome import (
     create_human_genome_config,
 )
 from .interval import Interval, load_intervals_bed, write_intervals_bed
-from .variants import Variant, compute_variant_effects, load_variants, load_vcf, variant_to_ref_alt
+from .variants import Variant, compute_variant_effects, generate_variants, load_variants, load_vcf, variant_to_ref_alt
+from .predict_variants import VariantResult, score_variants, score_variants_from_ensemble
+from .utils import get_precision_kwargs, parse_use_folds, resolve_device
 from .logging import setup_logging
 from .module import CerberusModule, instantiate, instantiate_model
 from .signal import register_extractor
@@ -2950,11 +3335,16 @@ __all__ = [
     # Signal Extraction
     "register_extractor",
     # Attribution utilities
-    "ATTRIBUTION_MODES",
+    "TARGET_REDUCTIONS",
     "AttributionTarget",
     "resolve_ism_span",
     "compute_ism_attributions",
-    "apply_off_simplex_gradient_correction",
+    "compute_taylor_ism_attributions",
+    "mean_center_attributions",
+    # Variant scoring
+    "VariantResult",
+    "score_variants",
+    "score_variants_from_ensemble",
     # Training utilities
     "compute_counts_loss_weight",
     "resolve_adaptive_loss_args",
@@ -3226,6 +3616,7 @@ class CerberusConfig(BaseModel):
 
 ## src/cerberus/interval.py
 
+import gzip
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -3313,15 +3704,20 @@ def load_intervals_bed(
 ) -> tuple[list[Interval], list[str]]:
     """Load intervals and source labels from a BED-like TSV file.
 
+    Transparently reads ``.gz``-compressed inputs (detected by suffix) so
+    gzipped fixtures written by :func:`write_intervals_bed` followed by
+    ``gzip`` can be round-tripped without a separate decompression step.
+
     Args:
-        path: Input file path (as written by :func:`write_intervals_bed`).
+        path: Input file path. Plain text or gzip-compressed (``.gz`` suffix).
 
     Returns:
         ``(intervals, sources)`` tuple.
     """
+    opener = gzip.open if Path(path).suffix == ".gz" else open
     intervals: list[Interval] = []
     sources: list[str] = []
-    with open(path) as f:
+    with opener(path, "rt") as f:
         header = next(f)
         if not header.startswith("chrom\t"):
             raise ValueError(f"Unexpected header in {path}: {header!r}")
@@ -4029,12 +4425,41 @@ def register_extractor(
     _EXTRACTOR_REGISTRY[extension.lower()] = (extractor_cls, in_memory_cls)
 
 
+def _resolve_container_suffix(path: Path) -> str:
+    """Determine the container format suffix for a file path.
+
+    Handles compound extensions (e.g. ``.narrowPeak.bed.gz``) by stripping
+    the narrowPeak component and returning the underlying container suffix.
+    Detection is case-insensitive.
+
+    Returns:
+        Normalised suffix string suitable for registry lookup, e.g.
+        ``".bed.gz"``, ``".bb"``, ``".bed"``.
+    """
+    name_lower = path.name.lower()
+
+    # Strip everything up to and including "narrowpeak" to get the container part.
+    idx = name_lower.find("narrowpeak")
+    if idx != -1:
+        remainder = name_lower[idx + len("narrowpeak") :]
+        if remainder in ("", ".bed"):
+            return ".bed"
+        if remainder in (".gz", ".bed.gz"):
+            return ".bed.gz"
+        if remainder in (".bb", ".bigbed"):
+            return ".bb"
+        # Unknown narrowpeak container — fall through to normal logic.
+
+    # Handle compound .bed.gz without narrowpeak prefix.
+    if name_lower.endswith(".bed.gz"):
+        return ".bed.gz"
+
+    return path.suffix.lower()
+
+
 def _resolve_extractor_cls(path: Path, in_memory: bool) -> type:
     """Look up the appropriate extractor class for a file path."""
-    suffix = path.suffix.lower()
-    # Handle compound extensions like .bed.gz
-    if path.name.lower().endswith(".bed.gz"):
-        suffix = ".bed.gz"
+    suffix = _resolve_container_suffix(path)
     entry = _EXTRACTOR_REGISTRY.get(suffix)
     if entry is None:
         raise ValueError(
@@ -5575,13 +6000,20 @@ class IntervalSampler(ListSampler):
         self._load()
         self._filter_excludes()
 
+    @staticmethod
+    def _is_narrowpeak(path: Path) -> bool:
+        """Return True if *path* looks like a narrowPeak file (case-insensitive).
+
+        Recognised patterns: ``*.narrowPeak``, ``*.narrowPeak.gz``,
+        ``*.narrowPeak.bed``, ``*.narrowPeak.bed.gz``.
+        """
+        return "narrowpeak" in path.name.lower()
+
     def _load(self) -> None:
         if not self.file_path.exists():
             raise FileNotFoundError(f"File not found: {self.file_path}")
 
-        # Check extension for narrowPeak
-        name = self.file_path.name
-        if name.endswith(".narrowPeak") or name.endswith(".narrowPeak.gz"):
+        if self._is_narrowpeak(self.file_path):
             self._load_narrowPeak()
         else:
             self._load_bed()
@@ -8204,13 +8636,13 @@ def instantiate_metrics_and_loss(
 ## src/cerberus/train.py
 
 import logging
-import os
 import warnings
 from pathlib import Path
 from typing import Any
 
 import pytorch_lightning as pl
 import torch
+from lightning_fabric.utilities.rank_zero import rank_zero_only
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint
 
@@ -8558,7 +8990,12 @@ def train_single(
         The fitted PyTorch Lightning Trainer object.
     """
     # 0. Update Metadata and Prepare Directory
-    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+    # Global-rank-0 only. rank_zero_only.rank is populated by Lightning from
+    # (RANK, LOCAL_RANK, SLURM_PROCID, JSM_NAMESPACE_RANK) in that order, so it
+    # is correct for single-node DDP (LOCAL_RANK) and multi-node DDP (RANK /
+    # SLURM_PROCID) alike. Using LOCAL_RANK directly would let each node's
+    # rank-0 process enter this block and race on ensemble_metadata.yaml.
+    if rank_zero_only.rank == 0:
         update_ensemble_metadata(root_dir, test_fold)
 
     root_path = Path(root_dir)
@@ -8988,16 +9425,28 @@ def aggregate_intervals(
     return output_cls(**aggregated_components, out_interval=merged_interval)
 
 
-def aggregate_models(outputs: Sequence[ModelOutput], method: str) -> ModelOutput:
+def aggregate_models(
+    outputs: Sequence[ModelOutput],
+    method: str,
+    masks: list[torch.Tensor] | None = None,
+) -> ModelOutput:
     """Ensembles outputs from multiple models by reducing each tensor field.
 
     All outputs must be the same ModelOutput subclass with identically-shaped
     tensors. The out_interval is taken from the first output (all models
     predict on the same intervals).
 
+    When *masks* is provided, each mask is a ``(B,)`` bool tensor indicating
+    which batch samples the corresponding model contributed to.  The
+    aggregation averages only over models that contributed to each sample.
+    This supports heterogeneous batches where different samples are routed
+    to different fold models.
+
     Args:
         outputs: One ModelOutput per model, all for the same input batch.
-        method: Reduction across models — "mean" or "median".
+        method: Reduction across models — ``"mean"`` or ``"median"``.
+        masks: Optional parallel list of ``(B,)`` bool tensors.  ``None``
+            (default) means every model sees every sample.
 
     Returns:
         A single ModelOutput of the same type with ensembled tensor fields.
@@ -9012,15 +9461,37 @@ def aggregate_models(outputs: Sequence[ModelOutput], method: str) -> ModelOutput
         if isinstance(output_dicts[0][k], torch.Tensor)
     ]
 
+    # Pre-compute mask quantities once (independent of per-field tensor shape).
+    if masks is not None:
+        if method != "mean":
+            raise ValueError(
+                f"Masked aggregation only supports 'mean', got '{method}'"
+            )
+        mask_stacked = torch.stack(masks)  # (M, B)
+        count = mask_stacked.sum(dim=0).clamp_min(1)  # (B,)
+
     aggregated_elements = {}
     for key in keys:
-        stacked = torch.stack([out[key] for out in output_dicts])
-        if method == "mean":
-            aggregated_elements[key] = torch.mean(stacked, dim=0)
-        elif method == "median":
-            aggregated_elements[key] = torch.median(stacked, dim=0).values
+        stacked = torch.stack([out[key] for out in output_dicts])  # (M, B, ...)
+        if masks is None:
+            if method == "mean":
+                aggregated_elements[key] = torch.mean(stacked, dim=0)
+            elif method == "median":
+                aggregated_elements[key] = torch.median(stacked, dim=0).values
+            else:
+                raise ValueError(f"Unknown aggregation method: {method}")
         else:
-            raise ValueError(f"Unknown aggregation method: {method}")
+            # Broadcast (M, B) mask to match this field's shape (M, B, ...)
+            extra_dims = stacked.ndim - mask_stacked.ndim
+            mask_broad = mask_stacked.reshape(
+                *mask_stacked.shape, *((1,) * extra_dims)
+            )
+            count_broad = count.reshape(
+                *count.shape, *((1,) * extra_dims)
+            )
+            aggregated_elements[key] = (
+                (stacked * mask_broad).sum(dim=0) / count_broad
+            )
 
     cls = type(outputs[0])
     out_int = outputs[0].out_interval
@@ -9830,6 +10301,125 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
             self.count_weight * components["count_loss"]
             + self.profile_weight * components["profile_loss"]
         )
+
+
+class DifferentialCountLoss(nn.Module):
+    """Phase 2 fine-tuning loss supervising ``log_counts[:, B] - log_counts[:, A]``.
+
+    The delta target is derived inline from the ``(B, N, L)`` ``targets``
+    tensor (the per-condition absolute-signal tracks Phase 1 already
+    supervised against): for each sample,
+
+    .. math::
+
+        \\Delta_{\\mathrm{target}} = \\log_2\\left(
+          \\frac{\\sum_\\ell \\mathrm{targets}[:, B, \\ell] + \\mathrm{pc}}{
+                 \\sum_\\ell \\mathrm{targets}[:, A, \\ell] + \\mathrm{pc}}
+        \\right)
+
+    where the sum is over the length axis and ``pc`` is
+    ``count_pseudocount`` (use the same value Phase 1 used so ``log_counts``
+    live in the same log-space). The returned loss is
+    ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
+
+    Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
+    the count head needs to be retargeted. The profile heads already encode
+    condition-specific TF footprint grammar from Phase 1 multi-task
+    training.
+
+    Single code path: ``forward(outputs, targets)`` with no optional
+    kwargs, no shape overloading, no absolute-count regularizer.
+
+    Args:
+        cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
+        cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
+        count_pseudocount: Additive pseudocount used in the log2FC
+            derivation. Must match the value Phase 1 used so the two
+            phases share a log-space. Default 1.0.
+
+    References:
+        - Naqvi et al. (2025). *Transfer learning reveals sequence
+          determinants of the quantitative response to transcription factor
+          dosage.* Cell Genomics. PMC11160683.
+        - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity
+          models by increasing model resolution.* bioRxiv 2025.01.24.634804.
+    """
+
+    uses_count_pseudocount: bool = True
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        count_pseudocount: float = 1.0,
+    ) -> None:
+        super().__init__()
+        if cond_a_idx == cond_b_idx:
+            raise ValueError(
+                f"cond_a_idx and cond_b_idx must differ, got both={cond_a_idx}"
+            )
+        for name, idx in (("cond_a_idx", cond_a_idx), ("cond_b_idx", cond_b_idx)):
+            if idx < 0:
+                raise ValueError(f"{name} must be non-negative, got {idx}")
+        self.cond_a_idx = cond_a_idx
+        self.cond_b_idx = cond_b_idx
+        self.count_pseudocount = count_pseudocount
+
+    def _delta_loss(
+        self, outputs: object, targets: torch.Tensor
+    ) -> torch.Tensor:
+        if not isinstance(outputs, ProfileCountOutput):
+            raise TypeError(
+                f"DifferentialCountLoss requires ProfileCountOutput, "
+                f"got {type(outputs).__name__}"
+            )
+
+        log_counts = outputs.log_counts  # (B, N)
+        n_channels = log_counts.shape[-1]
+        a, b = self.cond_a_idx, self.cond_b_idx
+        for name, idx in (("cond_a_idx", a), ("cond_b_idx", b)):
+            if idx >= n_channels:
+                raise ValueError(
+                    f"{name}={idx} is out of range for log_counts with "
+                    f"{n_channels} channels"
+                )
+
+        if targets.ndim != 3:
+            raise ValueError(
+                f"DifferentialCountLoss requires targets of shape (B, N, L); "
+                f"got {tuple(targets.shape)}"
+            )
+        n_cond_needed = max(a, b) + 1
+        if targets.shape[1] < n_cond_needed:
+            raise ValueError(
+                f"targets must have at least {n_cond_needed} channels to "
+                f"cover cond_a_idx={a} and cond_b_idx={b}, got shape "
+                f"{tuple(targets.shape)}"
+            )
+
+        counts = targets.float().sum(dim=-1)  # (B, N)
+        pc = self.count_pseudocount
+        target_delta = torch.log2(
+            (counts[:, b] + pc) / (counts[:, a] + pc)
+        )  # (B,)
+        delta_pred = log_counts[:, b] - log_counts[:, a]  # (B,)
+        return F.mse_loss(delta_pred, target_delta)
+
+    def loss_components(
+        self,
+        outputs: object,
+        targets: torch.Tensor,
+        **kwargs: object,
+    ) -> dict[str, torch.Tensor]:
+        return {"delta_loss": self._delta_loss(outputs, targets)}
+
+    def forward(
+        self,
+        outputs: object,
+        targets: torch.Tensor,
+        **kwargs: object,
+    ) -> torch.Tensor:
+        return self._delta_loss(outputs, targets)
 
 
 class DalmatianLoss(nn.Module):
@@ -10815,6 +11405,7 @@ import dataclasses
 import itertools
 import logging
 import re
+from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -10992,7 +11583,20 @@ class ModelEnsemble(nn.ModuleDict):
         data_config: DataConfig | None = None,
         genome_config: GenomeConfig | None = None,
         device: torch.device | str | None = None,
+        fold: int | None = None,
     ):
+        """
+        Args:
+            checkpoint_path: Training root directory containing
+                ``ensemble_metadata.yaml`` and ``fold_N/`` subdirs.
+            model_config / data_config / genome_config: Optional overrides
+                of the values parsed from the training-root ``hparams.yaml``.
+            device: Inference device. Auto-selects CUDA → CPU if ``None``.
+            fold: Load only this specific fold's model. When ``None`` (default),
+                load every fold in ``ensemble_metadata.yaml``. Useful for
+                per-fold tools (attribution, TF-MoDISco export) that would
+                otherwise waste memory loading unused folds.
+        """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         elif isinstance(device, str):
@@ -11002,8 +11606,21 @@ class ModelEnsemble(nn.ModuleDict):
         if not path.is_dir():
             raise ValueError(f"checkpoint_path must be a directory: {path}")
 
-        # Resolve configuration
-        hparams_path = find_latest_hparams(path)
+        # Resolve configuration. When a specific fold is requested, prefer the
+        # hparams.yaml inside that fold's directory (train_multi writes
+        # fold-specific test_fold / val_fold values there); fall back to the
+        # latest hparams under the root if the fold-specific one is absent
+        # (e.g. single-fold train_single layout with no fold_N subdir).
+        hparams_search_root: Path = path
+        if fold is not None:
+            fold_dir_candidate = path / f"fold_{fold}"
+            if fold_dir_candidate.is_dir():
+                try:
+                    find_latest_hparams(fold_dir_candidate)
+                    hparams_search_root = fold_dir_candidate
+                except FileNotFoundError:
+                    pass
+        hparams_path = find_latest_hparams(hparams_search_root)
         self.cerberus_config: CerberusConfig = parse_hparams_config(hparams_path)
 
         overrides = {}
@@ -11020,7 +11637,9 @@ class ModelEnsemble(nn.ModuleDict):
         data_config = self.cerberus_config.data_config
         genome_config = self.cerberus_config.genome_config
 
-        loader = _ModelManager(path, model_config, data_config, genome_config, device)
+        loader = _ModelManager(
+            path, model_config, data_config, genome_config, device, fold=fold
+        )
         models, folds = loader.load_models_and_folds()
 
         super().__init__(models)
@@ -11080,14 +11699,14 @@ class ModelEnsemble(nn.ModuleDict):
         use_folds = self._resolve_use_folds(use_folds)
 
         # 1. Run models -> list[ModelOutput] (one per model, batched)
-        batch_outputs = self._forward_models(x, intervals, use_folds)
+        batch_outputs, masks = self._forward_models(x, intervals, use_folds)
 
         if not batch_outputs:
             raise RuntimeError("No model outputs generated.")
 
         if aggregation == "model":
             # Aggregate over models, return batched [aggregated]
-            return aggregate_models(batch_outputs, method="mean")
+            return aggregate_models(batch_outputs, method="mean", masks=masks)
 
         if aggregation == "interval+model":
             if intervals is None:
@@ -11099,7 +11718,9 @@ class ModelEnsemble(nn.ModuleDict):
             ]
 
             # Aggregate over models
-            aggregated_batch = aggregate_models(batch_outputs, method="mean")
+            aggregated_batch = aggregate_models(
+                batch_outputs, method="mean", masks=masks
+            )
             output_cls = type(aggregated_batch)
 
             # Unbatch
@@ -11119,88 +11740,161 @@ class ModelEnsemble(nn.ModuleDict):
             f"Unknown aggregation mode: {aggregation} (supported: 'model', 'interval+model')"
         )
 
+    def _get_partitions_for_interval(self, interval: Interval) -> set[int]:
+        """Return the set of fold partition indices that contain *interval*.
+
+        Queries each fold's InterLap tree.  Returns an empty set when no
+        partition matches (e.g. chromosome not in any fold map).
+        """
+        partitions: set[int] = set()
+        for fold_idx, fold_map in enumerate(self.folds):
+            if interval.chrom in fold_map:
+                if any(
+                    fold_map[interval.chrom].find(
+                        (interval.start, interval.end - 1)
+                    )
+                ):
+                    partitions.add(fold_idx)
+        return partitions
+
+    def _partitions_to_model_indices(
+        self, partitions: set[int], use_folds: list[str]
+    ) -> set[int]:
+        """Map partition indices to model indices using the fold rotation.
+
+        The rotation logic assumes:
+        - Model *i* treats Partition *i* as TEST.
+        - Model *i* treats Partition *(i+1) % k* as VAL.
+        """
+        model_indices: set[int] = set()
+        n_folds = len(self.folds)
+        if n_folds == 0:
+            return model_indices
+        for p_idx in partitions:
+            if "test" in use_folds:
+                model_indices.add(p_idx)
+            if "val" in use_folds:
+                model_indices.add((p_idx - 1) % n_folds)
+            if "train" in use_folds:
+                test_model = p_idx
+                val_model = (p_idx - 1) % n_folds
+                for i in range(n_folds):
+                    if i != test_model and i != val_model:
+                        model_indices.add(i)
+        return model_indices
+
     def _forward_models(
         self,
         x: torch.Tensor,
         intervals: list[Interval] | None = None,
         use_folds: list[str] | None = None,
-    ) -> list[ModelOutput]:
-        """
-        Runs the forward pass for selected models.
+    ) -> tuple[list[ModelOutput], list[torch.Tensor] | None]:
+        """Run the forward pass, routing each sample to the correct fold models.
+
+        When *intervals* are provided and the ensemble has multiple folds,
+        each sample is routed to its fold-appropriate model(s) based on its
+        interval.  Models that do not see a given sample produce zeros for
+        that position, and a boolean mask is returned so the caller can
+        average only over models that contributed to each sample.
 
         Args:
-            x: Input tensor (Batch, Channels, Length).
-            intervals: Optional list of intervals to determine which models to run.
-            use_folds: List of fold roles to use ('train', 'test', 'val').
+            x: Input tensor ``(Batch, Channels, Length)``.
+            intervals: Optional per-sample intervals for fold routing.
+            use_folds: Fold roles to include (``'train'``, ``'test'``,
+                ``'val'``).
 
         Returns:
-            list[ModelOutput]: A list of outputs from the selected models.
+            ``(outputs, masks)`` where *outputs* is one ``ModelOutput`` per
+            model (full-batch shaped) and *masks* is a parallel list of
+            ``(B,)`` bool tensors indicating which samples each model
+            contributed to.  *masks* is ``None`` when every model sees
+            every sample (no intervals, single model, or no folds).
         """
         use_folds = self._resolve_use_folds(use_folds)
+        batch_size = x.shape[0]
 
-        if not intervals:
-            # Fallback: run all models if no intervals provided (or for single model)
-            models_to_run = self.values()
-        else:
-            # Determine applicable models
-            target_partitions = set()
+        if not intervals or not self.folds:
+            # No routing needed — run all models on full batch
+            batch_outputs = []
+            with torch.no_grad():
+                for model in self.values():
+                    batch_outputs.append(model(x))
+            return batch_outputs, None
 
-            # We assume all intervals in the batch belong to the same partition
-            interval = intervals[0]
-            for fold_idx, fold_map in enumerate(self.folds):
-                if interval.chrom in fold_map:
-                    if any(
-                        fold_map[interval.chrom].find(
-                            (interval.start, interval.end - 1)
-                        )
-                    ):
-                        target_partitions.add(fold_idx)
+        # -- Per-sample routing --
+        # Map each model index to the list of sample indices it should process
+        model_to_samples: dict[int, list[int]] = defaultdict(list)
 
-            # Determine which models to load based on use_folds
-            # The rotation logic assumes:
-            # - Model 'i' treats Partition 'i' as TEST.
-            # - Model 'i' treats Partition '(i+1)%k' as VAL.
-            # Therefore:
-            # - To get TEST predictions for Partition 'p', we need Model 'p'.
-            # - To get VAL predictions for Partition 'p', we need Model 'p-1' (mod k).
+        for i, interval in enumerate(intervals):
+            partitions = self._get_partitions_for_interval(interval)
+            model_indices = self._partitions_to_model_indices(partitions, use_folds)
+            if not model_indices:
+                # No matching fold — fall back to all models for this sample.
+                # Common cause: interval is on a chromosome absent from the
+                # fold maps.  Could also indicate a fold configuration gap.
+                logger.debug(
+                    "No fold partition matched interval %s; "
+                    "falling back to all models for this sample.",
+                    interval,
+                )
+                for key in self:
+                    model_indices.add(int(key))
+            for m_idx in model_indices:
+                model_to_samples[m_idx].append(i)
 
-            models_to_load = set()
-            if len(self.folds) > 0 and target_partitions:
-                for p_idx in target_partitions:
-                    # 1. 'test'
-                    if "test" in use_folds:
-                        models_to_load.add(p_idx)
+        # -- Run each model on its sub-batch and scatter back --
+        batch_outputs: list[ModelOutput] = []
+        masks: list[torch.Tensor] = []
 
-                    # 2. 'val'
-                    if "val" in use_folds:
-                        val_model_idx = (p_idx - 1) % len(self.folds)
-                        models_to_load.add(val_model_idx)
-
-                    # 3. 'train'
-                    if "train" in use_folds:
-                        test_model = p_idx
-                        val_model = (p_idx - 1) % len(self.folds)
-                        for i in range(len(self.folds)):
-                            if i != test_model and i != val_model:
-                                models_to_load.add(i)
-
-                # Retrieve models by index string
-                models_to_run = []
-                for idx in sorted(list(models_to_load)):
-                    key = str(idx)
-                    if key in self:
-                        models_to_run.append(self[key])
-            else:
-                # If single model or no target partitions found, run all models
-                models_to_run = self.values()
-
-        # Run models
-        batch_outputs = []
         with torch.no_grad():
-            for model in models_to_run:
-                out = model(x)
-                batch_outputs.append(out)
-        return batch_outputs
+            for m_idx in sorted(model_to_samples):
+                key = str(m_idx)
+                if key not in self:
+                    continue
+
+                sample_indices = model_to_samples[m_idx]
+                idx_tensor = torch.tensor(sample_indices, device=x.device, dtype=torch.long)
+
+                sub_x = x[idx_tensor]
+                sub_out = self[key](sub_x)
+
+                # Scatter sub_out into full-batch-shaped output.
+                # Non-participating positions are filled with zeros.  The fill
+                # value is irrelevant: aggregate_models() multiplies by the
+                # boolean mask (0.0 for non-contributing positions) before
+                # summing, so any fill value × 0.0 = 0.0 — it never reaches
+                # the output.  Zero is used because torch.zeros is cheap and
+                # the masks (returned alongside) are the authoritative record
+                # of which samples each model contributed to.
+                full_out_fields: dict[str, Any] = {}
+                for field in dataclasses.fields(sub_out):
+                    val = getattr(sub_out, field.name)
+                    if isinstance(val, torch.Tensor):
+                        full = torch.zeros(
+                            (batch_size, *val.shape[1:]),
+                            dtype=val.dtype,
+                            device=val.device,
+                        )
+                        full[idx_tensor] = val
+                        full_out_fields[field.name] = full
+                    else:
+                        full_out_fields[field.name] = val
+
+                output_cls = type(sub_out)
+                batch_outputs.append(output_cls(**full_out_fields))
+
+                mask = torch.zeros(batch_size, dtype=torch.bool, device=x.device)
+                mask[idx_tensor] = True
+                masks.append(mask)
+
+        if not batch_outputs:
+            # No models matched any sample — fall back to all models, no routing
+            with torch.no_grad():
+                for model in self.values():
+                    batch_outputs.append(model(x))
+            return batch_outputs, None
+
+        return batch_outputs, masks
 
     def predict_intervals_batched(
         self,
@@ -11426,6 +12120,7 @@ class _ModelManager:
         data_config: DataConfig,
         genome_config: GenomeConfig,
         device: torch.device,
+        fold: int | None = None,
     ):
         self.checkpoint_path = Path(checkpoint_path)
         self.model_config = model_config
@@ -11440,7 +12135,17 @@ class _ModelManager:
 
         with open(meta_path) as f:
             meta = yaml.safe_load(f)
-            self.fold_indices = meta.get("folds", [])
+            all_folds = meta.get("folds", [])
+
+        if fold is not None:
+            if fold not in all_folds:
+                raise ValueError(
+                    f"fold={fold} is not present in ensemble_metadata.yaml "
+                    f"(available folds: {all_folds})"
+                )
+            self.fold_indices = [fold]
+        else:
+            self.fold_indices = all_folds
 
         # Create fold mappings for routing
         self.folds = create_genome_folds(
@@ -12166,7 +12871,7 @@ def setup_logging(level: int = logging.INFO) -> None:
 
 from .asap import ConvNeXtDCNN
 from .biasnet import BiasNet
-from .bpnet import BPNet, BPNet1024, BPNetLoss, BPNetMetricCollection
+from .bpnet import BPNet, BPNet1024, BPNetLoss, BPNetMetricCollection, MultitaskBPNet, MultitaskBPNetLoss
 from .dalmatian import Dalmatian
 from .gopher import GlobalProfileCNN
 from .pomeranian import Pomeranian, PomeranianK5, PomeranianMetricCollection
@@ -12178,6 +12883,8 @@ __all__ = [
     "BPNet1024",
     "BPNetLoss",
     "BPNetMetricCollection",
+    "MultitaskBPNet",
+    "MultitaskBPNetLoss",
     "Dalmatian",
     "GlobalProfileCNN",
     "Pomeranian",
@@ -12816,6 +13523,137 @@ class BPNetLoss(MSEMultinomialLoss):
             flatten_channels=False,
             count_per_channel=False,
             log1p_targets=False,
+            **kwargs,
+        )
+
+
+class MultitaskBPNet(BPNet):
+    """Multi-task BPNet: shared dilated tower with N condition-specific output channels.
+
+    Phase 1 of the two-phase differential accessibility workflow.  Each
+    condition gets its own profile head channel and its own count head
+    output, enabling cross-condition comparisons that are not confounded by
+    separate model training runs — the architecture principle of bpAI-TAC
+    (Chandra et al. 2025, bioRxiv 2025.01.24.634804).
+
+    The model is architecturally identical to :class:`BPNet` with
+    ``predict_total_count=False`` enforced.  Per-channel count prediction is
+    a hard requirement: Phase 2 differential fine-tuning supervises the
+    *difference* of two specific count heads, so each condition must produce
+    an independent scalar output.
+
+    Args:
+        output_channels: List of condition names (one per steady-state
+            condition).  Must contain at least 2 entries.
+        input_len: Length of input sequence. Default: 2114.
+        output_len: Length of output sequence. Default: 1000.
+        output_bin_size: Output resolution bin size. Default: 1.
+        input_channels: Input channel names. Default: ``["A","C","G","T"]``.
+        filters: Number of conv filters. Default: 64.
+        n_dilated_layers: Number of dilated residual layers. Default: 8.
+        conv_kernel_size: Kernel size for initial conv. Default: 21.
+        dil_kernel_size: Kernel size for dilated convs. Default: 3.
+        profile_kernel_size: Kernel size for profile head. Default: 75.
+        activation: Activation function (``"relu"`` or ``"gelu"``). Default: ``"relu"``.
+        weight_norm: Apply weight normalisation. Default: ``False``.
+        residual_architecture: Residual block formulation. Default:
+            ``"residual_pre-activation_conv"``.
+
+    References:
+        - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity
+          models by increasing model resolution.* bioRxiv 2025.01.24.634804.
+        - Naqvi et al. (2025). *Transfer learning reveals sequence determinants
+          of the quantitative response to transcription factor dosage.*
+          Cell Genomics. PMC11160683.
+    """
+
+    def __init__(
+        self,
+        output_channels: list[str],
+        input_len: int = 2114,
+        output_len: int = 1000,
+        output_bin_size: int = 1,
+        input_channels: list[str] | None = None,
+        filters: int = 64,
+        n_dilated_layers: int = 8,
+        conv_kernel_size: int = 21,
+        dil_kernel_size: int = 3,
+        profile_kernel_size: int = 75,
+        activation: str = "relu",
+        weight_norm: bool = False,
+        residual_architecture: str = "residual_pre-activation_conv",
+    ):
+        if len(output_channels) < 2:
+            raise ValueError(
+                f"MultitaskBPNet requires at least 2 output_channels, "
+                f"got {len(output_channels)}: {output_channels!r}. "
+                "Each entry represents one steady-state condition."
+            )
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            output_bin_size=output_bin_size,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            filters=filters,
+            n_dilated_layers=n_dilated_layers,
+            conv_kernel_size=conv_kernel_size,
+            dil_kernel_size=dil_kernel_size,
+            profile_kernel_size=profile_kernel_size,
+            predict_total_count=False,
+            activation=activation,
+            weight_norm=weight_norm,
+            residual_architecture=residual_architecture,
+        )
+        logger.info(
+            "MultitaskBPNet initialized: n_conditions=%d, conditions=%s",
+            len(output_channels),
+            output_channels,
+        )
+
+
+class MultitaskBPNetLoss(MSEMultinomialLoss):
+    """Phase 1 loss for :class:`MultitaskBPNet`.
+
+    Applies the BPNet profile + count loss independently per condition
+    channel.  Profile loss is averaged across conditions (following
+    bpAI-TAC).  Count loss is computed per channel, requiring
+    ``predict_total_count=False`` in the model.
+
+    Parameters ``alpha`` and ``beta`` map to ``count_weight`` and
+    ``profile_weight`` respectively, matching the :class:`BPNetLoss`
+    convention.
+
+    Args:
+        alpha: Weight for per-channel count MSE loss. Default: 1.0.
+        beta: Weight for per-channel profile multinomial NLL loss. Default: 1.0.
+    """
+
+    def __init__(self, alpha: float = 1.0, beta: float = 1.0, **kwargs):
+        _fixed = {
+            "count_per_channel": True,
+            "average_channels": True,
+            "flatten_channels": False,
+            "log1p_targets": False,
+            "count_weight": alpha,
+            "profile_weight": beta,
+        }
+        for key, fixed_val in _fixed.items():
+            caller_val = kwargs.pop(key, None)
+            if caller_val is not None and caller_val != fixed_val:
+                logger.warning(
+                    "MultitaskBPNetLoss: ignoring %s=%r, using fixed value %r",
+                    key,
+                    caller_val,
+                    fixed_val,
+                )
+        super().__init__(
+            count_per_channel=True,
+            average_channels=True,
+            flatten_channels=False,
+            log1p_targets=False,
+            count_weight=alpha,
+            profile_weight=beta,
             **kwargs,
         )
 

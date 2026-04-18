@@ -814,6 +814,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#pretrained-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pretrained Models
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#setup-for-prediction" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -992,6 +1003,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#score-variants-toolsscore_variantspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Score Variants (tools/score_variants.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1014,6 +1036,17 @@
     <span class="md-ellipsis">
       
         Extracting total log-counts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#predicted-vs-observed-log-counts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Predicted vs observed log-counts
       
     </span>
   </a>
@@ -1421,88 +1454,118 @@
 <div class="highlight"><pre><span></span><code>**Note on Alignment**: When merging overlapping predictions (e.g. from tiling), if `output_bin_size &gt; 1`, Cerberus performs a **&quot;snap-to-grid&quot;** alignment. 
 Prediction starts are floored to the nearest bin relative to the merged interval start. This ensures consistent binning but means sub-bin shifts (e.g. from jitter) are quantized.
 </code></pre></div>
-<h2 id="setup-for-prediction">Setup for Prediction<a class="headerlink" href="#setup-for-prediction" title="Permanent link">&para;</a></h2>
-<p>To perform prediction, you need to instantiate a <code>ModelEnsemble</code>.</p>
+<h2 id="pretrained-models">Pretrained Models<a class="headerlink" href="#pretrained-models" title="Permanent link">&para;</a></h2>
+<p>Cerberus ships a pretrained BPNet model in the <code>pretrained/</code> directory, ready for inference without retraining:</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Path</th>
+<th>Dataset</th>
+<th>Architecture</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BPNet (AR ChIP-seq)</td>
+<td><code>pretrained/chip_ar_mdapca2b_bpnet/</code></td>
+<td>MDA-PCA-2b AR (hg38)</td>
+<td>BPNet (kernel 21, 8 dilated layers)</td>
+</tr>
+<tr>
+<td>Pomeranian (AR ChIP-seq)</td>
+<td><code>pretrained/chip_ar_mdapca2b_pomeranian/</code></td>
+<td>MDA-PCA-2b AR (hg38)</td>
+<td>Pomeranian (ConvNeXtV2 stem, 8 PGC layers)</td>
+</tr>
+</tbody>
+</table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.model_ensemble</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelEnsemble</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Load from a training log directory (containing hparams.yaml and checkpoints)</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">checkpoint_path</span><span class="o">=</span><span class="s2">&quot;logs/my_experiment&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># Access the configs used during training</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">genome_config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="o">.</span><span class="n">genome_config</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">data_config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="o">.</span><span class="n">data_config</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span><span class="s2">&quot;pretrained/chip_ar_mdapca2b_bpnet&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="setup-for-prediction">Setup for Prediction<a class="headerlink" href="#setup-for-prediction" title="Permanent link">&para;</a></h2>
+<p>To perform prediction, you need to instantiate a <code>ModelEnsemble</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.model_ensemble</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelEnsemble</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># Load from a training log directory (containing hparams.yaml and checkpoints)</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">checkpoint_path</span><span class="o">=</span><span class="s2">&quot;logs/my_experiment&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">)</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="c1"># Access the configs used during training</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">genome_config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="o">.</span><span class="n">genome_config</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">data_config</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="o">.</span><span class="n">data_config</span>
 </code></pre></div>
 <h3 id="path-resolution">Path Resolution<a class="headerlink" href="#path-resolution" title="Permanent link">&para;</a></h3>
 <p>If you move a trained model to a new environment (e.g., from a training cluster to a local machine), the absolute paths in <code>hparams.yaml</code> (pointing to FASTA or BigWig files) might be invalid.
 You can override specific configs by passing <code>genome_config</code>, <code>data_config</code>, or <code>model_config</code> to <code>ModelEnsemble</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">checkpoint_path</span><span class="o">=</span><span class="s2">&quot;logs/my_experiment&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">my_genome_config</span><span class="p">,</span>  <span class="c1"># Override genome paths</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">my_data_config</span><span class="p">,</span>      <span class="c1"># Override data paths</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">ensemble</span> <span class="o">=</span> <span class="n">ModelEnsemble</span><span class="p">(</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">checkpoint_path</span><span class="o">=</span><span class="s2">&quot;logs/my_experiment&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">genome_config</span><span class="o">=</span><span class="n">my_genome_config</span><span class="p">,</span>  <span class="c1"># Override genome paths</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">data_config</span><span class="o">=</span><span class="n">my_data_config</span><span class="p">,</span>      <span class="c1"># Override data paths</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">)</span>
 </code></pre></div>
 <h2 id="prediction-methods">Prediction Methods<a class="headerlink" href="#prediction-methods" title="Permanent link">&para;</a></h2>
 <h3 id="1-batched-interval-prediction-efficient">1. Batched Interval Prediction (Efficient)<a class="headerlink" href="#1-batched-interval-prediction-efficient" title="Permanent link">&para;</a></h3>
 <p>Use <code>predict_intervals_batched</code> to process a large number of intervals (e.g. peaks) without loading everything into memory. It yields batches of results.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Create a sampler for your regions of interest</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.samplers</span><span class="w"> </span><span class="kn">import</span> <span class="n">IntervalSampler</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">sampler</span> <span class="o">=</span> <span class="n">IntervalSampler</span><span class="p">(</span><span class="n">file_path</span><span class="o">=</span><span class="s2">&quot;peaks.bed&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># Iterate over batches</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="k">for</span> <span class="n">batch_output</span><span class="p">,</span> <span class="n">batch_intervals</span> <span class="ow">in</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_intervals_batched</span><span class="p">(</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">intervals</span><span class="o">=</span><span class="n">sampler</span><span class="p">,</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">use_folds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;test&quot;</span><span class="p">,</span> <span class="s2">&quot;val&quot;</span><span class="p">,</span> <span class="s2">&quot;train&quot;</span><span class="p">],</span> <span class="c1"># Use all folds to ensure coverage</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="p">):</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="c1"># Process batch_output (ModelOutput object)</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="k">pass</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Create a sampler for your regions of interest</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.samplers</span><span class="w"> </span><span class="kn">import</span> <span class="n">IntervalSampler</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">sampler</span> <span class="o">=</span> <span class="n">IntervalSampler</span><span class="p">(</span><span class="n">file_path</span><span class="o">=</span><span class="s2">&quot;peaks.bed&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Iterate over batches</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="k">for</span> <span class="n">batch_output</span><span class="p">,</span> <span class="n">batch_intervals</span> <span class="ow">in</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_intervals_batched</span><span class="p">(</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">intervals</span><span class="o">=</span><span class="n">sampler</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">use_folds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;test&quot;</span><span class="p">,</span> <span class="s2">&quot;val&quot;</span><span class="p">,</span> <span class="s2">&quot;train&quot;</span><span class="p">],</span> <span class="c1"># Use all folds to ensure coverage</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="p">):</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="c1"># Process batch_output (ModelOutput object)</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="k">pass</span>
 </code></pre></div>
 <h3 id="2-predict-on-specific-intervals-in-memory">2. Predict on Specific Intervals (In-Memory)<a class="headerlink" href="#2-predict-on-specific-intervals-in-memory" title="Permanent link">&para;</a></h3>
 <p>Use <code>predict_intervals</code> when you have a small list of intervals and want a single aggregated result tensor.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">output</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_intervals</span><span class="p">(</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">intervals</span><span class="o">=</span><span class="n">my_intervals</span><span class="p">,</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">use_folds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;test&quot;</span><span class="p">],</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">output</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_intervals</span><span class="p">(</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">intervals</span><span class="o">=</span><span class="n">my_intervals</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">use_folds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;test&quot;</span><span class="p">],</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">)</span>
 </code></pre></div>
 <h3 id="3-predict-on-arbitrary-regions-tiling">3. Predict on Arbitrary Regions (Tiling)<a class="headerlink" href="#3-predict-on-arbitrary-regions-tiling" title="Permanent link">&para;</a></h3>
 <p>Use <code>predict_output_intervals</code> when you have target regions of arbitrary length (e.g., entire peaks or genes). The system tiles the region with overlapping input windows and merges the results.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">outputs</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_output_intervals</span><span class="p">(</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">intervals</span><span class="o">=</span><span class="n">gene_regions</span><span class="p">,</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">use_folds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;test&quot;</span><span class="p">],</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">outputs</span> <span class="o">=</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">predict_output_intervals</span><span class="p">(</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">intervals</span><span class="o">=</span><span class="n">gene_regions</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">use_folds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;test&quot;</span><span class="p">],</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="p">)</span>
 </code></pre></div>
 <h3 id="4-genome-wide-prediction-bigwig">4. Genome-Wide Prediction (BigWig)<a class="headerlink" href="#4-genome-wide-prediction-bigwig" title="Permanent link">&para;</a></h3>
 <p>Use <code>predict_to_bigwig</code> to generate a genome-wide signal track. This is useful for visualization in genome browsers.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.predict_bigwig</span><span class="w"> </span><span class="kn">import</span> <span class="n">predict_to_bigwig</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">predict_to_bigwig</span><span class="p">(</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;predictions.bw&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">model_ensemble</span><span class="o">=</span><span class="n">ensemble</span><span class="p">,</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">use_folds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;test&quot;</span><span class="p">],</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.predict_bigwig</span><span class="w"> </span><span class="kn">import</span> <span class="n">predict_to_bigwig</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">predict_to_bigwig</span><span class="p">(</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;predictions.bw&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">model_ensemble</span><span class="o">=</span><span class="n">ensemble</span><span class="p">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">stride</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">use_folds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;test&quot;</span><span class="p">],</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="p">)</span>
 </code></pre></div>
 <h2 id="cli-tools">CLI Tools<a class="headerlink" href="#cli-tools" title="Permanent link">&para;</a></h2>
 <p>Cerberus provides command-line tools for common prediction tasks.</p>
 <h3 id="export-bigwig-toolsexport_bigwigpy">Export BigWig (<code>tools/export_bigwig.py</code>)<a class="headerlink" href="#export-bigwig-toolsexport_bigwigpy" title="Permanent link">&para;</a></h3>
 <p>Exports genome-wide model predictions as a BigWig signal track for visualization in genome browsers (e.g., IGV, UCSC).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python<span class="w"> </span>tools/export_bigwig.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>--output<span class="w"> </span>predictions.bw<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span>--stride<span class="w"> </span><span class="m">50</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span>--batch_size<span class="w"> </span><span class="m">256</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span>--device<span class="w"> </span>cuda
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python<span class="w"> </span>tools/export_bigwig.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span>--output<span class="w"> </span>predictions.bw<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span>--stride<span class="w"> </span><span class="m">50</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span>--batch_size<span class="w"> </span><span class="m">256</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span>--device<span class="w"> </span>cuda
 </code></pre></div>
 <p>This tool:
 1. Loads the model ensemble and automatically resolves dataset paths.
@@ -1544,13 +1607,13 @@ You can override specific configs by passing <code>genome_config</code>, <code>d
 </table>
 <h3 id="export-predictions-toolsexport_predictionspy">Export Predictions (<code>tools/export_predictions.py</code>)<a class="headerlink" href="#export-predictions-toolsexport_predictionspy" title="Permanent link">&para;</a></h3>
 <p>Exports predicted vs observed log-counts for a set of peaks to a TSV file. This is useful for evaluating model performance on peak sets.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python<span class="w"> </span>tools/export_predictions.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span>path/to/peaks.bed<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span>path/to/observed.bigwig<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span>--output<span class="w"> </span>predictions.tsv.gz<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span>--batch_size<span class="w"> </span><span class="m">128</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span>--device<span class="w"> </span>cuda
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python<span class="w"> </span>tools/export_predictions.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span>path/to/peaks.bed<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span>path/to/observed.bigwig<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span>--output<span class="w"> </span>predictions.tsv.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span>--batch_size<span class="w"> </span><span class="m">128</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span>--device<span class="w"> </span>cuda
 </code></pre></div>
 <p>This tool:
 1. Loads the model and automatically resolves dataset paths.
@@ -1585,7 +1648,7 @@ You can override specific configs by passing <code>genome_config</code>, <code>d
 <p>The observed total is computed from raw BigWig signal (bypassing transforms) and then multiplied by <code>data_config.target_scale</code> before the log transform, matching what the loss was trained against.</p>
 <h4 id="multi-channel-models-count_per_channeltrue">Multi-channel models (<code>count_per_channel=True</code>)<a class="headerlink" href="#multi-channel-models-count_per_channeltrue" title="Permanent link">&para;</a></h4>
 <p>When the model has multiple output channels and was trained with <code>count_per_channel=True</code> under an MSE loss, each channel's <code>log_counts</code> is in <code>log(count + count_pseudocount)</code> space. The tool correctly aggregates these to a single global log-count via:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>log((exp(lc_ch0) - p) + (exp(lc_ch1) - p) + ... + p)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>log((exp(lc_ch0) - p) + (exp(lc_ch1) - p) + ... + p)
 </code></pre></div>
 <p>where <code>p = count_pseudocount</code>, rather than the naive <code>logsumexp</code>, which would give <code>log(n_channels * p + total_counts)</code>.</p>
 <h4 id="optional-arguments_1">Optional arguments<a class="headerlink" href="#optional-arguments_1" title="Permanent link">&para;</a></h4>
@@ -1627,6 +1690,52 @@ You can override specific configs by passing <code>genome_config</code>, <code>d
 </tr>
 </tbody>
 </table>
+<h3 id="score-variants-toolsscore_variantspy">Score Variants (<code>tools/score_variants.py</code>)<a class="headerlink" href="#score-variants-toolsscore_variantspy" title="Permanent link">&para;</a></h3>
+<p>Scores the predicted effect of genomic variants (from VCF or TSV) by comparing model predictions on reference vs alternative sequences. See <a href="../variants/">Variant Effect Prediction</a> for full documentation.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>python<span class="w"> </span>tools/score_variants.py<span class="w"> </span>path/to/model_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span>--vcf<span class="w"> </span>variants.vcf.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span>--output<span class="w"> </span>effects.tsv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span>--batch_size<span class="w"> </span><span class="m">64</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span>--device<span class="w"> </span>cuda
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--vcf</code> / <code>--variants</code></td>
+<td>Variant source (mutually exclusive, required).</td>
+</tr>
+<tr>
+<td><code>--output</code></td>
+<td>Output TSV path (default: <code>variant_effects.tsv</code>). Supports <code>.gz</code>.</td>
+</tr>
+<tr>
+<td><code>--fasta</code></td>
+<td>Override FASTA path (default: from model config).</td>
+</tr>
+<tr>
+<td><code>--region</code></td>
+<td>Restrict to variants in a region (e.g. <code>chr1:1000000-2000000</code>).</td>
+</tr>
+<tr>
+<td><code>--batch_size</code></td>
+<td>Variants per inference batch (default: 64).</td>
+</tr>
+<tr>
+<td><code>--use_folds</code></td>
+<td>Folds for ensemble prediction (e.g. <code>test</code>, <code>test+val</code>, <code>all</code>).</td>
+</tr>
+<tr>
+<td><code>--device</code></td>
+<td>Device override (<code>cuda</code>, <code>mps</code>, <code>cpu</code>).</td>
+</tr>
+</tbody>
+</table>
 <h2 id="model-outputs">Model Outputs<a class="headerlink" href="#model-outputs" title="Permanent link">&para;</a></h2>
 <p>Predictions return <code>ModelOutput</code> objects (defined in <code>cerberus.output</code>), which contain the raw tensors.</p>
 <ul>
@@ -1637,12 +1746,12 @@ You can override specific configs by passing <code>genome_config</code>, <code>d
 <p>You typically need to detach and post-process these (e.g., applying Softmax or Exponentials) for analysis.</p>
 <h3 id="extracting-total-log-counts">Extracting total log-counts<a class="headerlink" href="#extracting-total-log-counts" title="Permanent link">&para;</a></h3>
 <p><code>cerberus.output.compute_total_log_counts</code> aggregates a <code>ModelOutput</code> into a scalar log-count per interval in the batch:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_total_log_counts</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># log_counts_include_pseudocount=True for MSEMultinomialLoss / CoupledMSEMultinomialLoss</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># log_counts_include_pseudocount=False (default) for Poisson / NB losses</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">log_counts</span> <span class="o">=</span> <span class="n">compute_total_log_counts</span><span class="p">(</span><span class="n">batch_output</span><span class="p">,</span> <span class="n">log_counts_include_pseudocount</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># → tensor of shape (batch_size,)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_total_log_counts</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="c1"># log_counts_include_pseudocount=True for MSEMultinomialLoss / CoupledMSEMultinomialLoss</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># log_counts_include_pseudocount=False (default) for Poisson / NB losses</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">log_counts</span> <span class="o">=</span> <span class="n">compute_total_log_counts</span><span class="p">(</span><span class="n">batch_output</span><span class="p">,</span> <span class="n">log_counts_include_pseudocount</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="c1"># → tensor of shape (batch_size,)</span>
 </code></pre></div>
 <p>The <code>log_counts_include_pseudocount</code> parameter matters only for multi-channel <code>ProfileCountOutput</code> (i.e. <code>count_per_channel=True</code>):</p>
 <ul>
@@ -1650,6 +1759,26 @@ You can override specific configs by passing <code>genome_config</code>, <code>d
 <li><strong><code>log_counts_include_pseudocount=True</code></strong>: assumes <code>log_counts</code> per channel is in <code>log(count + count_pseudocount)</code> space (MSE loss). Inverts per channel, sums, then reapplies: <code>log(Σ(exp(lc) - p) + p)</code>.</li>
 </ul>
 <p>Using the wrong value with a multi-channel MSE model would give <code>log(n_channels * count_pseudocount + total_counts)</code> instead of <code>log(count_pseudocount + total_counts)</code>.</p>
+<h3 id="predicted-vs-observed-log-counts">Predicted vs observed log-counts<a class="headerlink" href="#predicted-vs-observed-log-counts" title="Permanent link">&para;</a></h3>
+<p>For evaluation (e.g. scatter plots of predicted vs ground-truth log-counts on a held-out fold), <code>cerberus.predict_misc</code> exposes mirrored helpers:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.predict_misc</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="n">create_eval_dataset</span><span class="p">,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    <span class="n">observed_log_counts</span><span class="p">,</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="n">predict_log_counts</span><span class="p">,</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="p">)</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">dataset</span> <span class="o">=</span> <span class="n">create_eval_dataset</span><span class="p">(</span><span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="p">)</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="c1"># Predicted total log-counts (one float per interval)</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="n">pred</span> <span class="o">=</span> <span class="n">predict_log_counts</span><span class="p">(</span><span class="n">ensemble</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span> <span class="n">intervals</span><span class="p">)</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="c1"># Observed total log-counts on the same intervals — extracted from the</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="c1"># dataset&#39;s target signal over the model&#39;s output window.  Pseudocount and</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="c1"># scaling are auto-detected from config.model_config_.loss_cls so the two</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="c1"># arrays are guaranteed to be in the same log-space.</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="n">obs</span> <span class="o">=</span> <span class="n">observed_log_counts</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">intervals</span><span class="p">,</span> <span class="n">ensemble</span><span class="o">.</span><span class="n">cerberus_config</span><span class="p">)</span>
+</code></pre></div>
+<p>Both functions take the same input-length intervals; <code>observed_log_counts</code> internally crops to <code>output_len</code> before signal extraction, and <code>predict_log_counts</code> runs the ensemble's batched fold-routing inference.</p>
 
 
 
@@ -1672,7 +1801,7 @@ You can override specific configs by passing <code>genome_config</code>, <code>d
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 04:11:18 UTC">March 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 15, 2026 15:38:35 UTC">April 15, 2026</span>
   </span>
 
     

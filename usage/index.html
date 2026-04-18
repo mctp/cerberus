@@ -653,6 +653,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#two-phase-multitask-differential-training" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-phase multitask-differential training
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#scatac-seq-pseudobulk-tools" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -729,6 +740,34 @@
     <span class="md-ellipsis">
       
         Model Interpretation (TF-MoDISco)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Model Interpretation (TF-MoDISco)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scalar-attribution-targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scalar attribution targets
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-interpretation-tpcav" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model Interpretation (TPCAV)
       
     </span>
   </a>
@@ -1722,6 +1761,15 @@
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>python<span class="w"> </span>tools/train_asap.py<span class="w"> </span>--bigwig<span class="w"> </span>signal.bw<span class="w"> </span>--peaks<span class="w"> </span>regions.bed<span class="w"> </span>--output-dir<span class="w"> </span>models/my_asap<span class="w"> </span>--multi
 </code></pre></div></p>
 </li>
+<li>
+<p><code>tools/train_multitask_differential_bpnet.py</code>: Two-phase shared-trunk training for two-condition differential accessibility. See the <a href="#two-phase-multitask-differential-training">Two-phase multitask-differential training</a> section below for the workflow.
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>python<span class="w"> </span>tools/train_multitask_differential_bpnet.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span>--bigwig-a<span class="w"> </span>LNCAP.rpm.bw<span class="w"> </span>--peaks-a<span class="w"> </span>LNCAP-macs2.bed.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span>--bigwig-b<span class="w"> </span>22Rv1.rpm.bw<span class="w"> </span>--peaks-b<span class="w"> </span>22Rv1-macs2.bed.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span>--name-a<span class="w"> </span>LNCAP<span class="w"> </span>--name-b<span class="w"> </span>22Rv1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/foxa1_differential<span class="w"> </span>--stable<span class="w"> </span>--interpret
+</code></pre></div></p>
+</li>
 </ul>
 <p>All tools support <code>--multi</code> (cross-validation), <code>--seed</code> (sampler seed), <code>--precision</code> (<code>bf16</code>/<code>mps</code>/<code>full</code>), <code>--accelerator</code>, <code>--devices</code>, and <code>--fasta</code>/<code>--blacklist</code>/<code>--gaps</code> for custom genome references. Key default differences reflect each model's canonical training recipe:</p>
 <table>
@@ -1802,18 +1850,90 @@
 </tr>
 </tbody>
 </table>
+<h2 id="two-phase-multitask-differential-training">Two-phase multitask-differential training<a class="headerlink" href="#two-phase-multitask-differential-training" title="Permanent link">&para;</a></h2>
+<p><code>tools/train_multitask_differential_bpnet.py</code> trains a <a href="../models/#multitaskbpnet">MultitaskBPNet</a> on two conditions in two phases, following the recipe from bpAI-TAC (Chandra et al. 2025) and Naqvi et al. 2025:</p>
+<ul>
+<li><strong>Phase 1 — multi-task absolute model.</strong> Jointly trains a shared BPNet trunk on condition A and condition B with <code>MultitaskBPNetLoss</code> (per-condition profile + count heads). The trunk learns sequence features that matter for <em>both</em> conditions, not the confound of separately-trained solo models.</li>
+<li><strong>Phase 2 — differential fine-tuning.</strong> Reloads the Phase 1 checkpoint via <code>ModelConfig.pretrained=[PretrainedConfig(...)]</code> and fine-tunes with <code>DifferentialCountLoss</code>, which supervises <code>log_counts_B − log_counts_A</code> on the per-peak log2 fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log2FC table.</li>
+<li><strong>Optional interpretation.</strong> With <code>--interpret</code>, runs DeepLIFTSHAP on the fine-tuned model through <code>AttributionTarget(reduction="delta_log_counts", channels=(0, 1))</code> and pipes the result into TF-MoDISco.</li>
+</ul>
+<p>Both phases run on the standard <code>train_single</code> / <code>train_multi</code> pipeline. The companion library primitives are <a href="../models/#multitaskbpnet">MultitaskBPNet</a>, <a href="../models/#loss-multitaskbpnetloss">MultitaskBPNetLoss</a>, and <a href="../models/#differentialcountloss">DifferentialCountLoss</a>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Single-fold two-condition training + interpretation in one call.</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>python<span class="w"> </span>tools/train_multitask_differential_bpnet.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span>--bigwig-a<span class="w"> </span>LNCAP.rpm.bw<span class="w"> </span>--peaks-a<span class="w"> </span>LNCAP-macs2.bed.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span>--bigwig-b<span class="w"> </span>22Rv1.rpm.bw<span class="w"> </span>--peaks-b<span class="w"> </span>22Rv1-macs2.bed.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span>--name-a<span class="w"> </span>LNCAP<span class="w"> </span>--name-b<span class="w"> </span>22Rv1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/foxa1_differential<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">    </span>--stable<span class="w"> </span>--interpret
+</code></pre></div>
+<p>Output layout:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>models/foxa1_differential/
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>├── merged_peaks.bed            # union of peaks-a + peaks-b
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>├── phase1/single-fold/         # standard train_single output
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>│   └── fold_.../model.pt       # Phase 1 weights
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>├── phase2/single-fold/         # standard train_single output
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>│   └── fold_.../model.pt       # Phase 2 fine-tuned weights
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>└── interpretation/             # only with --interpret
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    ├── ohe.npz, attr.npz
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>    ├── modisco_results.h5
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>    └── report/
+</code></pre></div></p>
+<p>Key flags (see <code>--help</code> for the full list):</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--bigwig-a</code> / <code>--peaks-a</code> / <code>--name-a</code></td>
+<td>Condition A inputs and label</td>
+</tr>
+<tr>
+<td><code>--bigwig-b</code> / <code>--peaks-b</code> / <code>--name-b</code></td>
+<td>Condition B inputs and label</td>
+</tr>
+<tr>
+<td><code>--stable</code></td>
+<td>Phase 1 stable-mode overrides (AdamW + cosine + weight-norm + GELU)</td>
+</tr>
+<tr>
+<td><code>--multi</code></td>
+<td>Cross-validation (both phases run <code>train_multi</code>)</td>
+</tr>
+<tr>
+<td><code>--skip-phase1 --phase1-dir &lt;path&gt;</code></td>
+<td>Reuse an existing Phase 1 output</td>
+</tr>
+<tr>
+<td><code>--skip-phase2</code></td>
+<td>Phase 1 + interpretation only</td>
+</tr>
+<tr>
+<td><code>--count-pseudocount</code></td>
+<td>Pseudocount on <em>linear</em> scale, shared by Phase 1 <code>MSEMultinomialLoss</code> and Phase 2 <code>DifferentialCountLoss</code> so both phases operate in the same log-space</td>
+</tr>
+<tr>
+<td><code>--interpret</code></td>
+<td>Run DeepLIFTSHAP + TF-MoDISco on the Phase 2 model</td>
+</tr>
+</tbody>
+</table>
+<p>The Phase 2 loss derives the per-peak log2FC inline from the <code>(B, N, L)</code> targets tensor, so no <code>--diff-pseudocount</code> or external log2FC file is required — for external-labels support see <code>docs/internal/differential_workflow_redesign.md</code> §13.</p>
 <h2 id="scatac-seq-pseudobulk-tools">scATAC-seq Pseudobulk Tools<a class="headerlink" href="#scatac-seq-pseudobulk-tools" title="Permanent link">&para;</a></h2>
 <p>The <code>tools/scatac_pseudobulk.py</code> script generates per-cell-type pseudobulk BigWig coverage tracks and calls peaks from scATAC-seq fragment files using SnapATAC2. The output BigWig and narrowPeak files can be used directly as cerberus training targets and peak-based sampler intervals.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Basic: per-cell-type BigWigs</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>python<span class="w"> </span>tools/scatac_pseudobulk.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span>fragments.tsv.bgz<span class="w"> </span>gene_activity.h5ad<span class="w"> </span>output_dir/<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span>--genome<span class="w"> </span>hg38<span class="w"> </span>--groupby<span class="w"> </span>cell_type
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="c1"># Full pipeline: BigWigs + peaks + merged peak set</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>python<span class="w"> </span>tools/scatac_pseudobulk.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">    </span>fragments.tsv.bgz<span class="w"> </span>gene_activity.h5ad<span class="w"> </span>output_dir/<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">    </span>--genome<span class="w"> </span>hg38<span class="w"> </span>--groupby<span class="w"> </span>cell_type<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">    </span>--call-peaks<span class="w"> </span>--n-jobs<span class="w"> </span><span class="m">8</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># Basic: per-cell-type BigWigs</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>python<span class="w"> </span>tools/scatac_pseudobulk.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span>fragments.tsv.bgz<span class="w"> </span>gene_activity.h5ad<span class="w"> </span>output_dir/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span>--genome<span class="w"> </span>hg38<span class="w"> </span>--groupby<span class="w"> </span>cell_type
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="c1"># Full pipeline: BigWigs + peaks + merged peak set</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>python<span class="w"> </span>tools/scatac_pseudobulk.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">    </span>fragments.tsv.bgz<span class="w"> </span>gene_activity.h5ad<span class="w"> </span>output_dir/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">    </span>--genome<span class="w"> </span>hg38<span class="w"> </span>--groupby<span class="w"> </span>cell_type<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">    </span>--call-peaks<span class="w"> </span>--n-jobs<span class="w"> </span><span class="m">8</span>
 </code></pre></div>
 <p>Key options:</p>
 <table>
@@ -1867,36 +1987,36 @@
 </tbody>
 </table>
 <p>Output layout (all files in <code>output_dir/</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>cell_type_A.bw                       # per-group BigWig
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>cell_type_A.narrowPeak.bed.gz        # per-group peaks (with --call-peaks)
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>cell_type_A.narrowPeak.bed.gz.tbi
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>...
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>bulk.bw                              # bulk (all-cells) BigWig (always)
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>bulk_call.narrowPeak.bed.gz          # with --bulk-peaks --call-peaks
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>bulk_merge.narrowPeak.bed.gz         # merged per-group peaks (with --call-peaks)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>cell_type_A.bw                       # per-group BigWig
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>cell_type_A.narrowPeak.bed.gz        # per-group peaks (with --call-peaks)
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>cell_type_A.narrowPeak.bed.gz.tbi
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>...
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>bulk.bw                              # bulk (all-cells) BigWig (always)
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>bulk_call.narrowPeak.bed.gz          # with --bulk-peaks --call-peaks
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>bulk_merge.narrowPeak.bed.gz         # merged per-group peaks (with --call-peaks)
 </code></pre></div>
 <p>See <code>examples/scatac_kidney_pseudobulk.sh</code> for a complete example using the kidney scATAC-seq dataset.</p>
 <h2 id="visualization-tools">Visualization Tools<a class="headerlink" href="#visualization-tools" title="Permanent link">&para;</a></h2>
 <h3 id="training-curves">Training Curves<a class="headerlink" href="#training-curves" title="Permanent link">&para;</a></h3>
 <p><code>tools/plot_training_results.py</code> parses Lightning CSVLogger <code>metrics.csv</code> files and generates training curve plots.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>python<span class="w"> </span>tools/plot_training_results.py<span class="w"> </span>path/to/run_dir
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>python<span class="w"> </span>tools/plot_training_results.py<span class="w"> </span>path/to/run_dir
 </code></pre></div>
 <p>Automatically generates plots for all available metrics: loss, profile Pearson, profile MSE, log counts MSE, log counts Pearson, profile loss, count loss, and Dalmatian-specific recon/bias loss. Outputs PNG files (300 dpi) to a <code>plots/</code> subdirectory next to each <code>metrics.csv</code>.</p>
 <h3 id="biasnet-ism">BiasNet ISM<a class="headerlink" href="#biasnet-ism" title="Permanent link">&para;</a></h3>
 <p><code>tools/plot_biasnet_ism.py</code> computes in-silico mutagenesis (ISM) for BiasNet models and generates IC logo + heatmap plots revealing learned sequence motifs.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>python<span class="w"> </span>tools/plot_biasnet_ism.py<span class="w"> </span>path/to/biasnet_model<span class="w"> </span>--n-seqs<span class="w"> </span><span class="m">1000</span><span class="w"> </span>--ism-window<span class="w"> </span><span class="m">31</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>python<span class="w"> </span>tools/plot_biasnet_ism.py<span class="w"> </span>path/to/biasnet_model<span class="w"> </span>--n-seqs<span class="w"> </span><span class="m">1000</span><span class="w"> </span>--ism-window<span class="w"> </span><span class="m">31</span>
 </code></pre></div>
 <p>Works with both standalone BiasNet and Dalmatian models (extracts the bias subnetwork automatically). Outputs <code>{prefix}_biasnet_ism.png</code> and <code>{prefix}_biasnet_ism.csv</code>.</p>
 <h3 id="biasnet-pairwise-ism">BiasNet Pairwise ISM<a class="headerlink" href="#biasnet-pairwise-ism" title="Permanent link">&para;</a></h3>
 <p><code>tools/plot_biasnet_pairwise_ism.py</code> computes pairwise ISM to measure epistatic interactions between positions.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>python<span class="w"> </span>tools/plot_biasnet_pairwise_ism.py<span class="w"> </span>path/to/biasnet_model<span class="w"> </span>--n-seqs<span class="w"> </span><span class="m">200</span><span class="w"> </span>--detail-pair<span class="w"> </span><span class="m">11</span><span class="w"> </span><span class="m">19</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>python<span class="w"> </span>tools/plot_biasnet_pairwise_ism.py<span class="w"> </span>path/to/biasnet_model<span class="w"> </span>--n-seqs<span class="w"> </span><span class="m">200</span><span class="w"> </span>--detail-pair<span class="w"> </span><span class="m">11</span><span class="w"> </span><span class="m">19</span>
 </code></pre></div>
 <p>Outputs a 4-panel plot (IC logo, epistasis heatmap, interaction profile, 4×4 detail) and a long-format CSV. Computationally intensive (~850K forward passes for default settings).</p>
 <h3 id="model-architecture-inspector">Model Architecture Inspector<a class="headerlink" href="#model-architecture-inspector" title="Permanent link">&para;</a></h3>
 <p><code>tools/print_model_dims.py</code> prints layer-by-layer tensor shapes for any Cerberus model by running a dummy forward pass with hooks.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>Pomeranian
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>BPNet<span class="w"> </span>--input_len<span class="w"> </span><span class="m">2114</span><span class="w"> </span>--output_len<span class="w"> </span><span class="m">1000</span>
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>BiasNet
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>Pomeranian
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>BPNet<span class="w"> </span>--input_len<span class="w"> </span><span class="m">2114</span><span class="w"> </span>--output_len<span class="w"> </span><span class="m">1000</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>python<span class="w"> </span>tools/print_model_dims.py<span class="w"> </span>BiasNet
 </code></pre></div>
 <p>Supports case-insensitive model name matching and automatically infers default dimensions from the model class.</p>
 <h2 id="model-interpretation-tf-modisco">Model Interpretation (TF-MoDISco)<a class="headerlink" href="#model-interpretation-tf-modisco" title="Permanent link">&para;</a></h2>
@@ -1912,6 +2032,8 @@
 <li>Exports:</li>
 <li><code>ohe.npz</code> (DNA one-hot sequence; shape <code>(N, 4, L)</code>)</li>
 <li><code>shap.npz</code> (attribution scores; shape <code>(N, 4, L)</code>)</li>
+<li><code>intervals.tsv</code> (one row/example aligned to NPZ order)</li>
+<li><code>attribution_meta.json</code> (method/target/export provenance)</li>
 </ol>
 <p>What the TF-MoDISco runner script does:</p>
 <ol>
@@ -1920,50 +2042,72 @@
 <li>Optionally runs <code>modisco report</code>.</li>
 </ol>
 <p>Prerequisites:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>pip<span class="w"> </span>install<span class="w"> </span>modisco
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="c1"># Optional (only if export uses --attribution-method integrated_gradients):</span>
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>pip<span class="w"> </span>install<span class="w"> </span>captum
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="c1"># Or install cerberus extras:</span>
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[tfmodisco]&quot;</span>
-<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[attribution]&quot;</span>
-<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="c1"># (combined)</span>
-<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[interpret]&quot;</span>
-<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="c1"># (development + attribution)</span>
-<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev,attribution]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>pip<span class="w"> </span>install<span class="w"> </span>modisco-lite
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="c1"># Optional (only if export uses --attribution-method integrated_gradients):</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>pip<span class="w"> </span>install<span class="w"> </span>captum
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="c1"># Or install all cerberus extras:</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[extras]&quot;</span>
 </code></pre></div>
 <p>Step 1: export attribution NPZ files:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">    </span>--split<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">    </span>--n-examples<span class="w"> </span><span class="m">2000</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="w">    </span>--seed<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="w">    </span>--target-mode<span class="w"> </span>log_counts
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">    </span>--split<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">    </span>--n-examples<span class="w"> </span><span class="m">2000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">    </span>--seed<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="w">    </span>--target-mode<span class="w"> </span>log_counts
 </code></pre></div>
 <p>Export with ISM attribution:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">    </span>--attribution-method<span class="w"> </span>ism<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">    </span>--ism-start<span class="w"> </span><span class="m">800</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">    </span>--ism-end<span class="w"> </span><span class="m">1200</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="w">    </span>--attribution-method<span class="w"> </span>ism<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="w">    </span>--ism-start<span class="w"> </span><span class="m">800</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="w">    </span>--ism-end<span class="w"> </span><span class="m">1200</span>
 </code></pre></div>
+<p>Export with Taylor-approximated ISM (first-order, one forward + one backward
+pass per batch — typically ~100× faster than exact ISM at peak widths, and
+bit-identical on linear models; see Sasse et al. 2024 <em>iScience</em>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">    </span>--attribution-method<span class="w"> </span>taylor_ism<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="w">    </span>--ism-start<span class="w"> </span><span class="m">800</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="w">    </span>--ism-end<span class="w"> </span><span class="m">1200</span>
+</code></pre></div>
+<p>The <code>--ism-start</code> / <code>--ism-end</code> window applies to both <code>ism</code> and <code>taylor_ism</code>;
+positions outside the window are zero in the output. The exported
+<code>ohe.npz</code> / <code>shap.npz</code> shapes are identical across methods, so downstream
+<code>run_tfmodisco.py</code> needs no flag changes.</p>
 <p>Step 2: run TF-MoDISco motifs on exported NPZ files:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>python<span class="w"> </span>tools/run_tfmodisco.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">    </span>--modisco-output<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>python<span class="w"> </span>tools/run_tfmodisco.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="w">    </span>--modisco-output<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5
 </code></pre></div>
+<p>Optional: export attributions to IGV/UCSC BigWig (chrombpnet-style projected SHAP):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>python<span class="w"> </span>tools/export_attribution_bigwig.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="w">    </span>--intervals-tsv<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/intervals.tsv<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="w">    </span>--chrom-sizes<span class="w"> </span>data/genome/chrom.sizes<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a><span class="w">    </span>--output-bw<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.bw
+</code></pre></div>
+<p>Notes for BigWig export:
+- Coordinates come from exported <code>intervals.tsv</code> (realized examples), not the raw peaks BED.
+- Overlap resolution is fixed nearest-center midpoint splitting (chrombpnet-style).
+- The written track is <code>projected = (ohe * attr).sum(axis=1)</code> (one scalar per genomic base).</p>
 <p>Generate HTML report after motifs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>python<span class="w"> </span>tools/run_tfmodisco.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">    </span>--modisco-output<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">    </span>--run-report<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">    </span>--meme-db<span class="w"> </span>motifs.meme
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>python<span class="w"> </span>tools/run_tfmodisco.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="w">    </span>--modisco-output<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="w">    </span>--run-report<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="w">    </span>--meme-db<span class="w"> </span>motifs.meme
 </code></pre></div>
 <p>TF-MoDISco recommended motif database for human data:</p>
 <ul>
@@ -1971,23 +2115,23 @@
 <li>A good default for human analyses is <code>MotifCompendium-Database-Human.meme.txt</code> from MotifCompendium.</li>
 <li>Source recommendation: https://github.com/kundajelab/tfmodisco?tab=readme-ov-file#generating-reports</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>data/motifs
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>curl<span class="w"> </span>-L<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">  </span>-o<span class="w"> </span>data/motifs/MotifCompendium-Database-Human.meme.txt<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">  </span>https://raw.githubusercontent.com/kundajelab/MotifCompendium/refs/heads/main/pipeline/data/MotifCompendium-Database-Human.meme.txt
-<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>
-<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a><span class="w">    </span>--target-mode<span class="w"> </span>log_counts
-<a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a>
-<a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>python<span class="w"> </span>tools/run_tfmodisco.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-14" name="__codelineno-24-14" href="#__codelineno-24-14"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-15" name="__codelineno-24-15" href="#__codelineno-24-15"></a><span class="w">    </span>--modisco-output<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-16" name="__codelineno-24-16" href="#__codelineno-24-16"></a><span class="w">    </span>--run-report<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-24-17" name="__codelineno-24-17" href="#__codelineno-24-17"></a><span class="w">    </span>--meme-db<span class="w"> </span>data/motifs/MotifCompendium-Database-Human.meme.txt
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>data/motifs
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>curl<span class="w"> </span>-L<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="w">  </span>-o<span class="w"> </span>data/motifs/MotifCompendium-Database-Human.meme.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="w">  </span>https://raw.githubusercontent.com/kundajelab/MotifCompendium/refs/heads/main/pipeline/data/MotifCompendium-Database-Human.meme.txt
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a>python<span class="w"> </span>tools/export_tfmodisco_inputs.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_pomeranian/single-fold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-10" name="__codelineno-29-10" href="#__codelineno-29-10"></a><span class="w">    </span>--target-mode<span class="w"> </span>log_counts
+<a id="__codelineno-29-11" name="__codelineno-29-11" href="#__codelineno-29-11"></a>
+<a id="__codelineno-29-12" name="__codelineno-29-12" href="#__codelineno-29-12"></a>python<span class="w"> </span>tools/run_tfmodisco.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-13" name="__codelineno-29-13" href="#__codelineno-29-13"></a><span class="w">    </span>--ohe-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/ohe.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-14" name="__codelineno-29-14" href="#__codelineno-29-14"></a><span class="w">    </span>--attr-path<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/shap.npz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-15" name="__codelineno-29-15" href="#__codelineno-29-15"></a><span class="w">    </span>--modisco-output<span class="w"> </span>models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-16" name="__codelineno-29-16" href="#__codelineno-29-16"></a><span class="w">    </span>--run-report<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-17" name="__codelineno-29-17" href="#__codelineno-29-17"></a><span class="w">    </span>--meme-db<span class="w"> </span>data/motifs/MotifCompendium-Database-Human.meme.txt
 </code></pre></div>
 <p>Common interpretation target modes (<code>--target-mode</code>):</p>
 <table>
@@ -2020,6 +2164,77 @@
 </tr>
 </tbody>
 </table>
+<p><code>tools/export_tfmodisco_inputs.py</code> drives the first five (single-channel) modes. The two delta modes — <code>delta_log_counts</code> and <code>delta_profile_window_sum</code> — are produced by <code>tools/train_multitask_differential_bpnet.py --interpret</code> for multi-condition models; see <a href="#scalar-attribution-targets">Scalar attribution targets</a> below for direct library-level use.</p>
+<h3 id="scalar-attribution-targets">Scalar attribution targets<a class="headerlink" href="#scalar-attribution-targets" title="Permanent link">&para;</a></h3>
+<p>All cerberus attribution paths (Captum IG / DeepLIFTSHAP, exact ISM, Taylor-ISM, TPCAV) require a scalar-output <code>nn.Module</code> to differentiate. <code>cerberus.attribution.AttributionTarget</code> is the wrapper that reduces a cerberus model's multi-channel / multi-bin output to one scalar per batch element.</p>
+<p>One class, seven reductions. <code>channels</code> is an <code>int</code> for the five single-channel reductions and a <code>(cond_a_idx, cond_b_idx)</code> pair for the two delta reductions; arity is validated at construction time.</p>
+<table>
+<thead>
+<tr>
+<th>Reduction</th>
+<th><code>channels</code></th>
+<th>Extra fields</th>
+<th>Output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>log_counts</code></td>
+<td><code>int</code></td>
+<td>—</td>
+<td><code>log_counts[:, channels]</code></td>
+</tr>
+<tr>
+<td><code>profile_bin</code></td>
+<td><code>int</code></td>
+<td><code>bin_index</code> <em>(defaults to center)</em></td>
+<td><code>logits[:, channels, bin_index]</code></td>
+</tr>
+<tr>
+<td><code>profile_window_sum</code></td>
+<td><code>int</code></td>
+<td><code>window_start</code> / <code>window_end</code> <em>(default full)</em></td>
+<td><code>logits[:, channels, start:end].sum(-1)</code></td>
+</tr>
+<tr>
+<td><code>pred_count_bin</code></td>
+<td><code>int</code></td>
+<td><code>bin_index</code></td>
+<td>softmax(logits) × exp(log_counts), one bin</td>
+</tr>
+<tr>
+<td><code>pred_count_window_sum</code></td>
+<td><code>int</code></td>
+<td><code>window_start</code> / <code>window_end</code></td>
+<td>softmax(logits) × exp(log_counts), summed over window</td>
+</tr>
+<tr>
+<td><code>delta_log_counts</code></td>
+<td><code>(int, int)</code></td>
+<td>—</td>
+<td><code>log_counts[:, b] − log_counts[:, a]</code></td>
+</tr>
+<tr>
+<td><code>delta_profile_window_sum</code></td>
+<td><code>(int, int)</code></td>
+<td><code>window_start</code> / <code>window_end</code></td>
+<td><code>(logits[:, b] − logits[:, a])[:, start:end].sum(-1)</code></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus.attribution</span><span class="w"> </span><span class="kn">import</span> <span class="n">AttributionTarget</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="c1"># Single-channel: total log-counts of channel 0 (the default BPNet target).</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="n">target</span> <span class="o">=</span> <span class="n">AttributionTarget</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">reduction</span><span class="o">=</span><span class="s2">&quot;log_counts&quot;</span><span class="p">,</span> <span class="n">channels</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="c1"># Delta: log_counts_B − log_counts_A of a MultitaskBPNet.</span>
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="n">delta_target</span> <span class="o">=</span> <span class="n">AttributionTarget</span><span class="p">(</span>
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>    <span class="n">model</span><span class="o">=</span><span class="n">multitask_model</span><span class="p">,</span>
+<a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a>    <span class="n">reduction</span><span class="o">=</span><span class="s2">&quot;delta_log_counts&quot;</span><span class="p">,</span>
+<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a>    <span class="n">channels</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>          <span class="c1"># (cond_a_idx, cond_b_idx)</span>
+<a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a><span class="p">)</span>
+</code></pre></div>
+<p>The delta reductions are required for <strong>nonlinear</strong> attribution (DeepLIFT / DeepLIFTSHAP) on a difference target, where <code>attr(f_B) − attr(f_A) ≠ attr(f_B − f_A)</code>. For linear methods (ISM, TISM, plain gradients) the two coincide, so the delta wrapper is a convenience rather than a correctness requirement.</p>
 <p>Notes:</p>
 <ol>
 <li>Use the same <code>--seed</code> as training for comparable sampler behavior (<code>tools/train_*.py</code> defaults to <code>42</code>).</li>
@@ -2029,6 +2244,97 @@
 <li><code>ism</code> (forward-pass mutation deltas; can be expensive over full input length)</li>
 <li><code>tools/run_tfmodisco.py</code> can consume any compatible attribution NPZ, not just outputs from <code>tools/export_tfmodisco_inputs.py</code>.</li>
 <li><code>modisco motifs</code> expects NPZ key <code>arr_0</code>; export scripts should write NPZ in that format.</li>
+</ol>
+<h2 id="model-interpretation-tpcav">Model Interpretation (TPCAV)<a class="headerlink" href="#model-interpretation-tpcav" title="Permanent link">&para;</a></h2>
+<p><code>tools/run_tpcav.py</code> is a thin Cerberus adapter around the upstream
+<a href="https://github.com/seqcode/TPCAV"><code>tpcav</code></a> package.</p>
+<p>The current MVP intentionally supports only:</p>
+<ul>
+<li>single-task <code>BPNet</code></li>
+<li>sequence-only concepts (motif files)</li>
+<li>scalar targets wrapped through <code>AttributionTarget</code></li>
+</ul>
+<p>What the script does:</p>
+<ol>
+<li>Loads the checkpoint via <code>ModelEnsemble(fold=args.fold)</code> (same layout as
+   every other Cerberus inference tool).</li>
+<li>Pulls the fold-specific model out of the ensemble.</li>
+<li>Wraps it in <code>AttributionTarget</code> so upstream TPCAV sees a scalar-output <code>nn.Module</code>.</li>
+<li>Resolves Cerberus-friendly probe-layer aliases such as <code>tower_out</code>.</li>
+<li>Delegates concept construction, PCA fitting, CAV training, and HTML reporting to the upstream <code>tpcav</code> package.</li>
+</ol>
+<p>Prerequisites:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[tpcav]&quot;</span>
+</code></pre></div>
+<p>Inspect available probe layers for a checkpoint:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>python<span class="w"> </span>tools/run_tpcav.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_bpnet/single-fold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="w">    </span>--list-layers
+</code></pre></div>
+<p>Default BPNet probe-layer aliases:</p>
+<table>
+<thead>
+<tr>
+<th>Alias</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>initial_conv</code></td>
+<td>Initial sequence convolution (<code>iconv</code>)</td>
+</tr>
+<tr>
+<td><code>tower_block_0</code>, <code>tower_block_1</code>, ...</td>
+<td>Individual dilated residual blocks</td>
+</tr>
+<tr>
+<td><code>tower_out</code></td>
+<td>Final shared tower representation before the heads</td>
+</tr>
+<tr>
+<td><code>profile_head</code></td>
+<td>Profile readout convolution</td>
+</tr>
+<tr>
+<td><code>count_head</code></td>
+<td>Count readout dense layer</td>
+</tr>
+</tbody>
+</table>
+<p>For BPNet, <code>tower_out</code> is the recommended default:</p>
+<ul>
+<li><code>residual_pre-activation_conv</code> and <code>activated_residual_pre-activation_conv</code>:
+  <code>final_tower_relu</code></li>
+<li><code>residual_post-activation_conv</code>:
+  the last residual block output (<code>res_layers.&lt;last&gt;</code>)</li>
+</ul>
+<p>Run TPCAV on motif concepts:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>python<span class="w"> </span>tools/run_tpcav.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="w">    </span>--checkpoint-dir<span class="w"> </span>models/my_bpnet/single-fold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a><span class="w">    </span>--fold<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="w">    </span>--motif-file<span class="w"> </span>data/motifs/my_concepts.meme<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a><span class="w">    </span>--motif-file-fmt<span class="w"> </span>meme<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a><span class="w">    </span>--layer<span class="w"> </span>tower_out<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a><span class="w">    </span>--target-mode<span class="w"> </span>log_counts<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a><span class="w">    </span>--num-motif-insertions<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-9" name="__codelineno-33-9" href="#__codelineno-33-9"></a><span class="w">    </span>--num-samples-for-pca<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-10" name="__codelineno-33-10" href="#__codelineno-33-10"></a><span class="w">    </span>--num-samples-for-cav<span class="w"> </span><span class="m">1000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-11" name="__codelineno-33-11" href="#__codelineno-33-11"></a><span class="w">    </span>--output-dir<span class="w"> </span>models/my_bpnet/single-fold/tpcav
+</code></pre></div>
+<p>Outputs:</p>
+<ul>
+<li><code>run_config.json</code>: Cerberus-side run metadata</li>
+<li><code>motif_auc_fscores.tsv</code>: saved when upstream TPCAV returns motif AUC/F-score summary</li>
+<li>upstream <code>cav_trainer.pt</code> artifacts (optional)</li>
+<li>upstream <code>report.html</code> (optional)</li>
+</ul>
+<p>Notes:</p>
+<ol>
+<li><code>tools/run_tpcav.py</code> requires the upstream <code>tpcav</code> Python package in the active environment.</li>
+<li>The script is deliberately thin: it does not reimplement concept generation or TCAV scoring.</li>
+<li>Large motif databases can create very long-running jobs because upstream TPCAV trains one CAV per motif concept.</li>
 </ol>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <p>Once you have trained a model, you can use the prediction tools to evaluate it or generate genome-wide tracks.
@@ -2055,7 +2361,7 @@ See <a href="../prediction/">Prediction (Inference)</a> for details on <code>Mod
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 6, 2026 07:21:50 UTC">April 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 18, 2026 14:46:04 UTC">April 18, 2026</span>
   </span>
 
     
