@@ -33,8 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Phase 1 multi-task training → Phase 2 log2FC fine-tuning (log2FC
     derived per-peak from the input bigwigs, one float per sampler-ordered
     peak) → optional DeepLIFTSHAP + TF-MoDISco interpretation.
-  - `examples/foxa1_lncap_22rv1_multitask_differential.sh`: FOXA1
-    LNCaP-vs-22Rv1 differential accessibility example.
+- **`get_precision_kwargs`** (`src/cerberus/utils.py`): shared helper
+  returning standardized PyTorch Lightning trainer precision kwargs for the
+  three supported modes (`full` / `mps` / `bf16`). Auto-opts into
+  `ddp_find_unused_parameters_false` for multi-GPU CUDA runs; callers can
+  disable the DDP override via `use_ddp_find_unused_parameters_false=False`
+  (used by BiasNet). Covered by `tests/test_train_precision.py`.
+
 - **Interval-aligned attribution export.** `tools/export_tfmodisco_inputs.py`
   now emits `intervals.tsv` (row-aligned to the NPZ outputs) and
   `attribution_meta.json` (full provenance: checkpoint, fold, seed, method,
@@ -49,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new outputs and BigWig workflow.
 
 ### Changed
+- **Training CLIs share `get_precision_kwargs`.** `tools/train_asap.py`,
+  `tools/train_biasnet.py`, `tools/train_bpnet.py`, `tools/train_dalmatian.py`,
+  `tools/train_dalmatian_multitask.py`, `tools/train_gopher.py`,
+  `tools/train_pomeranian.py`, and
+  `tools/train_multitask_differential_bpnet.py` now call the shared helper
+  instead of each carrying a private `_get_precision_kwargs` copy.
 - **`load_intervals_bed` now reads gzipped files transparently**
   (`src/cerberus/interval.py`). `.gz`-suffixed paths are opened with
   `gzip.open(..., "rt")`; plain-text paths keep the previous behavior.

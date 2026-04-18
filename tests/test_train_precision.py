@@ -4,6 +4,7 @@ import pytorch_lightning as pl
 
 from cerberus.config import DataConfig, ModelConfig, TrainConfig
 from cerberus.train import _train as train
+from cerberus.utils import get_precision_kwargs
 
 
 def _make_configs():
@@ -93,3 +94,61 @@ def test_train_wrapper_matmul_precision():
         )
 
         mock_set_precision.assert_called_once_with("medium")
+
+
+def test_get_precision_kwargs_full_mode():
+    kwargs = get_precision_kwargs("full", "gpu", 1)
+
+    assert kwargs == {
+        "precision": "32-true",
+        "matmul_precision": "highest",
+        "accelerator": "gpu",
+        "devices": 1,
+        "strategy": "auto",
+        "compile": False,
+    }
+
+
+def test_get_precision_kwargs_mps_mode():
+    kwargs = get_precision_kwargs("mps", "mps", 1)
+
+    assert kwargs == {
+        "precision": "16-mixed",
+        "accelerator": "mps",
+        "devices": 1,
+        "strategy": "auto",
+        "compile": False,
+    }
+
+
+def test_get_precision_kwargs_bf16_single_device():
+    kwargs = get_precision_kwargs("bf16", "gpu", 1)
+
+    assert kwargs == {
+        "precision": "bf16-mixed",
+        "matmul_precision": "medium",
+        "accelerator": "gpu",
+        "devices": 1,
+        "strategy": "auto",
+        "benchmark": True,
+        "compile": True,
+    }
+
+
+def test_get_precision_kwargs_bf16_multi_gpu_uses_ddp_override():
+    kwargs = get_precision_kwargs("bf16", "gpu", 2)
+
+    assert kwargs["strategy"] == "ddp_find_unused_parameters_false"
+    assert kwargs["precision"] == "bf16-mixed"
+    assert kwargs["matmul_precision"] == "medium"
+
+
+def test_get_precision_kwargs_can_disable_ddp_override():
+    kwargs = get_precision_kwargs(
+        "bf16",
+        "gpu",
+        2,
+        use_ddp_find_unused_parameters_false=False,
+    )
+
+    assert kwargs["strategy"] == "auto"
