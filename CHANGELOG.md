@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Scale-aware pseudocount helpers** (`src/cerberus/pseudocount.py`). Two new
+  public helpers in `cerberus.*` that separate the two distinct jobs a
+  pseudocount does during count-head training:
+  - `resolve_reads_equivalent_pseudocount(reads_equiv, read_length, bin_size,
+    target_scale, input_scale="raw"|"cpm", total_reads=None)` — Phase 1 /
+    single-task "dodge log(0)" role. Expresses the pseudocount in
+    reads-equivalent units and converts to scaled coverage units, accounting
+    for bin size and (for CPM bigWigs) library depth so the same
+    `reads_equiv=1` setting means the same thing across raw vs CPM and across
+    bin sizes.
+  - `resolve_quantile_pseudocount(datamodule, quantile=0.10, n_samples=2000,
+    per_channel=True)` — Phase 2 `DifferentialCountLoss` empirical-Bayes
+    shrinkage prior. Returns a specified quantile of per-channel
+    length-summed counts in the training fold (already in scaled units), so
+    `log2((c_b + pc) / (c_a + pc))` collapses toward zero for peaks in the
+    bottom `quantile` of the distribution.
+- **`CerberusDataModule.compute_count_quantile_samples(n_samples, per_channel)`**
+  (`src/cerberus/datamodule.py`). Companion to `resolve_quantile_pseudocount`:
+  samples training-fold intervals and returns per-channel (or cross-channel)
+  length-summed counts for computing distribution-based shrinkage priors.
+
+### Changed
+- **Phase 1 / single-task training tools** (`train_bpnet`, `train_asap`,
+  `train_pomeranian`, `train_gopher`, `train_biasnet`, `train_dalmatian`,
+  `train_dalmatian_multitask`, and Phase 1 of
+  `train_multitask_differential_bpnet`) accept three new optional flags:
+  `--pseudocount-reads`, `--read-length`, `--input-scale {raw,cpm}`,
+  `--total-reads`. When `--pseudocount-reads` is set, the tool computes the
+  scaled pseudocount via `resolve_reads_equivalent_pseudocount`; otherwise the
+  legacy `--count-pseudocount × target_scale` path is preserved for backward
+  compatibility.
+- **Phase 2 differential training tool** (`train_multitask_differential_bpnet`)
+  now derives its pseudocount by default from the 10th percentile of
+  per-condition training-region total counts (via
+  `resolve_quantile_pseudocount`), decoupling Phase 2's shrinkage prior from
+  Phase 1's log(0)-avoidance floor. Controlled by
+  `--phase2-pseudocount-quantile` (default `0.10`),
+  `--phase2-pseudocount-samples` (default `2000`), and
+  `--phase2-pseudocount-override` (scaled units, bypasses the quantile path).
+
 ## [1.0.0a4] - 2026-04-18
 
 ### Added

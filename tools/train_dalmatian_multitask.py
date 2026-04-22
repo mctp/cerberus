@@ -39,6 +39,7 @@ from cerberus.config import (
 )
 from cerberus.download import download_human_reference
 from cerberus.genome import create_genome_config
+from cerberus.pseudocount import resolve_reads_equivalent_pseudocount
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
 
@@ -155,7 +156,33 @@ def get_args():
         "--count-pseudocount",
         type=float,
         default=1.0,
-        help="Additive offset before log-transforming count targets",
+        help="Additive offset before log-transforming count targets. "
+        "Ignored when --pseudocount-reads is set.",
+    )
+    parser.add_argument(
+        "--pseudocount-reads",
+        type=float,
+        default=None,
+        help="Scale-aware pseudocount in reads-equivalent units (overrides --count-pseudocount).",
+    )
+    parser.add_argument(
+        "--read-length",
+        type=int,
+        default=150,
+        help="Read or fragment length in bp (used only with --pseudocount-reads).",
+    )
+    parser.add_argument(
+        "--input-scale",
+        type=str,
+        default="raw",
+        choices=["raw", "cpm"],
+        help="Input bigWig scale (used only with --pseudocount-reads).",
+    )
+    parser.add_argument(
+        "--total-reads",
+        type=float,
+        default=None,
+        help="Library total reads (required when --input-scale=cpm and --pseudocount-reads is set).",
     )
 
     # Loss arguments
@@ -457,11 +484,24 @@ def main():
             base_loss_cls = "cerberus.loss.MSEMultinomialLoss"
             base_loss_args = {"count_per_channel": True}
 
+        if args.pseudocount_reads is not None:
+            count_pseudocount_scaled = resolve_reads_equivalent_pseudocount(
+                reads_equiv=args.pseudocount_reads,
+                read_length=args.read_length,
+                bin_size=output_bin_size,
+                target_scale=target_scale,
+                input_scale=args.input_scale,
+                total_reads=args.total_reads,
+            )
+        else:
+            count_pseudocount_scaled = args.count_pseudocount * target_scale
+
         loss_args: dict[str, object] = {
             "base_loss_cls": base_loss_cls,
             "base_loss_args": base_loss_args,
             "bias_weight": args.bias_weight,
-            "count_pseudocount": args.count_pseudocount,
+            # Overridden by ModelConfig.count_pseudocount via instantiate_metrics_and_loss.
+            "count_pseudocount": count_pseudocount_scaled,
         }
 
         pretrained: list[PretrainedConfig] = []
@@ -484,7 +524,7 @@ def main():
             metrics_args={},
             model_args=model_args,
             pretrained=pretrained,
-            count_pseudocount=args.count_pseudocount * target_scale,
+            count_pseudocount=count_pseudocount_scaled,
         )
 
         # 3. Training

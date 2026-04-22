@@ -448,6 +448,8 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 
 Both phases run on the standard `train_single` / `train_multi` pipeline. The companion library primitives are [MultitaskBPNet](models.md#multitaskbpnet), [MultitaskBPNetLoss](models.md#loss-multitaskbpnetloss), and [DifferentialCountLoss](models.md#differentialcountloss).
 
+Phase 2 logs differential metrics via `DifferentialBPNetMetricCollection`: `mse_delta_log_counts`, `rmse_delta_log_counts`, and `pearson_delta_log_counts`. These are aligned with the differential target, unlike the absolute-count metrics used in Phase 1.
+
 ```bash
 # Single-fold two-condition training + interpretation in one call.
 python tools/train_multitask_differential_bpnet.py \
@@ -1238,6 +1240,26 @@ class ModelConfig(BaseModel):
     # Set to 0.0 for Poisson/NB losses that do not use a pseudocount.
     count_pseudocount: float = 0.0
 ```
+
+### Choosing `count_pseudocount`
+
+The role of `count_pseudocount` differs between absolute-signal training (Phase 1
+/ single-task) and differential training (Phase 2 `DifferentialCountLoss`), and
+two library helpers are provided for the two cases:
+
+- **Phase 1 / single-task** — `resolve_reads_equivalent_pseudocount` converts
+  a reads-equivalent specification into the correct scaled pseudocount given
+  `read_length`, `output_bin_size`, `target_scale`, and (for CPM bigWigs)
+  library depth. Training tools expose it via `--pseudocount-reads`,
+  `--read-length`, `--input-scale {raw,cpm}`, `--total-reads`.
+- **Phase 2 differential** — `resolve_quantile_pseudocount` reads training-fold
+  per-channel total-count distribution from a setup `CerberusDataModule` and
+  returns a specified quantile (default 10th percentile) as an
+  empirical-Bayes shrinkage prior. `train_multitask_differential_bpnet.py`
+  applies this automatically; the quantile is configurable via
+  `--phase2-pseudocount-quantile` and `--phase2-pseudocount-samples`.
+
+See `docs/internal/count_log_spaces.md` for the full design rationale.
 
 ## DataModule Runtime Arguments
 
@@ -2480,8 +2502,8 @@ model_config = ModelConfig(
     model_cls="cerberus.models.bpnet.MultitaskBPNet",
     loss_cls="cerberus.loss.DifferentialCountLoss",
     loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
-    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-    metrics_args={},
+    metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
+    metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
     model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
     pretrained=[
         PretrainedConfig(
@@ -2493,7 +2515,7 @@ model_config = ModelConfig(
 )
 ```
 
-`DifferentialCountLoss` is exported from `cerberus.loss`. For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+`DifferentialCountLoss` is exported from `cerberus.loss`. The companion `DifferentialBPNetMetricCollection` reports `mse_delta_log_counts`, `rmse_delta_log_counts`, and `pearson_delta_log_counts`, all computed against the same inline-derived log2FC target as the loss. For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
 
 ### References
 - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.
@@ -3290,6 +3312,10 @@ from .predict_variants import VariantResult, score_variants, score_variants_from
 from .utils import get_precision_kwargs, parse_use_folds, resolve_device
 from .logging import setup_logging
 from .module import CerberusModule, instantiate, instantiate_model
+from .pseudocount import (
+    resolve_quantile_pseudocount,
+    resolve_reads_equivalent_pseudocount,
+)
 from .signal import register_extractor
 from .train import (
     compute_counts_loss_weight,
@@ -3348,6 +3374,8 @@ __all__ = [
     # Training utilities
     "compute_counts_loss_weight",
     "resolve_adaptive_loss_args",
+    "resolve_quantile_pseudocount",
+    "resolve_reads_equivalent_pseudocount",
     "train_single",
     "train_multi",
 ]
@@ -8226,6 +8254,68 @@ class CerberusDataModule(pl.LightningDataModule):
         )
         return scaled_median
 
+    def compute_count_quantile_samples(
+        self,
+        n_samples: int = 2000,
+        per_channel: bool = True,
+    ) -> np.ndarray:
+        """Sample length-summed target counts from the training fold.
+
+        Returns the pool of values (already multiplied by ``target_scale``)
+        that a quantile-based shrinkage prior should be calibrated against.
+        Companion to :func:`cerberus.pseudocount.resolve_quantile_pseudocount`.
+
+        Args:
+            n_samples: Number of training intervals to sample.
+            per_channel: If ``True`` (default), each region contributes one
+                length-summed value per target channel (so a 2-condition
+                dataset produces ``2 × n_samples`` values). If ``False``, sum
+                over channels first so each region contributes one value.
+
+        Returns:
+            ``np.ndarray`` of scaled counts, shape ``(n_samples * C,)`` if
+            ``per_channel`` else ``(n_samples,)``.
+
+        Raises:
+            RuntimeError: If the datamodule has not been setup.
+        """
+        if not self._is_initialized or self.train_dataset is None:
+            raise RuntimeError(
+                "DataModule must be setup before computing statistics. "
+                "Call datamodule.setup() first."
+            )
+        dataset = self.train_dataset
+        if dataset.sampler is None:
+            raise RuntimeError(
+                "train_dataset has no sampler; cannot compute count quantile."
+            )
+        n = len(dataset)
+        indices = random.sample(range(n), min(n_samples, n))
+
+        tmp_extractor = UniversalExtractor(
+            paths=dataset.data_config.targets,
+            in_memory=False,
+        )
+        output_len = dataset.data_config.output_len
+        input_len = dataset.data_config.input_len
+        crop_start = (input_len - output_len) // 2
+        crop_end = crop_start + output_len
+        target_scale = self.data_config.target_scale
+
+        sums: list[float] = []
+        for i in indices:
+            interval = dataset.sampler[i]
+            raw = np.asarray(tmp_extractor.extract(interval))  # (C, input_len)
+            if raw.shape[-1] > output_len:
+                raw = raw[..., crop_start:crop_end]
+            if per_channel:
+                per_ch = raw.sum(axis=-1)  # (C,)
+                sums.extend(float(v) * target_scale for v in per_ch)
+            else:
+                sums.append(float(raw.sum()) * target_scale)
+
+        return np.asarray(sums, dtype=np.float64)
+
 ## src/cerberus/module.py
 
 import logging
@@ -8433,14 +8523,43 @@ class CerberusModule(pl.LightningModule):
         self.train_metrics.reset()
 
     def on_validation_epoch_end(self) -> None:
-        # Extract scatter plot data from the LogCountsPearsonCorrCoef metric
-        # *before* compute()/reset() clears the accumulated state.
+        # Extract scatter plot data from the validation Pearson metric
+        # (absolute or differential, depending on the collection) *before*
+        # compute()/reset() clears the accumulated state.
         scatter_preds = None
         scatter_targets = None
+        scatter_kwargs = {
+            "x_label": "True log counts",
+            "y_label": "Predicted log counts",
+            "title": "Val counts",
+            "filename_prefix": "val_count_scatter",
+        }
         if self.trainer.is_global_zero and not self.trainer.sanity_checking:
-            pearson_key = "pearson_log_counts"
-            if pearson_key in self.val_metrics:
-                pearson_metric = self.val_metrics[pearson_key]
+            scatter_metric_specs = (
+                (
+                    "pearson_delta_log_counts",
+                    {
+                        "x_label": "True delta log counts",
+                        "y_label": "Predicted delta log counts",
+                        "title": "Val delta log counts",
+                        "filename_prefix": "val_delta_log_counts_scatter",
+                    },
+                ),
+                ("pearson_log_counts", scatter_kwargs),
+            )
+            pearson_metric = None
+            for pearson_key, candidate_kwargs in scatter_metric_specs:
+                if pearson_key in self.val_metrics:
+                    pearson_metric = self.val_metrics[pearson_key]
+                    scatter_kwargs = candidate_kwargs
+                    break
+                prefixed_key = f"val_{pearson_key}"
+                if prefixed_key in self.val_metrics:
+                    pearson_metric = self.val_metrics[prefixed_key]
+                    scatter_kwargs = candidate_kwargs
+                    break
+
+            if pearson_metric is not None:
                 preds_list = pearson_metric.preds_list  # type: ignore[union-attr]
                 targets_list = pearson_metric.targets_list  # type: ignore[union-attr]
                 if isinstance(preds_list, torch.Tensor):
@@ -8460,7 +8579,11 @@ class CerberusModule(pl.LightningModule):
             trainer_log_dir = getattr(self.trainer.logger, "log_dir", None)
             save_dir = trainer_log_dir or self.trainer.default_root_dir or "."
             save_count_scatter(
-                scatter_preds, scatter_targets, save_dir, self.current_epoch
+                scatter_preds,
+                scatter_targets,
+                save_dir,
+                self.current_epoch,
+                **scatter_kwargs,
             )
 
 
@@ -8659,6 +8782,18 @@ from .module import configure_callbacks, instantiate
 from .pretrained import load_pretrained_weights
 
 logger = logging.getLogger(__name__)
+
+
+def _barrier_if_distributed() -> None:
+    """Synchronize ranks when running under torch.distributed.
+
+    DDP runs the same Python control flow on every rank. Callers may consume
+    rank-0-only outputs such as ``model.pt`` immediately after ``train_*``
+    returns, so returning before rank 0 has finished writing those files can
+    race nonzero ranks into ``FileNotFoundError`` on the next pipeline stage.
+    """
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        torch.distributed.barrier()
 
 
 def compute_counts_loss_weight(median_counts: float, scale: float = 10.0) -> float:
@@ -8935,6 +9070,11 @@ def _train(
     # 8. Save interval manifests for reproducible evaluation (rank-0 only)
     if root_dir is not None and trainer.is_global_zero:
         datamodule.save_interval_manifests(Path(root_dir))
+
+    # DDP executes the same post-fit Python code on every rank. Hold all ranks
+    # here until rank 0 has finished writing ``model.pt`` and interval
+    # manifests; downstream callers may glob those files immediately.
+    _barrier_if_distributed()
 
     return trainer
 
@@ -10569,6 +10709,81 @@ def _per_example_pearson(
     )
 
 
+def _validate_differential_channel_indices(
+    cond_a_idx: int, cond_b_idx: int
+) -> tuple[int, int]:
+    """Validate and normalize condition indices for differential metrics."""
+    if cond_a_idx == cond_b_idx:
+        raise ValueError(
+            f"cond_a_idx and cond_b_idx must differ, got both={cond_a_idx}"
+        )
+    for name, idx in (("cond_a_idx", cond_a_idx), ("cond_b_idx", cond_b_idx)):
+        if idx < 0:
+            raise ValueError(f"{name} must be non-negative, got {idx}")
+    return cond_a_idx, cond_b_idx
+
+
+def _extract_differential_log_count_pairs(
+    preds: ProfileCountOutput,
+    target: torch.Tensor,
+    cond_a_idx: int,
+    cond_b_idx: int,
+    count_pseudocount: float,
+    log1p_targets: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Derive predicted and target delta-log-count scalars for each example.
+
+    Mirrors :class:`cerberus.loss.DifferentialCountLoss`: the prediction is
+    ``log_counts[:, b] - log_counts[:, a]`` and the target is
+    ``log2((sum_b + pc) / (sum_a + pc))`` where the sums are taken over the
+    length axis of the ``(B, N, L)`` targets tensor.
+    """
+    if not isinstance(preds, ProfileCountOutput):
+        raise TypeError(
+            "Differential log-count metrics require ProfileCountOutput, "
+            f"got {type(preds).__name__}"
+        )
+
+    a, b = _validate_differential_channel_indices(cond_a_idx, cond_b_idx)
+    log_counts = preds.log_counts
+    if log_counts.ndim != 2:
+        raise ValueError(
+            "Differential log-count metrics require log_counts of shape (B, N); "
+            f"got {tuple(log_counts.shape)}"
+        )
+
+    n_channels = log_counts.shape[-1]
+    for name, idx in (("cond_a_idx", a), ("cond_b_idx", b)):
+        if idx >= n_channels:
+            raise ValueError(
+                f"{name}={idx} is out of range for log_counts with {n_channels} channels"
+            )
+
+    target = target.float()
+    if log1p_targets:
+        target = torch.expm1(target)
+
+    if target.ndim != 3:
+        raise ValueError(
+            "Differential log-count metrics require targets of shape (B, N, L); "
+            f"got {tuple(target.shape)}"
+        )
+
+    n_cond_needed = max(a, b) + 1
+    if target.shape[1] < n_cond_needed:
+        raise ValueError(
+            f"targets must have at least {n_cond_needed} channels to cover "
+            f"cond_a_idx={a} and cond_b_idx={b}, got shape {tuple(target.shape)}"
+        )
+
+    counts = target.sum(dim=-1)
+    target_delta = torch.log2(
+        (counts[:, b] + count_pseudocount) / (counts[:, a] + count_pseudocount)
+    )
+    pred_delta = (log_counts[:, b] - log_counts[:, a]).float()
+    return pred_delta.flatten(), target_delta.flatten()
+
+
 class ProfilePearsonCorrCoef(Metric):
     """
     Pearson Correlation Coefficient for profile probabilities.
@@ -10945,6 +11160,107 @@ class LogCountsPearsonCorrCoef(Metric):
             all_targets = torch.cat(self.targets_list)
         if all_preds.numel() < 2:
             return torch.tensor(float("nan"), device=all_preds.device)
+        preds_c = all_preds - all_preds.mean()
+        target_c = all_targets - all_targets.mean()
+        cov = (preds_c * target_c).sum()
+        denom = preds_c.pow(2).sum().sqrt() * target_c.pow(2).sum().sqrt()
+        if denom < 1e-8:
+            return torch.tensor(float("nan"), device=all_preds.device)
+        return (cov / denom).float()
+
+
+class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
+    """Mean squared error on Phase 2 differential log-count targets."""
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        log_counts_include_pseudocount: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.cond_a_idx, self.cond_b_idx = _validate_differential_channel_indices(
+            cond_a_idx, cond_b_idx
+        )
+        self.log1p_targets = log1p_targets
+        self.count_pseudocount = count_pseudocount
+        # Accepted for instantiate_metrics_and_loss compatibility; unused here.
+        self.log_counts_include_pseudocount = log_counts_include_pseudocount
+
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None:  # type: ignore[override]
+        pred_delta, target_delta = _extract_differential_log_count_pairs(
+            preds,
+            target,
+            cond_a_idx=self.cond_a_idx,
+            cond_b_idx=self.cond_b_idx,
+            count_pseudocount=self.count_pseudocount,
+            log1p_targets=self.log1p_targets,
+        )
+        super().update(pred_delta, target_delta)
+
+
+class DifferentialLogCountsRootMeanSquaredError(DifferentialLogCountsMeanSquaredError):
+    """Root mean squared error on Phase 2 differential log-count targets."""
+
+    def compute(self) -> torch.Tensor:
+        return torch.sqrt(super().compute().clamp_min(0.0)).float()
+
+
+class DifferentialLogCountsPearsonCorrCoef(Metric):
+    """Pearson correlation on Phase 2 differential log-count targets."""
+
+    full_state_update: bool | None = False
+    preds_list: list[torch.Tensor]
+    targets_list: list[torch.Tensor]
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        log_counts_include_pseudocount: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.cond_a_idx, self.cond_b_idx = _validate_differential_channel_indices(
+            cond_a_idx, cond_b_idx
+        )
+        self.log1p_targets = log1p_targets
+        self.count_pseudocount = count_pseudocount
+        # Accepted for instantiate_metrics_and_loss compatibility; unused here.
+        self.log_counts_include_pseudocount = log_counts_include_pseudocount
+        self.add_state("preds_list", default=[], dist_reduce_fx="cat")
+        self.add_state("targets_list", default=[], dist_reduce_fx="cat")
+
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None:  # type: ignore[override]
+        pred_delta, target_delta = _extract_differential_log_count_pairs(
+            preds,
+            target,
+            cond_a_idx=self.cond_a_idx,
+            cond_b_idx=self.cond_b_idx,
+            count_pseudocount=self.count_pseudocount,
+            log1p_targets=self.log1p_targets,
+        )
+        self.preds_list.append(pred_delta.detach())
+        self.targets_list.append(target_delta.detach())
+
+    def compute(self) -> torch.Tensor:
+        if isinstance(self.preds_list, torch.Tensor):
+            all_preds = cast(torch.Tensor, self.preds_list)
+            all_targets = cast(torch.Tensor, self.targets_list)
+        elif len(self.preds_list) == 0:
+            return torch.tensor(float("nan"), device=self.device)
+        else:
+            all_preds = torch.cat(self.preds_list)
+            all_targets = torch.cat(self.targets_list)
+
+        if all_preds.numel() < 2:
+            return torch.tensor(float("nan"), device=all_preds.device)
+
         preds_c = all_preds - all_preds.mean()
         target_c = all_targets - all_targets.mean()
         cov = (preds_c * target_c).sum()
@@ -12871,7 +13187,15 @@ def setup_logging(level: int = logging.INFO) -> None:
 
 from .asap import ConvNeXtDCNN
 from .biasnet import BiasNet
-from .bpnet import BPNet, BPNet1024, BPNetLoss, BPNetMetricCollection, MultitaskBPNet, MultitaskBPNetLoss
+from .bpnet import (
+    BPNet,
+    BPNet1024,
+    BPNetLoss,
+    BPNetMetricCollection,
+    DifferentialBPNetMetricCollection,
+    MultitaskBPNet,
+    MultitaskBPNetLoss,
+)
 from .dalmatian import Dalmatian
 from .gopher import GlobalProfileCNN
 from .pomeranian import Pomeranian, PomeranianK5, PomeranianMetricCollection
@@ -12883,6 +13207,7 @@ __all__ = [
     "BPNet1024",
     "BPNetLoss",
     "BPNetMetricCollection",
+    "DifferentialBPNetMetricCollection",
     "MultitaskBPNet",
     "MultitaskBPNetLoss",
     "Dalmatian",
@@ -13115,6 +13440,9 @@ from cerberus.layers import DilatedResidualBlock
 from cerberus.metrics import (
     CountProfileMeanSquaredError,
     CountProfilePearsonCorrCoef,
+    DifferentialLogCountsMeanSquaredError,
+    DifferentialLogCountsPearsonCorrCoef,
+    DifferentialLogCountsRootMeanSquaredError,
     LogCountsMeanSquaredError,
     LogCountsPearsonCorrCoef,
 )
@@ -13684,6 +14012,44 @@ class BPNetMetricCollection(MetricCollection):
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "pearson_log_counts": LogCountsPearsonCorrCoef(
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+            }
+        )
+
+
+class DifferentialBPNetMetricCollection(MetricCollection):
+    """MetricCollection for Phase 2 differential BPNet fine-tuning."""
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        log_counts_include_pseudocount: bool = False,
+    ):
+        super().__init__(
+            {
+                "mse_delta_log_counts": DifferentialLogCountsMeanSquaredError(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+                "rmse_delta_log_counts": DifferentialLogCountsRootMeanSquaredError(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+                "pearson_delta_log_counts": DifferentialLogCountsPearsonCorrCoef(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     count_pseudocount=count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,

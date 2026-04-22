@@ -245,8 +245,8 @@ model_config = ModelConfig(
     model_cls="cerberus.models.bpnet.MultitaskBPNet",
     loss_cls="cerberus.loss.DifferentialCountLoss",
     loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
-    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-    metrics_args={},
+    metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
+    metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
     model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
     pretrained=[
         PretrainedConfig(
@@ -258,7 +258,7 @@ model_config = ModelConfig(
 )
 ```
 
-`DifferentialCountLoss` is exported from `cerberus.loss`. For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+`DifferentialCountLoss` is exported from `cerberus.loss`. The companion `DifferentialBPNetMetricCollection` reports `mse_delta_log_counts`, `rmse_delta_log_counts`, and `pearson_delta_log_counts`, all computed against the same inline-derived log2FC target as the loss. For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
 
 ### References
 - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.

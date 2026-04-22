@@ -31,6 +31,10 @@ from .predict_variants import VariantResult, score_variants, score_variants_from
 from .utils import get_precision_kwargs, parse_use_folds, resolve_device
 from .logging import setup_logging
 from .module import CerberusModule, instantiate, instantiate_model
+from .pseudocount import (
+    resolve_quantile_pseudocount,
+    resolve_reads_equivalent_pseudocount,
+)
 from .signal import register_extractor
 from .train import (
     compute_counts_loss_weight,
@@ -89,6 +93,8 @@ __all__ = [
     # Training utilities
     "compute_counts_loss_weight",
     "resolve_adaptive_loss_args",
+    "resolve_quantile_pseudocount",
+    "resolve_reads_equivalent_pseudocount",
     "train_single",
     "train_multi",
 ]

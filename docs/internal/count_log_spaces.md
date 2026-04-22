@@ -150,12 +150,38 @@ When renaming, update:
 
 ## `count_pseudocount` and `target_scale`
 
+### Two different jobs for the same field
+
+`count_pseudocount` does two very different jobs depending on the loss:
+
+| Phase / loss | Job | Right order of magnitude |
+|---|---|---|
+| Phase 1 absolute / single-task (`MSE*`, `Dalmatian*`, `Poisson*`, `NB*`) | Prevent `log(0)` for silent regions; embed the zero-reads cluster into the log-count distribution. | "One read's worth" of coverage — i.e. `read_length / bin_size` in raw units, adjusted for CPM and `target_scale`. |
+| Phase 2 differential (`DifferentialCountLoss`) | Empirical-Bayes shrinkage prior on the log-fold change: pull `log2((c_b+pc)/(c_a+pc))` toward 0 for peaks in the low-count tail. | The chosen low quantile of per-condition training-region total counts (e.g. 10th percentile). |
+
+The library exposes two helpers that compute the scaled value correctly for
+each role:
+
+```python
+from cerberus import (
+    resolve_reads_equivalent_pseudocount,  # Phase 1 / single-task
+    resolve_quantile_pseudocount,          # Phase 2 differential
+)
+```
+
+See the helper docstrings in `src/cerberus/pseudocount.py` for arguments.
+Phase 1 / single-task training tools expose this via
+`--pseudocount-reads`, `--read-length`, `--input-scale {raw,cpm}`, and
+`--total-reads`. `train_multitask_differential_bpnet.py` uses the quantile
+helper in Phase 2, controlled by `--phase2-pseudocount-quantile` (default
+`0.10`) and `--phase2-pseudocount-samples`.
+
 ### User-facing config
 
 In `DataConfig`:
 
 ```yaml
-count_pseudocount: 1.0    # specified in raw coverage units
+count_pseudocount: 1.0    # specified in raw coverage units (legacy path)
 target_scale: 0.01        # multiplicative scaling applied to all targets
 ```
 

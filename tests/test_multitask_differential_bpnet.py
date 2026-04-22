@@ -446,14 +446,17 @@ def test_differential_count_loss_pseudocount_injected_via_model_config():
         model_cls="cerberus.models.bpnet.MultitaskBPNet",
         loss_cls="cerberus.loss.DifferentialCountLoss",
         loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
-        metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-        metrics_args={},
+        metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
+        metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
         model_args={"output_channels": ["a", "b"]},
         pretrained=[],
         count_pseudocount=42.0,
     )
-    _, criterion = instantiate_metrics_and_loss(config)
+    metrics, criterion = instantiate_metrics_and_loss(config)
     assert isinstance(criterion, DifferentialCountLoss)
+    assert "mse_delta_log_counts" in metrics
+    assert "rmse_delta_log_counts" in metrics
+    assert "pearson_delta_log_counts" in metrics
     assert criterion.count_pseudocount == 42.0
     assert criterion.cond_a_idx == 0
     assert criterion.cond_b_idx == 1

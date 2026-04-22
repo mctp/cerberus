@@ -273,6 +273,26 @@ class ModelConfig(BaseModel):
     count_pseudocount: float = 0.0
 ```
 
+### Choosing `count_pseudocount`
+
+The role of `count_pseudocount` differs between absolute-signal training (Phase 1
+/ single-task) and differential training (Phase 2 `DifferentialCountLoss`), and
+two library helpers are provided for the two cases:
+
+- **Phase 1 / single-task** — `resolve_reads_equivalent_pseudocount` converts
+  a reads-equivalent specification into the correct scaled pseudocount given
+  `read_length`, `output_bin_size`, `target_scale`, and (for CPM bigWigs)
+  library depth. Training tools expose it via `--pseudocount-reads`,
+  `--read-length`, `--input-scale {raw,cpm}`, `--total-reads`.
+- **Phase 2 differential** — `resolve_quantile_pseudocount` reads training-fold
+  per-channel total-count distribution from a setup `CerberusDataModule` and
+  returns a specified quantile (default 10th percentile) as an
+  empirical-Bayes shrinkage prior. `train_multitask_differential_bpnet.py`
+  applies this automatically; the quantile is configurable via
+  `--phase2-pseudocount-quantile` and `--phase2-pseudocount-samples`.
+
+See `docs/internal/count_log_spaces.md` for the full design rationale.
+
 ## DataModule Runtime Arguments
 
 Arguments passed to `CerberusDataModule.__init__` for hardware optimization:

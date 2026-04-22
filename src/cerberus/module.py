@@ -203,14 +203,43 @@ class CerberusModule(pl.LightningModule):
         self.train_metrics.reset()
 
     def on_validation_epoch_end(self) -> None:
-        # Extract scatter plot data from the LogCountsPearsonCorrCoef metric
-        # *before* compute()/reset() clears the accumulated state.
+        # Extract scatter plot data from the validation Pearson metric
+        # (absolute or differential, depending on the collection) *before*
+        # compute()/reset() clears the accumulated state.
         scatter_preds = None
         scatter_targets = None
+        scatter_kwargs = {
+            "x_label": "True log counts",
+            "y_label": "Predicted log counts",
+            "title": "Val counts",
+            "filename_prefix": "val_count_scatter",
+        }
         if self.trainer.is_global_zero and not self.trainer.sanity_checking:
-            pearson_key = "pearson_log_counts"
-            if pearson_key in self.val_metrics:
-                pearson_metric = self.val_metrics[pearson_key]
+            scatter_metric_specs = (
+                (
+                    "pearson_delta_log_counts",
+                    {
+                        "x_label": "True delta log counts",
+                        "y_label": "Predicted delta log counts",
+                        "title": "Val delta log counts",
+                        "filename_prefix": "val_delta_log_counts_scatter",
+                    },
+                ),
+                ("pearson_log_counts", scatter_kwargs),
+            )
+            pearson_metric = None
+            for pearson_key, candidate_kwargs in scatter_metric_specs:
+                if pearson_key in self.val_metrics:
+                    pearson_metric = self.val_metrics[pearson_key]
+                    scatter_kwargs = candidate_kwargs
+                    break
+                prefixed_key = f"val_{pearson_key}"
+                if prefixed_key in self.val_metrics:
+                    pearson_metric = self.val_metrics[prefixed_key]
+                    scatter_kwargs = candidate_kwargs
+                    break
+
+            if pearson_metric is not None:
                 preds_list = pearson_metric.preds_list  # type: ignore[union-attr]
                 targets_list = pearson_metric.targets_list  # type: ignore[union-attr]
                 if isinstance(preds_list, torch.Tensor):
@@ -230,7 +259,11 @@ class CerberusModule(pl.LightningModule):
             trainer_log_dir = getattr(self.trainer.logger, "log_dir", None)
             save_dir = trainer_log_dir or self.trainer.default_root_dir or "."
             save_count_scatter(
-                scatter_preds, scatter_targets, save_dir, self.current_epoch
+                scatter_preds,
+                scatter_targets,
+                save_dir,
+                self.current_epoch,
+                **scatter_kwargs,
             )
 
 

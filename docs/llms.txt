@@ -176,6 +176,9 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class ProfileMeanSquaredError(MeanSquaredError)`** — Mean Squared Error on Probability Profiles.
 - **`class LogCountsMeanSquaredError(MeanSquaredError)`** — Mean Squared Error on Log Counts.
 - **`class LogCountsPearsonCorrCoef(Metric)`** — Pearson Correlation on Log Counts.
+- **`class DifferentialLogCountsMeanSquaredError(MeanSquaredError)`** — Mean squared error on Phase 2 differential log-count targets.
+- **`class DifferentialLogCountsRootMeanSquaredError(DifferentialLogCountsMeanSquaredError)`** — Root mean squared error on Phase 2 differential log-count targets.
+- **`class DifferentialLogCountsPearsonCorrCoef(Metric)`** — Pearson correlation on Phase 2 differential log-count targets.
 - **`class DefaultMetricCollection(MetricCollection)`** — Default MetricCollection used for training/validation.
 
 ### `cerberus.layers`
@@ -222,6 +225,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class MultitaskBPNet(BPNet)`** — Multi-task BPNet: shared dilated tower with N condition-specific output channels.
 - **`class MultitaskBPNetLoss(MSEMultinomialLoss)`** — Phase 1 loss for :class:`MultitaskBPNet`.
 - **`class BPNetMetricCollection(MetricCollection)`** — MetricCollection for BPNet models.
+- **`class DifferentialBPNetMetricCollection(MetricCollection)`** — MetricCollection for Phase 2 differential BPNet fine-tuning.
 
 ### `cerberus.models.pomeranian`
 

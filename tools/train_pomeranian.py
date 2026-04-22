@@ -32,6 +32,7 @@ from cerberus.config import (
 )
 from cerberus.download import download_human_reference
 from cerberus.genome import create_genome_config
+from cerberus.pseudocount import resolve_reads_equivalent_pseudocount
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
 
@@ -181,7 +182,33 @@ def get_args():
         "--count-pseudocount",
         type=float,
         default=150.0,
-        help="Additive offset before log-transforming count targets (in raw coverage units)",
+        help="Additive offset before log-transforming count targets (in raw coverage units). "
+        "Ignored when --pseudocount-reads is set.",
+    )
+    parser.add_argument(
+        "--pseudocount-reads",
+        type=float,
+        default=None,
+        help="Scale-aware pseudocount in reads-equivalent units (overrides --count-pseudocount).",
+    )
+    parser.add_argument(
+        "--read-length",
+        type=int,
+        default=150,
+        help="Read or fragment length in bp (used only with --pseudocount-reads).",
+    )
+    parser.add_argument(
+        "--input-scale",
+        type=str,
+        default="raw",
+        choices=["raw", "cpm"],
+        help="Input bigWig scale (used only with --pseudocount-reads).",
+    )
+    parser.add_argument(
+        "--total-reads",
+        type=float,
+        default=None,
+        help="Library total reads (required when --input-scale=cpm and --pseudocount-reads is set).",
     )
 
     # Pretrained weights
@@ -418,6 +445,18 @@ def main():
             )
         )
 
+    if args.pseudocount_reads is not None:
+        count_pseudocount_scaled = resolve_reads_equivalent_pseudocount(
+            reads_equiv=args.pseudocount_reads,
+            read_length=args.read_length,
+            bin_size=output_bin_size,
+            target_scale=target_scale,
+            input_scale=args.input_scale,
+            total_reads=args.total_reads,
+        )
+    else:
+        count_pseudocount_scaled = args.count_pseudocount * target_scale
+
     model_config = ModelConfig(
         name=model_name,
         model_cls=model_cls_name,
@@ -427,7 +466,7 @@ def main():
         metrics_args={},
         model_args=model_args,
         pretrained=pretrained,
-        count_pseudocount=args.count_pseudocount * target_scale,
+        count_pseudocount=count_pseudocount_scaled,
     )
 
     # 3. Training

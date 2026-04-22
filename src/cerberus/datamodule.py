@@ -450,3 +450,65 @@ class CerberusDataModule(pl.LightningDataModule):
             f"from {len(indices)} training intervals."
         )
         return scaled_median
+
+    def compute_count_quantile_samples(
+        self,
+        n_samples: int = 2000,
+        per_channel: bool = True,
+    ) -> np.ndarray:
+        """Sample length-summed target counts from the training fold.
+
+        Returns the pool of values (already multiplied by ``target_scale``)
+        that a quantile-based shrinkage prior should be calibrated against.
+        Companion to :func:`cerberus.pseudocount.resolve_quantile_pseudocount`.
+
+        Args:
+            n_samples: Number of training intervals to sample.
+            per_channel: If ``True`` (default), each region contributes one
+                length-summed value per target channel (so a 2-condition
+                dataset produces ``2 × n_samples`` values). If ``False``, sum
+                over channels first so each region contributes one value.
+
+        Returns:
+            ``np.ndarray`` of scaled counts, shape ``(n_samples * C,)`` if
+            ``per_channel`` else ``(n_samples,)``.
+
+        Raises:
+            RuntimeError: If the datamodule has not been setup.
+        """
+        if not self._is_initialized or self.train_dataset is None:
+            raise RuntimeError(
+                "DataModule must be setup before computing statistics. "
+                "Call datamodule.setup() first."
+            )
+        dataset = self.train_dataset
+        if dataset.sampler is None:
+            raise RuntimeError(
+                "train_dataset has no sampler; cannot compute count quantile."
+            )
+        n = len(dataset)
+        indices = random.sample(range(n), min(n_samples, n))
+
+        tmp_extractor = UniversalExtractor(
+            paths=dataset.data_config.targets,
+            in_memory=False,
+        )
+        output_len = dataset.data_config.output_len
+        input_len = dataset.data_config.input_len
+        crop_start = (input_len - output_len) // 2
+        crop_end = crop_start + output_len
+        target_scale = self.data_config.target_scale
+
+        sums: list[float] = []
+        for i in indices:
+            interval = dataset.sampler[i]
+            raw = np.asarray(tmp_extractor.extract(interval))  # (C, input_len)
+            if raw.shape[-1] > output_len:
+                raw = raw[..., crop_start:crop_end]
+            if per_channel:
+                per_ch = raw.sum(axis=-1)  # (C,)
+                sums.extend(float(v) * target_scale for v in per_ch)
+            else:
+                sums.append(float(raw.sum()) * target_scale)
+
+        return np.asarray(sums, dtype=np.float64)

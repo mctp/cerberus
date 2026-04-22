@@ -7,10 +7,11 @@ import pytest
 import torch
 
 from cerberus.config import TrainConfig
-from cerberus.loss import ProfilePoissonNLLLoss
+from cerberus.loss import DifferentialCountLoss, ProfilePoissonNLLLoss
 from cerberus.metrics import DefaultMetricCollection
+from cerberus.models.bpnet import DifferentialBPNetMetricCollection
 from cerberus.module import CerberusModule
-from cerberus.output import ProfileLogRates
+from cerberus.output import ProfileCountOutput, ProfileLogRates
 from cerberus.plots import (
     _apply_seqlogo_mode,
     plot_attribution_heatmap,
@@ -63,6 +64,18 @@ class _DummyModel(torch.nn.Module):
     def forward(self, x):
         # Output shape: (B, 1, 8) -- one channel, profile length 8
         return ProfileLogRates(log_rates=self.layer(x).unsqueeze(1))
+
+
+class _DummyDifferentialModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer = torch.nn.Linear(10, 16)
+
+    def forward(self, x):
+        out = self.layer(x).view(x.shape[0], 2, 8)
+        logits = torch.zeros_like(out)
+        log_counts = out.mean(dim=-1)
+        return ProfileCountOutput(logits=logits, log_counts=log_counts)
 
 
 @pytest.fixture
@@ -170,6 +183,41 @@ def test_on_validation_epoch_end_skips_scatter_during_sanity_check(_base_config)
     with patch("cerberus.plots.save_count_scatter") as mock_save:
         module.on_validation_epoch_end()
         mock_save.assert_not_called()
+
+
+def test_on_validation_epoch_end_saves_differential_scatter(_base_config):
+    """Phase 2 differential metrics drive a delta-specific scatter plot."""
+    module = CerberusModule(
+        _DummyDifferentialModel(),
+        criterion=DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1),
+        metrics=DifferentialBPNetMetricCollection(cond_a_idx=0, cond_b_idx=1),
+        train_config=_base_config,
+    )
+    module.log = MagicMock()
+    module.log_dict = MagicMock()
+
+    mock_trainer = MagicMock()
+    mock_trainer.is_global_zero = True
+    mock_trainer.sanity_checking = False
+    mock_trainer.current_epoch = 2
+    module._trainer = mock_trainer
+
+    batch = {
+        "inputs": torch.randn(4, 10),
+        "targets": torch.abs(torch.randn(4, 2, 8)),
+    }
+    module.validation_step(batch, 0)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        mock_trainer.logger.log_dir = tmp_dir
+        module.on_validation_epoch_end()
+        expected = (
+            Path(tmp_dir) / "plots" / "val_delta_log_counts_scatter_epoch_002.png"
+        )
+        assert expected.exists()
+
+    pearson_metric = module.val_metrics["val_pearson_delta_log_counts"]
+    assert pearson_metric.preds_list == []
 
 
 # ---------------------------------------------------------------------------
