@@ -874,6 +874,10 @@ def main() -> None:
     else:
         phase1_dir = run_phase1(args, merged_bed, output_dir, genome_config, data_dir)
 
+    # Under DDP every rank re-enters ``main()`` after Phase 1. ``train_*``
+    # must therefore return only after rank 0 has materialized ``model.pt``;
+    # otherwise a nonzero rank can race this checkpoint lookup and fail before
+    # Phase 2 starts.
     phase1_model_path = _find_phase1_checkpoint(phase1_dir)
     logger.info("Phase 1 model: %s", phase1_model_path)
 
