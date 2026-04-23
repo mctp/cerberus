@@ -19,7 +19,7 @@ Phase 2 differential models
 ``resolve_quantile_pseudocount`` picks the pseudocount from the actual
 distribution of training-region total counts (a low quantile, typically 0.10).
 Here the pseudocount is an empirical-Bayes shrinkage prior on the log-fold
-change: it pulls ``log2((c_b + pc)/(c_a + pc))`` toward zero whenever both
+change: it pulls ``log((c_b + pc)/(c_a + pc))`` toward zero whenever both
 totals are comparable to the noise floor, so weak peaks do not dominate the
 MSE. This is data-driven and automatically adapts to raw vs. CPM inputs and to
 library-depth differences without the user reasoning about read length or bin
@@ -148,7 +148,7 @@ def resolve_quantile_pseudocount(
     scaled units as the training targets.
 
     Feeding the return value into ``ModelConfig.count_pseudocount`` makes
-    ``log2((c_b + pc) / (c_a + pc))`` collapse toward zero for any region whose
+    ``log((c_b + pc) / (c_a + pc))`` collapse toward zero for any region whose
     per-condition total is at or below the chosen quantile (i.e., in the
     bottom ``quantile`` fraction of training peaks), while leaving the ratio
     essentially unchanged for regions with counts well above the quantile.

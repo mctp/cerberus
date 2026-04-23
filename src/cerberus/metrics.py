@@ -57,7 +57,7 @@ def _extract_differential_log_count_pairs(
 
     Mirrors :class:`cerberus.loss.DifferentialCountLoss`: the prediction is
     ``log_counts[:, b] - log_counts[:, a]`` and the target is
-    ``log2((sum_b + pc) / (sum_a + pc))`` where the sums are taken over the
+    ``log((sum_b + pc) / (sum_a + pc))`` where the sums are taken over the
     length axis of the ``(B, N, L)`` targets tensor.
     """
     if not isinstance(preds, ProfileCountOutput):
@@ -99,7 +99,7 @@ def _extract_differential_log_count_pairs(
         )
 
     counts = target.sum(dim=-1)
-    target_delta = torch.log2(
+    target_delta = torch.log(
         (counts[:, b] + count_pseudocount) / (counts[:, a] + count_pseudocount)
     )
     pred_delta = (log_counts[:, b] - log_counts[:, a]).float()

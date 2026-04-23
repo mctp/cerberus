@@ -186,7 +186,7 @@ def _bnl_targets_with_known_delta(
 
 
 def test_differential_count_loss_derives_delta_from_targets():
-    """Delta is derived from (B, N, L) targets: log2((sum_B + pc) / (sum_A + pc))."""
+    """Delta is derived from (B, N, L) targets: log((sum_B + pc) / (sum_A + pc))."""
     pc = 1.0
     loss_fn = DifferentialCountLoss(
         cond_a_idx=0, cond_b_idx=1, count_pseudocount=pc
@@ -196,9 +196,9 @@ def test_differential_count_loss_derives_delta_from_targets():
     targets = _bnl_targets_with_known_delta(
         sum_a, sum_b, n_channels=2, output_len=OUTPUT_LEN
     )
-    # If the model predicts exactly log2((sum_b + pc) / (sum_a + pc)) as
+    # If the model predicts exactly log((sum_b + pc) / (sum_a + pc)) as
     # log_counts[:, 1] - log_counts[:, 0], MSE is zero.
-    expected_delta = torch.log2((sum_b + pc) / (sum_a + pc))
+    expected_delta = torch.log((sum_b + pc) / (sum_a + pc))
     log_counts = torch.zeros(4, 2)
     log_counts[:, 1] = expected_delta  # (b - a) = expected_delta since a=0
     out = _make_output(log_counts)
@@ -218,7 +218,7 @@ def test_differential_count_loss_nonzero_when_prediction_off():
     sum_b = torch.tensor([15.0, 1.0])
     targets = _bnl_targets_with_known_delta(sum_a, sum_b, 2, OUTPUT_LEN)
     # Zero prediction → MSE equals mean(expected_delta ** 2).
-    expected_delta = torch.log2((sum_b + pc) / (sum_a + pc))
+    expected_delta = torch.log((sum_b + pc) / (sum_a + pc))
     out = _make_output(torch.zeros(2, 2))
     loss = loss_fn(out, targets)
     assert loss.item() == pytest.approx((expected_delta ** 2).mean().item(), rel=1e-6)
@@ -232,7 +232,7 @@ def test_differential_count_loss_pseudocount_affects_target():
     out = _make_output(torch.zeros(1, 2))
     loss_small = DifferentialCountLoss(count_pseudocount=0.1)(out, targets)
     loss_large = DifferentialCountLoss(count_pseudocount=100.0)(out, targets)
-    # Larger pseudocount → smaller |log2 ratio| → smaller MSE
+    # Larger pseudocount → smaller |log ratio| → smaller MSE
     assert loss_large.item() < loss_small.item()
 
 
@@ -320,7 +320,7 @@ def test_differential_count_loss_swapping_idx_negates_prediction_term():
     torch.testing.assert_close(ab, ba)
 
     # Stronger: sanity-check the reversed (B, A) loss against hand-computed.
-    expected_delta_ba = torch.log2((sum_a + pc) / (sum_b + pc))
+    expected_delta_ba = torch.log((sum_a + pc) / (sum_b + pc))
     delta_pred_ba = log_counts[:, 0] - log_counts[:, 1]
     expected_loss_ba = ((delta_pred_ba - expected_delta_ba) ** 2).mean()
     assert ba.item() == pytest.approx(expected_loss_ba.item(), rel=1e-6)
@@ -409,7 +409,7 @@ def test_differential_count_loss_integer_targets_work():
     log_counts = torch.zeros(1, 2)
     out = _make_output(log_counts)
     loss = loss_fn(out, targets)
-    expected = (torch.log2(torch.tensor((7.0 + pc) / (3.0 + pc))) ** 2)
+    expected = (torch.log(torch.tensor((7.0 + pc) / (3.0 + pc))) ** 2)
     assert loss.item() == pytest.approx(expected.item(), rel=1e-6)
 
 

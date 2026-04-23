@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     per_channel=True)` — Phase 2 `DifferentialCountLoss` empirical-Bayes
     shrinkage prior. Returns a specified quantile of per-channel
     length-summed counts in the training fold (already in scaled units), so
-    `log2((c_b + pc) / (c_a + pc))` collapses toward zero for peaks in the
+    `log((c_b + pc) / (c_a + pc))` collapses toward zero for peaks in the
     bottom `quantile` of the distribution.
 - **`CerberusDataModule.compute_count_quantile_samples(n_samples, per_channel)`**
   (`src/cerberus/datamodule.py`). Companion to `resolve_quantile_pseudocount`:
@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Two-phase multitask-differential BPNet workflow.** New library primitives
   plus an end-to-end CLI for training a shared-trunk BPNet on N conditions
-  and fine-tuning its count heads on the per-peak log2FC derived from the
+  and fine-tuning its count heads on the per-peak log fold-change derived from the
   two-condition signal:
   - `MultitaskBPNet` / `MultitaskBPNetLoss` (`src/cerberus/models/bpnet.py`):
     Phase 1 shared-trunk model with one profile + count output per condition
@@ -62,9 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`
     and maps `alpha`/`beta` to `count_weight`/`profile_weight`.
   - `DifferentialCountLoss` (`src/cerberus/loss.py`): Phase 2 fine-tuning loss
-    supervising `log_counts[:, B] - log_counts[:, A]` on the per-peak log2FC
+    supervising `log_counts[:, B] - log_counts[:, A]` on the per-peak log fold-change
     derived inline from the `(B, N, L)` targets tensor as
-    `log2((sum_B + pc) / (sum_A + pc))`. Pseudocount is on linear scale
+    `log((sum_B + pc) / (sum_A + pc))`. Pseudocount is on linear scale
     (same units as the length-summed signal, shared with Phase 1's
     `MSEMultinomialLoss.count_pseudocount`). Profile loss is disabled
     following Naqvi et al. 2025. Constructor:

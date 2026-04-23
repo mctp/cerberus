@@ -10,7 +10,7 @@ Two-phase training for comparing chromatin accessibility between two conditions:
 
   Phase 2 — Differential fine-tuning (DifferentialCountLoss)
     Loads the Phase 1 checkpoint via ``ModelConfig.pretrained`` and fine-tunes
-    the count heads on the per-peak log2FC derived inline from the shared
+    the count heads on the per-peak log fold-change derived inline from the shared
     two-channel targets tensor (no offline precompute, no wrapper dataset).
 
   Interpretation (optional --interpret)
@@ -187,7 +187,7 @@ def get_args() -> argparse.Namespace:
     # --- Phase 2 hyperparameters ---
     #
     # Phase 2's pseudocount is an empirical-Bayes shrinkage prior on the
-    # log2 fold change: log2((c_b + pc) / (c_a + pc)). Default behavior is
+    # log fold change: log((c_b + pc) / (c_a + pc)). Default behavior is
     # to derive it from the training data as the 10th-percentile of
     # per-condition length-summed counts ("shrink the bottom 10% of peaks"),
     # which is scale-correct across raw/CPM bigWigs and library depths.
@@ -511,7 +511,7 @@ def run_phase2(
     Phase 2 is a regular ``train_single`` / ``train_multi`` call with a
     :class:`DifferentialCountLoss` ``ModelConfig`` that lists the Phase 1
     checkpoint under ``pretrained=[PretrainedConfig(...)]``. The per-peak
-    log2FC target is derived inline inside the loss from the two-channel
+    log-ratio target is derived inline inside the loss from the two-channel
     ``(B, 2, L)`` targets tensor Phase 1 already supervised against — no
     offline precompute, no dataset wrapper, no bespoke PL module.
     """
@@ -531,7 +531,7 @@ def run_phase2(
         },
         input_len=args.input_len,
         output_len=args.output_len,
-        max_jitter=0,          # no jitter — stable log2FC targets
+        max_jitter=0,          # no jitter — stable differential targets
         output_bin_size=1,
         encoding="ACGT",
         log_transform=False,
@@ -551,7 +551,7 @@ def run_phase2(
     # 2. Resolve Phase 2 pseudocount. Unlike Phase 1 (numerical floor to dodge
     # log(0)), this is an empirical-Bayes shrinkage prior: the quantile of
     # per-condition length-summed counts in the training fold. Anything in the
-    # bottom `quantile` fraction of peaks gets pulled toward log2FC=0.
+    # bottom `quantile` fraction of peaks gets pulled toward delta=0.
     if args.phase2_pseudocount_override is not None:
         phase2_pseudocount = args.phase2_pseudocount_override
         logger.info(

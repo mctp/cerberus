@@ -43,7 +43,7 @@ def test_differential_log_counts_mse_zero_when_prediction_matches_target():
     sum_a = torch.tensor([3.0, 1.0, 7.0, 0.0])
     sum_b = torch.tensor([15.0, 3.0, 1.0, 0.0])
     targets = _bnl_targets_with_known_delta(sum_a, sum_b)
-    expected_delta = torch.log2((sum_b + pc) / (sum_a + pc))
+    expected_delta = torch.log((sum_b + pc) / (sum_a + pc))
     log_counts = torch.zeros(4, 2)
     log_counts[:, 1] = expected_delta
 
@@ -59,7 +59,7 @@ def test_differential_log_counts_rmse_matches_root_mse():
     sum_a = torch.tensor([3.0, 7.0])
     sum_b = torch.tensor([15.0, 1.0])
     targets = _bnl_targets_with_known_delta(sum_a, sum_b)
-    expected_delta = torch.log2((sum_b + pc) / (sum_a + pc))
+    expected_delta = torch.log((sum_b + pc) / (sum_a + pc))
 
     metric.update(_make_output(torch.zeros(2, 2)), targets)
     expected_rmse = torch.sqrt((expected_delta.pow(2)).mean())
@@ -71,7 +71,7 @@ def test_differential_log_counts_pearson_invariant_to_positive_affine_transform(
     sum_a = torch.tensor([1.0, 2.0, 4.0, 8.0])
     sum_b = torch.tensor([8.0, 4.0, 2.0, 1.0])
     targets = _bnl_targets_with_known_delta(sum_a, sum_b)
-    true_delta = torch.log2((sum_b + pc) / (sum_a + pc))
+    true_delta = torch.log((sum_b + pc) / (sum_a + pc))
 
     exact_metric = DifferentialLogCountsPearsonCorrCoef(count_pseudocount=pc)
     affine_metric = DifferentialLogCountsPearsonCorrCoef(count_pseudocount=pc)

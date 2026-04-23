@@ -553,7 +553,7 @@ class DifferentialCountLoss(nn.Module):
 
     .. math::
 
-        \\Delta_{\\mathrm{target}} = \\log_2\\left(
+        \\Delta_{\\mathrm{target}} = \\log\\left(
           \\frac{\\sum_\\ell \\mathrm{targets}[:, B, \\ell] + \\mathrm{pc}}{
                  \\sum_\\ell \\mathrm{targets}[:, A, \\ell] + \\mathrm{pc}}
         \\right)
@@ -574,7 +574,7 @@ class DifferentialCountLoss(nn.Module):
     Args:
         cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
         cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
-        count_pseudocount: Additive pseudocount used in the log2FC
+        count_pseudocount: Additive pseudocount used in the log-ratio
             derivation. Must match the value Phase 1 used so the two
             phases share a log-space. Default 1.0.
 
@@ -640,7 +640,7 @@ class DifferentialCountLoss(nn.Module):
 
         counts = targets.float().sum(dim=-1)  # (B, N)
         pc = self.count_pseudocount
-        target_delta = torch.log2(
+        target_delta = torch.log(
             (counts[:, b] + pc) / (counts[:, a] + pc)
         )  # (B,)
         delta_pred = log_counts[:, b] - log_counts[:, a]  # (B,)

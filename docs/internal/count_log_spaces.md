@@ -157,7 +157,7 @@ When renaming, update:
 | Phase / loss | Job | Right order of magnitude |
 |---|---|---|
 | Phase 1 absolute / single-task (`MSE*`, `Dalmatian*`, `Poisson*`, `NB*`) | Prevent `log(0)` for silent regions; embed the zero-reads cluster into the log-count distribution. | "One read's worth" of coverage — i.e. `read_length / bin_size` in raw units, adjusted for CPM and `target_scale`. |
-| Phase 2 differential (`DifferentialCountLoss`) | Empirical-Bayes shrinkage prior on the log-fold change: pull `log2((c_b+pc)/(c_a+pc))` toward 0 for peaks in the low-count tail. | The chosen low quantile of per-condition training-region total counts (e.g. 10th percentile). |
+| Phase 2 differential (`DifferentialCountLoss`) | Empirical-Bayes shrinkage prior on the log-fold change: pull `log((c_b+pc)/(c_a+pc))` toward 0 for peaks in the low-count tail. | The chosen low quantile of per-condition training-region total counts (e.g. 10th percentile). |
 
 The library exposes two helpers that compute the scaled value correctly for
 each role:

@@ -361,7 +361,7 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 `tools/train_multitask_differential_bpnet.py` trains a [MultitaskBPNet](models.md#multitaskbpnet) on two conditions in two phases, following the recipe from bpAI-TAC (Chandra et al. 2025) and Naqvi et al. 2025:
 
 - **Phase 1 — multi-task absolute model.** Jointly trains a shared BPNet trunk on condition A and condition B with `MultitaskBPNetLoss` (per-condition profile + count heads). The trunk learns sequence features that matter for *both* conditions, not the confound of separately-trained solo models.
-- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises `log_counts_B − log_counts_A` on the per-peak log2 fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log2FC table.
+- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises `log_counts_B − log_counts_A` on the per-peak natural-log fold-change derived inline from the two-channel targets tensor. No offline precompute, no external differential-label table.
 - **Optional interpretation.** With `--interpret`, runs DeepLIFTSHAP on the fine-tuned model through `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` and pipes the result into TF-MoDISco.
 
 Both phases run on the standard `train_single` / `train_multi` pipeline. The companion library primitives are [MultitaskBPNet](models.md#multitaskbpnet), [MultitaskBPNetLoss](models.md#loss-multitaskbpnetloss), and [DifferentialCountLoss](models.md#differentialcountloss).
@@ -405,7 +405,7 @@ Key flags (see `--help` for the full list):
 | `--count-pseudocount` | Pseudocount on *linear* scale, shared by Phase 1 `MSEMultinomialLoss` and Phase 2 `DifferentialCountLoss` so both phases operate in the same log-space |
 | `--interpret` | Run DeepLIFTSHAP + TF-MoDISco on the Phase 2 model |
 
-The Phase 2 loss derives the per-peak log2FC inline from the `(B, N, L)` targets tensor, so no `--diff-pseudocount` or external log2FC file is required — for external-labels support see `docs/internal/differential_workflow_redesign.md` §13.
+The Phase 2 loss derives the per-peak log-ratio inline from the `(B, N, L)` targets tensor, so no `--diff-pseudocount` or external differential-label file is required — for external-labels support see `docs/internal/differential_workflow_redesign.md` §13.
 
 ## scATAC-seq Pseudobulk Tools
 
