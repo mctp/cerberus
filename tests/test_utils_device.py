@@ -22,8 +22,30 @@ def test_resolve_device_none_and_auto_share_auto_detection():
 
 def test_resolve_device_prefers_cuda_over_mps():
     with (
+        patch.dict("os.environ", {}, clear=True),
         patch("torch.cuda.is_available", return_value=True),
         patch("torch.backends.mps.is_available", return_value=True),
+    ):
+        assert resolve_device() == torch.device("cuda")
+
+
+def test_resolve_device_uses_local_rank_for_auto_cuda():
+    with (
+        patch.dict("os.environ", {"LOCAL_RANK": "1"}),
+        patch("torch.cuda.is_available", return_value=True),
+        patch("torch.cuda.device_count", return_value=2),
+        patch("torch.backends.mps.is_available", return_value=False),
+    ):
+        assert resolve_device() == torch.device("cuda:1")
+        assert resolve_device("auto") == torch.device("cuda:1")
+
+
+def test_resolve_device_ignores_invalid_local_rank():
+    with (
+        patch.dict("os.environ", {"LOCAL_RANK": "3"}),
+        patch("torch.cuda.is_available", return_value=True),
+        patch("torch.cuda.device_count", return_value=2),
+        patch("torch.backends.mps.is_available", return_value=False),
     ):
         assert resolve_device() == torch.device("cuda")
 

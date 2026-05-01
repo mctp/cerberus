@@ -15,7 +15,7 @@ def _unwrap_compiled(model: nn.Module) -> nn.Module:
     return getattr(model, "_orig_mod", model)
 
 
-def _extract_prefix(
+def extract_prefix(
     state_dict: dict[str, torch.Tensor],
     prefix: str,
 ) -> dict[str, torch.Tensor]:
@@ -48,6 +48,10 @@ def _extract_prefix(
             f"Available keys (first 10): {available}"
         )
     return extracted
+
+
+# Backward-compatible private alias for existing internal/tests imports.
+_extract_prefix = extract_prefix
 
 
 def load_pretrained_weights(
@@ -96,7 +100,7 @@ def load_pretrained_weights(
 
         # Extract sub-tree from source checkpoint if specified
         if source is not None:
-            state_dict = _extract_prefix(state_dict, source)
+            state_dict = extract_prefix(state_dict, source)
 
         # Resolve target module
         if target_name is not None:

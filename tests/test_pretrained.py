@@ -8,6 +8,7 @@ from cerberus.config import PretrainedConfig
 from cerberus.pretrained import (
     _extract_prefix,
     _unwrap_compiled,
+    extract_prefix,
     load_pretrained_weights,
 )
 
@@ -60,30 +61,33 @@ class TestExtractPrefix:
             "signal_model.linear.weight": torch.ones(4, 4),
             "signal_model.linear.bias": torch.ones(4),
         }
-        extracted = _extract_prefix(state_dict, "bias_model")
+        extracted = extract_prefix(state_dict, "bias_model")
         assert set(extracted.keys()) == {"linear.weight", "linear.bias"}
         assert torch.equal(extracted["linear.weight"], torch.zeros(4, 4))
 
     def test_strips_prefix_correctly(self):
         state_dict = {"encoder.layer.0.weight": torch.randn(3, 3)}
-        extracted = _extract_prefix(state_dict, "encoder")
+        extracted = extract_prefix(state_dict, "encoder")
         assert "layer.0.weight" in extracted
 
     def test_raises_on_no_match(self):
         state_dict = {"bias_model.weight": torch.zeros(4)}
         with pytest.raises(ValueError, match="No keys found with prefix"):
-            _extract_prefix(state_dict, "nonexistent")
+            extract_prefix(state_dict, "nonexistent")
 
     def test_error_shows_available_keys(self):
         state_dict = {"alpha.w": torch.zeros(1), "beta.w": torch.zeros(1)}
         with pytest.raises(ValueError, match="alpha.w"):
-            _extract_prefix(state_dict, "gamma")
+            extract_prefix(state_dict, "gamma")
 
     def test_does_not_match_partial_prefix(self):
         """'bias' should not match 'bias_model.weight'."""
         state_dict = {"bias_model.weight": torch.zeros(4)}
         with pytest.raises(ValueError, match="No keys found"):
-            _extract_prefix(state_dict, "bias")
+            extract_prefix(state_dict, "bias")
+
+    def test_private_alias_remains_available(self):
+        assert _extract_prefix is extract_prefix
 
 
 # ---------------------------------------------------------------------------

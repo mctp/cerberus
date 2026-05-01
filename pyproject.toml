@@ -34,7 +34,7 @@ extras = [
   "pybigwig",
   "pysam",
   "anndata",
-  "snapatac2",
+  "snapatac2==2.8.0",
   "matplotlib",
   "polars",
   "logomaker",

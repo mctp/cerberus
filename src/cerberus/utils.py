@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import re
 from typing import Any
 
@@ -30,6 +31,8 @@ def resolve_device(device: str | None = None) -> torch.device:
     """Resolve a device string to a :class:`torch.device`.
 
     Auto-detection order: CUDA, MPS (Apple Silicon), CPU.
+    In distributed subprocesses, ``LOCAL_RANK`` selects the per-process CUDA
+    device so pre-Trainer helper work does not pile onto GPU 0.
 
     Args:
         device: Device string (e.g. ``"cuda"``, ``"cpu"``, ``"cuda:0"``,
@@ -41,6 +44,14 @@ def resolve_device(device: str | None = None) -> torch.device:
     if device is not None and device != "auto":
         return torch.device(device)
     if torch.cuda.is_available():
+        local_rank = os.environ.get("LOCAL_RANK")
+        if local_rank is not None:
+            try:
+                rank_device = int(local_rank)
+            except ValueError:
+                rank_device = None
+            if rank_device is not None and 0 <= rank_device < torch.cuda.device_count():
+                return torch.device(f"cuda:{rank_device}")
         return torch.device("cuda")
     if torch.backends.mps.is_available():
         return torch.device("mps")
