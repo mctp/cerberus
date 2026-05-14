@@ -327,6 +327,15 @@ For quick training on custom data, use the model-specific scripts in the `tools/
         --signal-filters 128 --bias-weight 2.0
     ```
 
+*   `tools/train_chrombpnet_multitask.py`: Train a multi-task ChromBPNet with one frozen shared bias BPNet and one accessibility output per normalized task.
+    ```bash
+    python tools/train_chrombpnet_multitask.py \
+        --targets-json targets.json \
+        --peaks merged_peaks.bed \
+        --pretrained-bias models/chrombpnet_bias/single-fold/fold_0/model.pt \
+        --output-dir models/my_multitask_chrombpnet
+    ```
+
 *   `tools/train_asap.py`: Train an ASAP (ConvNeXtDCNN) model (2048bp → 512 bins at 4bp resolution).
     ```bash
     python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap

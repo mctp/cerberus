@@ -6,6 +6,7 @@ This implementation mirrors the reference ``chrombpnet-pytorch`` design:
 - a smaller bias ``BPNet`` branch
 - profile combination by logit addition
 - count combination by ``logaddexp``
+- optional single-channel shared bias for multi-task accessibility models
 
 Unlike :class:`cerberus.models.dalmatian.Dalmatian`, this model does not use
 gradient routing or decomposed outputs.  It returns a plain
@@ -94,6 +95,11 @@ class ChromBPNet(nn.Module):
         bias_logcount_offset: Constant additive offset applied to the bias
             branch log-count predictions before ``logaddexp`` combination.
             This mirrors ChromBPNet's optional post-hoc bias-count adjustment.
+        shared_bias: If True, the bias branch emits one ``"bias"`` channel and
+            is broadcast over all accessibility output channels.  This supports
+            multi-task ChromBPNet training where a bias model trained once on a
+            representative sample is reused across normalized tasks generated
+            by the same assay/procedure.
     """
 
     def __init__(
@@ -106,12 +112,15 @@ class ChromBPNet(nn.Module):
         accessibility_args: dict[str, Any] | None = None,
         bias_args: dict[str, Any] | None = None,
         bias_logcount_offset: float = 0.0,
+        shared_bias: bool = False,
     ) -> None:
         super().__init__()
         if input_channels is None:
             input_channels = ["A", "C", "G", "T"]
         if output_channels is None:
             output_channels = ["signal"]
+        if shared_bias and len(output_channels) < 1:
+            raise ValueError("shared_bias=True requires at least one output channel")
 
         acc_kw: dict[str, Any] = dict(accessibility_args or {})
         bias_kw: dict[str, Any] = dict(bias_args or {})
@@ -126,11 +135,19 @@ class ChromBPNet(nn.Module):
             "output_len": output_len,
             "output_bin_size": output_bin_size,
             "input_channels": input_channels,
-            "output_channels": output_channels,
         }
-        acc_kw.update(shared_kw)
-        bias_kw.update(shared_kw)
+        acc_kw.update(shared_kw, output_channels=output_channels)
+        bias_kw.update(
+            shared_kw,
+            output_channels=["bias"] if shared_bias else output_channels,
+        )
 
+        self.input_len = input_len
+        self.output_len = output_len
+        self.output_bin_size = output_bin_size
+        self.input_channels = list(input_channels)
+        self.output_channels = list(output_channels)
+        self.shared_bias = shared_bias
         self.accessibility_model = BPNet(**acc_kw)
         self.bias_model = BPNet(**bias_kw)
         self.register_buffer(
@@ -142,10 +159,11 @@ class ChromBPNet(nn.Module):
         bias_params = sum(p.numel() for p in self.bias_model.parameters())
         logger.info(
             "ChromBPNet initialized: accessibility_model=%s params, "
-            "bias_model=%s params, total=%s params",
+            "bias_model=%s params, total=%s params, shared_bias=%s",
             f"{acc_params:,}",
             f"{bias_params:,}",
             f"{acc_params + bias_params:,}",
+            shared_bias,
         )
 
     @property
@@ -181,6 +199,70 @@ class ChromBPNet(nn.Module):
         return ProfileCountOutput(
             logits=combined_logits,
             log_counts=combined_log_counts,
+        )
+
+
+class MultitaskChromBPNet(ChromBPNet):
+    """Multi-task ChromBPNet with a reusable single-channel bias branch.
+
+    The accessibility branch predicts one profile and one count scalar per task
+    (``predict_total_count=False``).  The bias branch stays one channel and is
+    broadcast across tasks, so a stage-1 ChromBPNet bias BPNet trained on one
+    normalized sample can be frozen and reused for other tasks from the same
+    experimental procedure.
+    """
+
+    def __init__(
+        self,
+        input_len: int = 2114,
+        output_len: int = 1000,
+        output_bin_size: int = 1,
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
+        accessibility_args: dict[str, Any] | None = None,
+        bias_args: dict[str, Any] | None = None,
+        bias_logcount_offset: float = 0.0,
+    ) -> None:
+        if output_channels is None or len(output_channels) < 2:
+            raise ValueError(
+                "MultitaskChromBPNet requires at least two output_channels; "
+                f"got {output_channels!r}"
+            )
+
+        acc_kw: dict[str, Any] = dict(accessibility_args or {})
+        bias_kw: dict[str, Any] = dict(bias_args or {})
+
+        caller_acc_count_mode = acc_kw.pop("predict_total_count", None)
+        if caller_acc_count_mode is not None and caller_acc_count_mode is not False:
+            logger.warning(
+                "MultitaskChromBPNet ignores accessibility_args['predict_total_count']=%r "
+                "and uses False so each task has its own count head.",
+                caller_acc_count_mode,
+            )
+        acc_kw["predict_total_count"] = False
+
+        # A one-channel bias model has identical state-dict shapes with either
+        # count mode, but predict_total_count=True documents the stage-1 bias
+        # workflow and matches tools/train_chrombpnet_bias.py.
+        caller_bias_count_mode = bias_kw.pop("predict_total_count", None)
+        if caller_bias_count_mode is not None and caller_bias_count_mode is not True:
+            logger.warning(
+                "MultitaskChromBPNet ignores bias_args['predict_total_count']=%r "
+                "and uses True for the reusable one-channel bias branch.",
+                caller_bias_count_mode,
+            )
+        bias_kw["predict_total_count"] = True
+
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            output_bin_size=output_bin_size,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            accessibility_args=acc_kw,
+            bias_args=bias_kw,
+            bias_logcount_offset=bias_logcount_offset,
+            shared_bias=True,
         )
 
 
