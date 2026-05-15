@@ -462,6 +462,30 @@ bulk_merge.narrowPeak.bed.gz         # merged per-group peaks (with --call-peaks
 
 See `examples/scatac_kidney_pseudobulk.sh` for a complete example using the kidney scATAC-seq dataset.
 
+### CPM + Constitutive-Peak Normalization
+
+`tools/scatac_normalize_pseudobulk.py` is an optional follow-up step for multi-task scATAC models. It takes the BigWigs and peaks produced by `tools/scatac_pseudobulk.py`, converts raw tracks to CPM, then applies a CREsted-style baseline accessibility correction. The correction finds strong peaks in each group, keeps the low-Gini peaks that are broadly accessible across groups, and rescales each BigWig so those constitutive anchors have matched baseline signal.
+
+```bash
+python tools/scatac_normalize_pseudobulk.py \
+    pseudobulk/ pseudobulk_cpm_constitutive/ \
+    --group-summary group_summary.tsv
+```
+
+By default, the tool uses `pseudobulk/bulk_merge.narrowPeak.bed.gz` as the consensus peak set, excludes `bulk.bw`, copies matching peak files into the output directory, and writes `targets.json` for `tools/train_chrombpnet_multitask.py` or `tools/train_dalmatian_multitask.py`.
+
+Key options:
+
+| Flag | Description |
+|---|---|
+| `--input-scale` | `raw` for default pseudobulk outputs, or `cpm` if `scatac_pseudobulk.py --normalization CPM` was used |
+| `--group-summary` | TSV with per-group library sizes; defaults to `group_summary.tsv` in the pseudobulk directory or its parent |
+| `--library-size-column` | Library-size column for CPM conversion (default: `atac_fragments`) |
+| `--peaks` | Consensus peak BED/narrowPeak file; defaults to `bulk_merge.narrowPeak.bed.gz` |
+| `--top-k-percent` | Fraction of strongest peaks considered per group (default: `0.01`) |
+| `--gini-std-threshold` | Low-Gini cutoff is `mean(gini) - threshold * std(gini)` (default: `1.0`) |
+| `--target-region-width` | Fixed summit-centered width for anchor fitting; use `0` for full peak intervals |
+
 ## Visualization Tools
 
 ### Training Curves
