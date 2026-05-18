@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/models.md#named-submodules-reference`.
 
 ### Changed
+- **`cerberus.pretrained._extract_prefix` renamed to `extract_prefix`.**
+  The helper that slices a sub-module state dict out of a full-model
+  checkpoint (used internally by `load_pretrained_weights`) is now a
+  public name on the submodule. No alias is kept: the function was
+  never exported from the top-level `cerberus` package, so callers
+  outside this repo could not have imported the underscored name in
+  the first place. Internal call site and tests updated.
 - **Dalmatian `--freeze-bias` correctness fix.** The flag now
   populates `ModelConfig.freeze=[FreezeSpec("bias_model",
   eval_mode=True)]` instead of the legacy

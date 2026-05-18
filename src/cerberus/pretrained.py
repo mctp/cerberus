@@ -15,22 +15,27 @@ def _unwrap_compiled(model: nn.Module) -> nn.Module:
     return getattr(model, "_orig_mod", model)
 
 
-def _extract_prefix(
+def extract_prefix(
     state_dict: dict[str, torch.Tensor],
     prefix: str,
 ) -> dict[str, torch.Tensor]:
-    """Extract keys matching a prefix and strip it.
+    """Extract a sub-module's state dict from a full-model checkpoint.
 
-    Given a state dict and a prefix like ``"bias_model"``, returns only the
-    keys starting with ``"bias_model."`` with the prefix (and dot) removed.
-    This allows loading a sub-module's weights from a full model checkpoint.
+    Returns only the entries whose keys start with ``prefix + "."``, with
+    that prefix stripped — i.e. the form needed by
+    ``sub_module.load_state_dict(...)``.  Useful both for loading a single
+    branch from a multi-branch checkpoint and for exporting one branch
+    back out (e.g. writing ``accessibility_model`` of a full ChromBPNet
+    checkpoint as a standalone ``chrombpnet_wo_bias.pt``).
 
     Args:
         state_dict: Source state dict.
-        prefix: Sub-module name to extract (dot is appended automatically).
+        prefix: Exact name of the sub-module to extract (dot is appended
+            automatically; partial prefixes like ``"bias"`` for
+            ``"bias_model"`` do not match).
 
     Returns:
-        State dict with matching keys, prefix stripped.
+        New dict with matching keys, prefix and separator dot stripped.
 
     Raises:
         ValueError: If no keys match the prefix.
@@ -96,7 +101,7 @@ def load_pretrained_weights(
         state_dict = torch.load(weights_path, map_location="cpu", weights_only=True)
 
         if source is not None:
-            state_dict = _extract_prefix(state_dict, source)
+            state_dict = extract_prefix(state_dict, source)
 
         if target_name is not None:
             target = getattr(target_root, target_name)
