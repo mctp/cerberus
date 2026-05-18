@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Plot BiasNet ISM motif as IC logo + heatmap.
+"""Plot bias-model ISM motif as IC logo + heatmap.
 
 Loads a trained BiasNet from a run directory (containing hparams.yaml + model.pt)
 or a standalone model.pt file, computes in-silico mutagenesis (ISM) over real
@@ -90,16 +90,20 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
       - Standalone BiasNet: hparams has ``model_config.name == "BiasNet"``
       - Dalmatian: hparams has ``model_config.name == "Dalmatian"``;
         extracts the ``bias_model`` subnetwork from the Dalmatian state dict.
+      - ChromBPNet bias-stage BPNet: hparams has
+        ``model_config.name == "ChromBPNetBiasBPNet"``.
 
-    In both cases the returned model is a standalone :class:`BiasNet` instance.
+    In all cases the returned model is the bias subnetwork to score.
     """
     from cerberus.models.biasnet import BiasNet
+    from cerberus.models.bpnet import BPNet
 
     path = Path(path)
     _, model_pt = _resolve_fold_dir(path)
 
     config = load_config(path)
     model_name = config["model_config"]["name"]
+    model_cls = config["model_config"].get("model_cls")
     model_args = config["model_config"]["model_args"]
     data_config = config["data_config"]
     output_len = data_config["output_len"]
@@ -189,16 +193,27 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
             residual=bias_residual,
             linear_head=bias_linear_head,
         )
+    elif model_name == "ChromBPNetBiasBPNet" or model_cls == "cerberus.models.bpnet.BPNet":
+        # Stage-1 ChromBPNet bias checkpoints are small BPNet instances rather
+        # than ``BiasNet`` instances. They are still bias-only models, so the
+        # same center-window ISM QC is appropriate.
+        model = BPNet(
+            input_len=data_config["input_len"],
+            output_len=output_len,
+            output_bin_size=output_bin_size,
+            **model_args,
+        )
     else:
         raise ValueError(
-            f"Unsupported model type '{model_name}'. Expected 'BiasNet' or 'Dalmatian'."
+            f"Unsupported model type '{model_name}'. Expected 'BiasNet', "
+            "'Dalmatian', or 'ChromBPNetBiasBPNet'."
         )
 
     sd = torch.load(model_pt, map_location="cpu", weights_only=True)
     bias_sd = _extract_bias_state_dict(sd)
     model.load_state_dict(bias_sd)
     logger.info(
-        f"Loaded BiasNet from {model_name} checkpoint: "
+        f"Loaded bias model from {model_name} checkpoint: "
         f"input_len={model.input_len}, output_len={model.output_len}, "
         f"params={sum(p.numel() for p in model.parameters()):,}"
     )
@@ -350,8 +365,25 @@ def get_background_sequences(
 # ---------------------------------------------------------------------------
 
 
+def _batch_forward_center(
+    model: torch.nn.Module, batch: torch.Tensor, output_idx: int, batch_size: int
+) -> np.ndarray:
+    """Run model forward on a batch in chunks, returning center output values."""
+    n = batch.shape[0]
+    vals = np.empty(n, dtype=np.float64)
+    for start in range(0, n, batch_size):
+        end = min(start + batch_size, n)
+        with torch.no_grad():
+            out = model(batch[start:end]).logits[:, 0, output_idx]
+            vals[start:end] = out.detach().cpu().numpy()
+    return vals
+
+
 def compute_ism_real(
-    model: torch.nn.Module, sequences: list[np.ndarray], window: int = 31
+    model: torch.nn.Module,
+    sequences: list[np.ndarray],
+    window: int = 31,
+    batch_size: int = 512,
 ) -> np.ndarray:
     """ISM averaged over real genomic sequences.
 
@@ -367,6 +399,7 @@ def compute_ism_real(
     input_len: int = model.input_len  # type: ignore[assignment]
     input_center = input_len // 2
     start = input_center - window // 2
+    output_center = output_len // 2
 
     ism_sum = np.zeros((4, window))
     n = 0
@@ -374,20 +407,32 @@ def compute_ism_real(
     for seq in sequences:
         x_ref = torch.tensor(seq, device=device).unsqueeze(0)
         with torch.no_grad():
-            ref_val = model(x_ref).logits[0, 0, output_len // 2].item()
+            ref_val = model(x_ref).logits[0, 0, output_center].item()
+
+        mutants: list[torch.Tensor] = []
+        mutant_index: list[tuple[int, int]] = []
 
         for pos_i in range(window):
             pos = start + pos_i
+            ref_nuc = int(seq[:, pos].argmax())
             for nuc in range(4):
-                if seq[nuc, pos] == 1.0:
+                if nuc == ref_nuc:
                     ism_sum[nuc, pos_i] += 0.0
-                else:
-                    mutant = x_ref.clone()
-                    mutant[0, :, pos] = 0.0
-                    mutant[0, nuc, pos] = 1.0
-                    with torch.no_grad():
-                        mut_val = model(mutant).logits[0, 0, output_len // 2].item()
-                    ism_sum[nuc, pos_i] += mut_val - ref_val
+                    continue
+                mutant = x_ref.clone()
+                mutant[0, :, pos] = 0.0
+                mutant[0, nuc, pos] = 1.0
+                mutants.append(mutant)
+                mutant_index.append((nuc, pos_i))
+
+        if mutants:
+            mutant_batch = torch.cat(mutants, dim=0)
+            mut_vals = _batch_forward_center(
+                model, mutant_batch, output_center, batch_size
+            )
+            for idx, (nuc, pos_i) in enumerate(mutant_index):
+                ism_sum[nuc, pos_i] += mut_vals[idx] - ref_val
+
         n += 1
         if n % 50 == 0:
             logger.info(f"  ISM: {n}/{len(sequences)} sequences")
@@ -570,6 +615,12 @@ def main():
         "--ism-window", type=int, default=31, help="Window size for ISM around center"
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=512,
+        help="Batch size for mutated-sequence forward passes",
+    )
+    parser.add_argument(
         "--background",
         action="store_true",
         default=True,
@@ -638,7 +689,7 @@ def main():
     n_seqs = len(sequences)
     seq_type = "background" if args.background else "peak"
     logger.info(f"Computing ISM on {n_seqs} {seq_type} sequences (window={window})...")
-    ism = compute_ism_real(model, sequences, window=window)
+    ism = compute_ism_real(model, sequences, window=window, batch_size=args.batch_size)
 
     # Save CSV
     csv_path = out_dir / f"{args.prefix}_biasnet_ism.csv"
@@ -659,7 +710,7 @@ def main():
     plot_logo(
         ax_logo,
         ism,
-        f"BiasNet ISM IC — {n_seqs} {seq_type} seqs (center {window}bp)",
+        f"Bias model ISM IC — {n_seqs} {seq_type} seqs (center {window}bp)",
         as_ic=True,
     )
     ax_logo.set_ylabel("IC (bits)", fontsize=8)
