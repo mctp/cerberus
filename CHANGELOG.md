@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **DDP rank handoff barrier at the end of `_train`.** Internal helper
+  `_barrier_if_distributed()` calls `torch.distributed.barrier()` after
+  rank 0 writes `model.pt` and interval manifests, so downstream
+  callers that glob those paths immediately after `train_single` /
+  `train_multi` returns no longer race non-rank-0 workers into
+  `FileNotFoundError`. No-op when `torch.distributed` is not
+  initialised.
 - **Declarative parameter freezing via `ModelConfig.freeze`.** New
   `FreezeSpec(pattern, eval_mode)` type plus `cerberus.freeze`
   module exposing `apply_freeze`, `FreezeReport`, and

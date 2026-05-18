@@ -873,6 +873,9 @@ def main() -> None:
     else:
         phase1_dir = run_phase1(args, merged_bed, output_dir, genome_config, data_dir)
 
+    # Phase 2 reads rank-0-only outputs (``model.pt``) from Phase 1.
+    # ``_train`` ends with a ``torch.distributed`` barrier so every rank
+    # observes the checkpoint before this glob runs.
     phase1_model_path = _find_phase1_checkpoint(phase1_dir)
     logger.info("Phase 1 model: %s", phase1_model_path)
 

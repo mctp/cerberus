@@ -25,6 +25,19 @@ from .pretrained import load_pretrained_weights
 logger = logging.getLogger(__name__)
 
 
+def _barrier_if_distributed() -> None:
+    """Synchronize ranks when running under ``torch.distributed``.
+
+    DDP runs the same Python control flow on every rank. Callers may consume
+    rank-0-only outputs such as ``model.pt`` immediately after ``train_*``
+    returns, so returning before rank 0 has finished writing those files can
+    race non-rank-0 workers into ``FileNotFoundError`` on the next pipeline
+    stage.
+    """
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        torch.distributed.barrier()
+
+
 def compute_counts_loss_weight(median_counts: float, scale: float = 10.0) -> float:
     """
     Compute the count loss weight (alpha) from training data statistics.
@@ -310,6 +323,11 @@ def _train(
     # 10. Save interval manifests for reproducible evaluation (rank-0 only)
     if root_dir is not None and trainer.is_global_zero:
         datamodule.save_interval_manifests(Path(root_dir))
+
+    # 11. Hold all ranks here until rank 0 finishes writing model.pt and
+    #     interval manifests; downstream callers may glob those files
+    #     immediately after train_* returns.
+    _barrier_if_distributed()
 
     return trainer
 
