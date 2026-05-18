@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`resolve_device("auto")` honors `$LOCAL_RANK` under DDP.** When CUDA
+  is available and the env var is set by a DDP launcher (`torchrun`,
+  `srun`), auto-detection returns `cuda:LOCAL_RANK` instead of bare
+  `cuda` (which resolves to `cuda:0` on every rank until
+  `torch.cuda.set_device` runs inside `trainer.fit`). Closes a footgun
+  for pre-Trainer GPU work — calibration passes, statistics, warmups —
+  that would otherwise pile every rank's allocations onto card 0.
+  Misconfigured `LOCAL_RANK` values (non-integer, out of range) log a
+  warning and fall back to bare `cuda` rather than crashing. Single-
+  process callers are unaffected.
 - **DDP rank handoff barrier at the end of `_train`.** Internal helper
   `_barrier_if_distributed()` calls `torch.distributed.barrier()` after
   rank 0 writes `model.pt` and interval manifests, so downstream
