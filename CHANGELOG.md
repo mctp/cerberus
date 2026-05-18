@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`CerberusDataModule.compute_count_quantile_samples()`.** New method
+  that draws length-summed target-count samples from the training fold
+  for quantile-based Phase-2 pseudocount calibration. Mirrors the
+  fork-safety and target-scale handling of the existing
+  `compute_median_counts`; adds a `seed` parameter (via an isolated
+  `random.Random(seed)` stream that does not consume the module-level
+  RNG) for reproducible calibration across runs. Returns 2D
+  `(n_samples, C)` with `per_channel=True` so consumers can compute
+  per-channel quantiles rather than flattening into a misleading union
+  10th-percentile. No caller yet — feeds the upcoming
+  `cerberus.pseudocount.resolve_quantile_pseudocount` helper.
 - **`export_tfmodisco_inputs.py --split all`.** New choice on the
   `--split` flag that iterates the full sampler interval set without
   fold splitting, for motif discovery over a dataset rather than a

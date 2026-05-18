@@ -450,3 +450,103 @@ class CerberusDataModule(pl.LightningDataModule):
             f"from {len(indices)} training intervals."
         )
         return scaled_median
+
+    def compute_count_quantile_samples(
+        self,
+        n_samples: int = 2000,
+        per_channel: bool = True,
+        seed: int | None = None,
+    ) -> np.ndarray:
+        """Sample length-summed target counts from the training fold.
+
+        Returns the pool of values (already multiplied by ``target_scale``)
+        that a quantile-based shrinkage prior should be calibrated against.
+        Companion to :func:`cerberus.pseudocount.resolve_quantile_pseudocount`.
+
+        Args:
+            n_samples: Number of training intervals to sample. If the
+                training dataset has fewer intervals, all are used.
+            per_channel: If ``True`` (default), each region contributes one
+                row of per-channel counts so the consumer can compute
+                per-channel quantiles. If ``False``, channels are summed per
+                region so each region contributes a single scalar.
+            seed: RNG seed for the index sample. ``None`` (default) uses
+                OS entropy. Pass a fixed integer for reproducible
+                pseudocount calibration across runs.
+
+        Returns:
+            ``np.ndarray`` of scaled counts. Shape ``(n_samples, C)`` if
+            ``per_channel`` (2D, one row per region, one column per
+            condition channel); otherwise ``(n_samples,)`` (1D, channels
+            summed per region).
+
+        Raises:
+            RuntimeError: If the datamodule has not been setup or the
+                training dataset has no sampler.
+
+        Note:
+            Two condition channels rarely share a count distribution
+            (different depths, different normalisations, different
+            biological sparsity). Consumers of the ``per_channel=True``
+            result should compute quantiles **per channel** rather than
+            flattening into a union — the union 10th-percentile does not
+            represent any single channel's noise floor. The companion
+            ``resolve_quantile_pseudocount`` currently still flattens;
+            this is the contract it will need to switch to.
+        """
+        if not self._is_initialized or self.train_dataset is None:
+            raise RuntimeError(
+                "DataModule must be setup before computing statistics. "
+                "Call datamodule.setup() first."
+            )
+        dataset = self.train_dataset
+        if dataset.sampler is None:
+            raise RuntimeError(
+                "train_dataset has no sampler; cannot compute count quantile."
+            )
+
+        n = len(dataset)
+        # Isolated RNG stream: random.Random(seed) creates a fresh instance
+        # whose state is not shared with -- and does not advance -- the
+        # module-level random state.  random.Random(None) seeds from OS
+        # entropy, so the same call covers both reproducible (seed=N) and
+        # fresh-entropy (seed=None) modes.  Same seed across runs (same
+        # Python version) yields identical index samples; pyproject pins
+        # Python >= 3.12 so the sample algorithm is stable for reproducible
+        # pseudocount calibration.
+        rng = random.Random(seed)
+        indices = rng.sample(range(n), min(n_samples, n))
+
+        # Short-lived temporary extractor: see compute_median_counts above for
+        # the fork-safety rationale (don't open fds on the dataset's own
+        # extractor before DataLoader workers fork).
+        tmp_extractor = UniversalExtractor(
+            paths=dataset.data_config.targets,
+            in_memory=False,
+        )
+        output_len = dataset.data_config.output_len
+        input_len = dataset.data_config.input_len
+        crop_start = (input_len - output_len) // 2
+        crop_end = crop_start + output_len
+        target_scale = self.data_config.target_scale
+
+        rows: list[np.ndarray] = []
+        for i in indices:
+            interval = dataset.sampler[i]
+            # ``extract`` returns torch.Tensor; np.asarray() converts CPU
+            # tensors in-place (zero-copy) so the per-channel sum can use the
+            # numpy axis= API.
+            raw = np.asarray(tmp_extractor.extract(interval))  # (C, input_len)
+            if raw.shape[-1] > output_len:
+                raw = raw[..., crop_start:crop_end]
+            rows.append(raw.sum(axis=-1))  # (C,)
+
+        scaled = np.stack(rows, axis=0).astype(np.float64) * target_scale  # (N, C)
+        n_channels = scaled.shape[1]
+        result = scaled if per_channel else scaled.sum(axis=1)
+        logger.info(
+            "Sampled %d training intervals × %d target channel(s) for "
+            "quantile pseudocount calibration (target_scale=%s).",
+            scaled.shape[0], n_channels, target_scale,
+        )
+        return result
