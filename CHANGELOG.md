@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`export_tfmodisco_inputs.py --split all`.** New choice on the
+  `--split` flag that iterates the full sampler interval set without
+  fold splitting, for motif discovery over a dataset rather than a
+  per-fold slice. Constructs the dataset directly (bypassing
+  `CerberusDataModule.setup` and any `test_fold`/`val_fold` in
+  `genome_config.fold_args`) with DataLoader kwargs mirroring the
+  per-split loaders (`shuffle=False`, `pin_memory`, `worker_init_fn`,
+  `persistent_workers`). The existing `train`/`val`/`test` modes are
+  unchanged.
 - **`resolve_device("auto")` honors `$LOCAL_RANK` under DDP.** When CUDA
   is available and the env var is set by a DDP launcher (`torchrun`,
   `srun`), auto-detection returns `cuda:LOCAL_RANK` instead of bare
