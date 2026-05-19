@@ -210,6 +210,21 @@ def test_noise_floor_returns_float() -> None:
     assert isinstance(pc, float)
 
 
+def test_noise_floor_quantile_value_reaches_numpy() -> None:
+    """``quantile=0.5`` must reduce per channel as a median, then max-combine.
+
+    Channel 0 holds 0..99 (median 49.5); channel 1 holds 100..199 (median
+    149.5).  The helper must return the larger per-channel quantile, not
+    a global value over the flattened pool (50% of flat would be ~99.5).
+    """
+    ch0 = np.arange(100, dtype=np.float64)
+    ch1 = np.arange(100, 200, dtype=np.float64)
+    samples = np.stack([ch0, ch1], axis=1)  # (100, 2)
+    dm = _FakeDataModule(samples)
+    pc = resolve_noise_floor_pseudocount(dm, quantile=0.5)
+    assert pc == pytest.approx(149.5)
+
+
 def test_noise_floor_is_scale_adaptive() -> None:
     """Multiplying all input counts by k must multiply the returned pc by k.
 

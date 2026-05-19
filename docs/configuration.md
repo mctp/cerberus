@@ -278,6 +278,56 @@ class ModelConfig(BaseModel):
     count_pseudocount: float = 0.0
 ```
 
+## Choosing `count_pseudocount`
+
+The value `count_pseudocount` consumes depends on the count loss it
+feeds.  Two roles arise in practice, and `cerberus.pseudocount`
+provides a helper for each.
+
+### `log(count + pc)` losses — read-coverage specification
+
+For absolute-count losses like the BPNet count head, the pseudocount
+is an additive `log(0)`-avoidance offset.  Picking it by hand requires
+reasoning about read length, bin size, target scale, and (for CPM
+bigWigs) library depth.  Instead, specify the number of reads of
+coverage the pseudocount should correspond to:
+
+```python
+from cerberus import resolve_read_coverage_pseudocount
+
+count_pseudocount = resolve_read_coverage_pseudocount(
+    reads_equiv=1.0,        # "shrink near 1 read of coverage"
+    read_length=150,
+    bin_size=1,
+    target_scale=1.0,
+    input_scale="raw",      # "cpm" requires total_reads
+)
+```
+
+### `log((c_b + pc) / (c_a + pc))` losses — data-derived noise floor
+
+For log-fold-change losses such as `DifferentialCountLoss`, the
+pseudocount acts as an empirical-Bayes shrinkage prior.  The right
+value depends on what "low coverage" means *for this dataset*; the
+helper picks it from the training fold's per-channel quantile:
+
+```python
+from cerberus import resolve_noise_floor_pseudocount
+
+# Datamodule must already be set up.
+count_pseudocount = resolve_noise_floor_pseudocount(
+    datamodule,
+    quantile=0.10,          # 10th percentile per channel
+    seed=42,                # reproducible across runs
+)
+```
+
+The helper takes the per-channel quantile and then the **max** across
+channels so the deeper-coverage channel's noise floor is still shrunk.
+
+For losses that do not use a pseudocount (Poisson / NB), set
+`count_pseudocount=0.0`.
+
 ## Freezing Parameters
 
 `ModelConfig.freeze` is a list of `FreezeSpec` rules applied once
