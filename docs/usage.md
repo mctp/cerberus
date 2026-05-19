@@ -334,6 +334,32 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap --multi
     ```
 
+*   `tools/train_biasnet.py`: Train a standalone BiasNet (lightweight Conv1d + ReLU stack, fully DeepLIFT/DeepSHAP compatible) on non-peak regions for Tn5 enzymatic bias modelling.
+    ```bash
+    python tools/train_biasnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bias_model
+    ```
+
+*   `tools/train_dalmatian_multitask.py`: Train a multi-task Dalmatian on multiple BigWig targets via a `targets.json` mapping channel names to `{bigwig, peaks}` pairs (e.g. cell-type pseudobulk tracks). `--shared-bias` gives BiasNet a single sequence-bias channel shared across all targets.
+    ```bash
+    python tools/train_dalmatian_multitask.py \
+        --targets-json targets.json --peaks merged_peaks.bed \
+        --output-dir models/multitask --shared-bias \
+        --pretrained-bias bias_model.pt --freeze-bias
+    ```
+
+*   `tools/train_chrombpnet_bias.py`: ChromBPNet stage 1 — train the small BPNet bias branch on non-peak background regions. See [ChromBPNet](models.md#chrombpnet) for the architecture and reference-equivalent settings.
+    ```bash
+    python tools/train_chrombpnet_bias.py --bigwig signal.bw --peaks regions.bed --output-dir models/chrombpnet_bias
+    ```
+
+*   `tools/train_chrombpnet.py`: ChromBPNet stage 2 — load the stage-1 bias checkpoint, freeze it via `ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]`, optionally calibrate the bias-count offset, then train the full ChromBPNet on peaks. Exports an accessibility-only `chrombpnet_wo_bias.pt` next to each `model.pt`.
+    ```bash
+    python tools/train_chrombpnet.py \
+        --bigwig signal.bw --peaks regions.bed \
+        --pretrained-bias models/chrombpnet_bias/single-fold/fold_0/model.pt \
+        --adjust-bias-logcounts --output-dir models/chrombpnet
+    ```
+
 *   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
     ```bash
     python tools/train_multitask_differential_bpnet.py \
@@ -404,7 +430,8 @@ Key flags (see `--help` for the full list):
 | `--multi` | Cross-validation (both phases run `train_multi`) |
 | `--skip-phase1 --phase1-dir <path>` | Reuse an existing Phase 1 output |
 | `--skip-phase2` | Phase 1 + interpretation only |
-| `--count-pseudocount` | Pseudocount on *linear* scale, shared by Phase 1 `MSEMultinomialLoss` and Phase 2 `DifferentialCountLoss` so both phases operate in the same log-space |
+| `--count-pseudocount` / `--pseudocount-reads` | Phase 1 pseudocount for `MultitaskBPNetLoss` (`log(count + pc)`-style offset, scaled units). Phase 2 derives its own noise-floor pseudocount from training data — see `--phase2-pseudocount-quantile` / `--phase2-pseudocount-override` |
+| `--phase2-pseudocount-override` | Bypass the data-derived Phase 2 noise-floor and pass an explicit scaled pseudocount to `DifferentialCountLoss` |
 | `--interpret` | Run DeepLIFTSHAP + TF-MoDISco on the Phase 2 model |
 
 The Phase 2 loss derives the per-peak log fold-change inline from the `(B, N, L)` targets tensor, so no `--diff-pseudocount` or external log-fold-change file is required — for external-labels support see `docs/internal/differential_workflow_redesign.md` §13.

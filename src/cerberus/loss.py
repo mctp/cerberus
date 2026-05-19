@@ -545,11 +545,12 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
 
 
 class DifferentialCountLoss(nn.Module):
-    """Phase 2 fine-tuning loss supervising ``log_counts[:, B] - log_counts[:, A]``.
+    """Differential count-head loss supervising ``log_counts[:, B] - log_counts[:, A]``.
 
     The delta target is derived inline from the ``(B, N, L)`` ``targets``
-    tensor (the per-condition absolute-signal tracks Phase 1 already
-    supervised against): for each sample,
+    tensor (per-condition absolute-signal tracks; channels A and B are
+    the same two channels the model emits ``log_counts`` for):
+    for each sample,
 
     .. math::
 
@@ -559,14 +560,20 @@ class DifferentialCountLoss(nn.Module):
         \\right)
 
     where the sum is over the length axis and ``pc`` is
-    ``count_pseudocount`` (use the same value Phase 1 used so ``log_counts``
-    live in the same natural-log space). The returned loss is
+    ``count_pseudocount``. Here ``pc`` plays the empirical-Bayes
+    shrinkage-prior role: it pulls the log-ratio toward zero for
+    regions whose per-condition totals sit at the noise floor.
+    :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount` derives
+    a data-driven value (training-fold per-channel quantile, max across
+    channels) suitable to pass here. The returned loss is
     ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
 
     Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
-    the count head needs to be retargeted. The profile heads already encode
-    condition-specific TF footprint grammar from Phase 1 multi-task
-    training.
+    the count head needs to be retargeted. The profile heads are expected
+    to already encode condition-specific TF footprint grammar from a prior
+    multi-task absolute-signal training pass (see
+    ``tools/train_multitask_differential_bpnet.py`` for the end-to-end
+    workflow that pairs this loss with such a pretrained model).
 
     Single code path: ``forward(outputs, targets)`` with no optional
     kwargs, no shape overloading, no absolute-count regularizer.
@@ -575,8 +582,11 @@ class DifferentialCountLoss(nn.Module):
         cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
         cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
         count_pseudocount: Additive pseudocount used in the log
-            fold-change derivation. Must match the value Phase 1 used so
-            the two phases share a log-space. Default 1.0.
+            fold-change derivation, in the same scaled units as
+            ``ModelConfig.count_pseudocount``. Acts as an empirical-Bayes
+            shrinkage prior — derive from data via
+            :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount`,
+            or pass an explicit scaled value. Default 1.0.
 
     References:
         - Naqvi et al. (2025). *Transfer learning reveals sequence

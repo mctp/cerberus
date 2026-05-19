@@ -461,7 +461,7 @@ class CerberusDataModule(pl.LightningDataModule):
 
         Returns the pool of values (already multiplied by ``target_scale``)
         that a quantile-based shrinkage prior should be calibrated against.
-        Companion to :func:`cerberus.pseudocount.resolve_quantile_pseudocount`.
+        Companion to :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount`.
 
         Args:
             n_samples: Number of training intervals to sample. If the
@@ -490,9 +490,10 @@ class CerberusDataModule(pl.LightningDataModule):
             biological sparsity). Consumers of the ``per_channel=True``
             result should compute quantiles **per channel** rather than
             flattening into a union — the union 10th-percentile does not
-            represent any single channel's noise floor. The companion
-            ``resolve_quantile_pseudocount`` currently still flattens;
-            this is the contract it will need to switch to.
+            represent any single channel's noise floor.
+            ``resolve_noise_floor_pseudocount`` follows that contract:
+            it takes ``np.quantile(..., axis=0)`` and then the max
+            across channels.
         """
         if not self._is_initialized or self.train_dataset is None:
             raise RuntimeError(

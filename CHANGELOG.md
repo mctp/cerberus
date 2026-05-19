@@ -250,6 +250,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   freeze wiring inside `_train` (apply_freeze is invoked, DDP
   strategy is promoted when frozen, strategy passes through
   unchanged when not).
+- `tests/test_train_multitask_differential_tool.py`: added the same
+  `sys.path.insert(0, tools/)` shim used by
+  `tests/test_chrombpnet_reporting.py` so the tool's sibling
+  `from _pseudocount_cli import ...` resolves under
+  `importlib.util.spec_from_file_location` loading. Recovers six
+  previously-failing regression guards (DDP-strategy override +
+  checkpoint-glob semantics).
+
+### Docs
+- Streamlined Phase 1/2 terminology to live only where the
+  two-phase strategy is actually executed (the trainer
+  `tools/train_multitask_differential_bpnet.py`, its tests, the
+  `docs/usage.md` two-phase section, and internal design notes).
+  Library-class docstrings (`DifferentialCountLoss`,
+  `MultitaskBPNet`, `MultitaskBPNetLoss`), the val-end scatter
+  dispatch in `cerberus.module`, the Dalmatian `--patience` help
+  text, and the reference sections in `docs/models.md` now
+  describe these components in self-contained generic terms and
+  point at the trainer doc for the end-to-end recipe.
+- Doc accuracy fixes: corrected `resolve_quantile_pseudocount`
+  references in `CerberusDataModule.compute_count_quantile_samples`
+  (the helper is `resolve_noise_floor_pseudocount`); fixed the
+  `Pomeranian` default-pseudocount group in the
+  `_pseudocount_cli.py` summary comment (it's 150.0, not 1.0);
+  corrected the `--count-pseudocount` table row in `docs/usage.md`
+  (Phase 1 loss is `MultitaskBPNetLoss`, and Phase 2 now derives
+  its own pseudocount from data); replaced the "must match Phase
+  1" prescription in `DifferentialCountLoss`'s docstring with the
+  noise-floor recommendation.
+- Extended the training-tools list in `docs/usage.md` to cover
+  `train_biasnet`, `train_dalmatian_multitask`, and the ChromBPNet
+  stage-1 / stage-2 trainers, plus the pseudocount-CLI rollout
+  list in `docs/configuration.md` to mention all adopting tools.
 
 ## [1.0.0a4] - 2026-04-18
 

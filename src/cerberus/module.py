@@ -38,7 +38,7 @@ class CerberusModule(pl.LightningModule):
 
     # Validation-end scatter dispatch.  Ordered: first matching Pearson key
     # in val_metrics wins.  Differential collections (log-fold-change) precede
-    # the absolute one so a Phase-2 collection scatters in its native space.
+    # the absolute one so a differential collection scatters in its native space.
     _SCATTER_DISPATCH: tuple[tuple[str, dict[str, str]], ...] = (
         ("pearson_delta_log_counts", {
             "x_label": "True delta log counts",

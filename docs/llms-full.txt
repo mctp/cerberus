@@ -416,6 +416,32 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     python tools/train_asap.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_asap --multi
     ```
 
+*   `tools/train_biasnet.py`: Train a standalone BiasNet (lightweight Conv1d + ReLU stack, fully DeepLIFT/DeepSHAP compatible) on non-peak regions for Tn5 enzymatic bias modelling.
+    ```bash
+    python tools/train_biasnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bias_model
+    ```
+
+*   `tools/train_dalmatian_multitask.py`: Train a multi-task Dalmatian on multiple BigWig targets via a `targets.json` mapping channel names to `{bigwig, peaks}` pairs (e.g. cell-type pseudobulk tracks). `--shared-bias` gives BiasNet a single sequence-bias channel shared across all targets.
+    ```bash
+    python tools/train_dalmatian_multitask.py \
+        --targets-json targets.json --peaks merged_peaks.bed \
+        --output-dir models/multitask --shared-bias \
+        --pretrained-bias bias_model.pt --freeze-bias
+    ```
+
+*   `tools/train_chrombpnet_bias.py`: ChromBPNet stage 1 — train the small BPNet bias branch on non-peak background regions. See [ChromBPNet](models.md#chrombpnet) for the architecture and reference-equivalent settings.
+    ```bash
+    python tools/train_chrombpnet_bias.py --bigwig signal.bw --peaks regions.bed --output-dir models/chrombpnet_bias
+    ```
+
+*   `tools/train_chrombpnet.py`: ChromBPNet stage 2 — load the stage-1 bias checkpoint, freeze it via `ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]`, optionally calibrate the bias-count offset, then train the full ChromBPNet on peaks. Exports an accessibility-only `chrombpnet_wo_bias.pt` next to each `model.pt`.
+    ```bash
+    python tools/train_chrombpnet.py \
+        --bigwig signal.bw --peaks regions.bed \
+        --pretrained-bias models/chrombpnet_bias/single-fold/fold_0/model.pt \
+        --adjust-bias-logcounts --output-dir models/chrombpnet
+    ```
+
 *   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
     ```bash
     python tools/train_multitask_differential_bpnet.py \
@@ -486,7 +512,8 @@ Key flags (see `--help` for the full list):
 | `--multi` | Cross-validation (both phases run `train_multi`) |
 | `--skip-phase1 --phase1-dir <path>` | Reuse an existing Phase 1 output |
 | `--skip-phase2` | Phase 1 + interpretation only |
-| `--count-pseudocount` | Pseudocount on *linear* scale, shared by Phase 1 `MSEMultinomialLoss` and Phase 2 `DifferentialCountLoss` so both phases operate in the same log-space |
+| `--count-pseudocount` / `--pseudocount-reads` | Phase 1 pseudocount for `MultitaskBPNetLoss` (`log(count + pc)`-style offset, scaled units). Phase 2 derives its own noise-floor pseudocount from training data — see `--phase2-pseudocount-quantile` / `--phase2-pseudocount-override` |
+| `--phase2-pseudocount-override` | Bypass the data-derived Phase 2 noise-floor and pass an explicit scaled pseudocount to `DifferentialCountLoss` |
 | `--interpret` | Run DeepLIFTSHAP + TF-MoDISco on the Phase 2 model |
 
 The Phase 2 loss derives the per-peak log fold-change inline from the `(B, N, L)` targets tensor, so no `--diff-pseudocount` or external log-fold-change file is required — for external-labels support see `docs/internal/differential_workflow_redesign.md` §13.
@@ -1274,12 +1301,14 @@ count_pseudocount = resolve_read_coverage_pseudocount(
 )
 ```
 
-The single-task training tools (`train_bpnet`, `train_asap`,
-`train_biasnet`, `train_gopher`, `train_pomeranian`, `train_dalmatian`,
-`train_dalmatian_multitask`) expose this calibration via the CLI:
-`--pseudocount-reads`, `--read-length`, `--input-scale {raw,cpm}`, and
-`--total-reads`.  When `--pseudocount-reads` is set, the helper computes
-the scaled value and the legacy `--count-pseudocount` flag is ignored.
+The training tools (`train_bpnet`, `train_asap`, `train_biasnet`,
+`train_gopher`, `train_pomeranian`, `train_dalmatian`,
+`train_dalmatian_multitask`, `train_chrombpnet_bias`, `train_chrombpnet`,
+and `train_multitask_differential_bpnet`'s Phase 1) expose this
+calibration via the CLI: `--pseudocount-reads`, `--read-length`,
+`--input-scale {raw,cpm}`, and `--total-reads`.  When
+`--pseudocount-reads` is set, the helper computes the scaled value and
+the legacy `--count-pseudocount` flag is ignored.
 
 ### `log((c_b + pc) / (c_a + pc))` losses — data-derived noise floor
 
@@ -2543,18 +2572,18 @@ model = BPNet1024(
 **Implementation**: `cerberus.models.bpnet.MultitaskBPNet`
 **Source**: `src/cerberus/models/bpnet.py`
 
-Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to [BPNet](#bpnet) with `predict_total_count=False` enforced, so each condition produces an independent per-channel scalar count head. This is Phase 1 of the two-phase differential-accessibility workflow (see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training) in `docs/usage.md`).
+Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to [BPNet](#bpnet) with `predict_total_count=False` enforced, so each condition produces an independent per-channel scalar count head. Used as the multi-task absolute-signal model in the [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training) recipe described in `docs/usage.md`.
 
 The split pays off when you want to compare two or more steady-state conditions on the same sequences: a joint shared-trunk model sees both conditions during training, so the trunk encodes cross-condition sequence grammar rather than whatever each condition's solo-trained model happened to pick up. This is the architectural principle of bpAI-TAC (Chandra et al. 2025) and the starting point for Naqvi et al. 2025's differential fine-tuning recipe.
 
 ### Key Features
 * **One profile + count head per condition**: `output_channels=[name_a, name_b, ...]` defines the condition names. Must contain at least 2 entries.
-* **`predict_total_count=False` enforced**: each condition gets its own scalar count-head output. Phase 2 differential fine-tuning supervises the *difference* of two of those scalars, so per-channel counts are a hard requirement.
+* **`predict_total_count=False` enforced**: each condition gets its own scalar count-head output. Downstream [DifferentialCountLoss](#differentialcountloss) fine-tuning supervises the *difference* of two of those scalars, so per-channel counts are a hard requirement.
 * **Same trunk as BPNet**: all trunk knobs (`filters`, `n_dilated_layers`, `residual_architecture`, `activation`, `weight_norm`, …) behave identically to BPNet.
 
 ### Loss: MultitaskBPNetLoss
 
-Wraps `MSEMultinomialLoss` with the four settings Phase 1 multi-task training requires: `count_per_channel=True`, `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.
+Wraps `MSEMultinomialLoss` with the four settings multi-task absolute-signal training requires: `count_per_channel=True`, `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.
 
 Parameters `alpha` and `beta` map to `count_weight` and `profile_weight` respectively, matching the [BPNetLoss](#loss-bpnetloss) convention. `alpha="adaptive"` is supported the same way as BPNetLoss.
 
@@ -2590,30 +2619,31 @@ model = MultitaskBPNet(
 # log_counts: (batch, 2)
 ```
 
-For the companion Phase 2 differential loss see [DifferentialCountLoss](#differentialcountloss) below; for the end-to-end two-phase CLI see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training).
+For the companion differential loss see [DifferentialCountLoss](#differentialcountloss) below; for the end-to-end two-phase CLI that pairs both see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training).
 
 ### DifferentialCountLoss
 
 **Implementation**: `cerberus.loss.DifferentialCountLoss`
 
-Phase 2 fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak natural-log fold-change derived inline from the two-channel `(B, N, L)` targets tensor Phase 1 already trained against:
+Differential count-head fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak natural-log fold-change derived inline from the two-channel `(B, N, L)` targets tensor:
 
 ```
 target_delta = log((sum_B + pc) / (sum_A + pc))
 ```
 
-where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). Setting `count_pseudocount` to match Phase 1's keeps both phases in the same log-space. Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
+where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). `pc` here is an empirical-Bayes shrinkage prior; the recommended value comes from `cerberus.pseudocount.resolve_noise_floor_pseudocount` (training-fold per-channel quantile, max across channels). Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
 
 Single path: `forward(outputs, targets)` returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be `(B, N, L)` with `N >= max(cond_a_idx, cond_b_idx) + 1`.
 
 ```python
 from cerberus.config import ModelConfig, PretrainedConfig
 
-# Phase 2 ModelConfig: same MultitaskBPNet architecture as Phase 1,
-# DifferentialCountLoss in place of MultitaskBPNetLoss, and the Phase 1
-# checkpoint listed under pretrained=[...].
+# Differential fine-tuning ModelConfig: same MultitaskBPNet architecture
+# as the pretrained absolute-signal model, DifferentialCountLoss in place
+# of MultitaskBPNetLoss, and the pretrained checkpoint listed under
+# pretrained=[...].
 model_config = ModelConfig(
-    name="MultitaskBPNet_Phase2",
+    name="MultitaskBPNet_differential",
     model_cls="cerberus.models.bpnet.MultitaskBPNet",
     loss_cls="cerberus.loss.DifferentialCountLoss",
     loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
@@ -2626,7 +2656,7 @@ model_config = ModelConfig(
             source=None, target=None,
         )
     ],
-    count_pseudocount=150.0,  # raw × target_scale, same as Phase 1
+    count_pseudocount=150.0,  # data-derived noise-floor recommended
 )
 ```
 
@@ -8566,7 +8596,7 @@ class CerberusDataModule(pl.LightningDataModule):
 
         Returns the pool of values (already multiplied by ``target_scale``)
         that a quantile-based shrinkage prior should be calibrated against.
-        Companion to :func:`cerberus.pseudocount.resolve_quantile_pseudocount`.
+        Companion to :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount`.
 
         Args:
             n_samples: Number of training intervals to sample. If the
@@ -8595,9 +8625,10 @@ class CerberusDataModule(pl.LightningDataModule):
             biological sparsity). Consumers of the ``per_channel=True``
             result should compute quantiles **per channel** rather than
             flattening into a union — the union 10th-percentile does not
-            represent any single channel's noise floor. The companion
-            ``resolve_quantile_pseudocount`` currently still flattens;
-            this is the contract it will need to switch to.
+            represent any single channel's noise floor.
+            ``resolve_noise_floor_pseudocount`` follows that contract:
+            it takes ``np.quantile(..., axis=0)`` and then the max
+            across channels.
         """
         if not self._is_initialized or self.train_dataset is None:
             raise RuntimeError(
@@ -8698,7 +8729,7 @@ class CerberusModule(pl.LightningModule):
 
     # Validation-end scatter dispatch.  Ordered: first matching Pearson key
     # in val_metrics wins.  Differential collections (log-fold-change) precede
-    # the absolute one so a Phase-2 collection scatters in its native space.
+    # the absolute one so a differential collection scatters in its native space.
     _SCATTER_DISPATCH: tuple[tuple[str, dict[str, str]], ...] = (
         ("pearson_delta_log_counts", {
             "x_label": "True delta log counts",
@@ -10802,11 +10833,12 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
 
 
 class DifferentialCountLoss(nn.Module):
-    """Phase 2 fine-tuning loss supervising ``log_counts[:, B] - log_counts[:, A]``.
+    """Differential count-head loss supervising ``log_counts[:, B] - log_counts[:, A]``.
 
     The delta target is derived inline from the ``(B, N, L)`` ``targets``
-    tensor (the per-condition absolute-signal tracks Phase 1 already
-    supervised against): for each sample,
+    tensor (per-condition absolute-signal tracks; channels A and B are
+    the same two channels the model emits ``log_counts`` for):
+    for each sample,
 
     .. math::
 
@@ -10816,14 +10848,20 @@ class DifferentialCountLoss(nn.Module):
         \\right)
 
     where the sum is over the length axis and ``pc`` is
-    ``count_pseudocount`` (use the same value Phase 1 used so ``log_counts``
-    live in the same natural-log space). The returned loss is
+    ``count_pseudocount``. Here ``pc`` plays the empirical-Bayes
+    shrinkage-prior role: it pulls the log-ratio toward zero for
+    regions whose per-condition totals sit at the noise floor.
+    :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount` derives
+    a data-driven value (training-fold per-channel quantile, max across
+    channels) suitable to pass here. The returned loss is
     ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
 
     Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
-    the count head needs to be retargeted. The profile heads already encode
-    condition-specific TF footprint grammar from Phase 1 multi-task
-    training.
+    the count head needs to be retargeted. The profile heads are expected
+    to already encode condition-specific TF footprint grammar from a prior
+    multi-task absolute-signal training pass (see
+    ``tools/train_multitask_differential_bpnet.py`` for the end-to-end
+    workflow that pairs this loss with such a pretrained model).
 
     Single code path: ``forward(outputs, targets)`` with no optional
     kwargs, no shape overloading, no absolute-count regularizer.
@@ -10832,8 +10870,11 @@ class DifferentialCountLoss(nn.Module):
         cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
         cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
         count_pseudocount: Additive pseudocount used in the log
-            fold-change derivation. Must match the value Phase 1 used so
-            the two phases share a log-space. Default 1.0.
+            fold-change derivation, in the same scaled units as
+            ``ModelConfig.count_pseudocount``. Acts as an empirical-Bayes
+            shrinkage prior — derive from data via
+            :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount`,
+            or pass an explicit scaled value. Default 1.0.
 
     References:
         - Naqvi et al. (2025). *Transfer learning reveals sequence
@@ -14254,17 +14295,17 @@ class BPNetLoss(MSEMultinomialLoss):
 class MultitaskBPNet(BPNet):
     """Multi-task BPNet: shared dilated tower with N condition-specific output channels.
 
-    Phase 1 of the two-phase differential accessibility workflow.  Each
-    condition gets its own profile head channel and its own count head
-    output, enabling cross-condition comparisons that are not confounded by
-    separate model training runs — the architecture principle of bpAI-TAC
-    (Chandra et al. 2025, bioRxiv 2025.01.24.634804).
+    Each condition gets its own profile head channel and its own count
+    head output, enabling cross-condition comparisons that are not
+    confounded by separate model training runs — the architecture
+    principle of bpAI-TAC (Chandra et al. 2025, bioRxiv 2025.01.24.634804).
 
     The model is architecturally identical to :class:`BPNet` with
-    ``predict_total_count=False`` enforced.  Per-channel count prediction is
-    a hard requirement: Phase 2 differential fine-tuning supervises the
-    *difference* of two specific count heads, so each condition must produce
-    an independent scalar output.
+    ``predict_total_count=False`` enforced.  Per-channel count prediction
+    is a hard requirement: downstream differential fine-tuning with
+    :class:`cerberus.loss.DifferentialCountLoss` supervises the
+    *difference* of two specific count heads, so each condition must
+    produce an independent scalar output.
 
     Args:
         output_channels: List of condition names (one per steady-state
@@ -14337,7 +14378,7 @@ class MultitaskBPNet(BPNet):
 
 
 class MultitaskBPNetLoss(MSEMultinomialLoss):
-    """Phase 1 loss for :class:`MultitaskBPNet`.
+    """Multi-task BPNet loss: per-channel profile + count for :class:`MultitaskBPNet`.
 
     Applies the BPNet profile + count loss independently per condition
     channel.  Profile loss is averaged across conditions (following

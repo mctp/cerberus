@@ -171,18 +171,18 @@ model = BPNet1024(
 **Implementation**: `cerberus.models.bpnet.MultitaskBPNet`
 **Source**: `src/cerberus/models/bpnet.py`
 
-Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to [BPNet](#bpnet) with `predict_total_count=False` enforced, so each condition produces an independent per-channel scalar count head. This is Phase 1 of the two-phase differential-accessibility workflow (see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training) in `docs/usage.md`).
+Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to [BPNet](#bpnet) with `predict_total_count=False` enforced, so each condition produces an independent per-channel scalar count head. Used as the multi-task absolute-signal model in the [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training) recipe described in `docs/usage.md`.
 
 The split pays off when you want to compare two or more steady-state conditions on the same sequences: a joint shared-trunk model sees both conditions during training, so the trunk encodes cross-condition sequence grammar rather than whatever each condition's solo-trained model happened to pick up. This is the architectural principle of bpAI-TAC (Chandra et al. 2025) and the starting point for Naqvi et al. 2025's differential fine-tuning recipe.
 
 ### Key Features
 * **One profile + count head per condition**: `output_channels=[name_a, name_b, ...]` defines the condition names. Must contain at least 2 entries.
-* **`predict_total_count=False` enforced**: each condition gets its own scalar count-head output. Phase 2 differential fine-tuning supervises the *difference* of two of those scalars, so per-channel counts are a hard requirement.
+* **`predict_total_count=False` enforced**: each condition gets its own scalar count-head output. Downstream [DifferentialCountLoss](#differentialcountloss) fine-tuning supervises the *difference* of two of those scalars, so per-channel counts are a hard requirement.
 * **Same trunk as BPNet**: all trunk knobs (`filters`, `n_dilated_layers`, `residual_architecture`, `activation`, `weight_norm`, …) behave identically to BPNet.
 
 ### Loss: MultitaskBPNetLoss
 
-Wraps `MSEMultinomialLoss` with the four settings Phase 1 multi-task training requires: `count_per_channel=True`, `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.
+Wraps `MSEMultinomialLoss` with the four settings multi-task absolute-signal training requires: `count_per_channel=True`, `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.
 
 Parameters `alpha` and `beta` map to `count_weight` and `profile_weight` respectively, matching the [BPNetLoss](#loss-bpnetloss) convention. `alpha="adaptive"` is supported the same way as BPNetLoss.
 
@@ -218,30 +218,31 @@ model = MultitaskBPNet(
 # log_counts: (batch, 2)
 ```
 
-For the companion Phase 2 differential loss see [DifferentialCountLoss](#differentialcountloss) below; for the end-to-end two-phase CLI see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training).
+For the companion differential loss see [DifferentialCountLoss](#differentialcountloss) below; for the end-to-end two-phase CLI that pairs both see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training).
 
 ### DifferentialCountLoss
 
 **Implementation**: `cerberus.loss.DifferentialCountLoss`
 
-Phase 2 fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak natural-log fold-change derived inline from the two-channel `(B, N, L)` targets tensor Phase 1 already trained against:
+Differential count-head fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak natural-log fold-change derived inline from the two-channel `(B, N, L)` targets tensor:
 
 ```
 target_delta = log((sum_B + pc) / (sum_A + pc))
 ```
 
-where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). Setting `count_pseudocount` to match Phase 1's keeps both phases in the same log-space. Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
+where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). `pc` here is an empirical-Bayes shrinkage prior; the recommended value comes from `cerberus.pseudocount.resolve_noise_floor_pseudocount` (training-fold per-channel quantile, max across channels). Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
 
 Single path: `forward(outputs, targets)` returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be `(B, N, L)` with `N >= max(cond_a_idx, cond_b_idx) + 1`.
 
 ```python
 from cerberus.config import ModelConfig, PretrainedConfig
 
-# Phase 2 ModelConfig: same MultitaskBPNet architecture as Phase 1,
-# DifferentialCountLoss in place of MultitaskBPNetLoss, and the Phase 1
-# checkpoint listed under pretrained=[...].
+# Differential fine-tuning ModelConfig: same MultitaskBPNet architecture
+# as the pretrained absolute-signal model, DifferentialCountLoss in place
+# of MultitaskBPNetLoss, and the pretrained checkpoint listed under
+# pretrained=[...].
 model_config = ModelConfig(
-    name="MultitaskBPNet_Phase2",
+    name="MultitaskBPNet_differential",
     model_cls="cerberus.models.bpnet.MultitaskBPNet",
     loss_cls="cerberus.loss.DifferentialCountLoss",
     loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
@@ -254,7 +255,7 @@ model_config = ModelConfig(
             source=None, target=None,
         )
     ],
-    count_pseudocount=150.0,  # raw × target_scale, same as Phase 1
+    count_pseudocount=150.0,  # data-derived noise-floor recommended
 )
 ```
 

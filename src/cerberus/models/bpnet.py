@@ -430,17 +430,17 @@ class BPNetLoss(MSEMultinomialLoss):
 class MultitaskBPNet(BPNet):
     """Multi-task BPNet: shared dilated tower with N condition-specific output channels.
 
-    Phase 1 of the two-phase differential accessibility workflow.  Each
-    condition gets its own profile head channel and its own count head
-    output, enabling cross-condition comparisons that are not confounded by
-    separate model training runs — the architecture principle of bpAI-TAC
-    (Chandra et al. 2025, bioRxiv 2025.01.24.634804).
+    Each condition gets its own profile head channel and its own count
+    head output, enabling cross-condition comparisons that are not
+    confounded by separate model training runs — the architecture
+    principle of bpAI-TAC (Chandra et al. 2025, bioRxiv 2025.01.24.634804).
 
     The model is architecturally identical to :class:`BPNet` with
-    ``predict_total_count=False`` enforced.  Per-channel count prediction is
-    a hard requirement: Phase 2 differential fine-tuning supervises the
-    *difference* of two specific count heads, so each condition must produce
-    an independent scalar output.
+    ``predict_total_count=False`` enforced.  Per-channel count prediction
+    is a hard requirement: downstream differential fine-tuning with
+    :class:`cerberus.loss.DifferentialCountLoss` supervises the
+    *difference* of two specific count heads, so each condition must
+    produce an independent scalar output.
 
     Args:
         output_channels: List of condition names (one per steady-state
@@ -513,7 +513,7 @@ class MultitaskBPNet(BPNet):
 
 
 class MultitaskBPNetLoss(MSEMultinomialLoss):
-    """Phase 1 loss for :class:`MultitaskBPNet`.
+    """Multi-task BPNet loss: per-channel profile + count for :class:`MultitaskBPNet`.
 
     Applies the BPNet profile + count loss independently per condition
     channel.  Profile loss is averaged across conditions (following

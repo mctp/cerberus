@@ -218,7 +218,7 @@ def get_args():
         "--patience",
         type=int,
         default=10,
-        help="Patience for early stopping (higher than typical to survive Phase 1 plateau)",
+        help="Patience for early stopping (set high to survive early training plateaus)",
     )
     parser.add_argument("--optimizer", type=str, default="adamw", help="Optimizer type")
     parser.add_argument(

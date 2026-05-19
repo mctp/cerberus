@@ -40,8 +40,9 @@ def add_pseudocount_cli_args(
     - ``--total-reads``: required when ``--input-scale=cpm``.
 
     Each adopting tool passes its canonical ``default_count_pseudocount``
-    (e.g. 150.0 for BPNet, 1.0 for ASAP / Dalmatian / Gopher / Pomeranian /
-    BiasNet); the other four flags share defaults across all tools.
+    (e.g. 150.0 for BPNet / Pomeranian / multitask-differential-BPNet,
+    1.0 for ASAP / Dalmatian / Gopher / BiasNet / ChromBPNet); the other
+    four flags share defaults across all tools.
     """
     parser.add_argument(
         "--count-pseudocount",
