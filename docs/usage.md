@@ -366,6 +366,10 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 
 Both phases run on the standard `train_single` / `train_multi` pipeline. The companion library primitives are [MultitaskBPNet](models.md#multitaskbpnet), [MultitaskBPNetLoss](models.md#loss-multitaskbpnetloss), and [DifferentialCountLoss](models.md#differentialcountloss).
 
+Phase 2 logs differential metrics via `DifferentialBPNetMetricCollection`: `mse_delta_log_counts`, `rmse_delta_log_counts`, and `pearson_delta_log_counts`. These score predictions in the same space `DifferentialCountLoss` optimises (the per-peak log fold-change), not the absolute log-counts. The val-end scatter is emitted as `val_delta_log_counts_scatter_epoch_NNN.png` accordingly.
+
+Phase 2's `count_pseudocount` is derived from the training data by default (10th-percentile-per-channel of length-summed counts), via `cerberus.pseudocount.resolve_noise_floor_pseudocount`. Override with `--phase2-pseudocount-override SCALED_VALUE`.
+
 ```bash
 # Single-fold two-condition training + interpretation in one call.
 python tools/train_multitask_differential_bpnet.py \

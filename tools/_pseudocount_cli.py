@@ -20,11 +20,15 @@ _DEFAULT_READ_LENGTH = 150
 
 
 def add_pseudocount_cli_args(
-    parser: argparse.ArgumentParser,
+    parser: argparse.ArgumentParser | argparse._ArgumentGroup,
     *,
     default_count_pseudocount: float,
 ) -> None:
     """Register the standard scale-aware-pseudocount flag family on ``parser``.
+
+    Accepts either an ``ArgumentParser`` or an ``_ArgumentGroup`` from
+    ``ArgumentParser.add_argument_group(...)``; both expose the same
+    ``add_argument`` interface.
 
     Five flags are added:
 

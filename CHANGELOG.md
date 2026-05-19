@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Multitask differential trainer wiring for the new metric collection
+  and pseudocount helpers.** `tools/train_multitask_differential_bpnet`
+  Phase 1 now uses the shared scale-aware pseudocount CLI family
+  (`--pseudocount-reads`, `--read-length`, `--input-scale`,
+  `--total-reads`).  Phase 2 derives its `count_pseudocount` from the
+  training fold's per-channel quantile via
+  `cerberus.pseudocount.resolve_noise_floor_pseudocount`; new flags
+  `--phase2-pseudocount-quantile` (default 0.10),
+  `--phase2-pseudocount-samples` (default 2000), and
+  `--phase2-pseudocount-override` (escape hatch) control the
+  computation.  Phase 2 `metrics_cls` is now
+  `DifferentialBPNetMetricCollection`, so per-epoch metrics and the
+  val-end scatter live in the differential space.
 - **Scale-aware pseudocount CLI flag family across all single-task
   trainers.** `train_bpnet`, `train_asap`, `train_biasnet`,
   `train_gopher`, `train_pomeranian`, `train_dalmatian`, and
@@ -122,6 +135,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/models.md#named-submodules-reference`.
 
 ### Changed
+- **`train_multitask_differential_bpnet` Phase 2 pseudocount is now
+  data-derived by default.**  Previously Phase 2 reused Phase 1's
+  `count_pseudocount * target_scale` (a log(0)-avoidance offset), which
+  conflated two different roles -- additive offset for absolute counts
+  vs. shrinkage prior for log-fold-changes.  Phase 2 now defaults to
+  the 10th-percentile-per-channel of training counts (max-combined
+  across channels), which is the right magnitude for the shrinkage role
+  and adapts automatically to raw / CPM bigWigs and library depth.
+  Existing runs may see Phase 2 MSE / RMSE values shift; Pearson is
+  invariant.  Pass `--phase2-pseudocount-override
+  <args.count_pseudocount * args.target_scale>` to reproduce previous
+  behaviour.
 - **Dropped dead `loss_args["count_pseudocount"]` from Dalmatian
   trainers.** `tools/train_dalmatian.py` and
   `tools/train_dalmatian_multitask.py` no longer set
