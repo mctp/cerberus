@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Validation scatter auto-selects absolute or delta variant.**
+  `CerberusModule.on_validation_epoch_end` now dispatches against a
+  `_SCATTER_DISPATCH` table keyed on Pearson metric name:
+  `pearson_delta_log_counts` (from `DifferentialBPNetMetricCollection`)
+  takes priority over `pearson_log_counts`. When the differential key
+  is present the per-epoch PNG is emitted as
+  `val_delta_log_counts_scatter_epoch_NNN.png` with delta-specific
+  axis labels; otherwise behaviour is unchanged. Pure addition —
+  callers that surface only the absolute key keep their existing
+  output.
 - **`save_count_scatter` accepts custom axis labels, title prefix, and
   filename prefix.** Four optional kwargs (`x_label`, `y_label`,
   `title`, `filename_prefix`) with defaults that reproduce the current

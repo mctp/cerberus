@@ -7,10 +7,11 @@ import pytest
 import torch
 
 from cerberus.config import TrainConfig
-from cerberus.loss import ProfilePoissonNLLLoss
+from cerberus.loss import DifferentialCountLoss, ProfilePoissonNLLLoss
 from cerberus.metrics import DefaultMetricCollection
+from cerberus.models.bpnet import DifferentialBPNetMetricCollection
 from cerberus.module import CerberusModule
-from cerberus.output import ProfileLogRates
+from cerberus.output import ProfileCountOutput, ProfileLogRates
 from cerberus.plots import (
     _apply_seqlogo_mode,
     plot_attribution_heatmap,
@@ -83,6 +84,22 @@ class _DummyModel(torch.nn.Module):
     def forward(self, x):
         # Output shape: (B, 1, 8) -- one channel, profile length 8
         return ProfileLogRates(log_rates=self.layer(x).unsqueeze(1))
+
+
+class _DummyDifferentialModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer = torch.nn.Linear(10, 16)
+
+    def forward(self, x):
+        # Two channels (A, B), profile length 8.  log_counts is the per-
+        # channel mean over the profile axis -- enough structure to give
+        # DifferentialCountLoss / DifferentialBPNetMetricCollection a real
+        # delta to evaluate.
+        out = self.layer(x).view(x.shape[0], 2, 8)
+        logits = torch.zeros_like(out)
+        log_counts = out.mean(dim=-1)
+        return ProfileCountOutput(logits=logits, log_counts=log_counts)
 
 
 @pytest.fixture
@@ -190,6 +207,129 @@ def test_on_validation_epoch_end_skips_scatter_during_sanity_check(_base_config)
     with patch("cerberus.plots.save_count_scatter") as mock_save:
         module.on_validation_epoch_end()
         mock_save.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# val_metrics prefix-lookup contract (TorchMetrics).
+#
+# CerberusModule wraps a MetricCollection in `metrics.clone(prefix="val_")`
+# and looks Pearson scatter targets up by bare name.  These tests pin the
+# asymmetric __contains__ / __getitem__ behaviour the dispatch relies on so
+# a future TorchMetrics version change surfaces here, not at validation time.
+# ---------------------------------------------------------------------------
+
+
+def test_metric_collection_clone_prefix_contains_is_bare_only():
+    coll = DefaultMetricCollection().clone(prefix="val_")
+    assert "pearson_log_counts" in coll
+    assert "val_pearson_log_counts" not in coll
+
+
+def test_metric_collection_clone_prefix_getitem_accepts_both_forms():
+    coll = DefaultMetricCollection().clone(prefix="val_")
+    bare = coll["pearson_log_counts"]
+    prefixed = coll["val_pearson_log_counts"]
+    assert bare is prefixed
+
+
+# ---------------------------------------------------------------------------
+# Scatter dispatch: _resolve_val_scatter_spec / on_validation_epoch_end
+# ---------------------------------------------------------------------------
+
+
+def _make_module(criterion, metrics, base_config):
+    """Bare CerberusModule with a mocked trainer at rank 0, not sanity-checking."""
+    model = (
+        _DummyDifferentialModel()
+        if isinstance(metrics, DifferentialBPNetMetricCollection)
+        else _DummyModel()
+    )
+    module = CerberusModule(
+        model, criterion=criterion, metrics=metrics, train_config=base_config,
+    )
+    module.log = MagicMock()
+    module.log_dict = MagicMock()
+    trainer = MagicMock()
+    trainer.is_global_zero = True
+    trainer.sanity_checking = False
+    trainer.current_epoch = 2
+    module._trainer = trainer
+    return module, trainer
+
+
+def test_resolve_val_scatter_spec_picks_absolute_for_default_collection(_base_config):
+    """DefaultMetricCollection exposes only pearson_log_counts → absolute spec."""
+    module, _ = _make_module(
+        ProfilePoissonNLLLoss(log_input=True, full=False),
+        DefaultMetricCollection(),
+        _base_config,
+    )
+    spec = module._resolve_val_scatter_spec()
+    assert spec is not None
+    metric, kwargs = spec
+    assert kwargs["filename_prefix"] == "val_count_scatter"
+    assert metric is module.val_metrics["pearson_log_counts"]
+
+
+def test_resolve_val_scatter_spec_prefers_delta_when_both_present(_base_config):
+    """Synthetic both-keys collection: delta wins per dispatch ordering."""
+    module, _ = _make_module(
+        ProfilePoissonNLLLoss(log_input=True, full=False),
+        DefaultMetricCollection(),
+        _base_config,
+    )
+    # CerberusModule queries val_metrics by bare key (``in`` and ``[]``); a
+    # dict suffices.  nn.Module.__setattr__ rejects non-Module replacements
+    # of registered submodules, so go through object.__setattr__.
+    sentinel_delta = object()
+    sentinel_abs = object()
+    fake_val_metrics = {
+        "pearson_log_counts": sentinel_abs,
+        "pearson_delta_log_counts": sentinel_delta,
+    }
+    object.__setattr__(module, "val_metrics", fake_val_metrics)
+    metric, kwargs = module._resolve_val_scatter_spec()  # type: ignore[misc]
+    assert metric is sentinel_delta
+    assert kwargs["filename_prefix"] == "val_delta_log_counts_scatter"
+
+
+def test_resolve_val_scatter_spec_returns_none_when_no_pearson(_base_config):
+    """No dispatched key present → silent skip (None), no crash."""
+    module, _ = _make_module(
+        ProfilePoissonNLLLoss(log_input=True, full=False),
+        DefaultMetricCollection(),
+        _base_config,
+    )
+    object.__setattr__(module, "val_metrics", {})
+    assert module._resolve_val_scatter_spec() is None
+
+
+def test_on_validation_epoch_end_saves_differential_scatter(_base_config):
+    """End-to-end: DifferentialBPNetMetricCollection drives a delta-PNG."""
+    module, trainer = _make_module(
+        DifferentialCountLoss(cond_a_idx=0, cond_b_idx=1),
+        DifferentialBPNetMetricCollection(cond_a_idx=0, cond_b_idx=1),
+        _base_config,
+    )
+    batch = {
+        "inputs": torch.randn(4, 10),
+        "targets": torch.abs(torch.randn(4, 2, 8)),
+    }
+    module.validation_step(batch, 0)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        trainer.logger.log_dir = tmp_dir
+        module.on_validation_epoch_end()
+        delta_png = (
+            Path(tmp_dir) / "plots" / "val_delta_log_counts_scatter_epoch_002.png"
+        )
+        absolute_png = Path(tmp_dir) / "plots" / "val_count_scatter_epoch_002.png"
+        assert delta_png.exists()
+        assert not absolute_png.exists()
+
+    # Metric state was reset after compute().
+    pearson = module.val_metrics["pearson_delta_log_counts"]
+    assert pearson.preds_list == []
 
 
 # ---------------------------------------------------------------------------
