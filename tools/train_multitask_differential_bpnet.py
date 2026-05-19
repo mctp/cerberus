@@ -568,14 +568,12 @@ def run_phase2(
             seed=args.seed,
         )
         quantile_datamodule.prepare_data()
-        # ``batch_size`` here is irrelevant: ``compute_count_quantile_samples``
-        # reads the train dataset's sampler directly without iterating a
-        # DataLoader.  num_workers=0 for the same reason (no forking).
-        quantile_datamodule.setup(
-            batch_size=args.phase2_batch_size,
-            num_workers=0,
-            in_memory=False,
-        )
+        # ``setup()`` is called with no overrides: ``compute_count_quantile_-
+        # samples`` reads the train dataset's sampler directly without
+        # iterating a DataLoader, so batch_size / num_workers / in_memory
+        # are irrelevant here.  The defaults (batch_size=1, num_workers=0,
+        # in_memory=False) avoid both worker forking and any RAM caching.
+        quantile_datamodule.setup()
         phase2_pseudocount = resolve_noise_floor_pseudocount(
             quantile_datamodule,
             quantile=args.phase2_pseudocount_quantile,
