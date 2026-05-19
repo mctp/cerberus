@@ -146,7 +146,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--precision",
         type=str,
-        default="bf16",
+        default="full",
         choices=["bf16", "mps", "full"],
     )
 
