@@ -245,8 +245,8 @@ model_config = ModelConfig(
     model_cls="cerberus.models.bpnet.MultitaskBPNet",
     loss_cls="cerberus.loss.DifferentialCountLoss",
     loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
-    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-    metrics_args={},
+    metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
+    metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
     model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
     pretrained=[
         PretrainedConfig(
@@ -258,7 +258,15 @@ model_config = ModelConfig(
 )
 ```
 
-`DifferentialCountLoss` is exported from `cerberus.loss`. For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+`DifferentialCountLoss` is exported from `cerberus.loss`. The companion `DifferentialBPNetMetricCollection` (in `cerberus.models.bpnet`) exposes three keys scoring the same quantity the loss optimises:
+
+- `mse_delta_log_counts` — MSE on the per-example delta log-counts.
+- `rmse_delta_log_counts` — `sqrt(MSE)`, clamped at zero.
+- `pearson_delta_log_counts` — Pearson correlation of predicted vs. target delta accumulated across the epoch.
+
+All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `log_counts[:, b] - log_counts[:, a]`. Constructor kwargs (`cond_a_idx`, `cond_b_idx`, `count_pseudocount`, `log1p_targets`, `log_counts_include_pseudocount`) match the rest of the BPNet collections so dispatch through `instantiate_metrics_and_loss` is uniform.
+
+For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
 
 ### References
 - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.

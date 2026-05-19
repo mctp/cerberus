@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`DifferentialBPNetMetricCollection`.** New `MetricCollection`
+  wrapping the three differential metrics from `cerberus.metrics`
+  under keys `mse_delta_log_counts`, `rmse_delta_log_counts`, and
+  `pearson_delta_log_counts`.  Constructor signature mirrors
+  `BPNetMetricCollection` so `instantiate_metrics_and_loss` dispatches
+  through the same `log1p_targets` / `count_pseudocount` /
+  `log_counts_include_pseudocount` triple.  Set
+  `metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection"`
+  in the Phase-2 `ModelConfig` to surface the delta-log-count metrics
+  during fine-tuning.
 - **Differential log-count metrics.** Three TorchMetrics classes in
   `cerberus.metrics` that score predictions in the same space
   `DifferentialCountLoss` optimises:

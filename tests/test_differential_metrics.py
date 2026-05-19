@@ -12,11 +12,15 @@ from __future__ import annotations
 import pytest
 import torch
 
+from cerberus.config import ModelConfig
+from cerberus.loss import DifferentialCountLoss
 from cerberus.metrics import (
     DifferentialLogCountsMeanSquaredError,
     DifferentialLogCountsPearsonCorrCoef,
     DifferentialLogCountsRootMeanSquaredError,
 )
+from cerberus.models.bpnet import DifferentialBPNetMetricCollection
+from cerberus.module import instantiate_metrics_and_loss
 from cerberus.output import ProfileCountOutput
 
 
@@ -245,3 +249,106 @@ def test_pearson_accumulates_across_batches():
         metric.update(_make_output(log_counts), targets)
 
     assert metric.compute().item() == pytest.approx(1.0, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# DifferentialBPNetMetricCollection: wrapping + dispatch integration
+# ---------------------------------------------------------------------------
+
+
+def test_collection_exposes_three_delta_metric_keys():
+    metrics = DifferentialBPNetMetricCollection(cond_a_idx=0, cond_b_idx=1)
+    assert set(metrics.keys()) >= {
+        "mse_delta_log_counts",
+        "rmse_delta_log_counts",
+        "pearson_delta_log_counts",
+    }
+
+
+def test_collection_forwards_kwargs_to_each_member():
+    """Constructor kwargs must reach every wrapped metric, not just one."""
+    metrics = DifferentialBPNetMetricCollection(
+        cond_a_idx=3,
+        cond_b_idx=5,
+        count_pseudocount=99.0,
+        log_counts_include_pseudocount=True,
+    )
+    for key in ("mse_delta_log_counts", "rmse_delta_log_counts", "pearson_delta_log_counts"):
+        m = metrics[key]
+        assert m.cond_a_idx == 3
+        assert m.cond_b_idx == 5
+        assert m.count_pseudocount == 99.0
+        assert m.log_counts_include_pseudocount is True
+
+
+def test_collection_update_compute_matches_standalone_members():
+    """End-to-end: collection.update + compute matches three standalone metrics."""
+    pc = 1.0
+    sum_a = torch.tensor([1.0, 2.0, 4.0, 8.0])
+    sum_b = torch.tensor([8.0, 4.0, 2.0, 1.0])
+    targets = _bnl_targets_with_known_delta(sum_a, sum_b)
+    true_delta = torch.log((sum_b + pc) / (sum_a + pc))
+    log_counts = torch.zeros(4, 2)
+    log_counts[:, 1] = 0.5 * true_delta  # imperfect prediction → nonzero MSE, r=1
+    out = _make_output(log_counts)
+
+    collection = DifferentialBPNetMetricCollection(
+        cond_a_idx=0, cond_b_idx=1, count_pseudocount=pc,
+    )
+    collection.update(out, targets)
+    results = collection.compute()
+
+    # Compare against the same three metrics run standalone.
+    mse_solo = DifferentialLogCountsMeanSquaredError(count_pseudocount=pc)
+    rmse_solo = DifferentialLogCountsRootMeanSquaredError(count_pseudocount=pc)
+    pearson_solo = DifferentialLogCountsPearsonCorrCoef(count_pseudocount=pc)
+    for m in (mse_solo, rmse_solo, pearson_solo):
+        m.update(out, targets)
+
+    assert results["mse_delta_log_counts"].item() == pytest.approx(
+        mse_solo.compute().item(), rel=1e-6,
+    )
+    assert results["rmse_delta_log_counts"].item() == pytest.approx(
+        rmse_solo.compute().item(), rel=1e-6,
+    )
+    assert results["pearson_delta_log_counts"].item() == pytest.approx(
+        pearson_solo.compute().item(), rel=1e-6,
+    )
+
+
+def test_instantiate_metrics_and_loss_builds_differential_collection():
+    """ModelConfig dispatch routes count_pseudocount and cond_a/b_idx through."""
+    config = ModelConfig.model_construct(
+        name="differential",
+        model_cls="cerberus.models.bpnet.MultitaskBPNet",
+        loss_cls="cerberus.loss.DifferentialCountLoss",
+        loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+        metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
+        # log_counts_include_pseudocount is unconditionally written by the
+        # dispatch from loss_cls.uses_count_pseudocount, so the user does
+        # not need to (and cannot meaningfully) set it via metrics_args.
+        metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
+        model_args={"output_channels": ["a", "b"]},
+        pretrained=[],
+        count_pseudocount=42.0,
+    )
+
+    metrics, criterion = instantiate_metrics_and_loss(config)
+
+    assert isinstance(criterion, DifferentialCountLoss)
+    assert criterion.count_pseudocount == 42.0
+    assert isinstance(
+        metrics["mse_delta_log_counts"], DifferentialLogCountsMeanSquaredError
+    )
+    assert isinstance(
+        metrics["rmse_delta_log_counts"], DifferentialLogCountsRootMeanSquaredError
+    )
+    assert isinstance(
+        metrics["pearson_delta_log_counts"], DifferentialLogCountsPearsonCorrCoef
+    )
+    assert metrics["mse_delta_log_counts"].count_pseudocount == 42.0
+    assert metrics["pearson_delta_log_counts"].cond_a_idx == 0
+    assert metrics["pearson_delta_log_counts"].cond_b_idx == 1
+    # DifferentialCountLoss.uses_count_pseudocount=True, so the dispatch
+    # writes log_counts_include_pseudocount=True on every wrapped metric.
+    assert metrics["mse_delta_log_counts"].log_counts_include_pseudocount is True

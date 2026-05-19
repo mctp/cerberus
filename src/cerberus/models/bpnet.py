@@ -12,6 +12,9 @@ from cerberus.layers import DilatedResidualBlock
 from cerberus.metrics import (
     CountProfileMeanSquaredError,
     CountProfilePearsonCorrCoef,
+    DifferentialLogCountsMeanSquaredError,
+    DifferentialLogCountsPearsonCorrCoef,
+    DifferentialLogCountsRootMeanSquaredError,
     LogCountsMeanSquaredError,
     LogCountsPearsonCorrCoef,
 )
@@ -581,6 +584,54 @@ class BPNetMetricCollection(MetricCollection):
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "pearson_log_counts": LogCountsPearsonCorrCoef(
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+            }
+        )
+
+
+class DifferentialBPNetMetricCollection(MetricCollection):
+    """
+    MetricCollection for log-fold-change supervision (``DifferentialCountLoss``).
+    Exposes ``mse_delta_log_counts``, ``rmse_delta_log_counts``, and
+    ``pearson_delta_log_counts``; all three compare
+    ``log_counts[:, b] - log_counts[:, a]`` against the inline-derived target
+    ``log((sum_b + pc) / (sum_a + pc))``.
+    """
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        log_counts_include_pseudocount: bool = False,
+    ):
+        # log1p_targets / count_pseudocount / log_counts_include_pseudocount
+        # are the standard triple instantiate_metrics_and_loss forwards to
+        # every metric collection; mirroring the BPNetMetricCollection
+        # signature keeps the dispatch interchangeable.
+        super().__init__(
+            {
+                "mse_delta_log_counts": DifferentialLogCountsMeanSquaredError(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+                "rmse_delta_log_counts": DifferentialLogCountsRootMeanSquaredError(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+                "pearson_delta_log_counts": DifferentialLogCountsPearsonCorrCoef(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     count_pseudocount=count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
