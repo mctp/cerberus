@@ -35,6 +35,26 @@ def test_save_count_scatter_creates_file():
         assert expected.exists()
 
 
+def test_save_count_scatter_uses_custom_filename_prefix():
+    """Non-default kwargs route to the configured output filename."""
+    rng = np.random.default_rng(2)
+    preds = rng.standard_normal(50).astype(np.float32)
+    targets = rng.standard_normal(50).astype(np.float32)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        save_count_scatter(
+            preds, targets, tmp_dir, epoch=1,
+            x_label="True delta log counts",
+            y_label="Predicted delta log counts",
+            title="Val delta log counts",
+            filename_prefix="val_delta_log_counts_scatter",
+        )
+        custom = Path(tmp_dir) / "plots" / "val_delta_log_counts_scatter_epoch_001.png"
+        default = Path(tmp_dir) / "plots" / "val_count_scatter_epoch_001.png"
+        assert custom.exists()
+        assert not default.exists()
+
+
 def test_save_count_scatter_skips_without_matplotlib():
     rng = np.random.default_rng(1)
     preds = rng.standard_normal(10).astype(np.float32)

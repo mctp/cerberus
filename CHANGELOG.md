@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`save_count_scatter` accepts custom axis labels, title prefix, and
+  filename prefix.** Four optional kwargs (`x_label`, `y_label`,
+  `title`, `filename_prefix`) with defaults that reproduce the current
+  output exactly. Lets a future caller emit a second per-epoch scatter
+  (e.g. for delta log-counts) without duplicating the plotting code or
+  overwriting the absolute-counts PNG.
 - **`DifferentialBPNetMetricCollection`.** New `MetricCollection`
   wrapping the three differential metrics from `cerberus.metrics`
   under keys `mse_delta_log_counts`, `rmse_delta_log_counts`, and
