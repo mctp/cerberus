@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Scale-aware pseudocount CLI flag family across all single-task
+  trainers.** `train_bpnet`, `train_asap`, `train_biasnet`,
+  `train_gopher`, `train_pomeranian`, `train_dalmatian`, and
+  `train_dalmatian_multitask` each accept four new flags --
+  `--pseudocount-reads`, `--read-length`, `--input-scale {raw,cpm}`,
+  `--total-reads` -- alongside the existing `--count-pseudocount`.
+  When `--pseudocount-reads` is set, the helper computes the scaled
+  `count_pseudocount` via
+  `cerberus.pseudocount.resolve_read_coverage_pseudocount` and
+  `--count-pseudocount` is ignored.  Otherwise legacy behaviour
+  (`args.count_pseudocount * target_scale`) is preserved.  Shared
+  argparse plumbing lives in the new `tools/_pseudocount_cli`
+  module so the per-tool diffs reduce to two function calls.
 - **Validation scatter auto-selects absolute or delta variant.**
   `CerberusModule.on_validation_epoch_end` now dispatches against a
   `_SCATTER_DISPATCH` table keyed on Pearson metric name:
@@ -109,6 +122,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/models.md#named-submodules-reference`.
 
 ### Changed
+- **Dropped dead `loss_args["count_pseudocount"]` from Dalmatian
+  trainers.** `tools/train_dalmatian.py` and
+  `tools/train_dalmatian_multitask.py` no longer set
+  `count_pseudocount` inside `loss_args`: the value was unconditionally
+  overridden by `instantiate_metrics_and_loss` from
+  `ModelConfig.count_pseudocount` before it ever reached the loss
+  constructor.  Comment in place at each call site explains the
+  override path.
 - **`DifferentialCountLoss` target switched from log2 to natural log.**
   Phase 1 absolute count heads train against `log(count + pc)`. The
   Phase 2 differential target now uses the same natural-log base —

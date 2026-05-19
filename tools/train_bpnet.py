@@ -35,6 +35,11 @@ from cerberus.genome import create_genome_config
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
 
+from _pseudocount_cli import (  # noqa: E402  -- sibling tool helper
+    add_pseudocount_cli_args,
+    resolve_count_pseudocount_from_args,
+)
+
 
 def _parse_alpha(value: str) -> "float | str":
     """Accept a float or the literal string 'adaptive' for --alpha."""
@@ -186,12 +191,7 @@ def get_args():
         default=1.0,
         help="Multiplicative scaling factor for targets (e.g., 1000 for fractional BigWig values)",
     )
-    parser.add_argument(
-        "--count-pseudocount",
-        type=float,
-        default=150.0,
-        help="Additive offset before log-transforming count targets (in raw coverage units)",
-    )
+    add_pseudocount_cli_args(parser, default_count_pseudocount=150.0)
 
     # Pretrained weights
     parser.add_argument(
@@ -505,7 +505,9 @@ def main():
         metrics_args={},
         model_args=model_args,
         pretrained=pretrained,
-        count_pseudocount=args.count_pseudocount * target_scale,
+        count_pseudocount=resolve_count_pseudocount_from_args(
+            args, bin_size=output_bin_size, target_scale=target_scale,
+        ),
     )
 
     # 3. Training
