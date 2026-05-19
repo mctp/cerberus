@@ -908,6 +908,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#pre-trainer-gpu-work-under-ddp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-Trainer GPU work under DDP
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1284,6 +1295,16 @@
 <li>The <code>prepare_data()</code> hook runs on rank 0 only. Complexity metrics are cached to disk and loaded by all ranks in <code>setup()</code>, avoiding redundant FASTA reads.</li>
 </ul>
 </div>
+<h2 id="pre-trainer-gpu-work-under-ddp">Pre-Trainer GPU work under DDP<a class="headerlink" href="#pre-trainer-gpu-work-under-ddp" title="Permanent link">&para;</a></h2>
+<p><code>pl.Trainer</code> calls <code>torch.cuda.set_device(LOCAL_RANK)</code> for you, but only
+inside <code>trainer.fit()</code>. Any GPU work in user code <em>before</em> the Trainer
+runs — calibration passes, statistics over a model, on-GPU warmups —
+needs to pick the right card itself; otherwise every rank lands on
+<code>cuda:0</code>.</p>
+<p><code>cerberus.utils.resolve_device("auto")</code> handles this: when CUDA is
+available and <code>LOCAL_RANK</code> is set in the environment, it returns
+<code>cuda:LOCAL_RANK</code> instead of bare <code>cuda</code>. Single-process callers (no
+<code>LOCAL_RANK</code>) get <code>cuda</code> exactly as before.</p>
 
 
 
@@ -1306,7 +1327,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 05:25:05 UTC">March 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 18, 2026 19:05:55 UTC">May 18, 2026</span>
   </span>
 
     

@@ -30,6 +30,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class DataConfig(BaseModel)`** — Configuration for input/output data handling.
 - **`class TrainConfig(BaseModel)`** — Configuration for training hyperparameters.
 - **`class PretrainedConfig(BaseModel)`** — Configuration for loading pretrained weights into a model sub-module.
+- **`class FreezeSpec(BaseModel)`** — Declarative freeze rule applied after model instantiation.
 - **`class ModelConfig(BaseModel)`** — Configuration for the model architecture.
 - **`class CerberusConfig(BaseModel)`** — Combined configuration for Cerberus.
 
@@ -165,7 +166,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss)`** — Poisson Multinomial Loss (Coupled/Global Count).
 - **`class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss)`** — Negative Binomial Multinomial Loss.
 - **`class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss)`** — Negative Binomial Multinomial Loss (Coupled).
-- **`class DifferentialCountLoss(nn.Module)`** — Phase 2 fine-tuning loss supervising ``log_counts[:, B] - log_counts[:, A]``.
+- **`class DifferentialCountLoss(nn.Module)`** — Differential count-head loss supervising ``log_counts[:, B] - log_counts[:, A]``.
 - **`class DalmatianLoss(nn.Module)`** — Peak-conditioned factorized loss for the Dalmatian architecture.
 
 ### `cerberus.metrics`
@@ -176,6 +177,9 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class ProfileMeanSquaredError(MeanSquaredError)`** — Mean Squared Error on Probability Profiles.
 - **`class LogCountsMeanSquaredError(MeanSquaredError)`** — Mean Squared Error on Log Counts.
 - **`class LogCountsPearsonCorrCoef(Metric)`** — Pearson Correlation on Log Counts.
+- **`class DifferentialLogCountsMeanSquaredError(MeanSquaredError)`** — Mean Squared Error on differential log-count targets.
+- **`class DifferentialLogCountsRootMeanSquaredError(DifferentialLogCountsMeanSquaredError)`** — Root Mean Squared Error on differential log-count targets.
+- **`class DifferentialLogCountsPearsonCorrCoef(Metric)`** — Pearson Correlation on differential log-count targets.
 - **`class DefaultMetricCollection(MetricCollection)`** — Default MetricCollection used for training/validation.
 
 ### `cerberus.layers`
@@ -220,8 +224,9 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class BPNet1024(BPNet)`** — BPNet1024: A configuration of BPNet optimized for 2112 -> 1024 prediction without cropping.
 - **`class BPNetLoss(MSEMultinomialLoss)`** — BPNet Loss with parameters fixed to match chrombpnet-pytorch implementation.
 - **`class MultitaskBPNet(BPNet)`** — Multi-task BPNet: shared dilated tower with N condition-specific output channels.
-- **`class MultitaskBPNetLoss(MSEMultinomialLoss)`** — Phase 1 loss for :class:`MultitaskBPNet`.
+- **`class MultitaskBPNetLoss(MSEMultinomialLoss)`** — Multi-task BPNet loss: per-channel profile + count for :class:`MultitaskBPNet`.
 - **`class BPNetMetricCollection(MetricCollection)`** — MetricCollection for BPNet models.
+- **`class DifferentialBPNetMetricCollection(MetricCollection)`** — MetricCollection for log-fold-change supervision (``DifferentialCountLoss``).
 
 ### `cerberus.models.pomeranian`
 

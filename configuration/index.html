@@ -785,6 +785,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#choosing-count_pseudocount" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing count_pseudocount
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Choosing count_pseudocount">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#logcount-pc-losses-read-coverage-specification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        log(count + pc) losses — read-coverage specification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logc_b-pc-c_a-pc-losses-data-derived-noise-floor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        log((c_b + pc) / (c_a + pc)) losses — data-derived noise floor
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#freezing-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Freezing Parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#datamodule-runtime-arguments" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1279,7 +1329,7 @@
 <p>All config types can be imported directly from <code>cerberus</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">GenomeConfig</span><span class="p">,</span> <span class="n">DataConfig</span><span class="p">,</span> <span class="n">SamplerConfig</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">TrainConfig</span><span class="p">,</span> <span class="n">ModelConfig</span><span class="p">,</span> <span class="n">PretrainedConfig</span><span class="p">,</span> <span class="n">CerberusConfig</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">TrainConfig</span><span class="p">,</span> <span class="n">ModelConfig</span><span class="p">,</span> <span class="n">PretrainedConfig</span><span class="p">,</span> <span class="n">FreezeSpec</span><span class="p">,</span> <span class="n">CerberusConfig</span><span class="p">,</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">)</span>
 </code></pre></div>
 <div class="admonition warning">
@@ -1522,14 +1572,113 @@ key remains <code>"model_config"</code> (no underscore).</p>
 <a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a>    <span class="c1"># Empty list means no pretrained weights.</span>
 <a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a>    <span class="n">pretrained</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">PretrainedConfig</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a>
-<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>    <span class="c1"># Additive offset before log-transforming count targets, specified in scaled</span>
-<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>    <span class="c1"># units (i.e. raw coverage × target_scale). Injected into loss_args and</span>
-<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>    <span class="c1"># metrics_args automatically so that loss and metrics receive the value in</span>
-<a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>    <span class="c1"># their native (scaled) units.</span>
-<a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>    <span class="c1"># A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.</span>
-<a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>    <span class="c1"># Set to 0.0 for Poisson/NB losses that do not use a pseudocount.</span>
-<a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a>    <span class="n">count_pseudocount</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
+<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>    <span class="c1"># List of freeze rules applied after model instantiation and after</span>
+<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>    <span class="c1"># pretrained weights (if any) are loaded. Empty list = fully trainable.</span>
+<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>    <span class="c1"># See the &quot;Freezing Parameters&quot; section below for FreezeSpec semantics.</span>
+<a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>    <span class="n">freeze</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">FreezeSpec</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>
+<a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>    <span class="c1"># Additive offset before log-transforming count targets, specified in scaled</span>
+<a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a>    <span class="c1"># units (i.e. raw coverage × target_scale). Injected into loss_args and</span>
+<a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a>    <span class="c1"># metrics_args automatically so that loss and metrics receive the value in</span>
+<a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a>    <span class="c1"># their native (scaled) units.</span>
+<a id="__codelineno-8-45" name="__codelineno-8-45" href="#__codelineno-8-45"></a>    <span class="c1"># A value of 1.0 with target_scale=1.0 reproduces the original log1p behaviour.</span>
+<a id="__codelineno-8-46" name="__codelineno-8-46" href="#__codelineno-8-46"></a>    <span class="c1"># Set to 0.0 for Poisson/NB losses that do not use a pseudocount.</span>
+<a id="__codelineno-8-47" name="__codelineno-8-47" href="#__codelineno-8-47"></a>    <span class="n">count_pseudocount</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
 </code></pre></div>
+<h2 id="choosing-count_pseudocount">Choosing <code>count_pseudocount</code><a class="headerlink" href="#choosing-count_pseudocount" title="Permanent link">&para;</a></h2>
+<p>The value <code>count_pseudocount</code> consumes depends on the count loss it
+feeds.  Two roles arise in practice, and <code>cerberus.pseudocount</code>
+provides a helper for each.</p>
+<h3 id="logcount-pc-losses-read-coverage-specification"><code>log(count + pc)</code> losses — read-coverage specification<a class="headerlink" href="#logcount-pc-losses-read-coverage-specification" title="Permanent link">&para;</a></h3>
+<p>For absolute-count losses like the BPNet count head, the pseudocount
+is an additive <code>log(0)</code>-avoidance offset.  Picking it by hand requires
+reasoning about read length, bin size, target scale, and (for CPM
+bigWigs) library depth.  Instead, specify the number of reads of
+coverage the pseudocount should correspond to:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_read_coverage_pseudocount</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">count_pseudocount</span> <span class="o">=</span> <span class="n">resolve_read_coverage_pseudocount</span><span class="p">(</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">reads_equiv</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>        <span class="c1"># &quot;shrink near 1 read of coverage&quot;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">read_length</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">bin_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">target_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">input_scale</span><span class="o">=</span><span class="s2">&quot;raw&quot;</span><span class="p">,</span>      <span class="c1"># &quot;cpm&quot; requires total_reads</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p">)</span>
+</code></pre></div>
+<p>The training tools (<code>train_bpnet</code>, <code>train_asap</code>, <code>train_biasnet</code>,
+<code>train_gopher</code>, <code>train_pomeranian</code>, <code>train_dalmatian</code>,
+<code>train_dalmatian_multitask</code>, <code>train_chrombpnet_bias</code>, <code>train_chrombpnet</code>,
+and <code>train_multitask_differential_bpnet</code>'s Phase 1) expose this
+calibration via the CLI: <code>--pseudocount-reads</code>, <code>--read-length</code>,
+<code>--input-scale {raw,cpm}</code>, and <code>--total-reads</code>.  When
+<code>--pseudocount-reads</code> is set, the helper computes the scaled value and
+the legacy <code>--count-pseudocount</code> flag is ignored.</p>
+<h3 id="logc_b-pc-c_a-pc-losses-data-derived-noise-floor"><code>log((c_b + pc) / (c_a + pc))</code> losses — data-derived noise floor<a class="headerlink" href="#logc_b-pc-c_a-pc-losses-data-derived-noise-floor" title="Permanent link">&para;</a></h3>
+<p>For log-fold-change losses such as <code>DifferentialCountLoss</code>, the
+pseudocount acts as an empirical-Bayes shrinkage prior.  The right
+value depends on what "low coverage" means <em>for this dataset</em>; the
+helper picks it from the training fold's per-channel quantile:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_noise_floor_pseudocount</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># Datamodule must already be set up.</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">count_pseudocount</span> <span class="o">=</span> <span class="n">resolve_noise_floor_pseudocount</span><span class="p">(</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">datamodule</span><span class="p">,</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">quantile</span><span class="o">=</span><span class="mf">0.10</span><span class="p">,</span>          <span class="c1"># 10th percentile per channel</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span>                <span class="c1"># reproducible across runs</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="p">)</span>
+</code></pre></div>
+<p>The helper takes the per-channel quantile and then the <strong>max</strong> across
+channels so the deeper-coverage channel's noise floor is still shrunk.</p>
+<p>For losses that do not use a pseudocount (Poisson / NB), set
+<code>count_pseudocount=0.0</code>.</p>
+<h2 id="freezing-parameters">Freezing Parameters<a class="headerlink" href="#freezing-parameters" title="Permanent link">&para;</a></h2>
+<p><code>ModelConfig.freeze</code> is a list of <code>FreezeSpec</code> rules applied once
+after the model is built and pretrained weights (if any) are
+loaded.  Each rule selects a module or parameter by exact path and
+sets <code>requires_grad=False</code>; module matches additionally put the
+subtree in <code>.eval()</code> mode (unless <code>eval_mode=False</code>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus</span><span class="w"> </span><span class="kn">import</span> <span class="n">FreezeSpec</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">FreezeSpec</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="c1"># Exact path into the model.</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="c1"># - Matches a module: &quot;bias_model&quot;, &quot;res_layers.0&quot;, &quot;encoder.block.conv&quot;</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    <span class="c1"># - Matches a parameter: &quot;iconv.weight&quot;</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="n">pattern</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="c1"># If True (default), call .eval() on matched module roots so Dropout</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="c1"># becomes identity and BatchNorm stops updating running stats.</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="c1"># Ignored for parameter-only matches.</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>    <span class="n">eval_mode</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+</code></pre></div>
+<p><strong>Pattern semantics.</strong> Patterns are exact paths — not globs. A
+pattern must equal a name in <code>named_modules()</code> (subtree freeze) or
+<code>named_parameters()</code> (single-parameter freeze).  A spec that
+matches neither raises at <code>apply_freeze</code> time so typos can't
+silently become no-ops.  Overlapping specs are idempotent.</p>
+<p><strong>Interaction with DDP.</strong> If any parameter is frozen, cerberus
+automatically promotes <code>strategy="ddp_find_unused_parameters_false"</code>
+to <code>ddp_find_unused_parameters_true</code> for that run (frozen params
+violate the <code>_false</code> assumption that every parameter gets a
+gradient every step).  Tools that never freeze keep the faster
+<code>_false</code> default.</p>
+<p><strong>Examples.</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cerberus</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span><span class="p">,</span> <span class="n">FreezeSpec</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Freeze a whole sub-model (Dalmatian bias branch).</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">ModelConfig</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">freeze</span><span class="o">=</span><span class="p">[</span><span class="n">FreezeSpec</span><span class="p">(</span><span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;bias_model&quot;</span><span class="p">)])</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># Freeze BPNet&#39;s trunk + profile head, fine-tune only count_dense.</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">ModelConfig</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">freeze</span><span class="o">=</span><span class="p">[</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    <span class="n">FreezeSpec</span><span class="p">(</span><span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;iconv&quot;</span><span class="p">),</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    <span class="n">FreezeSpec</span><span class="p">(</span><span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;res_layers&quot;</span><span class="p">),</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>    <span class="n">FreezeSpec</span><span class="p">(</span><span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;profile_conv&quot;</span><span class="p">),</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="p">])</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="c1"># Freeze a single parameter.</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="n">ModelConfig</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">freeze</span><span class="o">=</span><span class="p">[</span><span class="n">FreezeSpec</span><span class="p">(</span><span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;iconv.weight&quot;</span><span class="p">)])</span>
+</code></pre></div>
+<p>See <code>docs/models.md</code> for the <code>named_children()</code> of each shipped
+architecture.</p>
 <h2 id="datamodule-runtime-arguments">DataModule Runtime Arguments<a class="headerlink" href="#datamodule-runtime-arguments" title="Permanent link">&para;</a></h2>
 <p>Arguments passed to <code>CerberusDataModule.__init__</code> for hardware optimization:</p>
 <ul>
@@ -1555,51 +1704,51 @@ key remains <code>"model_config"</code> (no underscore).</p>
 <ul>
 <li>
 <p><strong>Interval Sampler</strong>:
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="s2">&quot;intervals_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/peaks.bed&quot;</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="p">}</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="s2">&quot;intervals_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/peaks.bed&quot;</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="p">}</span>
 </code></pre></div></p>
 </li>
 <li>
 <p><strong>Sliding Window Sampler</strong>:
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="s2">&quot;stride&quot;</span><span class="p">:</span> <span class="mi">50</span>  <span class="c1"># Step size for the sliding window</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="p">}</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p">{</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="s2">&quot;stride&quot;</span><span class="p">:</span> <span class="mi">50</span>  <span class="c1"># Step size for the sliding window</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="p">}</span>
 </code></pre></div></p>
 </li>
 <li>
 <p><strong>Random Sampler</strong>:
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="s2">&quot;num_intervals&quot;</span><span class="p">:</span> <span class="mi">10000</span> <span class="c1"># Number of random intervals to generate</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="p">}</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">{</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="s2">&quot;num_intervals&quot;</span><span class="p">:</span> <span class="mi">10000</span> <span class="c1"># Number of random intervals to generate</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="p">}</span>
 </code></pre></div>
     <em>Note: Intervals are regenerated with a new random seed at the beginning of each epoch.</em></p>
 </li>
 <li>
 <p><strong>Complexity Matched Sampler</strong>:
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="s2">&quot;target_sampler&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;interval&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>        <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;intervals_path&quot;</span><span class="p">:</span> <span class="s2">&quot;peaks.bed&quot;</span><span class="p">}</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="p">},</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="s2">&quot;candidate_sampler&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;random&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>        <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_intervals&quot;</span><span class="p">:</span> <span class="mi">100000</span><span class="p">}</span>
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    <span class="p">},</span>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>    <span class="s2">&quot;bins&quot;</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span>            <span class="c1"># Number of complexity bins (default: 100)</span>
-<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>    <span class="s2">&quot;candidate_ratio&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="c1"># Ratio of candidates to targets (default: 1.0)</span>
-<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>    <span class="s2">&quot;metrics&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;gc&quot;</span><span class="p">,</span> <span class="s2">&quot;dust&quot;</span><span class="p">,</span> <span class="s2">&quot;cpg&quot;</span><span class="p">]</span> <span class="c1"># Metrics to match (default: [&quot;gc&quot;, &quot;dust&quot;, &quot;cpg&quot;])</span>
-<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="p">}</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p">{</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>    <span class="s2">&quot;target_sampler&quot;</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;interval&quot;</span><span class="p">,</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>        <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;intervals_path&quot;</span><span class="p">:</span> <span class="s2">&quot;peaks.bed&quot;</span><span class="p">}</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>    <span class="p">},</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>    <span class="s2">&quot;candidate_sampler&quot;</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;random&quot;</span><span class="p">,</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>        <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_intervals&quot;</span><span class="p">:</span> <span class="mi">100000</span><span class="p">}</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="p">},</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    <span class="s2">&quot;bins&quot;</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span>            <span class="c1"># Number of complexity bins (default: 100)</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>    <span class="s2">&quot;candidate_ratio&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="c1"># Ratio of candidates to targets (default: 1.0)</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>    <span class="s2">&quot;metrics&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;gc&quot;</span><span class="p">,</span> <span class="s2">&quot;dust&quot;</span><span class="p">,</span> <span class="s2">&quot;cpg&quot;</span><span class="p">]</span> <span class="c1"># Metrics to match (default: [&quot;gc&quot;, &quot;dust&quot;, &quot;cpg&quot;])</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="p">}</span>
 </code></pre></div></p>
 </li>
 <li>
 <p><strong>Peak Sampler</strong>:
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">{</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="s2">&quot;intervals_path&quot;</span><span class="p">:</span> <span class="s2">&quot;peaks.bed&quot;</span><span class="p">,</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    <span class="s2">&quot;background_ratio&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>  <span class="c1"># Ratio of complexity-matched negatives to peaks (default: 1.0)</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="s2">&quot;min_candidates&quot;</span><span class="p">:</span> <span class="mi">10000</span><span class="p">,</span>  <span class="c1"># Minimum number of candidates for background pool (default: 10000)</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="s2">&quot;candidate_oversample_factor&quot;</span><span class="p">:</span> <span class="mf">20.0</span> <span class="c1"># Factor to oversample candidates relative to peaks (default: 20.0)</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="p">}</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="p">{</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>    <span class="s2">&quot;intervals_path&quot;</span><span class="p">:</span> <span class="s2">&quot;peaks.bed&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>    <span class="s2">&quot;background_ratio&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>  <span class="c1"># Ratio of complexity-matched negatives to peaks (default: 1.0)</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="s2">&quot;min_candidates&quot;</span><span class="p">:</span> <span class="mi">10000</span><span class="p">,</span>  <span class="c1"># Minimum number of candidates for background pool (default: 10000)</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="s2">&quot;candidate_oversample_factor&quot;</span><span class="p">:</span> <span class="mf">20.0</span> <span class="c1"># Factor to oversample candidates relative to peaks (default: 20.0)</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="p">}</span>
 </code></pre></div>
     <em>Note: <code>PeakSampler</code> automatically creates a complexity-matched background set using a <code>RandomSampler</code> as the candidate pool, excluding the peaks themselves. Set <code>background_ratio=0.0</code> to disable background sampling.</em></p>
 </li>
@@ -1626,7 +1775,7 @@ key remains <code>"model_config"</code> (no underscore).</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 05:25:05 UTC">March 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 19, 2026 11:07:27 UTC">May 19, 2026</span>
   </span>
 
     
