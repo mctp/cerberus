@@ -694,9 +694,13 @@ model_config = ModelConfig(
 )
 ```
 
-### Stage-2 training tool
+### Training tools
 
-End-to-end stage-2 training (load stage-1 bias, freeze it, optionally calibrate `bias_logcount_offset`, train the full ChromBPNet, export `chrombpnet_wo_bias.pt` next to each `model.pt`, run held-out predictions on the test fold) lives in `tools/train_chrombpnet.py`:
+The ChromBPNet workflow ships as two scripts that share the architecture defaults from `_ACCESSIBILITY_DEFAULTS` / `_BIAS_DEFAULTS` on the model module.
+
+**Stage 1 — bias-branch BPNet** (`tools/train_chrombpnet_bias.py`).  Trains the small BPNet on non-peak background regions (`--sampler-type negative_peak` by default, `--background-ratio 1.0`).  Defaults match the reference bias-branch shape (`--filters 128 --n-layers 4`, `--count-pseudocount 1.0`, `--target-scale 1.0`).  The exported `model.pt` is loaded into `ChromBPNet.bias_model` in stage 2.  See `examples/scatac_kidney_chrombpnet_bias.sh`.
+
+**Stage 2 — full ChromBPNet** (`tools/train_chrombpnet.py`).  Loads the stage-1 bias checkpoint via `--pretrained-bias`, freezes the bias subtree by default through `ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]` (use `--no-freeze-bias` to keep both branches trainable), optionally runs `--adjust-bias-logcounts` to calibrate the scalar `ChromBPNet.bias_logcount_offset` on non-peak training regions, then trains the full model on peaks.  On rank 0 the post-training pass exports an accessibility-only `chrombpnet_wo_bias.pt` next to each `model.pt`, plots training curves, and runs a held-out prediction evaluation on the test fold:
 
 ```bash
 python tools/train_chrombpnet.py \
@@ -706,7 +710,9 @@ python tools/train_chrombpnet.py \
     --output-dir models/chrombpnet
 ```
 
-The trainer freezes the bias subtree by default via `ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]` (mirrors `--freeze-bias` on the Dalmatian trainer). Use `--no-freeze-bias` to keep both branches trainable. `--adjust-bias-logcounts` runs `estimate_bias_logcount_offset` on non-peak training regions before training begins and threads the result through `ChromBPNet.bias_logcount_offset`. See `examples/scatac_kidney_chrombpnet.sh` for a complete invocation.
+See `examples/scatac_kidney_chrombpnet.sh` for the complete invocation.
+
+CLI naming note: the stage-1 trainer's `--filters` / `--n-layers` / etc. configure the *bias* model, while the stage-2 trainer's `--filters` / `--n-layers` configure the *accessibility* model and the bias-branch flags are prefixed `--bias-filters` / `--bias-layers` / etc.  Custom stage-1 architecture must be mirrored under the prefixed names in stage 2 or the loaded bias `state_dict` will mismatch shapes.
 
 ### References
 

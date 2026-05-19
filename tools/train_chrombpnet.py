@@ -48,8 +48,6 @@ from _pseudocount_cli import (
     resolve_count_pseudocount_from_args,
 )
 
-logger = logging.getLogger(__name__)
-
 
 def _parse_alpha(value: str) -> float | str:
     if value == "adaptive":
@@ -69,7 +67,7 @@ def _export_accessibility_checkpoints(root_dir: Path) -> None:
         acc_sd = extract_prefix(state_dict, "accessibility_model")
         out_path = model_pt.with_name("chrombpnet_wo_bias.pt")
         torch.save(acc_sd, out_path)
-        logger.info("Saved accessibility-only checkpoint to %s", out_path)
+        logging.info("Saved accessibility-only checkpoint to %s", out_path)
 
 
 def _plot_training_curves(root_dir: Path) -> None:
@@ -77,16 +75,16 @@ def _plot_training_curves(root_dir: Path) -> None:
     try:
         from plot_training_results import plot_metrics
     except Exception as exc:  # pragma: no cover - depends on optional plotting deps
-        logger.warning("Skipping training plots: %s", exc)
+        logging.warning("Skipping training plots: %s", exc)
         return
 
     metrics_files = sorted(root_dir.rglob("metrics.csv"))
     if not metrics_files:
-        logger.warning("No metrics.csv files found under %s; skipping plots.", root_dir)
+        logging.warning("No metrics.csv files found under %s; skipping plots.", root_dir)
         return
 
     for metrics_path in metrics_files:
-        logger.info("Plotting training metrics from %s", metrics_path)
+        logging.info("Plotting training metrics from %s", metrics_path)
         plot_metrics(metrics_path, metrics_path.parent)
 
 
@@ -115,7 +113,7 @@ def _run_prediction_evaluation(args: argparse.Namespace, model_root: Path) -> No
         "--include-background",
     ]
 
-    logger.info(
+    logging.info(
         "Running prediction-time evaluation; outputs will be written to %s", eval_dir
     )
     subprocess.run(cmd, check=True)
@@ -134,12 +132,25 @@ def _estimate_bias_offset(
     a temporary CerberusDataModule, and returns the mean log-count residual
     suitable for ``ChromBPNet.bias_logcount_offset``.
 
-    Note: under DDP every rank repeats this estimation independently.  The
-    result is deterministic across ranks (seeded sampler) so consistency
-    is preserved -- it is wasteful but correct.  A future refactor could
-    gate the estimation to rank 0 and broadcast the scalar, but
-    torch.distributed is not initialised at this point in the tool.
+    Two known limitations for future refactor:
+
+    - Under DDP every rank repeats this estimation independently.  The
+      result is deterministic across ranks (seeded sampler) so consistency
+      is preserved -- it is wasteful but correct.  A future refactor could
+      gate the estimation to rank 0 and broadcast the scalar, but
+      torch.distributed is not initialised at this point in the tool.
+    - The training dataloader applies jitter, so the offset is averaged
+      over jittered windows rather than fixed centred windows.  Reference
+      ``chrombpnet-pytorch`` behaves the same way (it iterates the same
+      training loader).  Statistical efficiency only -- the mean still
+      converges to the right scalar.
     """
+    # TODO: ``residual_architecture`` is shared with the accessibility
+    # branch (single CLI flag in stage 2).  If the user overrides it here
+    # but stage-1 trained the bias with a different residual variant, the
+    # subsequent ``load_pretrained_weights`` raises on shape mismatch.
+    # A bias-prefixed flag (``--bias-residual-architecture``) would let
+    # them diverge cleanly.
     bias_model = BPNet(
         input_len=data_config.input_len,
         output_len=data_config.output_len,
@@ -167,6 +178,11 @@ def _estimate_bias_offset(
         ],
     )
 
+    # TODO: ``padded_size`` reuses the main trainer's ``max_jitter``, which
+    # forces background intervals to support the same ±jitter that peak
+    # training needs.  For pure offset evaluation we don't need jitter; a
+    # data_config copy with ``max_jitter=0`` would let the sampler use
+    # narrower background regions and tighten the estimate.
     padded_size = data_config.input_len + 2 * data_config.max_jitter
     negative_sampler_config = SamplerConfig(
         sampler_type="negative_peak",
@@ -192,7 +208,7 @@ def _estimate_bias_offset(
     )
 
     device = resolve_device()
-    logger.info(
+    logging.info(
         "Estimating bias log-count offset on non-peak training data with device=%s",
         device,
     )
@@ -203,7 +219,7 @@ def _estimate_bias_offset(
         device=device,
         max_batches=args.adjust_bias_max_batches,
     )
-    logger.info("Estimated bias_logcount_offset=%.6f", delta)
+    logging.info("Estimated bias_logcount_offset=%.6f", delta)
     return delta
 
 
@@ -316,6 +332,14 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--profile-kernel-size", type=int, default=75)
 
     # --- Bias branch architecture (must match stage-1 trainer) ---
+    # TODO: the stage-1 trainer exposes its bias-model arch under the
+    # unprefixed flags --filters / --n-layers / --conv-kernel-size / etc.
+    # while stage-2 prefixes them as --bias-* (because --filters here
+    # already controls the accessibility branch).  Users overriding
+    # stage-1 architecture flags must remember to mirror them with the
+    # --bias-* equivalents in stage 2 or the loaded bias state_dict will
+    # mismatch shapes at load time.  A future refactor should unify the
+    # CLI vocabulary.
     parser.add_argument("--bias-filters", type=int, default=128)
     parser.add_argument("--bias-layers", type=int, default=4)
     parser.add_argument("--bias-conv-kernel-size", type=int, default=21)
@@ -366,7 +390,7 @@ def get_args() -> argparse.Namespace:
 
 def main() -> None:
     cerberus.setup_logging()
-    logger.info("Starting ChromBPNet training tool...")
+    logging.info("Starting ChromBPNet training tool...")
     args = get_args()
 
     data_dir = Path(args.data_dir).resolve()
@@ -381,7 +405,7 @@ def main() -> None:
             raise ValueError(
                 f"Fasta path must be provided for genome {args.genome} if not hg38"
             )
-        logger.info("Downloading/Checking Human Reference (hg38)...")
+        logging.info("Downloading/Checking Human Reference (hg38)...")
         genome_files = download_human_reference(data_dir / "genome", name="hg38")
         fasta_path = genome_files["fasta"]
         blacklist_path = args.blacklist or genome_files["blacklist"]
@@ -462,7 +486,13 @@ def main() -> None:
     bias_logcount_offset = 0.0
     if args.adjust_bias_logcounts:
         if args.multi:
-            logger.warning(
+            # TODO: estimate the offset per-fold inside the train_multi loop
+            # instead of once at the top.  Each fold's training set differs
+            # (different non-peak background) so a per-fold offset would be
+            # marginally more accurate.  Acceptable for now -- the offset
+            # captures bulk dataset-level bias scaling that is approximately
+            # fold-invariant.
+            logging.warning(
                 "--adjust-bias-logcounts with --multi estimates a single shared "
                 "offset using the configured val/test folds, then reuses it for all folds."
             )
@@ -551,12 +581,12 @@ def main() -> None:
 
     precision_args = get_precision_kwargs(args.precision, accelerator, devices)
 
-    logger.info("Genome Config:\n%s", pformat(genome_config))
-    logger.info("Data Config:\n%s", pformat(data_config))
-    logger.info("Sampler Config:\n%s", pformat(sampler_config))
-    logger.info("Train Config:\n%s", pformat(train_config))
-    logger.info("Model Config:\n%s", pformat(model_config))
-    logger.info("Precision and Hardware Args:\n%s", pformat(precision_args))
+    logging.info("Genome Config:\n%s", pformat(genome_config))
+    logging.info("Data Config:\n%s", pformat(data_config))
+    logging.info("Sampler Config:\n%s", pformat(sampler_config))
+    logging.info("Train Config:\n%s", pformat(train_config))
+    logging.info("Model Config:\n%s", pformat(model_config))
+    logging.info("Precision and Hardware Args:\n%s", pformat(precision_args))
 
     train_fn = train_multi if args.multi else train_single
     train_fn(
@@ -580,7 +610,7 @@ def main() -> None:
         _export_accessibility_checkpoints(output_dir)
         _plot_training_curves(output_dir)
         _run_prediction_evaluation(args, output_dir)
-        logger.info(
+        logging.info(
             "Training finished. Logs and checkpoints are in subdirectories of %s",
             output_dir,
         )

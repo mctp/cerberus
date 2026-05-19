@@ -11,6 +11,8 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
+import torch
+
 # The trainer uses a sibling ``from _pseudocount_cli import ...`` that
 # resolves naturally when the file is run as a script (sys.path[0] is
 # ``tools/``).  When pytest imports it as ``tools.train_chrombpnet`` the
@@ -20,7 +22,10 @@ _TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
-from tools.train_chrombpnet import _run_prediction_evaluation  # noqa: E402
+from tools.train_chrombpnet import (  # noqa: E402
+    _export_accessibility_checkpoints,
+    _run_prediction_evaluation,
+)
 
 
 def _predict_eval_args(**overrides):
@@ -51,3 +56,27 @@ def test_run_prediction_evaluation_defaults_include_background(tmp_path: Path):
     assert cmd[cmd.index("--use_folds") + 1] == "test"
     assert cmd[cmd.index("--seed") + 1] == "1234"
     assert Path(cmd[cmd.index("--output") + 1]).name == "predictions.tsv.gz"
+
+
+def test_export_accessibility_checkpoints_strips_to_acc_only(tmp_path: Path):
+    """``chrombpnet_wo_bias.pt`` contains only ``accessibility_model.*`` keys
+    (with the prefix stripped) -- ``bias_model.*`` and
+    ``bias_logcount_offset`` are dropped from the exported file."""
+    fold_dir = tmp_path / "fold_0"
+    fold_dir.mkdir()
+    full_state_dict = {
+        "accessibility_model.iconv.weight": torch.zeros(2, 4, 3),
+        "accessibility_model.profile_conv.weight": torch.ones(1, 2, 3),
+        "bias_model.iconv.weight": torch.zeros(2, 4, 3),
+        "bias_logcount_offset": torch.tensor(0.42),
+    }
+    torch.save(full_state_dict, fold_dir / "model.pt")
+
+    _export_accessibility_checkpoints(tmp_path)
+
+    out_path = fold_dir / "chrombpnet_wo_bias.pt"
+    assert out_path.exists()
+    acc_state_dict = torch.load(out_path, map_location="cpu", weights_only=True)
+    assert set(acc_state_dict.keys()) == {"iconv.weight", "profile_conv.weight"}
+    assert torch.equal(acc_state_dict["iconv.weight"], torch.zeros(2, 4, 3))
+    assert torch.equal(acc_state_dict["profile_conv.weight"], torch.ones(1, 2, 3))
