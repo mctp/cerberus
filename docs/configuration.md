@@ -304,6 +304,13 @@ count_pseudocount = resolve_read_coverage_pseudocount(
 )
 ```
 
+The single-task training tools (`train_bpnet`, `train_asap`,
+`train_biasnet`, `train_gopher`, `train_pomeranian`, `train_dalmatian`,
+`train_dalmatian_multitask`) expose this calibration via the CLI:
+`--pseudocount-reads`, `--read-length`, `--input-scale {raw,cpm}`, and
+`--total-reads`.  When `--pseudocount-reads` is set, the helper computes
+the scaled value and the legacy `--count-pseudocount` flag is ignored.
+
 ### `log((c_b + pc) / (c_a + pc))` losses — data-derived noise floor
 
 For log-fold-change losses such as `DifferentialCountLoss`, the

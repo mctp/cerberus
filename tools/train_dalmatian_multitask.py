@@ -43,7 +43,7 @@ from cerberus.genome import create_genome_config
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
 
-from _pseudocount_cli import (  # noqa: E402  -- sibling tool helper
+from _pseudocount_cli import (
     add_pseudocount_cli_args,
     resolve_count_pseudocount_from_args,
 )
@@ -459,10 +459,11 @@ def main():
             base_loss_args = {"count_per_channel": True}
 
         loss_args: dict[str, object] = {
-            # See note in train_dalmatian.py: ``instantiate_metrics_and_loss``
-            # unconditionally overrides ``loss_args["count_pseudocount"]`` with
-            # the scaled value from ``ModelConfig.count_pseudocount`` below, so
-            # an entry here would be silently discarded.
+            # ``count_pseudocount`` is intentionally omitted here:
+            # ``instantiate_metrics_and_loss`` unconditionally overrides
+            # ``loss_args["count_pseudocount"]`` with the scaled
+            # ``ModelConfig.count_pseudocount`` value below, so any entry
+            # here would be silently discarded.
             "base_loss_cls": base_loss_cls,
             "base_loss_args": base_loss_args,
             "bias_weight": args.bias_weight,

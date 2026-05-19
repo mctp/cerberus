@@ -37,7 +37,7 @@ from cerberus.genome import create_genome_config
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
 
-from _pseudocount_cli import (  # noqa: E402  -- sibling tool helper
+from _pseudocount_cli import (
     add_pseudocount_cli_args,
     resolve_count_pseudocount_from_args,
 )
