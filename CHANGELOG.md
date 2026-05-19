@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`cerberus.pseudocount` module with two role-named helpers.**
+  `resolve_read_coverage_pseudocount(reads_equiv, read_length,
+  bin_size, target_scale, input_scale, total_reads)` converts a
+  user-facing read-coverage specification into the scaled value for
+  `ModelConfig.count_pseudocount` (Phase 1 / single-task absolute
+  models — the pseudocount as a `log(0)`-avoidance offset).
+  `resolve_noise_floor_pseudocount(datamodule, quantile=0.10,
+  n_samples=2000, seed=None)` derives the value from the training
+  fold's per-channel count distribution (Phase 2 differential — the
+  pseudocount as an empirical-Bayes shrinkage prior in
+  `log((c_b + pc) / (c_a + pc))`). The Phase-2 helper takes
+  per-channel quantiles and the **max** across channels so the deeper
+  condition's noise floor is still shrunk. Both names emphasise the
+  pseudocount's role rather than the calibration method. Seeded
+  reproducibility flows through `compute_count_quantile_samples`.
 - **`CerberusDataModule.compute_count_quantile_samples()`.** New method
   that draws length-summed target-count samples from the training fold
   for quantile-based Phase-2 pseudocount calibration. Mirrors the
