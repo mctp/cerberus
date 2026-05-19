@@ -85,6 +85,9 @@ def test_chrombpnet_combines_logits_and_counts_exactly():
         logits=torch.tensor([[[0.2, -0.5, 1.1]]]),
         log_counts=torch.tensor([[1.5]]),
     )
+    # Mutating the wrapper-level buffer here mirrors the post-forward
+    # arithmetic; chrombpnet-pytorch achieves the same effect by mutating
+    # bias_model.linear.bias before training.
     model.bias_logcount_offset.fill_(0.25)  # type: ignore[operator]
 
     out = model(torch.randn(2, 4, 128))

@@ -183,9 +183,9 @@ class ChromBPNet(nn.Module):
         acc_out = self.accessibility_model(x)
         bias_out = self.bias_model(x)
 
-        # Buffer is registered as float32; cast to the bias branch's dtype so
-        # autocast (e.g. bf16) still works.  ``.to(device=...)`` is a no-op
-        # in normal use because buffers follow ``model.to(device)``.
+        # Deviation vs chrombpnet-pytorch: reference bakes this offset into
+        # bias_model.linear.bias before training; we apply it at forward time
+        # from a wrapper-level buffer.  Forward math is identical.
         offset = self.bias_logcount_offset.to(
             dtype=bias_out.log_counts.dtype, device=bias_out.log_counts.device,
         )
@@ -303,4 +303,7 @@ def estimate_bias_logcount_offset(
     if not deltas:
         raise ValueError("No batches were available to estimate bias log-count offset")
 
+    # Deviation vs chrombpnet-pytorch: reference mutates
+    # ``bias_model.linear.bias += delta`` here; we return the scalar so the
+    # caller can assign it to ``chrombpnet.bias_logcount_offset``.
     return torch.cat(deltas).mean().item()
