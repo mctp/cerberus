@@ -58,25 +58,47 @@ def test_resolve_device_explicit_cuda_ignores_local_rank():
         assert resolve_device("cuda:0") == torch.device("cuda:0")
 
 
+def _attach_caplog_to_cerberus_utils(caplog):
+    """Bypass ``cerberus.setup_logging``'s ``propagate=False`` for caplog.
+
+    The cerberus library logger disables propagation so its records don't
+    duplicate through host-app root handlers.  pytest's caplog attaches at
+    the root, so it misses records from ``cerberus.utils`` once
+    ``setup_logging`` has been called by *any* prior test in the suite.
+    Attach caplog's handler directly to the leaf logger.
+    """
+    logger = logging.getLogger("cerberus.utils")
+    logger.addHandler(caplog.handler)
+    return logger
+
+
 def test_resolve_device_warns_on_out_of_range_local_rank(caplog):
-    with (
-        patch.dict("os.environ", {"LOCAL_RANK": "3"}),
-        patch("torch.cuda.is_available", return_value=True),
-        patch("torch.cuda.device_count", return_value=2),
-        patch("torch.backends.mps.is_available", return_value=False),
-        caplog.at_level(logging.WARNING, logger="cerberus.utils"),
-    ):
-        assert resolve_device() == torch.device("cuda")
-    assert any("out of range" in m for m in caplog.messages)
+    cerberus_utils = _attach_caplog_to_cerberus_utils(caplog)
+    try:
+        with (
+            patch.dict("os.environ", {"LOCAL_RANK": "3"}),
+            patch("torch.cuda.is_available", return_value=True),
+            patch("torch.cuda.device_count", return_value=2),
+            patch("torch.backends.mps.is_available", return_value=False),
+            caplog.at_level(logging.WARNING, logger="cerberus.utils"),
+        ):
+            assert resolve_device() == torch.device("cuda")
+        assert any("out of range" in m for m in caplog.messages)
+    finally:
+        cerberus_utils.removeHandler(caplog.handler)
 
 
 def test_resolve_device_warns_on_non_integer_local_rank(caplog):
-    with (
-        patch.dict("os.environ", {"LOCAL_RANK": "not-a-number"}),
-        patch("torch.cuda.is_available", return_value=True),
-        patch("torch.cuda.device_count", return_value=2),
-        patch("torch.backends.mps.is_available", return_value=False),
-        caplog.at_level(logging.WARNING, logger="cerberus.utils"),
-    ):
-        assert resolve_device() == torch.device("cuda")
-    assert any("not an integer" in m for m in caplog.messages)
+    cerberus_utils = _attach_caplog_to_cerberus_utils(caplog)
+    try:
+        with (
+            patch.dict("os.environ", {"LOCAL_RANK": "not-a-number"}),
+            patch("torch.cuda.is_available", return_value=True),
+            patch("torch.cuda.device_count", return_value=2),
+            patch("torch.backends.mps.is_available", return_value=False),
+            caplog.at_level(logging.WARNING, logger="cerberus.utils"),
+        ):
+            assert resolve_device() == torch.device("cuda")
+        assert any("not an integer" in m for m in caplog.messages)
+    finally:
+        cerberus_utils.removeHandler(caplog.handler)
