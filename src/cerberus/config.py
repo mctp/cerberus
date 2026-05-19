@@ -238,6 +238,18 @@ class ModelConfig(BaseModel):
     model_args: dict[str, Any]
     pretrained: list[PretrainedConfig] = Field(default_factory=list)
     freeze: list[FreezeSpec] = Field(default_factory=list)
+    # TODO(future-breaking-change): rename ``count_pseudocount`` to
+    # ``count_log_offset``.  This field plugs into two distinct count
+    # losses with different roles: an additive offset in
+    # ``log(count + pc)`` (a Laplace-style pseudocount) and a shrinkage
+    # parameter in ``log((c_b + pc) / (c_a + pc))`` (edgeR's
+    # ``prior.count``).  The current name is accurate only for the
+    # first role; ``count_log_offset`` is role-neutral and
+    # mathematically correct for both.  Deferred because the rename
+    # touches every shipped tool's CLI surface and ``hparams.yaml``
+    # serialisation; land it as a single breaking-change commit with
+    # a migration note.  See ``cerberus.pseudocount`` for helpers
+    # whose names already reflect the role distinction.
     count_pseudocount: float = Field(default=0.0, ge=0)
 
 
