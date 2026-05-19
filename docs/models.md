@@ -694,6 +694,20 @@ model_config = ModelConfig(
 )
 ```
 
+### Stage-2 training tool
+
+End-to-end stage-2 training (load stage-1 bias, freeze it, optionally calibrate `bias_logcount_offset`, train the full ChromBPNet, export `chrombpnet_wo_bias.pt` next to each `model.pt`, run held-out predictions on the test fold) lives in `tools/train_chrombpnet.py`:
+
+```bash
+python tools/train_chrombpnet.py \
+    --bigwig signal.bw --peaks peaks.bed.gz \
+    --pretrained-bias models/bias/single-fold/fold_0/model.pt \
+    --adjust-bias-logcounts \
+    --output-dir models/chrombpnet
+```
+
+The trainer freezes the bias subtree by default via `ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]` (mirrors `--freeze-bias` on the Dalmatian trainer). Use `--no-freeze-bias` to keep both branches trainable. `--adjust-bias-logcounts` runs `estimate_bias_logcount_offset` on non-peak training regions before training begins and threads the result through `ChromBPNet.bias_logcount_offset`. See `examples/scatac_kidney_chrombpnet.sh` for a complete invocation.
+
 ### References
 
 - chrombpnet-pytorch: <https://github.com/jsxlei/chrombpnet-pytorch> (Lei Xiong, after Schreiber).

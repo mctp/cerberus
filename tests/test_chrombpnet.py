@@ -14,9 +14,12 @@ import torch
 import torch.nn as nn
 
 import cerberus.models as _cerberus_models
+from cerberus.config import FreezeSpec, PretrainedConfig
+from cerberus.freeze import apply_freeze
 from cerberus.models import ChromBPNet
 from cerberus.models.chrombpnet import estimate_bias_logcount_offset
 from cerberus.output import ProfileCountOutput
+from cerberus.pretrained import load_pretrained_weights
 from cerberus.utils import import_class
 
 
@@ -252,6 +255,52 @@ def test_estimate_bias_logcount_offset_raises_on_empty_dataloader():
     bias_model = _ConstantCountBiasModel(log_count=0.0)
     with pytest.raises(ValueError, match="No batches were available"):
         estimate_bias_logcount_offset(bias_model, [], device="cpu")
+
+
+def test_pretrained_bias_loads_and_freezes_via_freeze_spec(tmp_path):
+    """End-to-end bias-load + freeze recipe for the stage-2 trainer.
+
+    Pins the freeze migration: ``PretrainedConfig.freeze=True`` was removed,
+    so the equivalent recipe is now ``load_pretrained_weights`` for the
+    bias subtree followed by ``apply_freeze`` with a ``FreezeSpec`` matching
+    ``"bias_model"``.  After this:
+
+    - bias parameters carry the loaded values bit-for-bit and have
+      ``requires_grad=False``;
+    - accessibility parameters are untouched and remain trainable;
+    - ``bias_model`` is in ``.eval()`` mode (so Dropout / BatchNorm inside
+      the frozen subtree stop firing).
+    """
+    source = _make_small_model()
+    with torch.no_grad():
+        for p in source.bias_model.parameters():
+            p.fill_(0.25)
+
+    weights_path = tmp_path / "bias.pt"
+    torch.save(source.bias_model.state_dict(), weights_path)
+
+    target = _make_small_model()
+    load_pretrained_weights(
+        target,
+        [
+            PretrainedConfig(
+                weights_path=str(weights_path),
+                source=None,
+                target="bias_model",
+            )
+        ],
+    )
+    apply_freeze(target, [FreezeSpec(pattern="bias_model", eval_mode=True)])
+
+    for src, dst in zip(
+        source.bias_model.parameters(), target.bias_model.parameters(), strict=True,
+    ):
+        assert torch.allclose(src, dst)
+        assert dst.requires_grad is False
+
+    assert all(p.requires_grad for p in target.accessibility_model.parameters())
+    assert target.bias_model.training is False
+    assert target.accessibility_model.training is True
 
 
 def test_estimate_bias_logcount_offset_honors_max_batches():

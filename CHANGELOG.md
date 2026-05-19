@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`tools/train_chrombpnet.py`: stage-2 ChromBPNet trainer.**  Loads a
+  pre-trained small-BPNet bias checkpoint, freezes the bias subtree via
+  `ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]`
+  (use `--no-freeze-bias` to keep both branches trainable), optionally
+  calibrates the scalar `bias_logcount_offset` on non-peak regions
+  before training (`--adjust-bias-logcounts`), trains the full
+  `ChromBPNet` through the standard `train_single` / `train_multi`
+  pipeline, then on rank 0 exports an accessibility-only
+  `chrombpnet_wo_bias.pt` checkpoint next to each `model.pt`, plots
+  training curves, and runs a held-out prediction evaluation on the
+  test fold.  Example invocation in
+  `examples/scatac_kidney_chrombpnet.sh`.  CLI-construction logic
+  guarded by `tests/test_chrombpnet_reporting.py`; end-to-end
+  bias-load-and-freeze contract guarded by a new case in
+  `tests/test_chrombpnet.py`.
 - **`tools/train_chrombpnet_bias.py`: stage-1 bias-branch trainer.**
   Trains the small BPNet used as the frozen bias model in ChromBPNet
   (stage 2).  Defaults match the reference chrombpnet-pytorch bias
