@@ -1,36 +1,35 @@
 """Scale-aware pseudocount helpers for count-head training.
 
-Two helpers, one per phase, reflecting the distinct role the pseudocount
-plays in each training objective.  See
-``docs/internal/count_log_spaces.md`` and
+Two helpers, named for the distinct role the pseudocount plays in the
+count loss it feeds.  See ``docs/internal/count_log_spaces.md`` and
 ``docs/internal/asap_pseudocount_considerations.md`` for background.
 
-Phase 1 / single-task absolute models
--------------------------------------
-:func:`resolve_read_coverage_pseudocount` converts a *user-facing*
-read-coverage specification (e.g. "the pseudocount equivalent to 1 read
-of coverage at this bin size and target scale") into the corresponding
-scaled value for ``ModelConfig.count_pseudocount``.  Here the pseudocount
-prevents ``log(0)`` for silent regions and anchors the zero-reads cluster
-into the rest of the count distribution; the natural unit is "one read's
-worth of signal."
+Absolute-count log losses (``log(count + pc)``)
+-----------------------------------------------
+:func:`resolve_read_coverage_pseudocount` converts a user-facing
+read-coverage specification (e.g. "the pseudocount equivalent to one
+read of coverage at this bin size and target scale") into the
+corresponding scaled value for ``ModelConfig.count_pseudocount``.  Here
+the pseudocount prevents ``log(0)`` for silent regions and anchors the
+zero-reads cluster into the rest of the count distribution; the natural
+unit is "one read's worth of signal."
 
-Phase 2 differential models
----------------------------
-:func:`resolve_noise_floor_pseudocount` derives the pseudocount from the
-*data*: it samples training-region per-condition total counts and
-returns the chosen quantile (default 10th percentile) per condition, then
-takes the *maximum* across conditions.  In Phase 2's
-``log((c_b + pc) / (c_a + pc))`` loss the pseudocount plays a different
-role — it is an empirical-Bayes shrinkage prior that pulls the log-fold
-change toward zero whenever both per-condition totals are at or below
-the noise floor.  Picking ``max`` across per-condition quantiles ensures
-the deeper condition's noise floor is still shrunk; ``min`` would leave
+Log-fold-change losses (``log((c_b + pc) / (c_a + pc))``)
+---------------------------------------------------------
+:func:`resolve_noise_floor_pseudocount` derives the pseudocount from
+training data: it samples per-channel total counts and returns the
+chosen quantile (default 10th percentile) per channel, then takes the
+**maximum** across channels.  In a log-fold-change loss the pseudocount
+acts as an empirical-Bayes shrinkage prior that pulls the log-ratio
+toward zero whenever both per-channel totals are at or below the noise
+floor.  Picking ``max`` across per-channel quantiles keeps the
+higher-coverage channel's noise floor shrunk too; ``min`` would leave
 its quiet regions producing large unshrunk log-ratios.
 
-Both helpers are functionally pseudocounts (additive offsets to counts
-in the same scaled units as the training targets), but the second is
-closer in spirit to edgeR's ``prior.count`` / DESeq2's ``lfcShrink``.
+Both helpers are mathematically pseudocounts (additive offsets to
+counts in the same scaled units as the training targets), but the
+second is closer in spirit to edgeR's ``prior.count`` / DESeq2's
+``lfcShrink``.
 """
 
 from __future__ import annotations
@@ -84,8 +83,8 @@ def resolve_read_coverage_pseudocount(
 
     Args:
         reads_equiv: Number of reads the pseudocount should correspond to.
-            ``1.0`` is the typical Phase 1 default (avoid ``log(0)``,
-            keep the zero cluster embedded in the distribution).
+            ``1.0`` is the typical default (avoid ``log(0)``, keep the
+            zero cluster embedded in the distribution).
         read_length: Sequencing read or fragment length in bp.  ChIP-seq
             reads ~150 bp, ATAC-seq fragments ~100 bp.
         bin_size: Output bin size; matches ``DataConfig.output_bin_size``.
@@ -151,29 +150,30 @@ def resolve_noise_floor_pseudocount(
     n_samples: int = 2000,
     seed: int | None = None,
 ) -> float:
-    """Derive a Phase-2 shrinkage pseudocount from the training data.
+    """Derive a noise-floor pseudocount from training-data quantiles.
 
-    Intended for ``DifferentialCountLoss`` fine-tuning.  Samples training
-    intervals via the datamodule, computes each region's *per-channel*
-    length-summed counts, takes ``quantile`` along each channel, and
-    returns the **maximum** of those per-channel quantiles — a single
-    scalar in the same scaled units as the training targets.
+    Intended as the shrinkage prior for log-fold-change losses such as
+    ``DifferentialCountLoss``.  Samples training intervals via the
+    datamodule, computes each region's *per-channel* length-summed
+    counts, takes ``quantile`` along each channel, and returns the
+    **maximum** of those per-channel quantiles — a single scalar in the
+    same scaled units as the training targets.
 
-    Per-channel maximum is the correct combination for differential
-    losses: with conditions A and B at different depths (``q_A < q_B``),
-    using ``q_B`` keeps both noise floors at log-ratios within ``±log(2)``,
-    whereas ``q_A`` leaves the deeper condition's quiet regions producing
-    large unshrunk log-ratios.
+    Per-channel maximum is the correct combination for log-fold-change
+    losses: with channels A and B at different depths (``q_A < q_B``),
+    using ``q_B`` keeps both noise floors at log-ratios within
+    ``±log(2)``, whereas ``q_A`` leaves the deeper channel's quiet
+    regions producing large unshrunk log-ratios.
 
-    Feeding the return value into ``ModelConfig.count_pseudocount`` makes
-    ``log((c_b + pc) / (c_a + pc))`` collapse toward zero for any region
-    whose per-condition total sits at or below the chosen quantile, while
-    leaving the ratio essentially unchanged for regions with counts well
-    above it.
+    Feeding the return value into ``ModelConfig.count_pseudocount``
+    makes ``log((c_b + pc) / (c_a + pc))`` collapse toward zero for any
+    region whose per-channel total sits at or below the chosen
+    quantile, while leaving the ratio essentially unchanged for regions
+    with counts well above it.
 
-    The result is automatically scale-correct across raw vs. CPM bigWigs
-    and across libraries of different depths — no user reasoning about
-    read length or normalisation factor is required.
+    The result is automatically scale-correct across raw vs. CPM
+    bigWigs and across libraries of different depths — no user
+    reasoning about read length or normalisation factor is required.
 
     Args:
         datamodule: A setup :class:`CerberusDataModule` whose training

@@ -2,13 +2,14 @@
 
 Covers the two functions in :mod:`cerberus.pseudocount`:
 
-- :func:`resolve_read_coverage_pseudocount` — Phase 1 / single-task.
-  Converts a read-coverage specification into a scaled pseudocount,
-  taking read length, bin size, target scale, and (for CPM) library
-  depth into account.
-- :func:`resolve_noise_floor_pseudocount` — Phase 2 differential.
-  Pulls the shrinkage prior from a per-channel quantile of training-
-  region totals and combines channels with ``max``.
+- :func:`resolve_read_coverage_pseudocount` — for ``log(count + pc)``
+  losses. Converts a read-coverage specification into a scaled
+  pseudocount, taking read length, bin size, target scale, and (for
+  CPM) library depth into account.
+- :func:`resolve_noise_floor_pseudocount` — for log-fold-change losses
+  like ``DifferentialCountLoss``. Pulls the shrinkage prior from a
+  per-channel quantile of training-region totals and combines channels
+  with ``max``.
 """
 
 from __future__ import annotations
