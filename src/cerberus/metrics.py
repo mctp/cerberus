@@ -509,10 +509,6 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
     example, reduces the ``(B, N, L)`` targets tensor to a per-example
     scalar ``target_delta = log((sum_b + pc) / (sum_a + pc))`` and
     compares it against ``pred_delta = log_counts[:, b] - log_counts[:, a]``.
-
-    Targets are the same per-channel absolute-signal tracks Phase 1
-    supervised against; the delta is derived inline so no offline
-    log-fold-change file is required.
     """
 
     def __init__(
@@ -530,10 +526,8 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
         )
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
-        # Forwarded by instantiate_metrics_and_loss to every metric; the
-        # differential pred is log_counts[:, b] - log_counts[:, a] in either
-        # log-space convention (see _extract_differential_log_count_pairs).
-        # Stored for hparams.yaml round-trip but not consulted here.
+        # Dispatch-time kwarg; intentionally not consulted -- see
+        # _extract_differential_log_count_pairs for the math reason.
         self.log_counts_include_pseudocount = log_counts_include_pseudocount
 
     def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None:  # type: ignore[override]
@@ -592,8 +586,8 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
         )
         self.log1p_targets = log1p_targets
         self.count_pseudocount = count_pseudocount
-        # See note on the MSE class above; same dispatch concern, same
-        # math reason for not branching.
+        # Dispatch-time kwarg; intentionally not consulted -- see
+        # _extract_differential_log_count_pairs for the math reason.
         self.log_counts_include_pseudocount = log_counts_include_pseudocount
         self.add_state("preds_list", default=[], dist_reduce_fx="cat")
         self.add_state("targets_list", default=[], dist_reduce_fx="cat")
