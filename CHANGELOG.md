@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a5] - 2026-05-19
+
 ### Added
 - **`tools/train_chrombpnet_bias.py`: stage-1 bias-branch trainer.**
   Trains the small BPNet used as the frozen bias model in ChromBPNet
