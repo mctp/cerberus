@@ -620,6 +620,85 @@ Internally, pretrained configs use `source` and `target` fields to support flexi
 | Full Dalmatian checkpoint → whole Dalmatian | None | None |
 | Standalone Pomeranian → Dalmatian signal | None | "signal_model" |
 
+## ChromBPNet
+
+**Implementation**: `cerberus.models.ChromBPNet`
+**Source**: `src/cerberus/models/chrombpnet.py`
+
+Bias-factorized ATAC model composed of two `BPNet` sub-networks following the chrombpnet-pytorch architecture (Lei Xiong, after Schreiber). Returns a plain `ProfileCountOutput` so it plugs into the standard Cerberus loss / metric / prediction infrastructure (unlike `Dalmatian`, which uses the decomposed `FactorizedProfileCountOutput` for gradient routing).
+
+### Key Features
+
+- **Accessibility branch** (`accessibility_model`): large `BPNet` — `filters=512`, `n_dilated_layers=8`. Learns regulatory grammar.
+- **Bias branch** (`bias_model`): smaller `BPNet` — `filters=128`, `n_dilated_layers=4`. Captures Tn5 enzymatic sequence preference; typically loaded pre-trained on background regions and frozen during stage-2 training (via `ModelConfig.freeze`).
+- **Profile combination**: raw logit addition (`acc.logits + bias.logits`).
+- **Count combination**: `torch.logaddexp` (numerically stable form of `log(exp(acc) + exp(bias))`).
+- **`bias_logcount_offset`**: non-trainable scalar buffer added to the bias branch's log-count predictions before combination. Mirrors the chrombpnet-pytorch bias-count calibration step. Update in place via `model.bias_logcount_offset.fill_(value)`.
+
+### Reference-equivalent training settings
+
+`chrombpnet-pytorch` uses `log1p(counts)` as the count-head target, i.e. an additive pseudocount of 1.0 on raw counts. To reproduce that in Cerberus:
+
+| Setting | Value |
+|---|---|
+| `ModelConfig.count_pseudocount` | `1.0` |
+| `DataConfig.target_scale` | `1.0` |
+| `accessibility_args["activation"]` | `"relu"` (default) |
+| `bias_args["activation"]` | `"relu"` (default) |
+| `accessibility_args["weight_norm"]` | `False` (default) |
+| `bias_args["weight_norm"]` | `False` (default) |
+| `accessibility_args["residual_architecture"]` | `"residual_post-activation_conv"` (default) |
+| `bias_args["residual_architecture"]` | `"residual_post-activation_conv"` (default) |
+
+Both sub-BPNets apply Xavier/Glorot uniform initialisation (`BPNet._tf_style_reinit`) matching the reference's `tf_style_reinit`, so initialisation is on the same distribution.
+
+### `bias_logcount_offset` calibration
+
+The companion helper `estimate_bias_logcount_offset(bias_model, dataloader)` returns the mean residual between observed log-counts and the bias model's predicted log-counts. Apply via:
+
+```python
+from cerberus.models import ChromBPNet
+from cerberus.models.chrombpnet import estimate_bias_logcount_offset
+
+delta = estimate_bias_logcount_offset(
+    chrombpnet.bias_model,
+    background_dataloader,
+    count_pseudocount=1.0,        # matches reference log1p
+)
+chrombpnet.bias_logcount_offset.fill_(delta)
+```
+
+In `chrombpnet-pytorch` the offset is applied by mutating `bias.linear.bias` directly. Cerberus stores it as a separate buffer on the parent `ChromBPNet`, so the loaded bias `state_dict` is preserved intact and the calibration participates in `ChromBPNet.state_dict()` round-trips. The forward math is identical.
+
+### Usage
+
+```python
+from cerberus.config import ModelConfig
+from cerberus.models import ChromBPNet
+
+model_config = ModelConfig(
+    name="ChromBPNet_K562",
+    model_cls="cerberus.models.chrombpnet.ChromBPNet",
+    loss_cls="cerberus.models.bpnet.BPNetLoss",
+    loss_args={"alpha": "adaptive"},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={
+        "input_len": 2114,
+        "output_len": 1000,
+        "output_channels": ["signal"],
+        # Pass per-branch overrides via accessibility_args / bias_args.
+    },
+    pretrained=[],          # populate in stage 2 with the trained bias model
+    count_pseudocount=1.0,  # reference equivalence (paired with target_scale=1.0)
+)
+```
+
+### References
+
+- chrombpnet-pytorch: <https://github.com/jsxlei/chrombpnet-pytorch> (Lei Xiong, after Schreiber).
+- Original ChromBPNet (TensorFlow): Avsec et al. 2021 / Pampari et al. 2024.
+
 ## PWMBiasModel (experimental)
 
 **Location**: `debug/pwm_model/pwm_bias.py` (not part of cerberus public API)

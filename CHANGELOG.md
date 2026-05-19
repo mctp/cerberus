@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`ChromBPNet` model class.** Native cerberus implementation of the
+  bias-factorized ATAC model from `chrombpnet-pytorch`. Composes two
+  `BPNet` sub-networks (large accessibility branch, smaller bias
+  branch); profiles combine by logit addition and counts by
+  `torch.logaddexp`. Reference-equivalent training settings
+  (Xavier/Glorot init, `relu`, no weight norm, post-activation
+  residuals, `log1p` count target via `count_pseudocount=1.0` +
+  `target_scale=1.0`) are documented in `docs/models.md#chrombpnet`.
+  Returns a plain `ProfileCountOutput` so it plugs into the standard
+  loss/metric/prediction infrastructure. The bias-count calibration
+  step (chrombpnet-pytorch's `adjust_bias_model_logcounts`) is
+  available as a standalone `estimate_bias_logcount_offset(bias_model,
+  dataloader)` helper; the returned scalar is intended for the
+  non-trainable `bias_logcount_offset` buffer on `ChromBPNet`, leaving
+  the loaded bias `state_dict` pristine.
 - **Multitask differential trainer wiring for the new metric collection
   and pseudocount helpers.** `tools/train_multitask_differential_bpnet`
   Phase 1 now uses the shared scale-aware pseudocount CLI family
