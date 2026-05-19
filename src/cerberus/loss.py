@@ -553,14 +553,14 @@ class DifferentialCountLoss(nn.Module):
 
     .. math::
 
-        \\Delta_{\\mathrm{target}} = \\log_2\\left(
+        \\Delta_{\\mathrm{target}} = \\log\\left(
           \\frac{\\sum_\\ell \\mathrm{targets}[:, B, \\ell] + \\mathrm{pc}}{
                  \\sum_\\ell \\mathrm{targets}[:, A, \\ell] + \\mathrm{pc}}
         \\right)
 
     where the sum is over the length axis and ``pc`` is
     ``count_pseudocount`` (use the same value Phase 1 used so ``log_counts``
-    live in the same log-space). The returned loss is
+    live in the same natural-log space). The returned loss is
     ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
 
     Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
@@ -574,9 +574,9 @@ class DifferentialCountLoss(nn.Module):
     Args:
         cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
         cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
-        count_pseudocount: Additive pseudocount used in the log2FC
-            derivation. Must match the value Phase 1 used so the two
-            phases share a log-space. Default 1.0.
+        count_pseudocount: Additive pseudocount used in the log
+            fold-change derivation. Must match the value Phase 1 used so
+            the two phases share a log-space. Default 1.0.
 
     References:
         - Naqvi et al. (2025). *Transfer learning reveals sequence
@@ -640,7 +640,7 @@ class DifferentialCountLoss(nn.Module):
 
         counts = targets.float().sum(dim=-1)  # (B, N)
         pc = self.count_pseudocount
-        target_delta = torch.log2(
+        target_delta = torch.log(
             (counts[:, b] + pc) / (counts[:, a] + pc)
         )  # (B,)
         delta_pred = log_counts[:, b] - log_counts[:, a]  # (B,)

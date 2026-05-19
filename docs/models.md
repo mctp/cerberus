@@ -224,10 +224,10 @@ For the companion Phase 2 differential loss see [DifferentialCountLoss](#differe
 
 **Implementation**: `cerberus.loss.DifferentialCountLoss`
 
-Phase 2 fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak log2 fold-change derived inline from the two-channel `(B, N, L)` targets tensor Phase 1 already trained against:
+Phase 2 fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak natural-log fold-change derived inline from the two-channel `(B, N, L)` targets tensor Phase 1 already trained against:
 
 ```
-target_delta = log2((sum_B + pc) / (sum_A + pc))
+target_delta = log((sum_B + pc) / (sum_A + pc))
 ```
 
 where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). Setting `count_pseudocount` to match Phase 1's keeps both phases in the same log-space. Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.

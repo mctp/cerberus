@@ -402,19 +402,19 @@ These pieces do not need to change:
 ### 3.1 Per-condition signal is already in `targets`
 
 The `(B, N, L)` absolute-signal track that Phase 2 wants to reduce to
-log2FC is *already* being fed to the loss. Phase 1's
+a log fold-change is *already* being fed to the loss. Phase 1's
 `MultitaskBPNetLoss` uses it as-is (MSE against per-channel
-`log_counts`). The Phase 2 log2FC target can be derived from the same
+`log_counts`). The Phase 2 delta target can be derived from the same
 tensor:
 
 ```
 counts = targets.sum(dim=-1)                       # (B, N)
-delta_target = log2((counts[:, b] + pc) / (counts[:, a] + pc))   # (B,)
+delta_target = log((counts[:, b] + pc) / (counts[:, a] + pc))    # (B,)
 ```
 
 This is arithmetically equivalent to what
-`_compute_log2fc_from_bigwigs` returns — same bigwig signal, same
-pseudocount, same log2. The difference is that it runs inside the
+`_compute_log2fc_from_bigwigs` returns up to the choice of log base — same
+bigwig signal, same pseudocount. The difference is that it runs inside the
 training step using the already-extracted tensor, not in a separate
 offline pass.
 
@@ -509,8 +509,8 @@ by the existing `log2fc` kwarg.
          ┌───────────────────────────────────────────────┐
          │  DifferentialCountLoss   (single code path)   │
          │     counts = targets.sum(dim=-1)   # (B, 2)   │
-         │     target_delta = log2((counts_B + pc) /     │
-         │                         (counts_A + pc))      │
+         │     target_delta = log((counts_B + pc) /      │
+         │                        (counts_A + pc))       │
          │     delta_pred = log_counts[:,B] -            │
          │                  log_counts[:,A]              │
          │     return MSE(delta_pred, target_delta)      │
@@ -747,7 +747,7 @@ class DifferentialCountLoss(nn.Module):
     """MSE on log_counts[:, B] - log_counts[:, A].
 
     Delta target is derived from the (B, N, L) targets tensor:
-        log2((sum_B + pc) / (sum_A + pc))
+        log((sum_B + pc) / (sum_A + pc))
     where sums are over the length axis and pc is count_pseudocount
     (same value Phase 1 used so log_counts are in one space).
     """
@@ -786,8 +786,8 @@ class DifferentialCountLoss(nn.Module):
 
         counts = targets.float().sum(dim=-1)              # (B, N)
         pc = self.count_pseudocount
-        target_delta = torch.log2((counts[:, b] + pc) /
-                                  (counts[:, a] + pc))    # (B,)
+        target_delta = torch.log((counts[:, b] + pc) /
+                                 (counts[:, a] + pc))     # (B,)
         delta_pred = (outputs.log_counts[:, b]
                       - outputs.log_counts[:, a])         # (B,)
         return F.mse_loss(delta_pred, target_delta)
@@ -1007,7 +1007,7 @@ and `tests/test_attribution.py`):
 - **`test_differential_count_loss_nonzero_when_prediction_off`** —
   MSE = mean(expected_delta ²) when the prediction is zero.
 - **`test_differential_count_loss_pseudocount_affects_target`** —
-  larger `count_pseudocount` → smaller |log2 ratio| → smaller MSE.
+  larger `count_pseudocount` → smaller |log ratio| → smaller MSE.
 - **`test_differential_count_loss_components_has_only_delta_loss`**
   — the `loss_components` dict has a single `"delta_loss"` entry.
 - **`test_differential_count_loss_rejects_2d_targets`** — targets
@@ -1168,7 +1168,7 @@ disagree, the visuals are authoritative.
  ┌────────────────────────────────────────────────────┐
  │  DifferentialCountLoss   (ONE code path)           │
  │     counts = targets.sum(-1)          # (B, 2)     │
- │     delta_t = log2((cB + pc)/(cA + pc))            │
+ │     delta_t = log((cB + pc)/(cA + pc))             │
  │     delta_p = log_counts[:,B] - log_counts[:,A]    │
  │     return MSE(delta_p, delta_t)                   │
  └────────────────────────────────────────────────────┘

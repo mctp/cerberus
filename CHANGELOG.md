@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Differential log-count metrics.** Three TorchMetrics classes in
+  `cerberus.metrics` for scoring differential log-count predictions in
+  the same space `DifferentialCountLoss` optimises:
+  `DifferentialLogCountsMeanSquaredError`,
+  `DifferentialLogCountsRootMeanSquaredError`,
+  `DifferentialLogCountsPearsonCorrCoef`. Each derives the
+  per-example delta target inline from the `(B, N, L)` targets tensor
+  (no offline precompute) and compares it against
+  `log_counts[:, b] - log_counts[:, a]`. Shared validation helper
+  `_validate_differential_channel_indices` rejects equal / negative
+  indices at construction; shared `_extract_differential_log_count_pairs`
+  centralises the per-batch delta derivation.
 - **`cerberus.pseudocount` module with two role-named helpers.**
   `resolve_read_coverage_pseudocount(reads_equiv, read_length,
   bin_size, target_scale, input_scale, total_reads)` converts a
@@ -75,6 +87,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/models.md#named-submodules-reference`.
 
 ### Changed
+- **`DifferentialCountLoss` target switched from log2 to natural log.**
+  Phase 1 absolute count heads train against `log(count + pc)`. The
+  Phase 2 differential target now uses the same natural-log base —
+  `target_delta = log((sum_b + pc) / (sum_a + pc))` — so both phases
+  live in one log-space. Pearson is invariant to log base, so existing
+  qualitative comparisons hold; absolute loss / RMSE magnitudes change
+  by a factor of `log(2)` (≈0.693 for RMSE, `log(2)²` ≈0.480 for MSE)
+  and tuned learning-rate / `--alpha` choices may need to scale
+  proportionally. Tests and internal docs updated to match.
 - **`cerberus.pretrained._extract_prefix` renamed to `extract_prefix`.**
   The helper that slices a sub-module state dict out of a full-model
   checkpoint (used internally by `load_pretrained_weights`) is now a
