@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`tools/train_chrombpnet_bias.py`: stage-1 bias-branch trainer.**
+  Trains the small BPNet used as the frozen bias model in ChromBPNet
+  (stage 2).  Defaults match the reference chrombpnet-pytorch bias
+  stage (`filters=128, n_dilated_layers=4`,
+  `sampler_type="negative_peak"`, `background_ratio=1.0`,
+  `count_pseudocount=1.0`, `target_scale=1.0`).  The exported
+  `model.pt` is loaded into `ChromBPNet.bias_model` in stage 2.
+  Example end-to-end invocation in
+  `examples/scatac_kidney_chrombpnet_bias.sh`; the shell-script header
+  notes that the upstream pseudobulk workflow was tested against
+  `snapatac2==2.8.0` (pyproject does not pin -- install that version
+  explicitly for byte-level pseudobulk reproducibility).
 - **`ChromBPNet` model class.** Native cerberus implementation of the
   bias-factorized ATAC model from `chrombpnet-pytorch`. Composes two
   `BPNet` sub-networks (large accessibility branch, smaller bias

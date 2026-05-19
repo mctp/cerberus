@@ -630,7 +630,7 @@ Bias-factorized ATAC model composed of two `BPNet` sub-networks following the ch
 ### Key Features
 
 - **Accessibility branch** (`accessibility_model`): large `BPNet` — `filters=512`, `n_dilated_layers=8`. Learns regulatory grammar.
-- **Bias branch** (`bias_model`): smaller `BPNet` — `filters=128`, `n_dilated_layers=4`. Captures Tn5 enzymatic sequence preference; typically loaded pre-trained on background regions and frozen during stage-2 training (via `ModelConfig.freeze`).
+- **Bias branch** (`bias_model`): smaller `BPNet` — `filters=128`, `n_dilated_layers=4`. Captures Tn5 enzymatic sequence preference; typically loaded pre-trained on background regions and frozen during stage-2 training (via `ModelConfig.freeze`). Train the bias-branch checkpoint with `tools/train_chrombpnet_bias.py` (sampler defaults to `negative_peak` so the model fits on background regions).
 - **Profile combination**: raw logit addition (`acc.logits + bias.logits`).
 - **Count combination**: `torch.logaddexp` (numerically stable form of `log(exp(acc) + exp(bias))`).
 - **`bias_logcount_offset`**: non-trainable scalar buffer added to the bias branch's log-count predictions before combination. Mirrors the chrombpnet-pytorch bias-count calibration step. Update in place via `model.bias_logcount_offset.fill_(value)`.
