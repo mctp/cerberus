@@ -8,6 +8,7 @@ shape ``(N, 4, L)`` for both sequences and attribution scores.
 from __future__ import annotations
 
 import argparse
+import inspect
 import logging
 import shutil
 import subprocess
@@ -85,6 +86,84 @@ def _run_modisco_report(
     subprocess.run(cmd, check=True)
 
 
+def _run_descriptive_report(
+    modisco_h5: Path,
+    report_dir: Path,
+    meme_db: Path | None,
+    use_tomtom_lite: bool,
+    top_n_matches: int,
+    n_examples: int,
+    trim_threshold: float,
+) -> None:
+    try:
+        from modiscolite import descriptive_report
+    except ImportError as exc:
+        raise RuntimeError(
+            "Descriptive TF-MoDISco reports require the newer `modisco` package "
+            "that exposes modiscolite.descriptive_report."
+        ) from exc
+
+    # modisco 2.5.2 calls _plot_weights(..., clamp=True), but some installed
+    # builds expose _plot_weights(array, path, figsize) only. Patch the local
+    # helper for compatibility.
+    if "clamp" not in inspect.signature(descriptive_report._plot_weights).parameters:
+        import logomaker
+        import matplotlib.pyplot as plt
+        import pandas as pd
+
+        def _plot_weights_compat(array, path, figsize=(10, 3), clamp=True):
+            fig = plt.figure(figsize=figsize)
+            ax = fig.add_subplot(111)
+            df = pd.DataFrame(array, columns=["A", "C", "G", "T"])
+            df.index.name = "pos"
+            logomaker.Logo(df, ax=ax)
+            ax.spines[["right", "top", "left", "bottom"]].set_visible(False)
+            if clamp:
+                plt.ylim(min(df.sum(axis=1).min(), 0), df.sum(axis=1).max())
+            plt.savefig(path)
+            plt.close(fig)
+
+        descriptive_report._plot_weights = _plot_weights_compat
+
+    # The descriptive_report ttl path in modisco 2.5.2 omits the output_dir
+    # argument expected by modiscolite.report.tomtomlite_dataframe(). Patch the
+    # module-local symbol so HOCOMOCO/MotifCompendium matching works without
+    # external MEME Suite tomtom.
+    if meme_db is not None and use_tomtom_lite:
+        from modiscolite import report as modisco_report
+
+        def _tomtomlite_dataframe_compat(
+            modisco_h5py,
+            meme_motif_db,
+            pattern_groups,
+            top_n_matches=3,
+            trim_threshold=0.3,
+            trim_min_length=3,
+        ):
+            return modisco_report.tomtomlite_dataframe(
+                modisco_h5py,
+                report_dir,
+                meme_motif_db,
+                pattern_groups,
+                top_n_matches=top_n_matches,
+                trim_threshold=trim_threshold,
+                trim_min_length=trim_min_length,
+            )
+
+        descriptive_report.tomtomlite_dataframe = _tomtomlite_dataframe_compat
+
+    report_dir.mkdir(parents=True, exist_ok=True)
+    descriptive_report.generate_descriptive_report(
+        str(modisco_h5),
+        str(report_dir),
+        meme_motif_db=str(meme_db) if meme_db is not None else None,
+        top_n_matches=top_n_matches,
+        ttl=use_tomtom_lite,
+        n_examples=n_examples,
+        trim_threshold=trim_threshold,
+    )
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -149,6 +228,44 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=Path("report"),
         help="Output directory name/path for `modisco report`.",
     )
+    parser.add_argument(
+        "--run-descriptive-report",
+        action="store_true",
+        help=(
+            "Run the newer modiscolite descriptive report after motifs "
+            "(or on existing --modisco-output if --no-run-motifs)."
+        ),
+    )
+    parser.add_argument(
+        "--descriptive-report-dir",
+        type=Path,
+        default=Path("report"),
+        help="Output directory name/path for the descriptive report.",
+    )
+    parser.add_argument(
+        "--descriptive-report-tomtom-lite",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use Python tomtom-lite for motif matching in descriptive reports.",
+    )
+    parser.add_argument(
+        "--descriptive-report-top-n-matches",
+        type=int,
+        default=3,
+        help="Top motif database matches to show per pattern.",
+    )
+    parser.add_argument(
+        "--descriptive-report-n-examples",
+        type=int,
+        default=10,
+        help="Number of seqlet examples to show per pattern.",
+    )
+    parser.add_argument(
+        "--descriptive-report-trim-threshold",
+        type=float,
+        default=0.3,
+        help="Contribution threshold for trimming descriptive report logos.",
+    )
 
     return parser
 
@@ -160,9 +277,9 @@ def main() -> None:
 
     output_h5 = args.modisco_output.resolve()
 
-    if not args.run_motifs and not args.run_report:
+    if not args.run_motifs and not args.run_report and not args.run_descriptive_report:
         raise ValueError(
-            "Nothing to do: both --no-run-motifs and --run-report not set."
+            "Nothing to do: --no-run-motifs set and neither report mode requested."
         )
 
     if args.run_motifs:
@@ -222,6 +339,33 @@ def main() -> None:
                 )
 
         _run_modisco_report(output_h5, report_dir, meme_db)
+
+    if args.run_descriptive_report:
+        if not output_h5.exists():
+            raise FileNotFoundError(
+                f"Cannot run descriptive report: MoDISco output not found at {output_h5}. "
+                "Run with --run-motifs first or point --modisco-output to an existing .h5 file."
+            )
+
+        report_dir = args.descriptive_report_dir
+        if not report_dir.is_absolute():
+            report_dir = output_h5.parent / report_dir
+
+        meme_db = args.meme_db
+        if meme_db is not None:
+            meme_db = meme_db.resolve()
+            if not meme_db.exists():
+                raise FileNotFoundError(f"Motif database not found: {meme_db}")
+
+        _run_descriptive_report(
+            output_h5,
+            report_dir,
+            meme_db,
+            use_tomtom_lite=args.descriptive_report_tomtom_lite,
+            top_n_matches=args.descriptive_report_top_n_matches,
+            n_examples=args.descriptive_report_n_examples,
+            trim_threshold=args.descriptive_report_trim_threshold,
+        )
 
 
 if __name__ == "__main__":

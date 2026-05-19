@@ -34,9 +34,10 @@ from torch.utils.data import DataLoader
 import cerberus
 from cerberus.attribution import (
     AttributionTarget,
-    mean_center_attributions,
+    TARGET_REDUCTIONS,
     compute_ism_attributions,
     compute_taylor_ism_attributions,
+    mean_center_attributions,
     resolve_ism_span,
 )
 from cerberus.datamodule import CerberusDataModule
@@ -48,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 _INTERVAL_WITH_STRAND_RE = re.compile(r"^([^:]+):(\d+)-(\d+)\(([+-])\)$")
 _INTERVAL_NO_STRAND_RE = re.compile(r"^([^:]+):(\d+)-(\d+)$")
+_DELTA_TARGET_MODES = frozenset({"delta_log_counts", "delta_profile_window_sum"})
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -92,6 +94,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "Optional peak/interval BED(narrowPeak) path override. "
             "Replaces sampler_config.sampler_args['intervals_path'] from hparams.yaml, "
             "allowing TF-MoDISco exports on custom interval sets (e.g. shared/unique peaks)."
+        ),
+    )
+    parser.add_argument(
+        "--intervals-as-simple-sampler",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "When --intervals-path is provided, replace the training sampler with "
+            "a plain IntervalSampler over that file. This is useful for "
+            "interpretation on an already materialized positive split BED because "
+            "it avoids rebuilding peak/background samplers."
         ),
     )
     parser.add_argument(
@@ -140,6 +153,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "'taylor_ism' is a first-order Taylor approximation of 'ism' "
             "(one forward + one backward per batch, ~100x faster at peak widths, "
             "bit-identical to 'ism' on linear models; see Sasse et al. 2024)."
+        ),
+    )
+    parser.add_argument(
+        "--chrombpnet-accessibility-only",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "For ChromBPNet/MultitaskChromBPNet checkpoints, attribute the "
+            "accessibility branch only (the chrombpnet_wo_bias model). This "
+            "matches the standard ChromBPNet regulatory motif-discovery use "
+            "case by excluding the frozen bias branch from the scalar target. "
+            "Default: auto; use chrombpnet_wo_bias when the checkpoint exposes it."
         ),
     )
     parser.add_argument(
@@ -204,13 +229,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--target-mode",
-        choices=[
-            "log_counts",
-            "profile_bin",
-            "profile_window_sum",
-            "pred_count_bin",
-            "pred_count_window_sum",
-        ],
+        choices=sorted(TARGET_REDUCTIONS),
         default="log_counts",
         help="Scalar output target used for attribution.",
     )
@@ -219,6 +238,24 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Target channel index.",
+    )
+    parser.add_argument(
+        "--target-cond-a",
+        type=int,
+        default=0,
+        help=(
+            "Condition A channel index for delta target modes. "
+            "Delta targets are computed as condition B minus condition A."
+        ),
+    )
+    parser.add_argument(
+        "--target-cond-b",
+        type=int,
+        default=1,
+        help=(
+            "Condition B channel index for delta target modes. "
+            "Delta targets are computed as condition B minus condition A."
+        ),
     )
     parser.add_argument(
         "--bin-index",
@@ -399,6 +436,12 @@ def _parse_interval_string(interval_repr: str) -> tuple[str, int, int, str]:
     )
 
 
+def _resolve_target_channels(args: argparse.Namespace) -> int | tuple[int, int]:
+    if args.target_mode in _DELTA_TARGET_MODES:
+        return (args.target_cond_a, args.target_cond_b)
+    return args.target_channel
+
+
 def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     IntegratedGradients = None
     DeepLiftShap = None
@@ -437,28 +480,59 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         intervals_path = args.intervals_path.resolve()
         if not intervals_path.exists():
             raise FileNotFoundError(f"--intervals-path not found: {intervals_path}")
-        sampler_args = dict(cfg.sampler_config.sampler_args)
-        if "intervals_path" not in sampler_args:
-            raise ValueError(
-                "--intervals-path override is not supported for this sampler config: "
-                "sampler_args does not define 'intervals_path'."
+        if args.intervals_as_simple_sampler:
+            cfg = cfg.model_copy(
+                update={
+                    "sampler_config": cfg.sampler_config.model_copy(
+                        update={
+                            "sampler_type": "interval",
+                            "sampler_args": {"intervals_path": intervals_path},
+                        }
+                    )
+                }
             )
-        sampler_args["intervals_path"] = intervals_path
-        cfg = cfg.model_copy(
-            update={
-                "sampler_config": cfg.sampler_config.model_copy(
-                    update={"sampler_args": sampler_args}
+            logger.info("Using simple IntervalSampler over: %s", intervals_path)
+        else:
+            sampler_args = dict(cfg.sampler_config.sampler_args)
+            if "intervals_path" not in sampler_args:
+                raise ValueError(
+                    "--intervals-path override is not supported for this sampler config: "
+                    "sampler_args does not define 'intervals_path'."
                 )
-            }
-        )
-        logger.info("Overriding sampler intervals_path with: %s", intervals_path)
+            sampler_args["intervals_path"] = intervals_path
+            cfg = cfg.model_copy(
+                update={
+                    "sampler_config": cfg.sampler_config.model_copy(
+                        update={"sampler_args": sampler_args}
+                    )
+                }
+            )
+            logger.info("Overriding sampler intervals_path with: %s", intervals_path)
 
     model = ensemble[str(args.fold)]
+    accessibility_model = getattr(model, "chrombpnet_wo_bias", None)
+    use_chrombpnet_accessibility_only = args.chrombpnet_accessibility_only
+    if use_chrombpnet_accessibility_only is None:
+        use_chrombpnet_accessibility_only = accessibility_model is not None
 
+    if use_chrombpnet_accessibility_only:
+        if accessibility_model is None:
+            raise ValueError(
+                "--chrombpnet-accessibility-only was requested, but the loaded "
+                f"model ({model.__class__.__name__}) does not expose a "
+                "'chrombpnet_wo_bias' accessibility branch."
+            )
+        model = accessibility_model
+        logger.info(
+            "Attributing ChromBPNet accessibility-only branch: %s",
+            model.__class__.__name__,
+        )
+
+    target_channels = _resolve_target_channels(args)
     target_model = AttributionTarget(
         model=model,
         reduction=args.target_mode,
-        channels=args.target_channel,
+        channels=target_channels,
         bin_index=args.bin_index,
         window_start=args.window_start,
         window_end=args.window_end,
@@ -795,10 +869,19 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         "intervals_path_override": (
             str(args.intervals_path.resolve()) if args.intervals_path is not None else None
         ),
+        "intervals_as_simple_sampler": bool(args.intervals_as_simple_sampler),
         "include_sources": sorted(include_sources) if include_sources is not None else None,
         "attribution_method": args.attribution_method,
+        "chrombpnet_accessibility_only": bool(use_chrombpnet_accessibility_only),
         "target_mode": args.target_mode,
         "target_channel": args.target_channel,
+        "target_channels": (
+            list(target_channels)
+            if isinstance(target_channels, tuple)
+            else [target_channels]
+        ),
+        "target_cond_a": args.target_cond_a,
+        "target_cond_b": args.target_cond_b,
         "bin_index": args.bin_index,
         "window_start": args.window_start,
         "window_end": args.window_end,

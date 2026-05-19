@@ -29,7 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 extras = [
   "captum",
-  "modisco-lite",
+  "modisco>=2.5.2",
   "cyvcf2",
   "pybigwig",
   "pysam",

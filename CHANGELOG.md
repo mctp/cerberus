@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`src/cerberus/datamodule.py`). Companion to `resolve_quantile_pseudocount`:
   samples training-fold intervals and returns per-channel (or cross-channel)
   length-summed counts for computing distribution-based shrinkage priors.
+- **Differential TF-MoDISco export targets for multitask BPNet.**
+  `tools/export_tfmodisco_inputs.py` now exposes `delta_log_counts` and
+  `delta_profile_window_sum` via `--target-mode`, with `--target-cond-a` /
+  `--target-cond-b` selecting the contrast as condition B minus condition A.
+- **ChromBPNet regulatory interpretation helpers.**
+  `tools/export_tfmodisco_inputs.py` can now attribute the
+  `chrombpnet_wo_bias` accessibility branch directly and can treat an explicit
+  intervals file as a simple sampler for already materialized interpretation
+  sets.
+- **Descriptive TF-MoDISco reports.** `tools/run_tfmodisco.py` can now render
+  the newer `modiscolite` descriptive report, including Python tomtom-lite
+  motif matching against MEME databases.
 
 ### Changed
 - **Phase 1 / single-task training tools** (`train_bpnet`, `train_asap`,

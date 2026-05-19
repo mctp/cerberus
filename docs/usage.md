@@ -551,12 +551,13 @@ What the TF-MoDISco runner script does:
 
 1. Validates `ohe` and attribution NPZ inputs (expects key `arr_0`, shape `(N, 4, L)`).
 2. Runs `modisco motifs`.
-3. Optionally runs `modisco report`.
+3. Optionally runs either the legacy `modisco report` or the newer
+   descriptive report.
 
 Prerequisites:
 
 ```bash
-pip install modisco-lite
+pip install "modisco>=2.5.2"
 # Optional (only if export uses --attribution-method integrated_gradients):
 pip install captum
 
@@ -575,6 +576,21 @@ python tools/export_tfmodisco_inputs.py \
     --seed 42 \
     --output-dir models/my_pomeranian/single-fold/tfmodisco \
     --target-mode log_counts
+```
+
+Export a learned contrast from a multi-condition BPNet as one scalar target:
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/my_multitask_bpnet/single-fold \
+    --fold 0 \
+    --split test \
+    --n-examples 2000 \
+    --output-dir models/my_multitask_bpnet/single-fold/tfmodisco_delta \
+    --chrombpnet-accessibility-only \
+    --target-mode delta_log_counts \
+    --target-cond-a 0 \
+    --target-cond-b 1
 ```
 
 Export with ISM attribution:
@@ -644,6 +660,17 @@ python tools/run_tfmodisco.py \
     --meme-db motifs.meme
 ```
 
+Generate the newer descriptive HTML report after motifs:
+
+```bash
+python tools/run_tfmodisco.py \
+    --ohe-path models/my_pomeranian/single-fold/tfmodisco/ohe.npz \
+    --attr-path models/my_pomeranian/single-fold/tfmodisco/shap.npz \
+    --modisco-output models/my_pomeranian/single-fold/tfmodisco/modisco_results.h5 \
+    --run-descriptive-report \
+    --meme-db motifs.meme
+```
+
 TF-MoDISco recommended motif database for human data:
 
 - Each pattern produced by TF-MoDISco is compared against a motif database using TOMTOM.
@@ -679,8 +706,10 @@ Common interpretation target modes (`--target-mode`):
 | `profile_window_sum` | Attribution to summed profile logits in `[start:end)` (`--window-start`, `--window-end`) |
 | `pred_count_bin` | Attribution to one predicted count bin (softmax(logits) × exp(log_counts)) |
 | `pred_count_window_sum` | Attribution to summed predicted counts in a window |
+| `delta_log_counts` | Attribution to learned count contrast: condition B minus condition A (`--target-cond-a`, `--target-cond-b`) |
+| `delta_profile_window_sum` | Attribution to learned profile-logit contrast in `[start:end)` (`--target-cond-a`, `--target-cond-b`, `--window-start`, `--window-end`) |
 
-`tools/export_tfmodisco_inputs.py` drives the first five (single-channel) modes. The two delta modes — `delta_log_counts` and `delta_profile_window_sum` — are produced by `tools/train_multitask_differential_bpnet.py --interpret` for multi-condition models; see [Scalar attribution targets](#scalar-attribution-targets) below for direct library-level use.
+For the first five single-channel modes, use `--target-channel`. For the two delta modes, use `--target-cond-a` / `--target-cond-b`; the scalar target is always `B - A`.
 
 ### Scalar attribution targets
 
