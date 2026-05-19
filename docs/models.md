@@ -625,7 +625,7 @@ Internally, pretrained configs use `source` and `target` fields to support flexi
 **Implementation**: `cerberus.models.ChromBPNet`
 **Source**: `src/cerberus/models/chrombpnet.py`
 
-Bias-factorized ATAC model composed of two `BPNet` sub-networks following the chrombpnet-pytorch architecture (Lei Xiong, after Schreiber). Returns a plain `ProfileCountOutput` so it plugs into the standard Cerberus loss / metric / prediction infrastructure (unlike `Dalmatian`, which uses the decomposed `FactorizedProfileCountOutput` for gradient routing).
+Bias-factorized ATAC model composed of two `BPNet` sub-networks following the chrombpnet-pytorch architecture. Returns a plain `ProfileCountOutput` so it plugs into the standard Cerberus loss / metric / prediction infrastructure (unlike `Dalmatian`, which uses the decomposed `FactorizedProfileCountOutput` for gradient routing).
 
 ### Key Features
 

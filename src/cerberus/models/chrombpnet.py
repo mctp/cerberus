@@ -82,12 +82,10 @@ class ChromBPNet(nn.Module):
 
     Reference-equivalent training: set
     ``ModelConfig.count_pseudocount=1.0`` and
-    ``DataConfig.target_scale=1.0`` (``--pseudocount-reads 1
-    --read-length 1`` on the CLI, or just leave ``--count-pseudocount
-    1.0``) to reproduce chrombpnet-pytorch's ``log1p(counts)``
-    count-head target.  Both sub-BPNets apply Xavier/Glorot uniform
-    initialisation (``BPNet._tf_style_reinit``) matching the
-    reference's ``tf_style_reinit``.
+    ``DataConfig.target_scale=1.0`` to reproduce chrombpnet-pytorch's
+    ``log1p(counts)`` count-head target.  Both sub-BPNets apply
+    Xavier/Glorot uniform initialisation (``BPNet._tf_style_reinit``)
+    matching the reference's ``tf_style_reinit``.
 
     Args:
         input_len (int): Length of input sequence in bp. Default: ``2114``.
