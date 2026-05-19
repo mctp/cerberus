@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import importlib
+import logging
+import os
 import re
 from typing import Any
 
 import torch
+
+logger = logging.getLogger(__name__)
 
 
 def import_class(name: str) -> Any:
@@ -26,10 +30,48 @@ def import_class(name: str) -> Any:
         raise ImportError(f"Could not import class '{name}': {e}") from e
 
 
+def _local_rank_cuda_device() -> torch.device | None:
+    """Return ``cuda:LOCAL_RANK`` when the env var picks a valid GPU.
+
+    DDP launchers (``torchrun``, ``srun``) set ``LOCAL_RANK`` in each
+    rank's environment. Bare ``torch.device("cuda")`` resolves to
+    ``cuda:0`` on every rank until ``torch.cuda.set_device`` is called
+    (Lightning does this inside ``trainer.fit``), so pre-Trainer GPU
+    work would otherwise pile onto card 0.
+
+    Returns ``None`` if ``LOCAL_RANK`` is unset, non-integer, or out of
+    range for the visible CUDA devices; misconfigured values log a
+    warning and the caller falls back to bare ``cuda``.
+    """
+    raw = os.environ.get("LOCAL_RANK")
+    if raw is None:
+        return None
+    try:
+        rank = int(raw)
+    except ValueError:
+        logger.warning(
+            "LOCAL_RANK=%r is not an integer; defaulting to cuda:0", raw,
+        )
+        return None
+    count = torch.cuda.device_count()
+    if not 0 <= rank < count:
+        logger.warning(
+            "LOCAL_RANK=%d is out of range for %d visible CUDA device(s); "
+            "defaulting to cuda:0",
+            rank, count,
+        )
+        return None
+    device = torch.device(f"cuda:{rank}")
+    logger.debug("resolve_device: LOCAL_RANK=%d → %s", rank, device)
+    return device
+
+
 def resolve_device(device: str | None = None) -> torch.device:
     """Resolve a device string to a :class:`torch.device`.
 
-    Auto-detection order: CUDA, MPS (Apple Silicon), CPU.
+    Auto-detection order: CUDA, MPS (Apple Silicon), CPU. Under a DDP
+    launcher (``LOCAL_RANK`` set), CUDA auto-detection picks
+    ``cuda:LOCAL_RANK`` so pre-Trainer GPU work spreads across cards.
 
     Args:
         device: Device string (e.g. ``"cuda"``, ``"cpu"``, ``"cuda:0"``,
@@ -41,7 +83,7 @@ def resolve_device(device: str | None = None) -> torch.device:
     if device is not None and device != "auto":
         return torch.device(device)
     if torch.cuda.is_available():
-        return torch.device("cuda")
+        return _local_rank_cuda_device() or torch.device("cuda")
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")

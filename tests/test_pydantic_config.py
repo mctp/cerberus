@@ -256,11 +256,10 @@ class TestModelConstruction:
             weights_path="/fake/weights.pt",
             source=None,
             target=None,
-            freeze=False,
         )
         assert pc.weights_path == "/fake/weights.pt"
         assert pc.source is None
-        assert pc.freeze is False
+        assert pc.target is None
 
     def test_cerberus_config_construction(self):
         cc = _cerberus_config()
@@ -432,7 +431,6 @@ class TestValidation:
                 weights_path="/fake/w.pt",
                 source=None,
                 target=None,
-                freeze=False,
                 extra_field="bad",  # type: ignore[call-arg]
             )
 
@@ -654,7 +652,7 @@ class TestSerializationRoundTrip:
 
     def test_pretrained_config_round_trip(self):
         pc = PretrainedConfig(
-            weights_path="/w.pt", source="encoder", target="encoder", freeze=True
+            weights_path="/w.pt", source="encoder", target="encoder"
         )
         dumped = pc.model_dump()
         restored = PretrainedConfig.model_validate(dumped)

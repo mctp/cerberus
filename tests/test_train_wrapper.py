@@ -253,6 +253,120 @@ def test_train_wrapper_custom_callbacks():
         assert custom_cb in call_kwargs["callbacks"]
 
 
+def _make_mock_module_with_real_model() -> MagicMock:
+    """MagicMock whose ``.model`` is a real nn.Module — needed for
+    apply_freeze(module.model, specs) in freeze integration tests."""
+
+    import torch.nn as nn
+
+    class _TinyModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.bias_model = nn.Linear(4, 4)
+            self.signal_model = nn.Linear(4, 1)
+
+    m = MagicMock(spec=pl.LightningModule)
+    m.model = _TinyModel()
+    return m
+
+
+def test_train_applies_freeze_specs_from_model_config():
+    """apply_freeze runs on module.model with the specs from model_config.freeze."""
+    from cerberus.config import FreezeSpec
+
+    mock_module = _make_mock_module_with_real_model()
+    datamodule = MagicMock()
+    model_config = _make_model_config().model_copy(
+        update={"freeze": [FreezeSpec(pattern="bias_model")]}
+    )
+
+    with (
+        patch("pytorch_lightning.Trainer"),
+        patch("cerberus.train.instantiate", return_value=mock_module),
+        patch(
+            "cerberus.train.resolve_adaptive_loss_args",
+            side_effect=lambda mc, dm, **kw: mc,
+        ),
+    ):
+        train(
+            model_config=model_config,
+            data_config=_make_data_config(),
+            datamodule=datamodule,
+            train_config=_make_train_config(),
+            num_workers=0,
+            in_memory=False,
+            accelerator="cpu",
+        )
+
+    for p in mock_module.model.bias_model.parameters():
+        assert p.requires_grad is False
+    for p in mock_module.model.signal_model.parameters():
+        assert p.requires_grad is True
+
+
+def test_train_promotes_ddp_strategy_when_frozen():
+    """strategy ddp_find_unused_parameters_false -> _true when any param is frozen."""
+    from cerberus.config import FreezeSpec
+
+    mock_module = _make_mock_module_with_real_model()
+    datamodule = MagicMock()
+    model_config = _make_model_config().model_copy(
+        update={"freeze": [FreezeSpec(pattern="bias_model")]}
+    )
+
+    with (
+        patch("pytorch_lightning.Trainer") as mock_trainer_cls,
+        patch("cerberus.train.instantiate", return_value=mock_module),
+        patch(
+            "cerberus.train.resolve_adaptive_loss_args",
+            side_effect=lambda mc, dm, **kw: mc,
+        ),
+    ):
+        train(
+            model_config=model_config,
+            data_config=_make_data_config(),
+            datamodule=datamodule,
+            train_config=_make_train_config(),
+            num_workers=0,
+            in_memory=False,
+            accelerator="gpu",
+            devices=4,
+            strategy="ddp_find_unused_parameters_false",
+        )
+
+    call_kwargs = mock_trainer_cls.call_args[1]
+    assert call_kwargs["strategy"] == "ddp_find_unused_parameters_true"
+
+
+def test_train_does_not_promote_strategy_without_freeze():
+    """With freeze=[] the strategy passes through unchanged."""
+    mock_module = _make_mock_module_with_real_model()
+    datamodule = MagicMock()
+
+    with (
+        patch("pytorch_lightning.Trainer") as mock_trainer_cls,
+        patch("cerberus.train.instantiate", return_value=mock_module),
+        patch(
+            "cerberus.train.resolve_adaptive_loss_args",
+            side_effect=lambda mc, dm, **kw: mc,
+        ),
+    ):
+        train(
+            model_config=_make_model_config(),
+            data_config=_make_data_config(),
+            datamodule=datamodule,
+            train_config=_make_train_config(),
+            num_workers=0,
+            in_memory=False,
+            accelerator="gpu",
+            devices=4,
+            strategy="ddp_find_unused_parameters_false",
+        )
+
+    call_kwargs = mock_trainer_cls.call_args[1]
+    assert call_kwargs["strategy"] == "ddp_find_unused_parameters_false"
+
+
 def test_train_single_run_test_false():
     """run_test=False (default) must NOT call trainer.test()."""
     with (

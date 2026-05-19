@@ -721,13 +721,12 @@ from cerberus.config import PretrainedConfig
 from cerberus.pretrained import load_pretrained_weights
 
 
-def _pc(weights_path, source=None, target=None, freeze=False):
+def _pc(weights_path, source=None, target=None):
     """Helper to build PretrainedConfig for tests."""
     return PretrainedConfig.model_construct(
         weights_path=str(weights_path),
         source=source,
         target=target,
-        freeze=freeze,
     )
 
 
@@ -838,63 +837,22 @@ def test_load_multiple_submodules(tmp_path):
     load_pretrained_weights(
         dalmatian,
         [
-            _pc(tmp_path / "bias.pt", target="bias_model", freeze=True),
+            _pc(tmp_path / "bias.pt", target="bias_model"),
             _pc(tmp_path / "signal.pt", target="signal_model"),
         ],
     )
 
-    # Bias should match and be frozen
-    for (n1, p1), (n2, p2) in zip(
+    for (n1, p1), (_n2, p2) in zip(
         bias.named_parameters(), dalmatian.bias_model.named_parameters(), strict=True
     ):
         assert torch.equal(p1, p2), f"bias_model.{n1} mismatch"
-        assert not p2.requires_grad, f"bias_model.{n2} should be frozen"
 
-    # Signal should match and NOT be frozen
-    for (n1, p1), (n2, p2) in zip(
+    for (n1, p1), (_n2, p2) in zip(
         signal.named_parameters(),
         dalmatian.signal_model.named_parameters(),
         strict=True,
     ):
         assert torch.equal(p1, p2), f"signal_model.{n1} mismatch"
-        assert p2.requires_grad, f"signal_model.{n2} should not be frozen"
-
-
-def test_freeze_pretrained_biasnet(tmp_path):
-    """Freezing sets requires_grad=False on all loaded parameters."""
-    model = BiasNet(input_len=1128, output_len=1024, filters=12)
-    torch.save(model.state_dict(), tmp_path / "biasnet.pt")
-
-    model2 = BiasNet(input_len=1128, output_len=1024, filters=12)
-    load_pretrained_weights(
-        model2,
-        [
-            _pc(tmp_path / "biasnet.pt", freeze=True),
-        ],
-    )
-
-    for name, p in model2.named_parameters():
-        assert not p.requires_grad, f"{name} should be frozen"
-
-
-def test_freeze_bias_leaves_signal_unfrozen(tmp_path):
-    """Freezing bias_model in Dalmatian leaves signal_model trainable."""
-    bias = BiasNet(input_len=1128, output_len=1024, filters=12)
-    torch.save(bias.state_dict(), tmp_path / "biasnet.pt")
-
-    dalmatian = Dalmatian(input_len=2112, output_len=1024)
-    load_pretrained_weights(
-        dalmatian,
-        [
-            _pc(tmp_path / "biasnet.pt", target="bias_model", freeze=True),
-        ],
-    )
-
-    for name, p in dalmatian.bias_model.named_parameters():
-        assert not p.requires_grad, f"bias_model.{name} should be frozen"
-
-    for name, p in dalmatian.signal_model.named_parameters():
-        assert p.requires_grad, f"signal_model.{name} should NOT be frozen"
 
 
 def test_pretrained_architecture_mismatch_raises(tmp_path):
@@ -977,20 +935,15 @@ def test_load_real_pretrained_biasnet_into_dalmatian():
     load_pretrained_weights(
         dalmatian,
         [
-            _pc(pt_path, target="bias_model", freeze=True),
+            _pc(pt_path, target="bias_model"),
         ],
     )
 
-    # Verify frozen bias model produces output in combined model
     x = torch.randn(1, 4, 2112)
     with torch.no_grad():
         out = dalmatian(x)
     assert out.logits.shape == (1, 1, 1024)
     assert out.bias_logits.shape == (1, 1, 1024)
-
-    # Verify bias is frozen
-    for name, p in dalmatian.bias_model.named_parameters():
-        assert not p.requires_grad, f"bias_model.{name} should be frozen"
 
 
 def test_pretrained_empty_list_is_noop():

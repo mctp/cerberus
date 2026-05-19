@@ -12,6 +12,9 @@ from cerberus.layers import DilatedResidualBlock
 from cerberus.metrics import (
     CountProfileMeanSquaredError,
     CountProfilePearsonCorrCoef,
+    DifferentialLogCountsMeanSquaredError,
+    DifferentialLogCountsPearsonCorrCoef,
+    DifferentialLogCountsRootMeanSquaredError,
     LogCountsMeanSquaredError,
     LogCountsPearsonCorrCoef,
 )
@@ -427,17 +430,17 @@ class BPNetLoss(MSEMultinomialLoss):
 class MultitaskBPNet(BPNet):
     """Multi-task BPNet: shared dilated tower with N condition-specific output channels.
 
-    Phase 1 of the two-phase differential accessibility workflow.  Each
-    condition gets its own profile head channel and its own count head
-    output, enabling cross-condition comparisons that are not confounded by
-    separate model training runs — the architecture principle of bpAI-TAC
-    (Chandra et al. 2025, bioRxiv 2025.01.24.634804).
+    Each condition gets its own profile head channel and its own count
+    head output, enabling cross-condition comparisons that are not
+    confounded by separate model training runs — the architecture
+    principle of bpAI-TAC (Chandra et al. 2025, bioRxiv 2025.01.24.634804).
 
     The model is architecturally identical to :class:`BPNet` with
-    ``predict_total_count=False`` enforced.  Per-channel count prediction is
-    a hard requirement: Phase 2 differential fine-tuning supervises the
-    *difference* of two specific count heads, so each condition must produce
-    an independent scalar output.
+    ``predict_total_count=False`` enforced.  Per-channel count prediction
+    is a hard requirement: downstream differential fine-tuning with
+    :class:`cerberus.loss.DifferentialCountLoss` supervises the
+    *difference* of two specific count heads, so each condition must
+    produce an independent scalar output.
 
     Args:
         output_channels: List of condition names (one per steady-state
@@ -510,7 +513,7 @@ class MultitaskBPNet(BPNet):
 
 
 class MultitaskBPNetLoss(MSEMultinomialLoss):
-    """Phase 1 loss for :class:`MultitaskBPNet`.
+    """Multi-task BPNet loss: per-channel profile + count for :class:`MultitaskBPNet`.
 
     Applies the BPNet profile + count loss independently per condition
     channel.  Profile loss is averaged across conditions (following
@@ -581,6 +584,54 @@ class BPNetMetricCollection(MetricCollection):
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "pearson_log_counts": LogCountsPearsonCorrCoef(
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+            }
+        )
+
+
+class DifferentialBPNetMetricCollection(MetricCollection):
+    """
+    MetricCollection for log-fold-change supervision (``DifferentialCountLoss``).
+    Exposes ``mse_delta_log_counts``, ``rmse_delta_log_counts``, and
+    ``pearson_delta_log_counts``; all three compare
+    ``log_counts[:, b] - log_counts[:, a]`` against the inline-derived target
+    ``log((sum_b + pc) / (sum_a + pc))``.
+    """
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        log_counts_include_pseudocount: bool = False,
+    ):
+        # log1p_targets / count_pseudocount / log_counts_include_pseudocount
+        # are the standard triple instantiate_metrics_and_loss forwards to
+        # every metric collection; mirroring the BPNetMetricCollection
+        # signature keeps the dispatch interchangeable.
+        super().__init__(
+            {
+                "mse_delta_log_counts": DifferentialLogCountsMeanSquaredError(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+                "rmse_delta_log_counts": DifferentialLogCountsRootMeanSquaredError(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
+                "pearson_delta_log_counts": DifferentialLogCountsPearsonCorrCoef(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     count_pseudocount=count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,

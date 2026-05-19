@@ -171,18 +171,18 @@ model = BPNet1024(
 **Implementation**: `cerberus.models.bpnet.MultitaskBPNet`
 **Source**: `src/cerberus/models/bpnet.py`
 
-Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to [BPNet](#bpnet) with `predict_total_count=False` enforced, so each condition produces an independent per-channel scalar count head. This is Phase 1 of the two-phase differential-accessibility workflow (see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training) in `docs/usage.md`).
+Shared-trunk BPNet with one profile + count output per condition. Architecturally identical to [BPNet](#bpnet) with `predict_total_count=False` enforced, so each condition produces an independent per-channel scalar count head. Used as the multi-task absolute-signal model in the [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training) recipe described in `docs/usage.md`.
 
 The split pays off when you want to compare two or more steady-state conditions on the same sequences: a joint shared-trunk model sees both conditions during training, so the trunk encodes cross-condition sequence grammar rather than whatever each condition's solo-trained model happened to pick up. This is the architectural principle of bpAI-TAC (Chandra et al. 2025) and the starting point for Naqvi et al. 2025's differential fine-tuning recipe.
 
 ### Key Features
 * **One profile + count head per condition**: `output_channels=[name_a, name_b, ...]` defines the condition names. Must contain at least 2 entries.
-* **`predict_total_count=False` enforced**: each condition gets its own scalar count-head output. Phase 2 differential fine-tuning supervises the *difference* of two of those scalars, so per-channel counts are a hard requirement.
+* **`predict_total_count=False` enforced**: each condition gets its own scalar count-head output. Downstream [DifferentialCountLoss](#differentialcountloss) fine-tuning supervises the *difference* of two of those scalars, so per-channel counts are a hard requirement.
 * **Same trunk as BPNet**: all trunk knobs (`filters`, `n_dilated_layers`, `residual_architecture`, `activation`, `weight_norm`, …) behave identically to BPNet.
 
 ### Loss: MultitaskBPNetLoss
 
-Wraps `MSEMultinomialLoss` with the four settings Phase 1 multi-task training requires: `count_per_channel=True`, `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.
+Wraps `MSEMultinomialLoss` with the four settings multi-task absolute-signal training requires: `count_per_channel=True`, `average_channels=True`, `flatten_channels=False`, `log1p_targets=False`. Profile loss is averaged across conditions (bpAI-TAC convention); count loss is per-channel MSE. Overriding any pinned parameter emits a warning and is ignored.
 
 Parameters `alpha` and `beta` map to `count_weight` and `profile_weight` respectively, matching the [BPNetLoss](#loss-bpnetloss) convention. `alpha="adaptive"` is supported the same way as BPNetLoss.
 
@@ -218,47 +218,56 @@ model = MultitaskBPNet(
 # log_counts: (batch, 2)
 ```
 
-For the companion Phase 2 differential loss see [DifferentialCountLoss](#differentialcountloss) below; for the end-to-end two-phase CLI see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training).
+For the companion differential loss see [DifferentialCountLoss](#differentialcountloss) below; for the end-to-end two-phase CLI that pairs both see [Two-phase multitask-differential training](usage.md#two-phase-multitask-differential-training).
 
 ### DifferentialCountLoss
 
 **Implementation**: `cerberus.loss.DifferentialCountLoss`
 
-Phase 2 fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak log2 fold-change derived inline from the two-channel `(B, N, L)` targets tensor Phase 1 already trained against:
+Differential count-head fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak natural-log fold-change derived inline from the two-channel `(B, N, L)` targets tensor:
 
 ```
-target_delta = log2((sum_B + pc) / (sum_A + pc))
+target_delta = log((sum_B + pc) / (sum_A + pc))
 ```
 
-where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). Setting `count_pseudocount` to match Phase 1's keeps both phases in the same log-space. Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
+where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). `pc` here is an empirical-Bayes shrinkage prior; the recommended value comes from `cerberus.pseudocount.resolve_noise_floor_pseudocount` (training-fold per-channel quantile, max across channels). Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
 
 Single path: `forward(outputs, targets)` returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be `(B, N, L)` with `N >= max(cond_a_idx, cond_b_idx) + 1`.
 
 ```python
 from cerberus.config import ModelConfig, PretrainedConfig
 
-# Phase 2 ModelConfig: same MultitaskBPNet architecture as Phase 1,
-# DifferentialCountLoss in place of MultitaskBPNetLoss, and the Phase 1
-# checkpoint listed under pretrained=[...].
+# Differential fine-tuning ModelConfig: same MultitaskBPNet architecture
+# as the pretrained absolute-signal model, DifferentialCountLoss in place
+# of MultitaskBPNetLoss, and the pretrained checkpoint listed under
+# pretrained=[...].
 model_config = ModelConfig(
-    name="MultitaskBPNet_Phase2",
+    name="MultitaskBPNet_differential",
     model_cls="cerberus.models.bpnet.MultitaskBPNet",
     loss_cls="cerberus.loss.DifferentialCountLoss",
     loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
-    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-    metrics_args={},
+    metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
+    metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
     model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
     pretrained=[
         PretrainedConfig(
             weights_path="models/foxa1/phase1/single-fold/fold_0/model.pt",
-            source=None, target=None, freeze=False,
+            source=None, target=None,
         )
     ],
-    count_pseudocount=150.0,  # raw × target_scale, same as Phase 1
+    count_pseudocount=150.0,  # data-derived noise-floor recommended
 )
 ```
 
-`DifferentialCountLoss` is exported from `cerberus.loss`. For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+`DifferentialCountLoss` is exported from `cerberus.loss`. The companion `DifferentialBPNetMetricCollection` (in `cerberus.models.bpnet`) exposes three keys scoring the same quantity the loss optimises:
+
+- `mse_delta_log_counts` — MSE on the per-example delta log-counts.
+- `rmse_delta_log_counts` — `sqrt(MSE)`, clamped at zero.
+- `pearson_delta_log_counts` — Pearson correlation of predicted vs. target delta accumulated across the epoch.
+
+All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `log_counts[:, b] - log_counts[:, a]`. Constructor kwargs (`cond_a_idx`, `cond_b_idx`, `count_pseudocount`, `log1p_targets`, `log_counts_include_pseudocount`) match the rest of the BPNet collections so dispatch through `instantiate_metrics_and_loss` is uniform.
+
+For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
 
 ### References
 - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.
@@ -612,6 +621,105 @@ Internally, pretrained configs use `source` and `target` fields to support flexi
 | Full Dalmatian checkpoint → whole Dalmatian | None | None |
 | Standalone Pomeranian → Dalmatian signal | None | "signal_model" |
 
+## ChromBPNet
+
+**Implementation**: `cerberus.models.ChromBPNet`
+**Source**: `src/cerberus/models/chrombpnet.py`
+
+Bias-factorized ATAC model composed of two `BPNet` sub-networks following the chrombpnet-pytorch architecture. Returns a plain `ProfileCountOutput` so it plugs into the standard Cerberus loss / metric / prediction infrastructure (unlike `Dalmatian`, which uses the decomposed `FactorizedProfileCountOutput` for gradient routing).
+
+### Key Features
+
+- **Accessibility branch** (`accessibility_model`): large `BPNet` — `filters=512`, `n_dilated_layers=8`. Learns regulatory grammar.
+- **Bias branch** (`bias_model`): smaller `BPNet` — `filters=128`, `n_dilated_layers=4`. Captures Tn5 enzymatic sequence preference; typically loaded pre-trained on background regions and frozen during stage-2 training (via `ModelConfig.freeze`). Train the bias-branch checkpoint with `tools/train_chrombpnet_bias.py` (sampler defaults to `negative_peak` so the model fits on background regions).
+- **Profile combination**: raw logit addition (`acc.logits + bias.logits`).
+- **Count combination**: `torch.logaddexp` (numerically stable form of `log(exp(acc) + exp(bias))`).
+- **`bias_logcount_offset`**: non-trainable scalar buffer added to the bias branch's log-count predictions before combination. Mirrors the chrombpnet-pytorch bias-count calibration step. Update in place via `model.bias_logcount_offset.fill_(value)`.
+
+### Reference-equivalent training settings
+
+`chrombpnet-pytorch` uses `log1p(counts)` as the count-head target, i.e. an additive pseudocount of 1.0 on raw counts. To reproduce that in Cerberus:
+
+| Setting | Value |
+|---|---|
+| `ModelConfig.count_pseudocount` | `1.0` |
+| `DataConfig.target_scale` | `1.0` |
+| `accessibility_args["activation"]` | `"relu"` (default) |
+| `bias_args["activation"]` | `"relu"` (default) |
+| `accessibility_args["weight_norm"]` | `False` (default) |
+| `bias_args["weight_norm"]` | `False` (default) |
+| `accessibility_args["residual_architecture"]` | `"residual_post-activation_conv"` (default) |
+| `bias_args["residual_architecture"]` | `"residual_post-activation_conv"` (default) |
+
+Both sub-BPNets apply Xavier/Glorot uniform initialisation (`BPNet._tf_style_reinit`) matching the reference's `tf_style_reinit`, so initialisation is on the same distribution.
+
+### `bias_logcount_offset` calibration
+
+The companion helper `estimate_bias_logcount_offset(bias_model, dataloader)` returns the mean residual between observed log-counts and the bias model's predicted log-counts. Apply via:
+
+```python
+from cerberus.models import ChromBPNet
+from cerberus.models.chrombpnet import estimate_bias_logcount_offset
+
+delta = estimate_bias_logcount_offset(
+    chrombpnet.bias_model,
+    background_dataloader,
+    count_pseudocount=1.0,        # matches reference log1p
+)
+chrombpnet.bias_logcount_offset.fill_(delta)
+```
+
+In `chrombpnet-pytorch` the offset is applied by mutating `bias.linear.bias` directly. Cerberus stores it as a separate buffer on the parent `ChromBPNet`, so the loaded bias `state_dict` is preserved intact and the calibration participates in `ChromBPNet.state_dict()` round-trips. The forward math is identical.
+
+### Usage
+
+```python
+from cerberus.config import ModelConfig
+from cerberus.models import ChromBPNet
+
+model_config = ModelConfig(
+    name="ChromBPNet_K562",
+    model_cls="cerberus.models.chrombpnet.ChromBPNet",
+    loss_cls="cerberus.models.bpnet.BPNetLoss",
+    loss_args={"alpha": "adaptive"},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={
+        "input_len": 2114,
+        "output_len": 1000,
+        "output_channels": ["signal"],
+        # Pass per-branch overrides via accessibility_args / bias_args.
+    },
+    pretrained=[],          # populate in stage 2 with the trained bias model
+    count_pseudocount=1.0,  # reference equivalence (paired with target_scale=1.0)
+)
+```
+
+### Training tools
+
+The ChromBPNet workflow ships as two scripts that share the architecture defaults from `_ACCESSIBILITY_DEFAULTS` / `_BIAS_DEFAULTS` on the model module.
+
+**Stage 1 — bias-branch BPNet** (`tools/train_chrombpnet_bias.py`).  Trains the small BPNet on non-peak background regions (`--sampler-type negative_peak` by default, `--background-ratio 1.0`).  Defaults match the reference bias-branch shape (`--filters 128 --n-layers 4`, `--count-pseudocount 1.0`, `--target-scale 1.0`).  The exported `model.pt` is loaded into `ChromBPNet.bias_model` in stage 2.  See `examples/scatac_kidney_chrombpnet_bias.sh`.
+
+**Stage 2 — full ChromBPNet** (`tools/train_chrombpnet.py`).  Loads the stage-1 bias checkpoint via `--pretrained-bias`, freezes the bias subtree by default through `ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]` (use `--no-freeze-bias` to keep both branches trainable), optionally runs `--adjust-bias-logcounts` to calibrate the scalar `ChromBPNet.bias_logcount_offset` on non-peak training regions, then trains the full model on peaks.  On rank 0 the post-training pass exports an accessibility-only `chrombpnet_wo_bias.pt` next to each `model.pt`, plots training curves, and runs a held-out prediction evaluation on the test fold:
+
+```bash
+python tools/train_chrombpnet.py \
+    --bigwig signal.bw --peaks peaks.bed.gz \
+    --pretrained-bias models/bias/single-fold/fold_0/model.pt \
+    --adjust-bias-logcounts \
+    --output-dir models/chrombpnet
+```
+
+See `examples/scatac_kidney_chrombpnet.sh` for the complete invocation.
+
+CLI naming note: the stage-1 trainer's `--filters` / `--n-layers` / etc. configure the *bias* model, while the stage-2 trainer's `--filters` / `--n-layers` configure the *accessibility* model and the bias-branch flags are prefixed `--bias-filters` / `--bias-layers` / etc.  Custom stage-1 architecture must be mirrored under the prefixed names in stage 2 or the loaded bias `state_dict` will mismatch shapes.
+
+### References
+
+- chrombpnet-pytorch: <https://github.com/jsxlei/chrombpnet-pytorch> (Lei Xiong, after Schreiber).
+- Original ChromBPNet (TensorFlow): Avsec et al. 2021 / Pampari et al. 2024.
+
 ## PWMBiasModel (experimental)
 
 **Location**: `debug/pwm_model/pwm_bias.py` (not part of cerberus public API)
@@ -720,3 +828,25 @@ model = GlobalProfileCNN(
 )
 # Returns ProfileLogRates(log_rates=...)  shape: (batch, output_channels, 256)
 ```
+
+## Named submodules reference
+
+Top-level child names (`model.named_children()`) for every shipped
+architecture.  These are the paths that are valid as
+`FreezeSpec(pattern=...)` targets (see
+[configuration.md § Freezing Parameters](configuration.md#freezing-parameters)).
+Nested paths like `res_layers.0` are also valid — any name
+returned by `model.named_modules()` works.
+
+| Architecture | Top-level children |
+|---|---|
+| `BPNet` / `MultitaskBPNet` | `iconv`, `iconv_act`, `res_layers`, `final_tower_relu`, `profile_conv`, `count_dense` |
+| `Pomeranian` | `stem`, `layers`, `profile_pointwise`, `profile_act`, `profile_spatial`, `count_mlp` |
+| `BiasNet` | `stem`, `layers`, `profile_spatial`, `count_mlp` |
+| `Dalmatian` | `bias_model`, `signal_model` |
+| `ConvNeXtDCNN` (ASAP) | `init_conv`, `init_pool`, `core` |
+| `GlobalProfileCNN` (Gopher) | see `src/cerberus/models/gopher.py` |
+
+For composite models such as Dalmatian, patterns can address the
+sub-model directly (`"bias_model"`) or any nested path
+(`"signal_model.stem"`, `"signal_model.layers.3"`).

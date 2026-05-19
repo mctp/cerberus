@@ -154,13 +154,15 @@ class TrainConfig(BaseModel):
 class PretrainedConfig(BaseModel):
     """Configuration for loading pretrained weights into a model sub-module.
 
+    Parameter freezing is handled separately via :class:`FreezeSpec` on
+    ``ModelConfig.freeze`` — this class only describes *loading*.
+
     Attributes:
         weights_path: Path to a ``.pt`` state-dict file.
         source: Sub-module prefix to extract from the source state dict
             (``None`` uses all keys).
         target: Named sub-module to load into (``None`` loads into the
             whole model).
-        freeze: If ``True``, freeze all parameters in the loaded sub-module.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -168,7 +170,38 @@ class PretrainedConfig(BaseModel):
     weights_path: str
     source: str | None
     target: str | None
-    freeze: bool
+
+
+class FreezeSpec(BaseModel):
+    """Declarative freeze rule applied after model instantiation.
+
+    Patterns are exact paths into the model's named hierarchy — not
+    globs.  Exactly one of the following must hold:
+
+    - ``pattern`` equals the name of a module in ``named_modules()``
+      (e.g. ``"bias_model"``, ``"res_layers.0"``) — freezes every
+      parameter in that subtree and, if ``eval_mode`` is ``True``,
+      calls ``.eval()`` on the module root so that Dropout / BatchNorm
+      descendants stop firing / drifting.
+    - ``pattern`` equals the name of a parameter in
+      ``named_parameters()`` (e.g. ``"iconv.weight"``) — freezes that
+      single parameter.  ``eval_mode`` is ignored for parameter-only
+      matches.
+
+    A zero-match pattern raises at ``apply_freeze`` time so typos
+    cannot silently become no-ops.
+
+    Attributes:
+        pattern: Exact module or parameter path to freeze.
+        eval_mode: If ``True`` (default), call ``.eval()`` on the
+            matched module root. Ignored when ``pattern`` names a
+            parameter rather than a module.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pattern: str
+    eval_mode: bool = True
 
 
 class ModelConfig(BaseModel):
@@ -184,6 +217,10 @@ class ModelConfig(BaseModel):
         model_args: Model constructor keyword arguments.
         pretrained: List of pretrained-weight configs to apply after
             instantiation.  Empty list means train from scratch.
+        freeze: List of freeze rules applied after the model is built
+            and pretrained weights (if any) are loaded.  Empty list
+            means all parameters remain trainable.  See
+            :class:`FreezeSpec` for pattern semantics.
         count_pseudocount: Additive offset before log-transforming count
             targets, in scaled units (raw coverage × ``target_scale``).
             Set to ``0.0`` for losses that do not use a pseudocount
@@ -200,6 +237,19 @@ class ModelConfig(BaseModel):
     metrics_args: dict[str, Any]
     model_args: dict[str, Any]
     pretrained: list[PretrainedConfig] = Field(default_factory=list)
+    freeze: list[FreezeSpec] = Field(default_factory=list)
+    # TODO(future-breaking-change): rename ``count_pseudocount`` to
+    # ``count_log_offset``.  This field plugs into two distinct count
+    # losses with different roles: an additive offset in
+    # ``log(count + pc)`` (a Laplace-style pseudocount) and a shrinkage
+    # parameter in ``log((c_b + pc) / (c_a + pc))`` (edgeR's
+    # ``prior.count``).  The current name is accurate only for the
+    # first role; ``count_log_offset`` is role-neutral and
+    # mathematically correct for both.  Deferred because the rename
+    # touches every shipped tool's CLI surface and ``hparams.yaml``
+    # serialisation; land it as a single breaking-change commit with
+    # a migration note.  See ``cerberus.pseudocount`` for helpers
+    # whose names already reflect the role distinction.
     count_pseudocount: float = Field(default=0.0, ge=0)
 
 

@@ -31,6 +31,91 @@ def _per_example_pearson(
     )
 
 
+def _validate_differential_channel_indices(
+    cond_a_idx: int, cond_b_idx: int
+) -> tuple[int, int]:
+    """Reject equal-index or negative-index configurations at construction.
+
+    Matches :class:`cerberus.loss.DifferentialCountLoss`'s own validation so
+    a metric and the loss it accompanies fail in the same way on the same
+    misconfiguration.
+    """
+    if cond_a_idx == cond_b_idx:
+        raise ValueError(
+            f"cond_a_idx and cond_b_idx must differ, got both={cond_a_idx}"
+        )
+    for name, idx in (("cond_a_idx", cond_a_idx), ("cond_b_idx", cond_b_idx)):
+        if idx < 0:
+            raise ValueError(f"{name} must be non-negative, got {idx}")
+    return cond_a_idx, cond_b_idx
+
+
+def _extract_differential_log_count_pairs(
+    preds: ProfileCountOutput,
+    target: torch.Tensor,
+    cond_a_idx: int,
+    cond_b_idx: int,
+    count_pseudocount: float,
+    log1p_targets: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Derive predicted and target delta-log-count scalars for each example.
+
+    Mirrors :class:`cerberus.loss.DifferentialCountLoss`: prediction is
+    ``log_counts[:, b] - log_counts[:, a]`` and target is
+    ``log((sum_b + pc) / (sum_a + pc))`` with sums over the length axis
+    of the ``(B, N, L)`` targets tensor.
+
+    The prediction is read directly from ``log_counts`` regardless of
+    whether the model's log-space includes the pseudocount or not — the
+    loss optimises that same subtraction, so the metric must report on
+    it.  Inserting a pc-aware correction here would measure something
+    the loss is not optimising and produce a biased training signal.
+    """
+    if not isinstance(preds, ProfileCountOutput):
+        raise TypeError(
+            "Differential log-count metrics require ProfileCountOutput, "
+            f"got {type(preds).__name__}"
+        )
+
+    log_counts = preds.log_counts
+    if log_counts.ndim != 2:
+        raise ValueError(
+            "Differential log-count metrics require log_counts of shape (B, N); "
+            f"got {tuple(log_counts.shape)}"
+        )
+    n_channels = log_counts.shape[-1]
+    a, b = cond_a_idx, cond_b_idx
+    for name, idx in (("cond_a_idx", a), ("cond_b_idx", b)):
+        if idx >= n_channels:
+            raise ValueError(
+                f"{name}={idx} is out of range for log_counts with "
+                f"{n_channels} channels"
+            )
+
+    target = target.float()
+    if log1p_targets:
+        target = torch.expm1(target)
+    if target.ndim != 3:
+        raise ValueError(
+            "Differential log-count metrics require targets of shape (B, N, L); "
+            f"got {tuple(target.shape)}"
+        )
+    if target.shape[1] < n_channels:
+        # Same minimum-channel check as the per-index range guard above,
+        # but on the targets tensor — both must address the requested pair.
+        raise ValueError(
+            f"targets must have at least {n_channels} channels to cover "
+            f"cond_a_idx={a} and cond_b_idx={b}, got shape {tuple(target.shape)}"
+        )
+
+    counts = target.sum(dim=-1)  # (B, N)
+    target_delta = torch.log(
+        (counts[:, b] + count_pseudocount) / (counts[:, a] + count_pseudocount)
+    )  # (B,)
+    pred_delta = (log_counts[:, b] - log_counts[:, a]).float()  # (B,)
+    return pred_delta.flatten(), target_delta.flatten()
+
+
 class ProfilePearsonCorrCoef(Metric):
     """
     Pearson Correlation Coefficient for profile probabilities.
@@ -407,6 +492,133 @@ class LogCountsPearsonCorrCoef(Metric):
             all_targets = torch.cat(self.targets_list)
         if all_preds.numel() < 2:
             return torch.tensor(float("nan"), device=all_preds.device)
+        preds_c = all_preds - all_preds.mean()
+        target_c = all_targets - all_targets.mean()
+        cov = (preds_c * target_c).sum()
+        denom = preds_c.pow(2).sum().sqrt() * target_c.pow(2).sum().sqrt()
+        if denom < 1e-8:
+            return torch.tensor(float("nan"), device=all_preds.device)
+        return (cov / denom).float()
+
+
+class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
+    """
+    Mean Squared Error on differential log-count targets.
+
+    Companion to :class:`cerberus.loss.DifferentialCountLoss`: for each
+    example, reduces the ``(B, N, L)`` targets tensor to a per-example
+    scalar ``target_delta = log((sum_b + pc) / (sum_a + pc))`` and
+    compares it against ``pred_delta = log_counts[:, b] - log_counts[:, a]``.
+    """
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        log_counts_include_pseudocount: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.cond_a_idx, self.cond_b_idx = _validate_differential_channel_indices(
+            cond_a_idx, cond_b_idx
+        )
+        self.log1p_targets = log1p_targets
+        self.count_pseudocount = count_pseudocount
+        # Dispatch-time kwarg; intentionally not consulted -- see
+        # _extract_differential_log_count_pairs for the math reason.
+        self.log_counts_include_pseudocount = log_counts_include_pseudocount
+
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None:  # type: ignore[override]
+        pred_delta, target_delta = _extract_differential_log_count_pairs(
+            preds,
+            target,
+            cond_a_idx=self.cond_a_idx,
+            cond_b_idx=self.cond_b_idx,
+            count_pseudocount=self.count_pseudocount,
+            log1p_targets=self.log1p_targets,
+        )
+        super().update(pred_delta, target_delta)
+
+
+class DifferentialLogCountsRootMeanSquaredError(DifferentialLogCountsMeanSquaredError):
+    """
+    Root Mean Squared Error on differential log-count targets.
+
+    Identical update semantics to
+    :class:`DifferentialLogCountsMeanSquaredError`; ``compute()`` returns
+    the square root, clamped at zero for numerical safety on tiny MSEs.
+    """
+
+    def compute(self) -> torch.Tensor:
+        return torch.sqrt(super().compute().clamp_min(0.0)).float()
+
+
+class DifferentialLogCountsPearsonCorrCoef(Metric):
+    """
+    Pearson Correlation on differential log-count targets.
+
+    Accumulates per-example ``(pred_delta, target_delta)`` pairs across
+    batches and computes a single Pearson correlation at epoch end —
+    same pattern as :class:`LogCountsPearsonCorrCoef`, with the delta
+    target derived inline from the ``(B, N, L)`` targets tensor.
+    Returns NaN when fewer than two examples have been accumulated or
+    either side has zero variance.
+    """
+
+    full_state_update: bool | None = False
+    preds_list: list[torch.Tensor]
+    targets_list: list[torch.Tensor]
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        log_counts_include_pseudocount: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.cond_a_idx, self.cond_b_idx = _validate_differential_channel_indices(
+            cond_a_idx, cond_b_idx
+        )
+        self.log1p_targets = log1p_targets
+        self.count_pseudocount = count_pseudocount
+        # Dispatch-time kwarg; intentionally not consulted -- see
+        # _extract_differential_log_count_pairs for the math reason.
+        self.log_counts_include_pseudocount = log_counts_include_pseudocount
+        self.add_state("preds_list", default=[], dist_reduce_fx="cat")
+        self.add_state("targets_list", default=[], dist_reduce_fx="cat")
+
+    def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None:  # type: ignore[override]
+        pred_delta, target_delta = _extract_differential_log_count_pairs(
+            preds,
+            target,
+            cond_a_idx=self.cond_a_idx,
+            cond_b_idx=self.cond_b_idx,
+            count_pseudocount=self.count_pseudocount,
+            log1p_targets=self.log1p_targets,
+        )
+        self.preds_list.append(pred_delta.detach())
+        self.targets_list.append(target_delta.detach())
+
+    def compute(self) -> torch.Tensor:
+        # After DDP reduce with dist_reduce_fx="cat", the list may already
+        # be a single concatenated tensor rather than a list of tensors.
+        if isinstance(self.preds_list, torch.Tensor):
+            all_preds = cast(torch.Tensor, self.preds_list)
+            all_targets = cast(torch.Tensor, self.targets_list)
+        elif len(self.preds_list) == 0:
+            return torch.tensor(float("nan"), device=self.device)
+        else:
+            all_preds = torch.cat(self.preds_list)
+            all_targets = torch.cat(self.targets_list)
+
+        if all_preds.numel() < 2:
+            return torch.tensor(float("nan"), device=all_preds.device)
+
         preds_c = all_preds - all_preds.mean()
         target_c = all_targets - all_targets.mean()
         cov = (preds_c * target_c).sum()

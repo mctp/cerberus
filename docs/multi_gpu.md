@@ -64,3 +64,16 @@ Setting `reload_dataloaders_every_n_epochs=1` in `TrainConfig` triggers `resampl
     - Set `num_workers` to roughly `(total_cores / num_gpus)` to avoid over-subscribing CPU.
     - Use `reload_dataloaders_every_n_epochs=1` with randomized samplers (Peak, ComplexityMatched, Random) so that each epoch sees a fresh sample across all ranks.
     - The `prepare_data()` hook runs on rank 0 only. Complexity metrics are cached to disk and loaded by all ranks in `setup()`, avoiding redundant FASTA reads.
+
+## Pre-Trainer GPU work under DDP
+
+`pl.Trainer` calls `torch.cuda.set_device(LOCAL_RANK)` for you, but only
+inside `trainer.fit()`. Any GPU work in user code *before* the Trainer
+runs — calibration passes, statistics over a model, on-GPU warmups —
+needs to pick the right card itself; otherwise every rank lands on
+`cuda:0`.
+
+`cerberus.utils.resolve_device("auto")` handles this: when CUDA is
+available and `LOCAL_RANK` is set in the environment, it returns
+`cuda:LOCAL_RANK` instead of bare `cuda`. Single-process callers (no
+`LOCAL_RANK`) get `cuda` exactly as before.

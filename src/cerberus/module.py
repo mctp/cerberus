@@ -36,6 +36,24 @@ class CerberusModule(pl.LightningModule):
     - targets: (Batch, Target_Channels, Length).
     """
 
+    # Validation-end scatter dispatch.  Ordered: first matching Pearson key
+    # in val_metrics wins.  Differential collections (log-fold-change) precede
+    # the absolute one so a differential collection scatters in its native space.
+    _SCATTER_DISPATCH: tuple[tuple[str, dict[str, str]], ...] = (
+        ("pearson_delta_log_counts", {
+            "x_label": "True delta log counts",
+            "y_label": "Predicted delta log counts",
+            "title": "Val delta log counts",
+            "filename_prefix": "val_delta_log_counts_scatter",
+        }),
+        ("pearson_log_counts", {
+            "x_label": "True log counts",
+            "y_label": "Predicted log counts",
+            "title": "Val counts",
+            "filename_prefix": "val_count_scatter",
+        }),
+    )
+
     def __init__(
         self,
         model: nn.Module,
@@ -202,35 +220,55 @@ class CerberusModule(pl.LightningModule):
         self.log_dict(metrics, sync_dist=True)
         self.train_metrics.reset()
 
+    def _resolve_val_scatter_spec(self) -> tuple[Any, dict[str, str]] | None:
+        """Return the Pearson metric + ``save_count_scatter`` kwargs to use.
+
+        First matching key in :attr:`_SCATTER_DISPATCH` wins.  Queries
+        ``val_metrics`` by bare name only -- ``MetricCollection.clone(
+        prefix="val_")``'s ``__contains__`` rejects the prefixed form.
+        Returns ``None`` when no dispatched key is present (silent skip).
+        """
+        for key, kwargs in self._SCATTER_DISPATCH:
+            if key in self.val_metrics:
+                return self.val_metrics[key], kwargs
+        return None
+
     def on_validation_epoch_end(self) -> None:
-        # Extract scatter plot data from the LogCountsPearsonCorrCoef metric
-        # *before* compute()/reset() clears the accumulated state.
+        # Capture Pearson preds/targets *before* compute()/reset() clears
+        # accumulator state.  Dispatch picks the absolute-or-differential
+        # scatter based on which Pearson key the metric collection exposes.
         scatter_preds = None
         scatter_targets = None
+        scatter_kwargs: dict[str, str] = {}
         if self.trainer.is_global_zero and not self.trainer.sanity_checking:
-            pearson_key = "pearson_log_counts"
-            if pearson_key in self.val_metrics:
-                pearson_metric = self.val_metrics[pearson_key]
+            spec = self._resolve_val_scatter_spec()
+            if spec is not None:
+                pearson_metric, scatter_kwargs = spec
                 preds_list = pearson_metric.preds_list  # type: ignore[union-attr]
                 targets_list = pearson_metric.targets_list  # type: ignore[union-attr]
                 if isinstance(preds_list, torch.Tensor):
+                    # DDP reduce with dist_reduce_fx="cat" pre-concatenates.
                     scatter_preds = preds_list.cpu().float().numpy()
                     scatter_targets = targets_list.cpu().float().numpy()  # type: ignore[union-attr]
                 elif preds_list:
                     scatter_preds = torch.cat(preds_list).cpu().float().numpy()  # type: ignore[arg-type]
                     scatter_targets = torch.cat(targets_list).cpu().float().numpy()  # type: ignore[arg-type]
 
-        # Log aggregated metrics, then reset
+        # Log aggregated metrics, then reset.
         metrics = self.val_metrics.compute()
         self.log_dict(metrics, sync_dist=True)
         self.val_metrics.reset()
 
-        # Write scatter plot (after metric bookkeeping)
+        # Write scatter plot (after metric bookkeeping).
         if scatter_preds is not None and scatter_targets is not None:
             trainer_log_dir = getattr(self.trainer.logger, "log_dir", None)
             save_dir = trainer_log_dir or self.trainer.default_root_dir or "."
             save_count_scatter(
-                scatter_preds, scatter_targets, save_dir, self.current_epoch
+                scatter_preds,
+                scatter_targets,
+                save_dir,
+                self.current_epoch,
+                **scatter_kwargs,
             )
 
 

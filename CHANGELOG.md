@@ -7,6 +7,285 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a5] - 2026-05-19
+
+### Added
+- **`tools/train_chrombpnet_bias.py`: stage-1 bias-branch trainer.**
+  Trains the small BPNet used as the frozen bias model in ChromBPNet
+  (stage 2).  Defaults match the reference chrombpnet-pytorch bias
+  stage (`filters=128, n_dilated_layers=4`,
+  `sampler_type="negative_peak"`, `background_ratio=1.0`,
+  `count_pseudocount=1.0`, `target_scale=1.0`).  The exported
+  `model.pt` is loaded into `ChromBPNet.bias_model` in stage 2.
+  Example end-to-end invocation in
+  `examples/scatac_kidney_chrombpnet_bias.sh`; the shell-script header
+  notes that the upstream pseudobulk workflow was tested against
+  `snapatac2==2.8.0` (pyproject does not pin -- install that version
+  explicitly for byte-level pseudobulk reproducibility).
+- **`tools/train_chrombpnet.py`: stage-2 ChromBPNet trainer.**  Loads a
+  pre-trained small-BPNet bias checkpoint, freezes the bias subtree via
+  `ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]`
+  (use `--no-freeze-bias` to keep both branches trainable), optionally
+  calibrates the scalar `bias_logcount_offset` on non-peak regions
+  before training (`--adjust-bias-logcounts`), trains the full
+  `ChromBPNet` through the standard `train_single` / `train_multi`
+  pipeline, then on rank 0 exports an accessibility-only
+  `chrombpnet_wo_bias.pt` checkpoint next to each `model.pt`, plots
+  training curves, and runs a held-out prediction evaluation on the
+  test fold.  Example invocation in
+  `examples/scatac_kidney_chrombpnet.sh`.  CLI-construction logic and
+  the accessibility-only checkpoint export are guarded by
+  `tests/test_chrombpnet_reporting.py`; end-to-end
+  bias-load-and-freeze contract is guarded by a new case in
+  `tests/test_chrombpnet.py`.
+- **`ChromBPNet` model class.** Native cerberus implementation of the
+  bias-factorized ATAC model from `chrombpnet-pytorch`. Composes two
+  `BPNet` sub-networks (large accessibility branch, smaller bias
+  branch); profiles combine by logit addition and counts by
+  `torch.logaddexp`. Reference-equivalent training settings
+  (Xavier/Glorot init, `relu`, no weight norm, post-activation
+  residuals, `log1p` count target via `count_pseudocount=1.0` +
+  `target_scale=1.0`) are documented in `docs/models.md#chrombpnet`.
+  Returns a plain `ProfileCountOutput` so it plugs into the standard
+  loss/metric/prediction infrastructure. The bias-count calibration
+  step (chrombpnet-pytorch's `adjust_bias_model_logcounts`) is
+  available as a standalone `estimate_bias_logcount_offset(bias_model,
+  dataloader)` helper; the returned scalar is intended for the
+  non-trainable `bias_logcount_offset` buffer on `ChromBPNet`, leaving
+  the loaded bias `state_dict` pristine.
+- **Multitask differential trainer wiring for the new metric collection
+  and pseudocount helpers.** `tools/train_multitask_differential_bpnet`
+  Phase 1 now uses the shared scale-aware pseudocount CLI family
+  (`--pseudocount-reads`, `--read-length`, `--input-scale`,
+  `--total-reads`).  Phase 2 derives its `count_pseudocount` from the
+  training fold's per-channel quantile via
+  `cerberus.pseudocount.resolve_noise_floor_pseudocount`; new flags
+  `--phase2-pseudocount-quantile` (default 0.10),
+  `--phase2-pseudocount-samples` (default 2000), and
+  `--phase2-pseudocount-override` (escape hatch) control the
+  computation.  Phase 2 `metrics_cls` is now
+  `DifferentialBPNetMetricCollection`, so per-epoch metrics and the
+  val-end scatter live in the differential space.
+- **Scale-aware pseudocount CLI flag family across all single-task
+  trainers.** `train_bpnet`, `train_asap`, `train_biasnet`,
+  `train_gopher`, `train_pomeranian`, `train_dalmatian`, and
+  `train_dalmatian_multitask` each accept four new flags --
+  `--pseudocount-reads`, `--read-length`, `--input-scale {raw,cpm}`,
+  `--total-reads` -- alongside the existing `--count-pseudocount`.
+  When `--pseudocount-reads` is set, the helper computes the scaled
+  `count_pseudocount` via
+  `cerberus.pseudocount.resolve_read_coverage_pseudocount` and
+  `--count-pseudocount` is ignored.  Otherwise legacy behaviour
+  (`args.count_pseudocount * target_scale`) is preserved.  Shared
+  argparse plumbing lives in the new `tools/_pseudocount_cli`
+  module so the per-tool diffs reduce to two function calls.
+- **Validation scatter auto-selects absolute or delta variant.**
+  `CerberusModule.on_validation_epoch_end` now dispatches against a
+  `_SCATTER_DISPATCH` table keyed on Pearson metric name:
+  `pearson_delta_log_counts` (from `DifferentialBPNetMetricCollection`)
+  takes priority over `pearson_log_counts`. When the differential key
+  is present the per-epoch PNG is emitted as
+  `val_delta_log_counts_scatter_epoch_NNN.png` with delta-specific
+  axis labels; otherwise behaviour is unchanged. Pure addition —
+  callers that surface only the absolute key keep their existing
+  output.
+- **`save_count_scatter` accepts custom axis labels, title prefix, and
+  filename prefix.** Four optional kwargs (`x_label`, `y_label`,
+  `title`, `filename_prefix`) with defaults that reproduce the current
+  output exactly. Lets a future caller emit a second per-epoch scatter
+  (e.g. for delta log-counts) without duplicating the plotting code or
+  overwriting the absolute-counts PNG.
+- **`DifferentialBPNetMetricCollection`.** New `MetricCollection`
+  wrapping the three differential metrics from `cerberus.metrics`
+  under keys `mse_delta_log_counts`, `rmse_delta_log_counts`, and
+  `pearson_delta_log_counts`.  Constructor signature mirrors
+  `BPNetMetricCollection` so `instantiate_metrics_and_loss` dispatches
+  through the same `log1p_targets` / `count_pseudocount` /
+  `log_counts_include_pseudocount` triple.  Set
+  `metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection"`
+  in the Phase-2 `ModelConfig` to surface the delta-log-count metrics
+  during fine-tuning.
+- **Differential log-count metrics.** Three TorchMetrics classes in
+  `cerberus.metrics` that score predictions in the same space
+  `DifferentialCountLoss` optimises:
+  `DifferentialLogCountsMeanSquaredError`,
+  `DifferentialLogCountsRootMeanSquaredError`,
+  `DifferentialLogCountsPearsonCorrCoef`. Each derives the per-example
+  delta target inline from the `(B, N, L)` targets tensor and compares
+  it against `log_counts[:, b] - log_counts[:, a]`.
+- **`cerberus.pseudocount` module with two role-named helpers.**
+  `resolve_read_coverage_pseudocount(reads_equiv, read_length,
+  bin_size, target_scale, input_scale, total_reads)` converts a
+  user-facing read-coverage specification into the scaled value for
+  `ModelConfig.count_pseudocount` (Phase 1 / single-task absolute
+  models — the pseudocount as a `log(0)`-avoidance offset).
+  `resolve_noise_floor_pseudocount(datamodule, quantile=0.10,
+  n_samples=2000, seed=None)` derives the value from the training
+  fold's per-channel count distribution (Phase 2 differential — the
+  pseudocount as an empirical-Bayes shrinkage prior in
+  `log((c_b + pc) / (c_a + pc))`). The Phase-2 helper takes
+  per-channel quantiles and the **max** across channels so the deeper
+  condition's noise floor is still shrunk. Both names emphasise the
+  pseudocount's role rather than the calibration method. Seeded
+  reproducibility flows through `compute_count_quantile_samples`.
+- **`CerberusDataModule.compute_count_quantile_samples()`.** New method
+  that draws length-summed target-count samples from the training fold
+  for quantile-based Phase-2 pseudocount calibration. Mirrors the
+  fork-safety and target-scale handling of the existing
+  `compute_median_counts`; adds a `seed` parameter (via an isolated
+  `random.Random(seed)` stream that does not consume the module-level
+  RNG) for reproducible calibration across runs. Returns 2D
+  `(n_samples, C)` with `per_channel=True` so consumers can compute
+  per-channel quantiles rather than flattening into a misleading union
+  10th-percentile. No caller yet — feeds the upcoming
+  `cerberus.pseudocount.resolve_quantile_pseudocount` helper.
+- **`export_tfmodisco_inputs.py --split all`.** New choice on the
+  `--split` flag that iterates the full sampler interval set without
+  fold splitting, for motif discovery over a dataset rather than a
+  per-fold slice. Constructs the dataset directly (bypassing
+  `CerberusDataModule.setup` and any `test_fold`/`val_fold` in
+  `genome_config.fold_args`) with DataLoader kwargs mirroring the
+  per-split loaders (`shuffle=False`, `pin_memory`, `worker_init_fn`,
+  `persistent_workers`). The existing `train`/`val`/`test` modes are
+  unchanged.
+- **`resolve_device("auto")` honors `$LOCAL_RANK` under DDP.** When CUDA
+  is available and the env var is set by a DDP launcher (`torchrun`,
+  `srun`), auto-detection returns `cuda:LOCAL_RANK` instead of bare
+  `cuda` (which resolves to `cuda:0` on every rank until
+  `torch.cuda.set_device` runs inside `trainer.fit`). Closes a footgun
+  for pre-Trainer GPU work — calibration passes, statistics, warmups —
+  that would otherwise pile every rank's allocations onto card 0.
+  Misconfigured `LOCAL_RANK` values (non-integer, out of range) log a
+  warning and fall back to bare `cuda` rather than crashing. Single-
+  process callers are unaffected.
+- **DDP rank handoff barrier at the end of `_train`.** Internal helper
+  `_barrier_if_distributed()` calls `torch.distributed.barrier()` after
+  rank 0 writes `model.pt` and interval manifests, so downstream
+  callers that glob those paths immediately after `train_single` /
+  `train_multi` returns no longer race non-rank-0 workers into
+  `FileNotFoundError`. No-op when `torch.distributed` is not
+  initialised.
+- **Declarative parameter freezing via `ModelConfig.freeze`.** New
+  `FreezeSpec(pattern, eval_mode)` type plus `cerberus.freeze`
+  module exposing `apply_freeze`, `FreezeReport`, and
+  `maybe_promote_ddp_strategy`. `pattern` is an **exact path** into
+  `named_modules()` (subtree freeze) or `named_parameters()`
+  (single parameter); module matches additionally call `.eval()` on
+  the subtree root so Dropout / BatchNorm inside the frozen branch
+  stop firing / drifting. Applied by `_train` after pretrained
+  weight loading; DDP strategy auto-promotes
+  `ddp_find_unused_parameters_false` → `_true` whenever any
+  parameter is frozen. Zero-match specs raise to catch typos. See
+  `docs/configuration.md#freezing-parameters` and
+  `docs/models.md#named-submodules-reference`.
+
+### Changed
+- **`train_multitask_differential_bpnet` Phase 2 pseudocount is now
+  data-derived by default.**  Previously Phase 2 reused Phase 1's
+  `count_pseudocount * target_scale` (a log(0)-avoidance offset), which
+  conflated two different roles -- additive offset for absolute counts
+  vs. shrinkage prior for log-fold-changes.  Phase 2 now defaults to
+  the 10th-percentile-per-channel of training counts (max-combined
+  across channels), which is the right magnitude for the shrinkage role
+  and adapts automatically to raw / CPM bigWigs and library depth.
+  Existing runs may see Phase 2 MSE / RMSE values shift; Pearson is
+  invariant.  Pass `--phase2-pseudocount-override
+  <args.count_pseudocount * args.target_scale>` to reproduce previous
+  behaviour.
+- **Dropped dead `loss_args["count_pseudocount"]` from Dalmatian
+  trainers.** `tools/train_dalmatian.py` and
+  `tools/train_dalmatian_multitask.py` no longer set
+  `count_pseudocount` inside `loss_args`: the value was unconditionally
+  overridden by `instantiate_metrics_and_loss` from
+  `ModelConfig.count_pseudocount` before it ever reached the loss
+  constructor.  Comment in place at each call site explains the
+  override path.
+- **`DifferentialCountLoss` target switched from log2 to natural log.**
+  Phase 1 absolute count heads train against `log(count + pc)`. The
+  Phase 2 differential target now uses the same natural-log base —
+  `target_delta = log((sum_b + pc) / (sum_a + pc))` — so both phases
+  live in one log-space. Pearson is invariant to log base, so existing
+  qualitative comparisons hold; absolute loss / RMSE magnitudes change
+  by a factor of `log(2)` (≈0.693 for RMSE, `log(2)²` ≈0.480 for MSE)
+  and tuned learning-rate / `--alpha` choices may need to scale
+  proportionally.
+- **`cerberus.pretrained._extract_prefix` renamed to `extract_prefix`.**
+  The helper that slices a sub-module state dict out of a full-model
+  checkpoint (used internally by `load_pretrained_weights`) is now a
+  public name on the submodule. No alias is kept: the function was
+  never exported from the top-level `cerberus` package, so callers
+  outside this repo could not have imported the underscored name in
+  the first place. Internal call site and tests updated.
+- **Dalmatian `--freeze-bias` correctness fix.** The flag now
+  populates `ModelConfig.freeze=[FreezeSpec("bias_model",
+  eval_mode=True)]` instead of the legacy
+  `PretrainedConfig.freeze=True`. The new surface pairs the
+  `requires_grad` flip with `bias_model.eval()` so the 5×
+  `Dropout(p=0.1)` layers inside BiasNet become identity during
+  training — frozen bias logits now match what inference sees,
+  eliminating a silent train/infer distribution shift (measured up
+  to 0.257-magnitude per-logit difference pre-fix).
+- `_train` now constructs `pl.Trainer` after `apply_freeze` so the
+  promoted DDP strategy reaches the trainer. No change for callers
+  that leave `ModelConfig.freeze` empty.
+
+### Removed (breaking)
+- **`PretrainedConfig.freeze` field.** Freezing is now exclusively
+  expressed via `ModelConfig.freeze`. Update any hand-written
+  configs or scripts: drop `freeze=...` from `PretrainedConfig(...)`
+  calls; if you were passing `freeze=True`, add a
+  `FreezeSpec(pattern=target, eval_mode=True)` to
+  `ModelConfig.freeze`. All shipped tools have been migrated; the
+  `--freeze-bias` CLI flag on Dalmatian is unchanged.
+
+### Tests
+- `tests/test_freeze.py` (~40 cases) covering the new module end to
+  end: exact-path matching, sibling/parameter prefix collisions
+  (`bias_model` vs `bias_model_v2`, `weight` vs `weight_logit`,
+  `encoder.block.conv` vs `encoder.block.conv_bias`), multi-branch
+  composition, torch.compile unwrapping, `weight_norm`
+  parametrization (`parametrizations.weight.original0/1`), DDP
+  strategy promotion, a live `trainer.fit` verifying PL 2.2+
+  preserves per-submodule eval state across epochs, and the
+  `PretrainedConfig` + `FreezeSpec` composition flow.
+- `tests/test_train_wrapper.py`: three new cases exercising the
+  freeze wiring inside `_train` (apply_freeze is invoked, DDP
+  strategy is promoted when frozen, strategy passes through
+  unchanged when not).
+- `tests/test_train_multitask_differential_tool.py`: added the same
+  `sys.path.insert(0, tools/)` shim used by
+  `tests/test_chrombpnet_reporting.py` so the tool's sibling
+  `from _pseudocount_cli import ...` resolves under
+  `importlib.util.spec_from_file_location` loading. Recovers six
+  previously-failing regression guards (DDP-strategy override +
+  checkpoint-glob semantics).
+
+### Docs
+- Streamlined Phase 1/2 terminology to live only where the
+  two-phase strategy is actually executed (the trainer
+  `tools/train_multitask_differential_bpnet.py`, its tests, the
+  `docs/usage.md` two-phase section, and internal design notes).
+  Library-class docstrings (`DifferentialCountLoss`,
+  `MultitaskBPNet`, `MultitaskBPNetLoss`), the val-end scatter
+  dispatch in `cerberus.module`, the Dalmatian `--patience` help
+  text, and the reference sections in `docs/models.md` now
+  describe these components in self-contained generic terms and
+  point at the trainer doc for the end-to-end recipe.
+- Doc accuracy fixes: corrected `resolve_quantile_pseudocount`
+  references in `CerberusDataModule.compute_count_quantile_samples`
+  (the helper is `resolve_noise_floor_pseudocount`); fixed the
+  `Pomeranian` default-pseudocount group in the
+  `_pseudocount_cli.py` summary comment (it's 150.0, not 1.0);
+  corrected the `--count-pseudocount` table row in `docs/usage.md`
+  (Phase 1 loss is `MultitaskBPNetLoss`, and Phase 2 now derives
+  its own pseudocount from data); replaced the "must match Phase
+  1" prescription in `DifferentialCountLoss`'s docstring with the
+  noise-floor recommendation.
+- Extended the training-tools list in `docs/usage.md` to cover
+  `train_biasnet`, `train_dalmatian_multitask`, and the ChromBPNet
+  stage-1 / stage-2 trainers, plus the pseudocount-CLI rollout
+  list in `docs/configuration.md` to mention all adopting tools.
+
 ## [1.0.0a4] - 2026-04-18
 
 ### Added

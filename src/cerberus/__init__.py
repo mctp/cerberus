@@ -9,6 +9,7 @@ from .attribution import (
 from .config import (
     CerberusConfig,
     DataConfig,
+    FreezeSpec,
     GenomeConfig,
     ModelConfig,
     PretrainedConfig,
@@ -17,6 +18,7 @@ from .config import (
 )
 from .datamodule import CerberusDataModule
 from .dataset import CerberusDataset
+from .freeze import FreezeReport, apply_freeze, maybe_promote_ddp_strategy
 from .download import (
     download_dataset,
     download_human_reference,
@@ -31,6 +33,10 @@ from .predict_variants import VariantResult, score_variants, score_variants_from
 from .utils import get_precision_kwargs, parse_use_folds, resolve_device
 from .logging import setup_logging
 from .module import CerberusModule, instantiate, instantiate_model
+from .pseudocount import (
+    resolve_noise_floor_pseudocount,
+    resolve_read_coverage_pseudocount,
+)
 from .signal import register_extractor
 from .train import (
     compute_counts_loss_weight,
@@ -56,6 +62,7 @@ __all__ = [
     "TrainConfig",
     "ModelConfig",
     "PretrainedConfig",
+    "FreezeSpec",
     "CerberusConfig",
     # Dataset
     "CerberusDataset",
@@ -91,4 +98,11 @@ __all__ = [
     "resolve_adaptive_loss_args",
     "train_single",
     "train_multi",
+    # Pseudocount calibration
+    "resolve_read_coverage_pseudocount",
+    "resolve_noise_floor_pseudocount",
+    # Freezing
+    "apply_freeze",
+    "FreezeReport",
+    "maybe_promote_ddp_strategy",
 ]

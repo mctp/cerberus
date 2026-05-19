@@ -7,7 +7,7 @@ All config types can be imported directly from `cerberus`:
 ```python
 from cerberus import (
     GenomeConfig, DataConfig, SamplerConfig,
-    TrainConfig, ModelConfig, PretrainedConfig, CerberusConfig,
+    TrainConfig, ModelConfig, PretrainedConfig, FreezeSpec, CerberusConfig,
 )
 ```
 
@@ -264,6 +264,11 @@ class ModelConfig(BaseModel):
     # Empty list means no pretrained weights.
     pretrained: list[PretrainedConfig] = []
 
+    # List of freeze rules applied after model instantiation and after
+    # pretrained weights (if any) are loaded. Empty list = fully trainable.
+    # See the "Freezing Parameters" section below for FreezeSpec semantics.
+    freeze: list[FreezeSpec] = []
+
     # Additive offset before log-transforming count targets, specified in scaled
     # units (i.e. raw coverage × target_scale). Injected into loss_args and
     # metrics_args automatically so that loss and metrics receive the value in
@@ -272,6 +277,123 @@ class ModelConfig(BaseModel):
     # Set to 0.0 for Poisson/NB losses that do not use a pseudocount.
     count_pseudocount: float = 0.0
 ```
+
+## Choosing `count_pseudocount`
+
+The value `count_pseudocount` consumes depends on the count loss it
+feeds.  Two roles arise in practice, and `cerberus.pseudocount`
+provides a helper for each.
+
+### `log(count + pc)` losses — read-coverage specification
+
+For absolute-count losses like the BPNet count head, the pseudocount
+is an additive `log(0)`-avoidance offset.  Picking it by hand requires
+reasoning about read length, bin size, target scale, and (for CPM
+bigWigs) library depth.  Instead, specify the number of reads of
+coverage the pseudocount should correspond to:
+
+```python
+from cerberus import resolve_read_coverage_pseudocount
+
+count_pseudocount = resolve_read_coverage_pseudocount(
+    reads_equiv=1.0,        # "shrink near 1 read of coverage"
+    read_length=150,
+    bin_size=1,
+    target_scale=1.0,
+    input_scale="raw",      # "cpm" requires total_reads
+)
+```
+
+The training tools (`train_bpnet`, `train_asap`, `train_biasnet`,
+`train_gopher`, `train_pomeranian`, `train_dalmatian`,
+`train_dalmatian_multitask`, `train_chrombpnet_bias`, `train_chrombpnet`,
+and `train_multitask_differential_bpnet`'s Phase 1) expose this
+calibration via the CLI: `--pseudocount-reads`, `--read-length`,
+`--input-scale {raw,cpm}`, and `--total-reads`.  When
+`--pseudocount-reads` is set, the helper computes the scaled value and
+the legacy `--count-pseudocount` flag is ignored.
+
+### `log((c_b + pc) / (c_a + pc))` losses — data-derived noise floor
+
+For log-fold-change losses such as `DifferentialCountLoss`, the
+pseudocount acts as an empirical-Bayes shrinkage prior.  The right
+value depends on what "low coverage" means *for this dataset*; the
+helper picks it from the training fold's per-channel quantile:
+
+```python
+from cerberus import resolve_noise_floor_pseudocount
+
+# Datamodule must already be set up.
+count_pseudocount = resolve_noise_floor_pseudocount(
+    datamodule,
+    quantile=0.10,          # 10th percentile per channel
+    seed=42,                # reproducible across runs
+)
+```
+
+The helper takes the per-channel quantile and then the **max** across
+channels so the deeper-coverage channel's noise floor is still shrunk.
+
+For losses that do not use a pseudocount (Poisson / NB), set
+`count_pseudocount=0.0`.
+
+## Freezing Parameters
+
+`ModelConfig.freeze` is a list of `FreezeSpec` rules applied once
+after the model is built and pretrained weights (if any) are
+loaded.  Each rule selects a module or parameter by exact path and
+sets `requires_grad=False`; module matches additionally put the
+subtree in `.eval()` mode (unless `eval_mode=False`).
+
+```python
+from cerberus import FreezeSpec
+
+class FreezeSpec(BaseModel):
+    # Exact path into the model.
+    # - Matches a module: "bias_model", "res_layers.0", "encoder.block.conv"
+    # - Matches a parameter: "iconv.weight"
+    pattern: str
+
+    # If True (default), call .eval() on matched module roots so Dropout
+    # becomes identity and BatchNorm stops updating running stats.
+    # Ignored for parameter-only matches.
+    eval_mode: bool = True
+```
+
+**Pattern semantics.** Patterns are exact paths — not globs. A
+pattern must equal a name in `named_modules()` (subtree freeze) or
+`named_parameters()` (single-parameter freeze).  A spec that
+matches neither raises at `apply_freeze` time so typos can't
+silently become no-ops.  Overlapping specs are idempotent.
+
+**Interaction with DDP.** If any parameter is frozen, cerberus
+automatically promotes `strategy="ddp_find_unused_parameters_false"`
+to `ddp_find_unused_parameters_true` for that run (frozen params
+violate the `_false` assumption that every parameter gets a
+gradient every step).  Tools that never freeze keep the faster
+`_false` default.
+
+**Examples.**
+
+```python
+from cerberus import ModelConfig, FreezeSpec
+
+# Freeze a whole sub-model (Dalmatian bias branch).
+ModelConfig(..., freeze=[FreezeSpec(pattern="bias_model")])
+
+# Freeze BPNet's trunk + profile head, fine-tune only count_dense.
+ModelConfig(..., freeze=[
+    FreezeSpec(pattern="iconv"),
+    FreezeSpec(pattern="res_layers"),
+    FreezeSpec(pattern="profile_conv"),
+])
+
+# Freeze a single parameter.
+ModelConfig(..., freeze=[FreezeSpec(pattern="iconv.weight")])
+```
+
+See `docs/models.md` for the `named_children()` of each shipped
+architecture.
 
 ## DataModule Runtime Arguments
 

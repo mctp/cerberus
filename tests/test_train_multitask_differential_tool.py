@@ -15,13 +15,16 @@ from pathlib import Path
 
 import pytest
 
+# The tool uses a sibling ``from _pseudocount_cli import ...`` that resolves
+# naturally when run as a script (sys.path[0] is ``tools/``).  ``importlib``-
+# style loading does not put ``tools/`` on sys.path, so add it explicitly.
+_TOOLS_DIR = Path(__file__).resolve().parents[1] / "tools"
+if str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
+
 
 def _load_tool_module():
-    tool_path = (
-        Path(__file__).resolve().parents[1]
-        / "tools"
-        / "train_multitask_differential_bpnet.py"
-    )
+    tool_path = _TOOLS_DIR / "train_multitask_differential_bpnet.py"
     spec = importlib.util.spec_from_file_location(
         "train_multitask_differential_bpnet", tool_path
     )

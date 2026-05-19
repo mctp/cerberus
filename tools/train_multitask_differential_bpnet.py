@@ -10,7 +10,7 @@ Two-phase training for comparing chromatin accessibility between two conditions:
 
   Phase 2 — Differential fine-tuning (DifferentialCountLoss)
     Loads the Phase 1 checkpoint via ``ModelConfig.pretrained`` and fine-tunes
-    the count heads on the per-peak log2FC derived inline from the shared
+    the count heads on the per-peak log fold-change derived inline from the shared
     two-channel targets tensor (no offline precompute, no wrapper dataset).
 
   Interpretation (optional --interpret)
@@ -56,13 +56,20 @@ from cerberus.config import (
     SamplerConfig,
     TrainConfig,
 )
+from cerberus.datamodule import CerberusDataModule
 from cerberus.download import download_human_reference
 from cerberus.config import GenomeConfig
 from cerberus.genome import create_genome_config
 from cerberus.interval import Interval, merge_intervals
 from cerberus.models.bpnet import MultitaskBPNet
+from cerberus.pseudocount import resolve_noise_floor_pseudocount
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
+
+from _pseudocount_cli import (
+    add_pseudocount_cli_args,
+    resolve_count_pseudocount_from_args,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,8 +160,7 @@ def get_args() -> argparse.Namespace:
     grp.add_argument("--jitter", type=int, default=256)
     grp.add_argument("--alpha", type=_parse_alpha, default="adaptive",
                      help="Count loss weight: float or 'adaptive'")
-    grp.add_argument("--count-pseudocount", type=float, default=150.0,
-                     help="Pseudocount for count head log-transform (raw signal units)")
+    add_pseudocount_cli_args(grp, default_count_pseudocount=150.0)
     grp.add_argument("--target-scale", type=float, default=1.0)
     grp.add_argument("--batch-size", type=int, default=64)
     grp.add_argument("--phase1-epochs", type=int, default=50)
@@ -168,15 +174,27 @@ def get_args() -> argparse.Namespace:
 
     # --- Phase 2 hyperparameters ---
     #
-    # Phase 2 reuses Phase 1's pseudocount (``--count-pseudocount *
-    # --target-scale``) so both phases derive log-counts in the same linear-to-
-    # log space. The pseudocount is on *linear scale* (added to length-summed
-    # signal before taking ``log2``), not a log-scale offset.
+    # Phase 2's pseudocount plays a different role than Phase 1's: it is an
+    # empirical-Bayes shrinkage prior on ``log((c_b + pc) / (c_a + pc))`` --
+    # pulling the per-peak log fold-change toward zero whenever both
+    # per-condition totals are at or below the noise floor.  Default behaviour
+    # derives it from training data as the 10th-percentile-per-channel of
+    # length-summed counts (max-combined across channels so the deeper-coverage
+    # condition still gets shrunk).  Scale-correct across raw / CPM bigWigs
+    # and library depths.  Override with --phase2-pseudocount-override.
     grp = p.add_argument_group("Phase 2 (DifferentialCountLoss)")
     grp.add_argument("--phase2-epochs", type=int, default=20)
     grp.add_argument("--phase2-lr", type=float, default=1e-4)
     grp.add_argument("--phase2-batch-size", type=int, default=64)
     grp.add_argument("--phase2-patience", type=int, default=7)
+    grp.add_argument("--phase2-pseudocount-quantile", type=float, default=0.10,
+                     help="Quantile of training-region per-condition total counts "
+                     "used as the Phase 2 shrinkage pseudocount.  Default 0.10.")
+    grp.add_argument("--phase2-pseudocount-samples", type=int, default=2000,
+                     help="Training intervals sampled to compute the quantile pseudocount.")
+    grp.add_argument("--phase2-pseudocount-override", type=float, default=None,
+                     help="Explicit Phase 2 pseudocount in scaled units; bypasses "
+                     "the data-derived quantile when set.")
 
     # --- Workflow control ---
     grp = p.add_argument_group("Workflow control")
@@ -359,7 +377,9 @@ def run_phase1(args: argparse.Namespace, merged_peaks: Path, output_dir: Path,
         metrics_args={},
         model_args=model_args,
         pretrained=[],
-        count_pseudocount=args.count_pseudocount * args.target_scale,
+        count_pseudocount=resolve_count_pseudocount_from_args(
+            args, bin_size=1, target_scale=args.target_scale,
+        ),
     )
 
     # Parse devices
@@ -472,7 +492,7 @@ def run_phase2(
     Phase 2 is a regular ``train_single`` / ``train_multi`` call with a
     :class:`DifferentialCountLoss` ``ModelConfig`` that lists the Phase 1
     checkpoint under ``pretrained=[PretrainedConfig(...)]``. The per-peak
-    log2FC target is derived inline inside the loss from the two-channel
+    log fold-change target is derived inline inside the loss from the two-channel
     ``(B, 2, L)`` targets tensor Phase 1 already supervised against — no
     offline precompute, no dataset wrapper, no bespoke PL module.
     """
@@ -483,10 +503,6 @@ def run_phase2(
         phase2_dir = phase2_dir / "single-fold"
     phase2_dir.mkdir(parents=True, exist_ok=True)
 
-    # Phase 1 pseudocount in scaled units (raw × target_scale) — keeps Phase 1
-    # and Phase 2 in the same log-space.
-    count_pseudocount_scaled = args.count_pseudocount * args.target_scale
-
     # 1. Phase 2 data config: no jitter, peaks only, same bigwigs as Phase 1.
     data_config = DataConfig(
         inputs={},
@@ -496,7 +512,7 @@ def run_phase2(
         },
         input_len=args.input_len,
         output_len=args.output_len,
-        max_jitter=0,          # no jitter — stable log2FC targets
+        max_jitter=0,          # no jitter — stable differential targets
         output_bin_size=1,
         encoding="ACGT",
         log_transform=False,
@@ -513,7 +529,60 @@ def run_phase2(
         },
     )
 
-    # 2. Phase 2 model: same architecture as Phase 1, loaded from the Phase 1
+    # 2. Resolve Phase 2 pseudocount.  Unlike Phase 1's log(0)-avoidance offset,
+    # this is an empirical-Bayes shrinkage prior: per-channel quantile of
+    # training-region length-summed counts (max across channels so the deeper
+    # condition's noise floor still gets shrunk).  The override flag is a
+    # debugging / reproducibility escape hatch.
+    if args.phase2_pseudocount_override is not None:
+        phase2_pseudocount = args.phase2_pseudocount_override
+        logger.info(
+            "Phase 2: using pseudocount override %.4f (scaled units)",
+            phase2_pseudocount,
+        )
+    else:
+        logger.info(
+            "Phase 2: deriving noise-floor pseudocount from training data "
+            "(quantile=%.2f, n_samples=%d, seed=%s)",
+            args.phase2_pseudocount_quantile,
+            args.phase2_pseudocount_samples,
+            args.seed,
+        )
+        # Throwaway datamodule: ``resolve_noise_floor_pseudocount`` only reads
+        # the training fold's per-channel count distribution.  Keeping this
+        # separate from the datamodule ``train_single`` builds avoids leaking
+        # extra setup/state into the training call below.
+        #
+        # TODO(ddp-waste): under DDP every rank repeats this sampling
+        # independently.  The result is deterministic across ranks (fixed
+        # ``seed``), so this is wasteful but not incorrect.  ``prepare_data``
+        # also runs once per rank, which risks a write race on any cache files
+        # it produces.  A cleaner pattern would be: compute on rank 0, then
+        # broadcast the scalar -- but torch.distributed is not initialised yet
+        # at this point in the tool.  Use --phase2-pseudocount-override to
+        # bypass the redundant work when running multi-rank.
+        quantile_datamodule = CerberusDataModule(
+            genome_config=genome_config,
+            data_config=data_config,
+            sampler_config=sampler_config,
+            seed=args.seed,
+        )
+        quantile_datamodule.prepare_data()
+        # ``setup()`` is called with no overrides: ``compute_count_quantile_-
+        # samples`` reads the train dataset's sampler directly without
+        # iterating a DataLoader, so batch_size / num_workers / in_memory
+        # are irrelevant here.  The defaults (batch_size=1, num_workers=0,
+        # in_memory=False) avoid both worker forking and any RAM caching.
+        quantile_datamodule.setup()
+        phase2_pseudocount = resolve_noise_floor_pseudocount(
+            quantile_datamodule,
+            quantile=args.phase2_pseudocount_quantile,
+            n_samples=args.phase2_pseudocount_samples,
+            seed=args.seed,
+        )
+        del quantile_datamodule
+
+    # 3. Phase 2 model: same architecture as Phase 1, loaded from the Phase 1
     #    checkpoint via ``pretrained=[PretrainedConfig(...)]``.
     activation = "gelu" if args.stable else "relu"
     model_args: dict = {
@@ -533,21 +602,20 @@ def run_phase2(
         model_cls="cerberus.models.bpnet.MultitaskBPNet",
         loss_cls="cerberus.loss.DifferentialCountLoss",
         loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
-        metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-        metrics_args={},
+        metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
+        metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
         model_args=model_args,
         pretrained=[
             PretrainedConfig(
                 weights_path=str(phase1_model_path),
                 source=None,
                 target=None,
-                freeze=False,
             )
         ],
-        count_pseudocount=count_pseudocount_scaled,
+        count_pseudocount=phase2_pseudocount,
     )
 
-    # 3. Phase 2 training hyperparameters.
+    # 4. Phase 2 training hyperparameters.
     optimizer = "adamw" if args.stable else args.optimizer
     weight_decay = 0.01 if args.stable else args.weight_decay
     scheduler_type = "cosine" if args.stable else args.scheduler_type
@@ -574,7 +642,7 @@ def run_phase2(
         gradient_clip_val=None,
     )
 
-    # 4. Parse devices / accelerator / precision.
+    # 5. Parse devices / accelerator / precision.
     devices = args.devices
     if devices != "auto":
         try:
@@ -608,7 +676,7 @@ def run_phase2(
         **precision_kwargs,
     )
 
-    # 5. Plot losses (rank 0 only — avoid NFS read races).
+    # 6. Plot losses (rank 0 only — avoid NFS read races).
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
         _plot_phase2_losses(phase2_dir)
 
@@ -874,6 +942,9 @@ def main() -> None:
     else:
         phase1_dir = run_phase1(args, merged_bed, output_dir, genome_config, data_dir)
 
+    # Phase 2 reads rank-0-only outputs (``model.pt``) from Phase 1.
+    # ``_train`` ends with a ``torch.distributed`` barrier so every rank
+    # observes the checkpoint before this glob runs.
     phase1_model_path = _find_phase1_checkpoint(phase1_dir)
     logger.info("Phase 1 model: %s", phase1_model_path)
 

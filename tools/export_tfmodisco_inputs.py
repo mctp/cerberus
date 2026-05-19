@@ -29,6 +29,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
 import cerberus
 from cerberus.attribution import (
@@ -38,7 +39,9 @@ from cerberus.attribution import (
     compute_taylor_ism_attributions,
     resolve_ism_span,
 )
+from cerberus.config import CerberusConfig
 from cerberus.datamodule import CerberusDataModule
+from cerberus.dataset import CerberusDataset
 from cerberus.model_ensemble import ModelEnsemble
 from cerberus.utils import resolve_device
 
@@ -75,9 +78,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--split",
-        choices=["train", "val", "test"],
+        choices=["train", "val", "test", "all"],
         default="test",
-        help="Dataset split to draw intervals from.",
+        help=(
+            "Dataset split to draw intervals from. ``all`` iterates the full "
+            "sampler interval set without fold splitting (ignores any "
+            "test_fold / val_fold in genome_config.fold_args)."
+        ),
     )
     parser.add_argument(
         "--intervals-path",
@@ -323,6 +330,45 @@ def _select_loader(datamodule: CerberusDataModule, split: str):
     raise ValueError(f"Unsupported split: {split}")
 
 
+def _build_all_intervals_loader(
+    cfg: CerberusConfig, args: argparse.Namespace
+) -> DataLoader:
+    """Build a deterministic loader over the full sampler index space.
+
+    Bypasses :class:`CerberusDataModule` (and therefore fold splitting) so
+    ``--split all`` produces every interval the sampler would generate, not
+    just the slice belonging to one fold.
+
+    DataLoader kwargs mirror the DataModule's val/test loaders (``shuffle``,
+    ``pin_memory``, ``worker_init_fn``, ``persistent_workers``,
+    ``multiprocessing_context``) so worker seeding and host→device copies
+    behave identically to the per-split paths.
+
+    Note:
+        Skipping the DataModule also skips ``prepare_data()``, so cached
+        :class:`ComplexityMatchedSampler` metrics are not threaded through.
+        For complexity-matched configs this means metrics are recomputed
+        inline on first use — same intervals, slower start.
+    """
+    dataset = CerberusDataset(
+        genome_config=cfg.genome_config,
+        data_config=cfg.data_config,
+        sampler_config=cfg.sampler_config,
+        in_memory=False,
+        is_train=False,
+        seed=args.seed,
+    )
+    return DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=torch.cuda.is_available(),
+        worker_init_fn=CerberusDataModule._worker_init_fn,
+        persistent_workers=args.num_workers > 0,
+    )
+
+
 def _generate_dls_baselines(
     x: torch.Tensor, n_baselines: int, strategy: str, rng: np.random.Generator
 ) -> torch.Tensor:
@@ -442,23 +488,25 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     ).to(device)
     target_model.eval()
 
-    datamodule = CerberusDataModule(
-        genome_config=cfg.genome_config,
-        data_config=cfg.data_config,
-        sampler_config=cfg.sampler_config,
-        test_fold=cfg.genome_config.fold_args.get("test_fold"),
-        val_fold=cfg.genome_config.fold_args.get("val_fold"),
-        seed=args.seed,
-    )
-    datamodule.prepare_data()
-    datamodule.setup(
-        batch_size=args.batch_size,
-        val_batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        in_memory=False,
-    )
-
-    loader = _select_loader(datamodule, args.split)
+    if args.split == "all":
+        loader = _build_all_intervals_loader(cfg, args)
+    else:
+        datamodule = CerberusDataModule(
+            genome_config=cfg.genome_config,
+            data_config=cfg.data_config,
+            sampler_config=cfg.sampler_config,
+            test_fold=cfg.genome_config.fold_args.get("test_fold"),
+            val_fold=cfg.genome_config.fold_args.get("val_fold"),
+            seed=args.seed,
+        )
+        datamodule.prepare_data()
+        datamodule.setup(
+            batch_size=args.batch_size,
+            val_batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            in_memory=False,
+        )
+        loader = _select_loader(datamodule, args.split)
     peak_positive_source = None
     if args.include_sources is None and cfg.sampler_config.sampler_type == "peak":
         peak_positive_source = _infer_peak_positive_source(loader)
