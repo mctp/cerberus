@@ -641,6 +641,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#scatac-pseudobulk-normalisation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        scATAC pseudobulk normalisation
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1278,6 +1289,54 @@
 <li>Multiple BAMs are merged with <code>samtools merge</code> before coverage generation.</li>
 <li>Multiple BED files are concatenated, sorted, and merged into a single interval set.</li>
 </ul>
+<h2 id="scatac-pseudobulk-normalisation">scATAC pseudobulk normalisation<a class="headerlink" href="#scatac-pseudobulk-normalisation" title="Permanent link">&para;</a></h2>
+<p>For multi-task training on scATAC-seq cell-type pseudobulks, raw per-cell-type BigWigs need normalisation so the per-task count heads see comparable absolute values. <code>tools/scatac_normalize_pseudobulk.py</code> is a self-contained tool that combines two CREsted-style normalisation passes:</p>
+<ol>
+<li><strong>CPM scaling</strong> — converts raw coverage to counts-per-million using library sizes (read from a <code>group_summary.tsv</code> or computed from each BigWig's running sum).</li>
+<li><strong>Constitutive-anchor baseline rescaling</strong> — picks the top-K% accessible peaks per cell-type, filters by Gini coefficient to keep broadly-accessible (low-Gini) anchors, then rescales each cell-type so the mean anchor signal matches the chosen reference (default: max).</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>tools/scatac_normalize_pseudobulk.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>path/to/pseudobulk_dir<span class="w"> </span>path/to/output_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--input-scale<span class="w"> </span>raw<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span>--reference-strategy<span class="w"> </span>max<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span>--top-k-percent<span class="w"> </span><span class="m">0</span>.01<span class="w"> </span>--gini-std-threshold<span class="w"> </span><span class="m">1</span>.0
+</code></pre></div>
+<p>Outputs per group:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;group&gt;.bw</code></td>
+<td>Normalised BigWig (CPM × baseline weight)</td>
+</tr>
+<tr>
+<td><code>&lt;group&gt;.narrowPeak.bed.gz</code></td>
+<td>Copied from input (if present)</td>
+</tr>
+<tr>
+<td><code>normalization_summary.tsv</code></td>
+<td>Per-group: library size, CPM scale, anchor count, baseline weight, final scale</td>
+</tr>
+<tr>
+<td><code>constitutive_anchor_peaks.tsv</code></td>
+<td>Diagnostic: chosen anchor peak indices and Gini values</td>
+</tr>
+<tr>
+<td><code>normalization_metadata.json</code></td>
+<td>All parameters + summary counts</td>
+</tr>
+<tr>
+<td><code>targets.json</code></td>
+<td>Ready-to-use <code>{group: {bigwig, peaks}}</code> spec for <code>tools/train_chrombpnet_multitask.py</code></td>
+</tr>
+</tbody>
+</table>
+<p>The output <code>targets.json</code> plugs directly into <a href="../usage/#generic-training-tools">tools/train_chrombpnet_multitask.py</a>.</p>
 
 
 
@@ -1300,7 +1359,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 19, 2026 14:45:49 UTC">March 19, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 14:52:32 UTC">May 20, 2026</span>
   </span>
 
     
