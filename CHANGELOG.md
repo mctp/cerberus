@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a6] - 2026-05-20
+
 ### Added
 - **`tools/train_chrombpnet_multitask.py`**: stage-2 multi-task
   ChromBPNet trainer.  Loads a single-channel stage-1 ChromBPNet bias
