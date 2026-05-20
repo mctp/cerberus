@@ -22,8 +22,10 @@ from tools.train_chrombpnet_multitask_differential import (  # noqa: E402
     _export_accessibility_checkpoints,
     _find_model_pt,
     _find_phase1_fold_dir,
+    _freeze_accessibility_except_count_dense,
     _parse_devices,
     _select_phase2_strategy,
+    _unwrap_compiled,
 )
 
 
@@ -112,6 +114,64 @@ def test_select_phase2_strategy_does_not_mutate_input():
     base = {"strategy": "ddp_find_unused_parameters_false"}
     _ = _select_phase2_strategy(base)
     assert base["strategy"] == "ddp_find_unused_parameters_false"
+
+
+# ---------------------------------------------------------------------------
+# count-head-only freezing
+# ---------------------------------------------------------------------------
+
+
+class _AccessibilityBranch(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.trunk = torch.nn.Linear(4, 4)
+        self.count_dense = torch.nn.Linear(4, 2)
+
+
+class _ChromBPNetLike(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.accessibility_model = _AccessibilityBranch()
+        self.bias_model = torch.nn.Linear(4, 1)
+
+
+class _CompiledLike(torch.nn.Module):
+    def __init__(self, original: torch.nn.Module) -> None:
+        super().__init__()
+        self._orig_mod = original
+
+
+def test_unwrap_compiled_returns_original_module():
+    model = _ChromBPNetLike()
+    wrapped = _CompiledLike(model)
+    assert _unwrap_compiled(wrapped) is model
+
+
+def test_freeze_accessibility_except_count_dense_leaves_only_count_head_trainable():
+    model = _ChromBPNetLike()
+
+    _freeze_accessibility_except_count_dense(model)
+
+    assert not model.accessibility_model.trunk.weight.requires_grad
+    assert not model.accessibility_model.trunk.bias.requires_grad
+    assert model.accessibility_model.count_dense.weight.requires_grad
+    assert model.accessibility_model.count_dense.bias.requires_grad
+    assert model.bias_model.weight.requires_grad
+
+
+def test_freeze_accessibility_except_count_dense_handles_compiled_wrapper():
+    model = _ChromBPNetLike()
+    wrapped = _CompiledLike(model)
+
+    _freeze_accessibility_except_count_dense(wrapped)
+
+    assert not model.accessibility_model.trunk.weight.requires_grad
+    assert model.accessibility_model.count_dense.weight.requires_grad
+
+
+def test_freeze_accessibility_except_count_dense_requires_accessibility_branch():
+    with pytest.raises(AttributeError, match="accessibility_model"):
+        _freeze_accessibility_except_count_dense(torch.nn.Linear(4, 1))
 
 
 # ---------------------------------------------------------------------------

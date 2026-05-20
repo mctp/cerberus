@@ -34,6 +34,7 @@ import os
 from pathlib import Path
 from pprint import pformat
 
+import pytorch_lightning as pl
 import torch
 
 import cerberus
@@ -52,6 +53,61 @@ from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
 
 logger = logging.getLogger(__name__)
+
+
+def _unwrap_compiled(model: torch.nn.Module) -> torch.nn.Module:
+    """Return the original module if ``torch.compile`` wrapped the model."""
+    return getattr(model, "_orig_mod", model)
+
+
+def _freeze_accessibility_except_count_dense(model: torch.nn.Module) -> None:
+    """Freeze the accessibility branch except its count head."""
+    root = _unwrap_compiled(model)
+    accessibility_model = getattr(root, "accessibility_model", None)
+    if accessibility_model is None:
+        raise AttributeError("Model does not expose an accessibility_model branch")
+
+    for param in accessibility_model.parameters():
+        param.requires_grad_(False)
+
+    count_dense = getattr(accessibility_model, "count_dense", None)
+    if count_dense is None:
+        raise AttributeError("accessibility_model does not expose count_dense")
+    for param in count_dense.parameters():
+        param.requires_grad_(True)
+
+
+class AccessibilityCountHeadOnly(pl.Callback):
+    """Keep only ``accessibility_model.count_dense`` trainable in phase 2."""
+
+    def __init__(self) -> None:
+        self._logged = False
+
+    def _apply(self, pl_module: pl.LightningModule) -> None:
+        _freeze_accessibility_except_count_dense(pl_module.model)
+        if not self._logged:
+            trainable = [
+                name
+                for name, param in _unwrap_compiled(pl_module.model).named_parameters()
+                if param.requires_grad
+            ]
+            logger.info(
+                "Phase-2 count-head-only mode enabled; trainable parameters: %s",
+                trainable,
+            )
+            self._logged = True
+
+    def setup(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        stage: str | None = None,
+    ) -> None:
+        if stage in (None, "fit"):
+            self._apply(pl_module)
+
+    def on_fit_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        self._apply(pl_module)
 
 
 def _parse_devices(value: str) -> str | int:
@@ -168,6 +224,14 @@ def get_args() -> argparse.Namespace:
         help="Explicit pseudocount in scaled target units; bypasses the "
         "noise-floor estimate.",
     )
+    train.add_argument(
+        "--accessibility-count-head-only",
+        action="store_true",
+        help=(
+            "Freeze the pretrained accessibility branch except "
+            "accessibility_model.count_dense during phase-2 fine-tuning."
+        ),
+    )
 
     hw = p.add_argument_group("Hardware")
     hw.add_argument("--accelerator", default="auto", choices=["auto", "gpu", "cpu", "mps"])
@@ -276,8 +340,12 @@ def main() -> None:
     # Phase-2 ModelConfig: same architecture as phase 1, swap loss + metrics
     # to the differential pair, freeze bias_model via FreezeSpec (the
     # PretrainedConfig.freeze field was removed in the marcin freeze refactor).
+    model_name = f"{cfg.model_config_.name}_Differential"
+    if args.accessibility_count_head_only:
+        model_name = f"{model_name}_AccessibilityCountHeadOnly"
+
     model_config = ModelConfig(
-        name=f"{cfg.model_config_.name}_Differential",
+        name=model_name,
         model_cls=cfg.model_config_.model_cls,
         loss_cls="cerberus.loss.DifferentialCountLoss",
         loss_args={
@@ -342,6 +410,10 @@ def main() -> None:
     logger.info("Model Config:\n%s", pformat(model_config))
     logger.info("Precision and Hardware Args:\n%s", pformat(precision_kwargs))
 
+    callbacks = []
+    if args.accessibility_count_head_only:
+        callbacks.append(AccessibilityCountHeadOnly())
+
     train_fn = train_multi if args.multi else train_single
     train_fn(
         genome_config=cfg.genome_config,
@@ -355,6 +427,7 @@ def main() -> None:
         in_memory=False,
         root_dir=str(output_root),
         enable_checkpointing=True,
+        callbacks=callbacks,
         log_every_n_steps=10,
         val_batch_size=args.batch_size * 4,
         enable_progress_bar=not args.silent,
