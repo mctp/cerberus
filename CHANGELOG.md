@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`cerberus.models.MultitaskChromBPNet`**: multi-condition ChromBPNet
+  with a reusable single-channel bias branch.  The accessibility
+  branch predicts one profile + one count scalar per task
+  (`predict_total_count=False`, mirroring `MultitaskBPNet`'s
+  per-channel count contract); the bias branch stays one channel and
+  broadcasts across tasks at forward time, so one stage-1 bias BPNet
+  can be frozen and reused across every task from the same normalised
+  assay (chrombpnet-pytorch convention).  Subclass of `ChromBPNet`
+  that pins the two `predict_total_count` flags (warning on caller
+  override) and validates `len(output_channels) >= 2`.  Pairs with
+  `MultitaskBPNetLoss` for absolute-counts training and with
+  `DifferentialCountLoss` for differential fine-tuning across two of
+  the task channels.  See `docs/models.md#multitaskchrombpnet`.
+- **`ChromBPNet(shared_bias=True)`**: low-level escape hatch on the
+  single-task class for callers who need shared-bias broadcasting
+  without the `MultitaskChromBPNet` count-mode pins.  Builds the bias
+  branch with `output_channels=["bias"]` (one channel) and routes the
+  forward through a new `_resolve_branch_shapes` helper that
+  broadcasts singleton-channel branches over the accessibility
+  branch's channels; existing single-task ChromBPNet behaviour is
+  unchanged (pass-through when shapes match).
+
 ## [1.0.0a5] - 2026-05-19
 
 ### Added

@@ -3116,6 +3116,37 @@ See `examples/scatac_kidney_chrombpnet.sh` for the complete invocation.
 
 CLI naming note: the stage-1 trainer's `--filters` / `--n-layers` / etc. configure the *bias* model, while the stage-2 trainer's `--filters` / `--n-layers` configure the *accessibility* model and the bias-branch flags are prefixed `--bias-filters` / `--bias-layers` / etc.  Custom stage-1 architecture must be mirrored under the prefixed names in stage 2 or the loaded bias `state_dict` will mismatch shapes.
 
+### MultitaskChromBPNet
+
+**Implementation**: `cerberus.models.chrombpnet.MultitaskChromBPNet`
+
+Multi-condition ChromBPNet with a reusable single-channel bias branch. The accessibility branch predicts one profile + one count scalar per task (`predict_total_count=False`, mirroring [MultitaskBPNet](#multitaskbpnet)'s per-channel count contract); the bias branch stays one channel and broadcasts across tasks at forward time. The convention is that the Tn5 bias model is dataset-wide, so one stage-1 bias BPNet can be frozen and reused across every task from the same normalised assay (the chrombpnet-pytorch convention).
+
+Architecturally identical to `ChromBPNet(shared_bias=True, accessibility_args={"predict_total_count": False}, bias_args={"predict_total_count": True}, ...)`; the subclass pins the two `predict_total_count` flags (warning on caller override) and validates that `len(output_channels) >= 2`. The low-level `shared_bias=True` path on `ChromBPNet` itself is also available for callers who need to tune the count modes directly.
+
+Forward output is the standard `ProfileCountOutput` with `(B, N, L)` logits and `(B, N)` log_counts. Pairs with `MultitaskBPNetLoss` for absolute-counts training and with `DifferentialCountLoss` for differential fine-tuning across two of the task channels.
+
+```python
+from cerberus.config import ModelConfig
+from cerberus.models import MultitaskChromBPNet
+
+model_config = ModelConfig(
+    name="MultitaskChromBPNet_kidney",
+    model_cls="cerberus.models.chrombpnet.MultitaskChromBPNet",
+    loss_cls="cerberus.models.bpnet.MultitaskBPNetLoss",
+    loss_args={"alpha": "adaptive"},
+    metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+    metrics_args={},
+    model_args={
+        "output_channels": ["cell_type_a", "cell_type_b", "cell_type_c"],
+    },
+    pretrained=[],          # populate with the stage-1 bias checkpoint at fit time
+    count_pseudocount=1.0,
+)
+```
+
+Stage-1 bias checkpoints from `tools/train_chrombpnet_bias.py` (one output channel: `"signal"`) load directly into `bias_model` via `load_pretrained_weights(..., PretrainedConfig(target="bias_model"))` — the one-channel `state_dict` shape is identical and the broadcast happens at forward time, not at load time. Freeze the loaded bias subtree with `ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]` to match the stage-2 ChromBPNet recipe.
+
 ### References
 
 - chrombpnet-pytorch: <https://github.com/jsxlei/chrombpnet-pytorch> (Lei Xiong, after Schreiber).
@@ -13631,7 +13662,7 @@ from .bpnet import (
     MultitaskBPNet,
     MultitaskBPNetLoss,
 )
-from .chrombpnet import ChromBPNet
+from .chrombpnet import ChromBPNet, MultitaskChromBPNet
 from .dalmatian import Dalmatian
 from .gopher import GlobalProfileCNN
 from .pomeranian import Pomeranian, PomeranianK5, PomeranianMetricCollection
@@ -13647,6 +13678,7 @@ __all__ = [
     "MultitaskBPNet",
     "MultitaskBPNetLoss",
     "ChromBPNet",
+    "MultitaskChromBPNet",
     "Dalmatian",
     "GlobalProfileCNN",
     "Pomeranian",
