@@ -9,6 +9,9 @@ The bias-loading-and-freezing test path (loading a pre-trained bias
 in the stage-2 trainer's deferred work, not here.
 """
 
+import logging
+from typing import Any
+
 import pytest
 import torch
 import torch.nn as nn
@@ -16,8 +19,13 @@ import torch.nn as nn
 import cerberus.models as _cerberus_models
 from cerberus.config import FreezeSpec, PretrainedConfig
 from cerberus.freeze import apply_freeze
-from cerberus.models import ChromBPNet
-from cerberus.models.chrombpnet import estimate_bias_logcount_offset
+from cerberus.loss import MSEMultinomialLoss
+from cerberus.models import ChromBPNet, MultitaskChromBPNet
+from cerberus.models.bpnet import BPNet, MultitaskBPNetLoss
+from cerberus.models.chrombpnet import (
+    _resolve_branch_shapes,
+    estimate_bias_logcount_offset,
+)
 from cerberus.output import ProfileCountOutput
 from cerberus.pretrained import load_pretrained_weights
 from cerberus.utils import import_class
@@ -325,3 +333,451 @@ def test_estimate_bias_logcount_offset_honors_max_batches():
     )
     assert delta_capped == pytest.approx(0.0)
     assert delta_full > delta_capped
+
+
+# ---------------------------------------------------------------------------
+# _resolve_branch_shapes — the shared-bias broadcasting helper used by
+# ChromBPNet.forward to combine a 1-channel bias output with an N-channel
+# accessibility output.
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_branch_shapes_passthrough_when_shapes_match():
+    branch = torch.randn(2, 3, 4)
+    target = torch.zeros(2, 3, 4)
+    out = _resolve_branch_shapes("x", branch, target)
+    # Identical object, not a copy: pass-through must not allocate.
+    assert out is branch
+
+
+def test_resolve_branch_shapes_broadcasts_singleton_channel():
+    branch = torch.tensor([[[1.0, 2.0, 3.0, 4.0]]])  # (1, 1, 4)
+    target = torch.zeros(1, 3, 4)
+    out = _resolve_branch_shapes("x", branch, target)
+    assert out.shape == (1, 3, 4)
+    # Each output channel sees the same broadcast value.
+    assert torch.equal(out[:, 0], out[:, 1])
+    assert torch.equal(out[:, 1], out[:, 2])
+    assert torch.equal(out[0, 0], branch[0, 0])
+
+
+def test_resolve_branch_shapes_broadcasts_log_count_rank():
+    # log_counts has shape (B, C) -- two-rank tensors must also broadcast.
+    branch = torch.tensor([[7.0]])  # (1, 1)
+    target = torch.zeros(1, 3)
+    out = _resolve_branch_shapes("counts", branch, target)
+    assert out.shape == (1, 3)
+    assert torch.all(out == 7.0)
+
+
+def test_resolve_branch_shapes_raises_on_incompatible_channels():
+    """A 2-channel branch can't broadcast to a 3-channel target."""
+    branch = torch.zeros(1, 2, 4)
+    target = torch.zeros(1, 3, 4)
+    with pytest.raises(ValueError, match="incompatible"):
+        _resolve_branch_shapes("x", branch, target)
+
+
+def test_resolve_branch_shapes_raises_on_rank_mismatch():
+    with pytest.raises(ValueError, match="incompatible"):
+        _resolve_branch_shapes("x", torch.zeros(1, 1, 4), torch.zeros(1, 3))
+
+
+# ---------------------------------------------------------------------------
+# ChromBPNet(shared_bias=True) -- new constructor flag wires a 1-channel
+# bias branch and the forward broadcasts it across accessibility channels.
+# ---------------------------------------------------------------------------
+
+
+def _multitask_args(filters: int = 4) -> dict[str, Any]:
+    """Small BPNet sub-model kwargs for fast multi-task tests."""
+    return {
+        "filters": filters,
+        "n_dilated_layers": 1,
+        "conv_kernel_size": 5,
+        "dil_kernel_size": 3,
+        "profile_kernel_size": 5,
+        "activation": "relu",
+        "weight_norm": False,
+        "residual_architecture": "residual_post-activation_conv",
+    }
+
+
+def test_chrombpnet_default_shared_bias_is_false():
+    model = _make_small_model()
+    assert model.shared_bias is False
+    # Bias branch matches the accessibility branch's channel count.
+    assert model.bias_model.n_output_channels == 1
+
+
+def test_chrombpnet_shared_bias_builds_singleton_bias_branch():
+    model = ChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=["task_a", "task_b", "task_c"],
+        shared_bias=True,
+        accessibility_args=_multitask_args(filters=6),
+        bias_args=_multitask_args(filters=4),
+    )
+    assert model.shared_bias is True
+    assert model.accessibility_model.n_output_channels == 3
+    # The single-channel bias contract: tools/train_chrombpnet_bias.py exports
+    # a one-channel checkpoint and downstream loaders broadcast that one
+    # channel across multi-task accessibility outputs.
+    assert model.bias_model.n_output_channels == 1
+
+
+def test_chrombpnet_shared_bias_forward_broadcasts():
+    """Forward math: combined[:, k, :] == acc[:, k, :] + bias[:, 0, :]
+    for every k, with bias contributing identically to every task."""
+    model = ChromBPNet(
+        input_len=16, output_len=4,
+        output_channels=["task_a", "task_b"],
+        shared_bias=True,
+        accessibility_args=_multitask_args(),
+        bias_args=_multitask_args(),
+    )
+    acc_logits = torch.tensor([[[1.0, 2.0, 3.0, 4.0], [10.0, 20.0, 30.0, 40.0]]])
+    acc_log_counts = torch.log(torch.tensor([[2.0, 4.0]]))
+    bias_logits = torch.tensor([[[0.5, 0.5, 0.5, 0.5]]])
+    bias_log_counts = torch.log(torch.tensor([[8.0]]))
+    model.accessibility_model = _FixedBranch(  # type: ignore[assignment]
+        logits=acc_logits, log_counts=acc_log_counts,
+    )
+    model.bias_model = _FixedBranch(  # type: ignore[assignment]
+        logits=bias_logits, log_counts=bias_log_counts,
+    )
+
+    out = model(torch.zeros(3, 4, 16))
+
+    assert out.logits.shape == (3, 2, 4)
+    assert out.log_counts.shape == (3, 2)
+    expected_logits = (acc_logits + bias_logits).expand(3, -1, -1)
+    assert torch.allclose(out.logits, expected_logits)
+    # Counts: logaddexp(log(2), log(8)) per row 0 channel 0, logaddexp(log(4),
+    # log(8)) per row 0 channel 1.  Closed-form: log(2+8)=log(10), log(4+8)=log(12).
+    expected_counts = torch.log(torch.tensor([[10.0, 12.0]])).expand(3, -1)
+    assert torch.allclose(out.log_counts, expected_counts)
+
+
+def test_chrombpnet_shared_bias_forward_equals_manual_broadcast():
+    """Pin against a hand-built broadcast (no helper) so a future helper
+    rewrite cannot silently drift from add-then-logaddexp semantics."""
+    torch.manual_seed(0)
+    model = ChromBPNet(
+        input_len=32, output_len=16,
+        output_channels=["a", "b", "c"],
+        shared_bias=True,
+        accessibility_args=_multitask_args(filters=6),
+        bias_args=_multitask_args(filters=4),
+    )
+    x = torch.randn(2, 4, 32)
+    out = model(x)
+
+    with torch.no_grad():
+        acc_out = model.accessibility_model(x)
+        bias_out = model.bias_model(x)
+        # Replicate the helper's broadcast inline.
+        bias_logits_broadcast = bias_out.logits.expand_as(acc_out.logits)
+        bias_log_counts_broadcast = bias_out.log_counts.expand_as(acc_out.log_counts)
+        expected_logits = acc_out.logits + bias_logits_broadcast
+        expected_log_counts = torch.logaddexp(
+            acc_out.log_counts, bias_log_counts_broadcast,
+        )
+    assert torch.allclose(out.logits, expected_logits)
+    assert torch.allclose(out.log_counts, expected_log_counts)
+
+
+def test_chrombpnet_non_shared_bias_keeps_per_channel_branches():
+    """Default ChromBPNet path (shared_bias=False) keeps a per-channel
+    bias branch; regression guard so the new branch doesn't silently
+    collapse the old contract."""
+    model = ChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=["task_a", "task_b"],
+        accessibility_args=_multitask_args(filters=6),
+        bias_args=_multitask_args(filters=4),
+    )
+    assert model.shared_bias is False
+    assert model.bias_model.n_output_channels == 2
+
+
+# ---------------------------------------------------------------------------
+# MultitaskChromBPNet -- the subclass that enforces the shared-bias +
+# per-channel-count contract.
+# ---------------------------------------------------------------------------
+
+
+def test_multitask_chrombpnet_forward_shape_and_count_modes():
+    """Forward emits (B, N, L) logits + (B, N) log-counts; sub-branches
+    have the pinned predict_total_count modes."""
+    model = MultitaskChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=["task_a", "task_b", "task_c"],
+        accessibility_args=_multitask_args(filters=6),
+        bias_args=_multitask_args(filters=4),
+    )
+
+    out = model(torch.randn(2, 4, 64))
+
+    assert isinstance(out, ProfileCountOutput)
+    assert out.logits.shape == (2, 3, 32)
+    assert out.log_counts.shape == (2, 3)
+    assert model.shared_bias is True
+    assert model.accessibility_model.n_output_channels == 3
+    assert model.accessibility_model.predict_total_count is False
+    assert model.bias_model.n_output_channels == 1
+    assert model.bias_model.predict_total_count is True
+
+
+def test_multitask_chrombpnet_requires_at_least_two_tasks():
+    with pytest.raises(ValueError, match="at least two output_channels"):
+        MultitaskChromBPNet(output_channels=["only_task"])
+    with pytest.raises(ValueError, match="at least two output_channels"):
+        MultitaskChromBPNet(output_channels=None)
+    with pytest.raises(ValueError, match="at least two output_channels"):
+        MultitaskChromBPNet(output_channels=[])
+
+
+def test_multitask_chrombpnet_warns_on_accessibility_predict_total_count_override(
+    caplog,
+):
+    """Passing ``predict_total_count=True`` to the accessibility branch is
+    incompatible with multi-task per-channel counts; the constructor warns
+    and overrides rather than silently accepting it."""
+    with caplog.at_level(logging.WARNING, logger="cerberus.models.chrombpnet"):
+        model = MultitaskChromBPNet(
+            input_len=64, output_len=32,
+            output_channels=["task_a", "task_b"],
+            accessibility_args={
+                **_multitask_args(filters=5),
+                "predict_total_count": True,
+            },
+            bias_args=_multitask_args(filters=4),
+        )
+    assert any(
+        "predict_total_count" in m and "False" in m for m in caplog.messages
+    ), caplog.messages
+    assert model.accessibility_model.predict_total_count is False
+
+
+def test_multitask_chrombpnet_warns_on_bias_predict_total_count_override(caplog):
+    with caplog.at_level(logging.WARNING, logger="cerberus.models.chrombpnet"):
+        model = MultitaskChromBPNet(
+            input_len=64, output_len=32,
+            output_channels=["task_a", "task_b"],
+            accessibility_args=_multitask_args(filters=5),
+            bias_args={
+                **_multitask_args(filters=4),
+                "predict_total_count": False,
+            },
+        )
+    assert any(
+        "bias_args['predict_total_count']" in m for m in caplog.messages
+    ), caplog.messages
+    assert model.bias_model.predict_total_count is True
+
+
+def test_multitask_chrombpnet_accepts_matching_predict_total_count_silently(caplog):
+    """When the caller passes the same values the constructor already
+    pins (acc=False, bias=True), no warning fires -- the warning is for
+    surprise, not for user clarity."""
+    with caplog.at_level(logging.WARNING, logger="cerberus.models.chrombpnet"):
+        MultitaskChromBPNet(
+            input_len=64, output_len=32,
+            output_channels=["task_a", "task_b"],
+            accessibility_args={
+                **_multitask_args(filters=5),
+                "predict_total_count": False,
+            },
+            bias_args={
+                **_multitask_args(filters=4),
+                "predict_total_count": True,
+            },
+        )
+    assert not [
+        m for m in caplog.messages if "predict_total_count" in m
+    ], caplog.messages
+
+
+def test_multitask_chrombpnet_loss_is_per_channel_compatible():
+    """Output flows through :class:`MultitaskBPNetLoss` without shape errors."""
+    model = MultitaskChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=["task_a", "task_b"],
+        accessibility_args=_multitask_args(filters=5),
+        bias_args=_multitask_args(filters=4),
+    )
+    outputs = model(torch.randn(2, 4, 64))
+    targets = torch.rand(2, 2, 32)
+    loss = MultitaskBPNetLoss(alpha=0.1, beta=0.1)(outputs, targets)
+    assert loss.shape == ()
+    assert torch.isfinite(loss)
+
+
+def test_non_shared_multitask_chrombpnet_fails_per_channel_loss():
+    """Regression guard: a multi-output ChromBPNet WITHOUT shared_bias
+    produces per-channel combined log_counts via the per-channel bias
+    branch -- which is fine for absolute-counts losses but breaks the
+    ``MSEMultinomialLoss(count_per_channel=True)`` contract when the
+    sub-branches' log_counts have shape (B, N) instead of (B,).  This
+    test pins the failure mode so a future "helpful" change can't
+    silently let the wrong shape through."""
+    model = ChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=["task_a", "task_b"],
+        accessibility_args=_multitask_args(filters=5),
+        bias_args=_multitask_args(filters=4),
+    )
+    outputs = model(torch.randn(2, 4, 64))
+    targets = torch.rand(2, 2, 32)
+    with pytest.raises(ValueError, match="per-channel log_counts"):
+        MSEMultinomialLoss(count_per_channel=True)(outputs, targets)
+
+
+def test_multitask_chrombpnet_loads_single_channel_bias_then_freezes(tmp_path):
+    """End-to-end recipe for the stage-2 multitask trainer:
+
+    1. Train a one-channel stage-1 bias BPNet (here: build a fresh BPNet and
+       save its state_dict).
+    2. Instantiate a MultitaskChromBPNet (which has a one-channel bias
+       branch).
+    3. Load the bias weights into ``bias_model`` via
+       ``load_pretrained_weights`` + ``PretrainedConfig(target="bias_model")``.
+    4. Freeze the bias subtree via ``apply_freeze`` + ``FreezeSpec``.
+    """
+    bias_args = _multitask_args(filters=4)
+    single_bias = BPNet(
+        input_len=64, output_len=32,
+        output_channels=["signal"],
+        predict_total_count=True,
+        **bias_args,
+    )
+    with torch.no_grad():
+        for p in single_bias.parameters():
+            p.fill_(0.25)
+
+    ckpt_path = tmp_path / "bias.pt"
+    torch.save(single_bias.state_dict(), ckpt_path)
+
+    model = MultitaskChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=["task_a", "task_b"],
+        accessibility_args=_multitask_args(filters=5),
+        bias_args=bias_args,
+    )
+    load_pretrained_weights(
+        model,
+        [
+            PretrainedConfig(
+                weights_path=str(ckpt_path),
+                source=None,
+                target="bias_model",
+            )
+        ],
+    )
+    apply_freeze(model, [FreezeSpec(pattern="bias_model", eval_mode=True)])
+
+    # Bias weights are loaded bit-for-bit and have requires_grad=False.
+    for p in model.bias_model.parameters():
+        assert torch.all(p == 0.25)
+        assert p.requires_grad is False
+    # Accessibility branch is untouched and remains trainable.
+    assert all(p.requires_grad for p in model.accessibility_model.parameters())
+    assert model.bias_model.training is False
+
+
+# ---------------------------------------------------------------------------
+# Cross-construction equivalence -- protects against drift between the
+# explicit ``ChromBPNet(shared_bias=True, ...)`` low-level path and the
+# ``MultitaskChromBPNet(...)`` convenience subclass.  If a future refactor
+# adds extra wiring to one path only, these regressions catch it.
+# ---------------------------------------------------------------------------
+
+
+def _hand_built_equivalent(
+    output_channels: list[str], acc_args: dict, bias_args: dict,
+) -> ChromBPNet:
+    return ChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=output_channels,
+        accessibility_args={**acc_args, "predict_total_count": False},
+        bias_args={**bias_args, "predict_total_count": True},
+        shared_bias=True,
+    )
+
+
+def test_multitask_chrombpnet_matches_hand_built_state_dict_layout():
+    """Both paths produce identical state_dict key sets (same architecture)."""
+    acc = _multitask_args(filters=6)
+    bias = _multitask_args(filters=4)
+    output_channels = ["task_a", "task_b", "task_c"]
+
+    multitask = MultitaskChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=output_channels,
+        accessibility_args=acc,
+        bias_args=bias,
+    )
+    hand_built = _hand_built_equivalent(output_channels, acc, bias)
+
+    assert set(multitask.state_dict().keys()) == set(hand_built.state_dict().keys())
+    # And the per-tensor shapes match exactly.
+    for key, tensor in multitask.state_dict().items():
+        assert tensor.shape == hand_built.state_dict()[key].shape
+
+
+def test_multitask_chrombpnet_forward_matches_hand_built_under_same_weights():
+    """Construct both, copy weights one-way, assert forward outputs agree
+    bit-for-bit.  This is the strongest guarantee that the subclass adds
+    no extra forward-time math."""
+    acc = _multitask_args(filters=6)
+    bias = _multitask_args(filters=4)
+    output_channels = ["task_a", "task_b"]
+
+    torch.manual_seed(7)
+    multitask = MultitaskChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=output_channels,
+        accessibility_args=acc,
+        bias_args=bias,
+    )
+    hand_built = _hand_built_equivalent(output_channels, acc, bias)
+    hand_built.load_state_dict(multitask.state_dict())
+
+    x = torch.randn(2, 4, 64)
+    multitask.eval()
+    hand_built.eval()
+    out_mt = multitask(x)
+    out_hb = hand_built(x)
+    assert torch.equal(out_mt.logits, out_hb.logits)
+    assert torch.equal(out_mt.log_counts, out_hb.log_counts)
+
+
+def test_multitask_chrombpnet_state_dict_round_trip_preserves_offset(tmp_path):
+    """Saving and reloading a MultitaskChromBPNet preserves the
+    bias_logcount_offset buffer -- key for the calibration step."""
+    model = MultitaskChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=["task_a", "task_b"],
+        accessibility_args=_multitask_args(filters=5),
+        bias_args=_multitask_args(filters=4),
+    )
+    model.bias_logcount_offset.fill_(0.42)  # type: ignore[union-attr]
+
+    ckpt = tmp_path / "multitask.pt"
+    torch.save(model.state_dict(), ckpt)
+
+    fresh = MultitaskChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=["task_a", "task_b"],
+        accessibility_args=_multitask_args(filters=5),
+        bias_args=_multitask_args(filters=4),
+    )
+    fresh.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=True))
+    assert fresh.bias_logcount_offset.item() == pytest.approx(0.42)  # type: ignore[union-attr]
+
+
+def test_multitask_chrombpnet_importable_from_class_path():
+    cls = import_class("cerberus.models.chrombpnet.MultitaskChromBPNet")
+    assert cls is MultitaskChromBPNet
+    assert _cerberus_models.MultitaskChromBPNet is MultitaskChromBPNet

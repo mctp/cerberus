@@ -50,6 +50,36 @@ _BIAS_DEFAULTS: dict[str, Any] = {
 }
 
 
+def _resolve_branch_shapes(
+    branch_name: str,
+    branch_tensor: torch.Tensor,
+    target_tensor: torch.Tensor,
+) -> torch.Tensor:
+    """Broadcast a singleton-channel branch tensor over the target channels.
+
+    Pass-through when shapes already match.  When ``branch_tensor`` has the
+    same rank but a singleton channel dim (``shape[1] == 1``), expand it to
+    match ``target_tensor``'s channel count.  Any other shape mismatch
+    raises -- the caller has a structural bug, not a broadcastable one.
+
+    Used by :meth:`ChromBPNet.forward` so a one-channel bias branch
+    (``shared_bias=True``) can combine with a multi-task accessibility
+    branch without mutating either sub-model's output contract.
+    """
+    if branch_tensor.shape == target_tensor.shape:
+        return branch_tensor
+
+    if branch_tensor.ndim == target_tensor.ndim and branch_tensor.shape[1] == 1:
+        expand_shape = list(target_tensor.shape)
+        expand_shape[0] = branch_tensor.shape[0]
+        return branch_tensor.expand(*expand_shape)
+
+    raise ValueError(
+        f"{branch_name} shape {tuple(branch_tensor.shape)} is incompatible "
+        f"with target shape {tuple(target_tensor.shape)}"
+    )
+
+
 class ChromBPNet(nn.Module):
     """
     ChromBPNet: Bias-factorized ATAC model with two BPNet sub-networks.
@@ -106,6 +136,12 @@ class ChromBPNet(nn.Module):
         bias_logcount_offset (float): Initial value for the additive
             offset applied to bias log-counts before ``logaddexp``
             combination. Default: ``0.0``.
+        shared_bias (bool): If ``True``, the bias branch is built with
+            ``output_channels=["bias"]`` (one channel) and broadcast
+            across the accessibility branch's channels at forward time.
+            Required to compose a single Tn5-bias model with a
+            multi-task accessibility branch (see
+            :class:`MultitaskChromBPNet`).  Default: ``False``.
     """
 
     def __init__(
@@ -118,6 +154,7 @@ class ChromBPNet(nn.Module):
         accessibility_args: dict[str, Any] | None = None,
         bias_args: dict[str, Any] | None = None,
         bias_logcount_offset: float = 0.0,
+        shared_bias: bool = False,
     ):
         super().__init__()
         if input_channels is None:
@@ -141,11 +178,17 @@ class ChromBPNet(nn.Module):
             "output_len": output_len,
             "output_bin_size": output_bin_size,
             "input_channels": input_channels,
-            "output_channels": output_channels,
         }
-        acc_kw.update(shared_kw)
-        bias_kw.update(shared_kw)
+        acc_kw.update(shared_kw, output_channels=output_channels)
+        # shared_bias=True collapses the bias branch to a single "bias" channel
+        # that broadcasts across all accessibility channels at forward time --
+        # so one Tn5-bias model can serve a multi-task accessibility branch.
+        bias_kw.update(
+            shared_kw,
+            output_channels=["bias"] if shared_bias else output_channels,
+        )
 
+        self.shared_bias = shared_bias
         self.accessibility_model = BPNet(**acc_kw)
         self.bias_model = BPNet(**bias_kw)
 
@@ -161,11 +204,13 @@ class ChromBPNet(nn.Module):
         bias_params = sum(p.numel() for p in self.bias_model.parameters())
         logger.info(
             "ChromBPNet initialized: accessibility_model=%s params, "
-            "bias_model=%s params, total=%s params, bias_logcount_offset=%.4f",
+            "bias_model=%s params, total=%s params, bias_logcount_offset=%.4f, "
+            "shared_bias=%s",
             f"{acc_params:,}",
             f"{bias_params:,}",
             f"{acc_params + bias_params:,}",
             float(bias_logcount_offset),
+            shared_bias,
         )
 
     def forward(self, x) -> ProfileCountOutput:
@@ -183,19 +228,116 @@ class ChromBPNet(nn.Module):
         acc_out = self.accessibility_model(x)
         bias_out = self.bias_model(x)
 
+        # Broadcast a singleton-channel bias output over the accessibility
+        # channels when shared_bias=True; pass-through otherwise.
+        bias_logits = _resolve_branch_shapes(
+            "bias logits", bias_out.logits, acc_out.logits,
+        )
+        bias_log_counts_raw = _resolve_branch_shapes(
+            "bias log_counts", bias_out.log_counts, acc_out.log_counts,
+        )
+
         # Deviation vs chrombpnet-pytorch: reference bakes this offset into
         # bias_model.linear.bias before training; we apply it at forward time
         # from a wrapper-level buffer.  Forward math is identical.
-        offset = self.bias_logcount_offset.to(
-            dtype=bias_out.log_counts.dtype, device=bias_out.log_counts.device,
+        offset: torch.Tensor = self.bias_logcount_offset.to(  # type: ignore[union-attr]
+            dtype=bias_log_counts_raw.dtype, device=bias_log_counts_raw.device,
         )
-        bias_log_counts = bias_out.log_counts + offset
+        bias_log_counts = bias_log_counts_raw + offset
 
-        combined_logits = acc_out.logits + bias_out.logits
+        combined_logits = acc_out.logits + bias_logits
         combined_log_counts = torch.logaddexp(acc_out.log_counts, bias_log_counts)
         return ProfileCountOutput(
             logits=combined_logits,
             log_counts=combined_log_counts,
+        )
+
+
+class MultitaskChromBPNet(ChromBPNet):
+    """Multi-task ChromBPNet with a reusable single-channel bias branch.
+
+    The accessibility branch predicts one profile + one count scalar
+    per task (``predict_total_count=False`` — same per-channel count
+    requirement as :class:`cerberus.models.bpnet.MultitaskBPNet`).
+    The bias branch stays one channel and broadcasts across tasks at
+    forward time, so a stage-1 ChromBPNet bias BPNet trained on one
+    normalised sample can be frozen and reused for every other task
+    from the same assay (mirrors the chrombpnet-pytorch convention
+    that the Tn5 bias model is dataset-wide, not per-condition).
+
+    Pairs with :class:`cerberus.models.bpnet.MultitaskBPNetLoss` for
+    absolute-counts training (each task gets independent per-channel
+    profile + count losses) and with
+    :class:`cerberus.loss.DifferentialCountLoss` for differential
+    fine-tuning across two of the task channels (see
+    ``tools/train_chrombpnet_multitask.py`` and
+    ``tools/train_chrombpnet_multitask_differential.py``).
+
+    Args:
+        input_len, output_len, output_bin_size, input_channels,
+        accessibility_args, bias_args, bias_logcount_offset: forwarded
+            to :class:`ChromBPNet`.
+        output_channels (list[str]): Task names; must contain at least
+            two entries.
+
+    Raises:
+        ValueError: If fewer than two output channels are supplied.
+    """
+
+    def __init__(
+        self,
+        input_len: int = 2114,
+        output_len: int = 1000,
+        output_bin_size: int = 1,
+        input_channels: list[str] | None = None,
+        output_channels: list[str] | None = None,
+        accessibility_args: dict[str, Any] | None = None,
+        bias_args: dict[str, Any] | None = None,
+        bias_logcount_offset: float = 0.0,
+    ):
+        if output_channels is None or len(output_channels) < 2:
+            raise ValueError(
+                "MultitaskChromBPNet requires at least two output_channels; "
+                f"got {output_channels!r}"
+            )
+
+        acc_kw: dict[str, Any] = dict(accessibility_args or {})
+        bias_kw: dict[str, Any] = dict(bias_args or {})
+
+        # Pin the two count-mode flags that define this architecture and
+        # warn (rather than silently overwrite) when the caller disagrees,
+        # mirroring the MultitaskBPNetLoss `_fixed` pattern.
+        caller_acc_count_mode = acc_kw.pop("predict_total_count", None)
+        if caller_acc_count_mode is not None and caller_acc_count_mode is not False:
+            logger.warning(
+                "MultitaskChromBPNet ignores accessibility_args['predict_total_count']=%r "
+                "and uses False so each task has its own count head.",
+                caller_acc_count_mode,
+            )
+        acc_kw["predict_total_count"] = False
+
+        # A one-channel bias model has identical state-dict shapes with either
+        # count mode, but predict_total_count=True documents the stage-1 bias
+        # workflow and matches tools/train_chrombpnet_bias.py.
+        caller_bias_count_mode = bias_kw.pop("predict_total_count", None)
+        if caller_bias_count_mode is not None and caller_bias_count_mode is not True:
+            logger.warning(
+                "MultitaskChromBPNet ignores bias_args['predict_total_count']=%r "
+                "and uses True for the reusable one-channel bias branch.",
+                caller_bias_count_mode,
+            )
+        bias_kw["predict_total_count"] = True
+
+        super().__init__(
+            input_len=input_len,
+            output_len=output_len,
+            output_bin_size=output_bin_size,
+            input_channels=input_channels,
+            output_channels=output_channels,
+            accessibility_args=acc_kw,
+            bias_args=bias_kw,
+            bias_logcount_offset=bias_logcount_offset,
+            shared_bias=True,
         )
 
 

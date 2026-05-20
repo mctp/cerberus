@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cerberus"
-version = "1.0.0a5"
+version = "1.0.0a6"
 description = "Attentive multi-headed and highly trained companion to sequence-to-function deep-learning models"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -29,7 +29,12 @@ dependencies = [
 [project.optional-dependencies]
 extras = [
   "captum",
-  "modisco-lite",
+  # ``modisco`` (kundajelab/tfmodisco, the post-lite-merge official package)
+  # provides the ``modiscolite`` Python module from 2.4.0 onward.  Required
+  # >=2.5.2 for ``tools/run_tfmodisco.py --run-descriptive-report``.  Do NOT
+  # use ``modisco-lite`` (old jmschrei fork, max 2.4.0) -- it installs the
+  # same ``modiscolite`` import name and conflicts.
+  "modisco",
   "cyvcf2",
   "pybigwig",
   "pysam",

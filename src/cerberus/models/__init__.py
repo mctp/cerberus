@@ -9,7 +9,7 @@ from .bpnet import (
     MultitaskBPNet,
     MultitaskBPNetLoss,
 )
-from .chrombpnet import ChromBPNet
+from .chrombpnet import ChromBPNet, MultitaskChromBPNet
 from .dalmatian import Dalmatian
 from .gopher import GlobalProfileCNN
 from .pomeranian import Pomeranian, PomeranianK5, PomeranianMetricCollection
@@ -25,6 +25,7 @@ __all__ = [
     "MultitaskBPNet",
     "MultitaskBPNetLoss",
     "ChromBPNet",
+    "MultitaskChromBPNet",
     "Dalmatian",
     "GlobalProfileCNN",
     "Pomeranian",

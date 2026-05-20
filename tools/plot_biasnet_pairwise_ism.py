@@ -82,15 +82,18 @@ def _extract_bias_state_dict(sd: dict[str, torch.Tensor]) -> dict[str, torch.Ten
 def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
     """Load a BiasNet model from a run directory or standalone .pt file.
 
-    Supports standalone BiasNet and Dalmatian (extracts bias_model subnetwork).
+    Supports standalone BiasNet, Dalmatian (extracts bias_model subnetwork),
+    and ChromBPNet bias-stage BPNet checkpoints.
     """
     from cerberus.models.biasnet import BiasNet
+    from cerberus.models.bpnet import BPNet
 
     path = Path(path)
     _, model_pt = _resolve_fold_dir(path)
 
     config = load_config(path)
     model_name = config["model_config"]["name"]
+    model_cls = config["model_config"].get("model_cls")
     model_args = config["model_config"]["model_args"]
     data_config = config["data_config"]
     output_len = data_config["output_len"]
@@ -177,16 +180,24 @@ def load_biasnet(path: Path, device: torch.device) -> torch.nn.Module:
             residual=bias_residual,
             linear_head=bias_linear_head,
         )
+    elif model_name == "ChromBPNetBiasBPNet" or model_cls == "cerberus.models.bpnet.BPNet":
+        model = BPNet(
+            input_len=data_config["input_len"],
+            output_len=output_len,
+            output_bin_size=output_bin_size,
+            **model_args,
+        )
     else:
         raise ValueError(
-            f"Unsupported model type '{model_name}'. Expected 'BiasNet' or 'Dalmatian'."
+            f"Unsupported model type '{model_name}'. Expected 'BiasNet', "
+            "'Dalmatian', or 'ChromBPNetBiasBPNet'."
         )
 
     sd = torch.load(model_pt, map_location="cpu", weights_only=True)
     bias_sd = _extract_bias_state_dict(sd)
     model.load_state_dict(bias_sd)
     logger.info(
-        f"Loaded BiasNet from {model_name} checkpoint: "
+        f"Loaded bias model from {model_name} checkpoint: "
         f"input_len={model.input_len}, output_len={model.output_len}, "
         f"params={sum(p.numel() for p in model.parameters()):,}"
     )
@@ -799,7 +810,7 @@ def main():
     plot_logo(
         ax_logo,
         ism_single,
-        f"BiasNet ISM IC — {n_seqs} {seq_type} seqs (center {window}bp)",
+        f"Bias model ISM IC — {n_seqs} {seq_type} seqs (center {window}bp)",
         as_ic=True,
     )
     ax_logo.set_ylabel("IC (bits)", fontsize=8)
