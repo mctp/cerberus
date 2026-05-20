@@ -442,6 +442,22 @@ For quick training on custom data, use the model-specific scripts in the `tools/
         --adjust-bias-logcounts --output-dir models/chrombpnet
     ```
 
+*   `tools/train_chrombpnet_multitask.py`: Multi-task ChromBPNet stage 2 — loads a single-channel ChromBPNet bias checkpoint and broadcasts it across N task-specific accessibility heads via [MultitaskChromBPNet](models.md#multitaskchrombpnet). Per-task BigWig + peak paths come from a `targets.json` file.
+    ```bash
+    python tools/train_chrombpnet_multitask.py \
+        --targets-json targets.json \
+        --pretrained-bias models/chrombpnet_bias/single-fold/fold_0/model.pt \
+        --output-dir models/chrombpnet_multitask
+    ```
+
+*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, supervises `log_counts[:, cond_b] - log_counts[:, cond_a]` with `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
+    ```bash
+    python tools/train_chrombpnet_multitask_differential.py \
+        --phase1-checkpoint-dir models/chrombpnet_multitask/single-fold \
+        --cond-a-idx 0 --cond-b-idx 1 \
+        --output-dir models/chrombpnet_multitask_diff
+    ```
+
 *   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
     ```bash
     python tools/train_multitask_differential_bpnet.py \
@@ -2260,6 +2276,67 @@ obs = observed_log_counts(dataset, intervals, ensemble.cerberus_config)
 ```
 
 Both functions take the same input-length intervals; `observed_log_counts` internally crops to `output_len` before signal extraction, and `predict_log_counts` runs the ensemble's batched fold-routing inference.
+
+## TF-MoDISco Interpretation Workflow
+
+The two-step interpretation pipeline lives in `tools/export_tfmodisco_inputs.py` (export) and `tools/run_tfmodisco.py` (run + report). Both work against a `ModelEnsemble` checkpoint directory.
+
+### Export attribution arrays
+
+```bash
+python tools/export_tfmodisco_inputs.py \
+    --checkpoint-dir models/foxa1/single-fold \
+    --output-dir attributions/foxa1 \
+    --target-mode log_counts --target-channel 0
+```
+
+New flags introduced for multi-condition / ChromBPNet workflows:
+
+- `--target-mode delta_log_counts` or `--target-mode delta_profile_window_sum` with `--target-cond-a` / `--target-cond-b` compute the per-region differential target (condition B minus condition A) for multi-task models trained with `DifferentialCountLoss`.
+- `--chrombpnet-accessibility-only` (default: auto-detect) routes attribution through the `chrombpnet_wo_bias` branch on ChromBPNet / MultitaskChromBPNet checkpoints so motif discovery excludes the frozen Tn5-bias contribution.
+- `--intervals-as-simple-sampler` (with `--intervals-path`) swaps the training sampler for a plain IntervalSampler over the supplied BED — useful for interpretation on a pre-materialised positive-split BED without reconstructing peak/background samplers.
+
+### Run TF-MoDISco motifs and report
+
+```bash
+python tools/run_tfmodisco.py \
+    --ohe-path attributions/foxa1/ohe.npz \
+    --attr-path attributions/foxa1/shap.npz \
+    --modisco-output attributions/foxa1/modisco.h5 \
+    --run-descriptive-report \
+    --meme-db path/to/HOCOMOCO.meme
+```
+
+`--run-descriptive-report` invokes `modiscolite.descriptive_report.generate_descriptive_report` to produce an HTML report with per-pattern logos, seqlet examples, and (when `--meme-db` is provided) tomtom-lite motif matches.
+
+#### Dependency note: `modisco` vs `modisco-lite` on PyPI
+
+The descriptive-report path requires the `modisco` PyPI package at version **≥ 2.5.2**. This is a frequent confusion point — two distinct packages install to the same `modiscolite` Python import name:
+
+- **`modisco`** (kundajelab/tfmodisco, the current upstream after the lite-codebase migration): current latest 2.5.2 on PyPI. Ships `modiscolite.descriptive_report`. **This is what cerberus depends on.**
+- **`modisco-lite`** (jmschrei/tfmodisco-lite, the historical fork): max 2.4.0 on PyPI, no `descriptive_report`. Do **not** install — both packages provide the same `modiscolite` Python module and conflict.
+
+`cerberus[extras]` lists `modisco`, not `modisco-lite`. If you installed `modisco-lite` previously, run `pip uninstall modisco-lite && pip install modisco`. The runtime error from `_run_descriptive_report` includes the same diagnosis.
+
+## Motif Marginalization (`tools/score_motif_insertions.py`)
+
+bpAI-TAC-style motif marginalisation scorer: substitutes deterministic motif sequences at the centre of training intervals against a dinucleotide-shuffled background, then measures per-head log-count / count deltas. Useful for asking "does TF X's binding site drive my model's count predictions?" without running full attribution.
+
+```bash
+python tools/score_motif_insertions.py \
+    --checkpoint-dir models/foxa1/single-fold \
+    --intervals-path data/positive_split.bed \
+    --motif FOXA1=AAACAA --motif GATA=GATAA \
+    --background-mode dinuc-shuffle \
+    --output reports/foxa1_motif_scores.tsv
+```
+
+- `--motif name=ACGT` can be repeated for multiple motifs (deterministic substitution).
+- `--meme-path file.meme` with optional `--motif-name-regex` loads consensus sequences (argmax per position) from a MEME database.
+- `--offset` shifts the motif window relative to the input centre; pass multiple `--offset` values to map the dose-response across positions.
+- `--chrombpnet-accessibility-only` routes through the accessibility branch on ChromBPNet checkpoints.
+
+Outputs a detail TSV (one row per `interval × motif × head`) plus a summary TSV with per-motif/head mean, median, IQR, fraction-above-zero, and Wilcoxon signed-rank p-value.
 
 ## Multi-GPU  [multi_gpu.md]
 

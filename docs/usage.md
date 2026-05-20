@@ -360,6 +360,22 @@ For quick training on custom data, use the model-specific scripts in the `tools/
         --adjust-bias-logcounts --output-dir models/chrombpnet
     ```
 
+*   `tools/train_chrombpnet_multitask.py`: Multi-task ChromBPNet stage 2 — loads a single-channel ChromBPNet bias checkpoint and broadcasts it across N task-specific accessibility heads via [MultitaskChromBPNet](models.md#multitaskchrombpnet). Per-task BigWig + peak paths come from a `targets.json` file.
+    ```bash
+    python tools/train_chrombpnet_multitask.py \
+        --targets-json targets.json \
+        --pretrained-bias models/chrombpnet_bias/single-fold/fold_0/model.pt \
+        --output-dir models/chrombpnet_multitask
+    ```
+
+*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, supervises `log_counts[:, cond_b] - log_counts[:, cond_a]` with `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
+    ```bash
+    python tools/train_chrombpnet_multitask_differential.py \
+        --phase1-checkpoint-dir models/chrombpnet_multitask/single-fold \
+        --cond-a-idx 0 --cond-b-idx 1 \
+        --output-dir models/chrombpnet_multitask_diff
+    ```
+
 *   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
     ```bash
     python tools/train_multitask_differential_bpnet.py \

@@ -8,6 +8,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`tools/train_chrombpnet_multitask.py`**: stage-2 multi-task
+  ChromBPNet trainer.  Loads a single-channel stage-1 ChromBPNet bias
+  checkpoint and broadcasts it across N task-specific accessibility
+  heads via :class:`cerberus.models.MultitaskChromBPNet`.  Per-task
+  BigWig + peak paths come from a `targets.json` file; freezes the
+  bias subtree via `ModelConfig.freeze=[FreezeSpec(...)]` by default
+  (use `--no-freeze-bias` to keep both branches trainable).  Exports
+  an accessibility-only `chrombpnet_wo_bias.pt` next to each
+  `model.pt`.
+- **`tools/train_chrombpnet_multitask_differential.py`**: phase-2
+  differential fine-tuning for an existing multi-task ChromBPNet.
+  Reloads the phase-1 accessibility branch as trainable, keeps the
+  bias frozen via FreezeSpec, supervises
+  `log_counts[:, cond_b] - log_counts[:, cond_a]` with
+  `DifferentialCountLoss` + `DifferentialBPNetMetricCollection`.
+  Pseudocount is derived from training data by default via
+  `resolve_noise_floor_pseudocount` (override with
+  `--phase2-pseudocount-override`).  Local
+  `_select_phase2_strategy` helper promotes DDP's
+  `find_unused_parameters` to `True` so the un-touched profile heads
+  don't trip bucket-rebuild errors.  The "Phase 2" terminology stays
+  scoped to this trainer (matches the BPNet differential trainer's
+  convention).
+- **`tools/scatac_normalize_pseudobulk.py`**: standalone two-stage
+  scATAC pseudobulk normaliser.  (1) CPM scaling using per-group
+  library sizes (read from a `group_summary.tsv` or computed inline);
+  (2) CREsted-style constitutive-peak baseline rescaling — selects
+  top-K% accessible peaks per group, filters by Gini coefficient,
+  rescales every group to the chosen reference (default: max anchor
+  mean).  Emits normalised BigWigs, per-group summary TSV, anchor
+  diagnostics, metadata JSON, and a `targets.json` consumable by
+  `train_chrombpnet_multitask.py`.  See `docs/preprocessing.md` for
+  the workflow.
+- **`tools/score_motif_insertions.py`**: bpAI-TAC-style motif
+  marginalisation scorer.  Substitutes deterministic motif sequences
+  (inline `name=ACGT` or extracted from a MEME database) at the
+  centre of training intervals against a dinucleotide-shuffled
+  background, then measures per-head log-count / count deltas.  Emits
+  a detail TSV (one row per `interval × motif × head`) plus a summary
+  TSV with mean / median / IQR / Wilcoxon signed-rank p-value per
+  motif and head.  See `docs/prediction.md`.
 - **`cerberus.models.MultitaskChromBPNet`**: multi-condition ChromBPNet
   with a reusable single-channel bias branch.  The accessibility
   branch predicts one profile + one count scalar per task
@@ -29,6 +70,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   broadcasts singleton-channel branches over the accessibility
   branch's channels; existing single-task ChromBPNet behaviour is
   unchanged (pass-through when shapes match).
+
+### Changed
+- **`tools/export_tfmodisco_inputs.py`**: new flags for differential
+  + ChromBPNet interpretation workflows.
+  - `--target-mode delta_log_counts` and `--target-mode
+    delta_profile_window_sum`, paired with `--target-cond-a` /
+    `--target-cond-b`, derive the per-region delta target (condition B
+    minus condition A) at attribution time for multi-task models
+    trained with `DifferentialCountLoss`.
+  - `--chrombpnet-accessibility-only` (default: auto-detect via
+    `getattr(model, "chrombpnet_wo_bias", None)`) routes attribution
+    through the accessibility branch on ChromBPNet /
+    MultitaskChromBPNet checkpoints so motif discovery excludes the
+    frozen Tn5 bias.
+  - `--intervals-as-simple-sampler` (with `--intervals-path`) swaps
+    the training sampler for a plain IntervalSampler over the supplied
+    BED, avoiding the peak/background sampler reconstruction.
+  - `--target-mode` choices now come from
+    `cerberus.attribution.TARGET_REDUCTIONS` (single source of truth).
+- **`tools/run_tfmodisco.py`**: adds `--run-descriptive-report`
+  (modiscolite descriptive report with embedded base64 logos +
+  optional Python tomtom-lite motif matching) with
+  `--descriptive-report-{dir,tomtom-lite,top-n-matches,n-examples,
+  trim-threshold}` knobs.  Requires `modisco>=2.5.2`; raises a clear
+  RuntimeError naming the right PyPI package if the install is
+  missing or too old.  See dependency note below.
+- **`tools/plot_biasnet_ism.py`**: recognises the
+  `ChromBPNetBiasBPNet` model type (stage-1 ChromBPNet bias
+  checkpoints) alongside the existing BiasNet / Dalmatian dispatch.
+  Adds a batched-forward helper `_batch_forward_center(model, batch,
+  output_idx, batch_size)` so ISM forward passes amortise the per-
+  position mutation cost; expose `--batch-size` on the CLI (default
+  512).
+- **`pyproject.toml [extras]`**: replaced `modisco-lite` with
+  `modisco` (unpinned).  The two PyPI packages install to the same
+  `modiscolite` Python import name and conflict; `modisco`
+  (kundajelab/tfmodisco, post-lite-merge) is the current upstream
+  shipping the `descriptive_report` module from 2.5.2 onward, and
+  `modisco-lite` (jmschrei/tfmodisco-lite) is the historical fork
+  with max 2.4.0 on PyPI.  Anyone with `modisco-lite` installed must
+  uninstall first.  See `tools/run_tfmodisco.py` module docstring and
+  `docs/prediction.md` for the full disambiguation.
 
 ## [1.0.0a5] - 2026-05-19
 
