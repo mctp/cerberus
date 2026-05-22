@@ -47,6 +47,14 @@ def parse_hparams_config(path: str | Path) -> CerberusConfig:
         raise FileNotFoundError(f"hparams file not found at: {p}")
     with open(p) as f:
         data = yaml.safe_load(f)
+    model_config = data.get("model_config") if isinstance(data, dict) else None
+    pretrained = (
+        model_config.get("pretrained") if isinstance(model_config, dict) else None
+    )
+    if isinstance(pretrained, list):
+        for entry in pretrained:
+            if isinstance(entry, dict):
+                entry.pop("freeze", None)
     return CerberusConfig.model_validate(data)
 
 

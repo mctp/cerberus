@@ -829,6 +829,22 @@ class TestBackwardCompatibility:
         config = parse_hparams_config(hparams_path)
         assert isinstance(config, CerberusConfig)
 
+    def test_legacy_pretrained_freeze_key_ignored(self, tmp_path):
+        """Old YAML used PretrainedConfig.freeze before freeze specs existed."""
+        d = _full_config_dict(tmp_path)
+        d["model_config"]["pretrained"] = [
+            {
+                "weights_path": str(tmp_path / "bias.pt"),
+                "source": None,
+                "target": "bias_model",
+                "freeze": True,
+            }
+        ]
+
+        hparams_path = self._write_hparams(tmp_path, d)
+        config = parse_hparams_config(hparams_path)
+        assert config.model_config_.pretrained[0].target == "bias_model"
+
     def test_missing_required_section_raises(self, tmp_path):
         """Missing required top-level key raises ValidationError."""
         d = _full_config_dict(tmp_path)

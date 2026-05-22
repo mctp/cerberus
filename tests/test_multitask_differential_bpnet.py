@@ -15,7 +15,9 @@ import torch
 
 from cerberus.loss import DifferentialCountLoss
 from cerberus.models.bpnet import (
+    JointBPNetMetricCollection,
     MultitaskBPNet,
+    MultitaskBPNetJointDifferentialLoss,
     MultitaskBPNetLoss,
 )
 from cerberus.output import ProfileCountOutput
@@ -152,6 +154,49 @@ def test_multitask_bpnet_loss_phase1_roundtrip(model, seq, targets_2cond):
     assert loss.ndim == 0
     assert loss.item() > 0
     loss.backward()
+
+
+def test_joint_differential_loss_adds_delta_with_count_weight():
+    """Joint loss = beta*profile + alpha*count + alpha*delta by default."""
+    alpha = 2.0
+    beta = 0.5
+    loss_fn = MultitaskBPNetJointDifferentialLoss(alpha=alpha, beta=beta)
+    out = _make_output(torch.zeros(2, 2))
+    targets = _bnl_targets_with_known_delta(
+        torch.tensor([3.0, 7.0]),
+        torch.tensor([15.0, 1.0]),
+        n_channels=2,
+        output_len=OUTPUT_LEN,
+    )
+
+    components = loss_fn.loss_components(out, targets)
+    expected = (
+        beta * components["profile_loss"]
+        + alpha * components["count_loss"]
+        + alpha * components["delta_loss"]
+    )
+
+    assert loss_fn.delta_weight == alpha
+    torch.testing.assert_close(loss_fn(out, targets), expected)
+
+
+def test_joint_metric_collection_reports_absolute_and_delta_metrics():
+    metrics = JointBPNetMetricCollection(cond_a_idx=0, cond_b_idx=1)
+    assert "mse_profile" in metrics
+    assert "pearson_log_counts" in metrics
+    assert "mse_delta_log_counts" in metrics
+    assert "rmse_delta_log_counts" in metrics
+    assert "pearson_delta_log_counts" in metrics
+
+
+def test_joint_differential_loss_can_use_separate_delta_pseudocount():
+    loss_fn = MultitaskBPNetJointDifferentialLoss(
+        count_pseudocount=1.0,
+        delta_pseudocount=7.0,
+    )
+    assert loss_fn.count_pseudocount == 1.0
+    assert loss_fn.delta_pseudocount == 7.0
+    assert loss_fn._differential_loss.count_pseudocount == 7.0
 
 
 # ---------------------------------------------------------------------------

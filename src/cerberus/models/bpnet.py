@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
 from torchmetrics import MetricCollection
 
-from cerberus.loss import MSEMultinomialLoss
+from cerberus.loss import DifferentialCountLoss, MSEMultinomialLoss
 
 logger = logging.getLogger(__name__)
 from cerberus.layers import DilatedResidualBlock
@@ -558,6 +558,63 @@ class MultitaskBPNetLoss(MSEMultinomialLoss):
         )
 
 
+class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
+    """Multi-task absolute BPNet loss with an added differential count target.
+
+    This keeps the standard per-channel absolute profile/count objective and
+    adds a delta-log-count MSE term between two task channels.  By default the
+    delta term receives the same weight as the absolute count term (``alpha``),
+    so the two count-space objectives are calibrated as peers while the profile
+    multinomial term keeps its usual ``beta`` weight.
+    """
+
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        beta: float = 1.0,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        delta_weight: float | None = None,
+        delta_pseudocount: float | None = None,
+        count_pseudocount: float = 1.0,
+        **kwargs,
+    ):
+        super().__init__(
+            alpha=alpha,
+            beta=beta,
+            count_pseudocount=count_pseudocount,
+            **kwargs,
+        )
+        self.delta_weight = alpha if delta_weight is None else delta_weight
+        self.cond_a_idx = cond_a_idx
+        self.cond_b_idx = cond_b_idx
+        self.delta_pseudocount = (
+            count_pseudocount if delta_pseudocount is None else delta_pseudocount
+        )
+        self._differential_loss = DifferentialCountLoss(
+            cond_a_idx=cond_a_idx,
+            cond_b_idx=cond_b_idx,
+            count_pseudocount=self.delta_pseudocount,
+        )
+
+    def loss_components(
+        self, outputs: object, targets, **kwargs: object
+    ) -> dict[str, object]:
+        components = super().loss_components(outputs, targets, **kwargs)
+        components["delta_loss"] = self._differential_loss._delta_loss(
+            outputs, targets
+        )
+        return components
+
+    def forward(self, outputs: object, targets, **kwargs: object):
+        components = self.loss_components(outputs, targets, **kwargs)
+        return (
+            self.profile_weight * components["profile_loss"]
+            + self.count_weight * components["count_loss"]
+            + self.delta_weight * components["delta_loss"]
+        )
+
+
 class BPNetMetricCollection(MetricCollection):
     """
     MetricCollection for BPNet models.
@@ -638,3 +695,35 @@ class DifferentialBPNetMetricCollection(MetricCollection):
                 ),
             }
         )
+
+
+class JointBPNetMetricCollection(MetricCollection):
+    """Absolute profile/count metrics plus differential log-count metrics."""
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        log_counts_include_pseudocount: bool = False,
+    ):
+        metrics = dict(
+            BPNetMetricCollection(
+                log1p_targets=log1p_targets,
+                count_pseudocount=count_pseudocount,
+                log_counts_include_pseudocount=log_counts_include_pseudocount,
+            )
+        )
+        metrics.update(
+            dict(
+                DifferentialBPNetMetricCollection(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                )
+            )
+        )
+        super().__init__(metrics)
