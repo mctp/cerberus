@@ -428,7 +428,7 @@ def main() -> None:
             "cond_b_idx": args.differential_cond_b,
         }
         if args.differential_pseudocount is not None:
-            loss_args["delta_pseudocount"] = args.differential_pseudocount
+            loss_args["delta_count_pseudocount"] = args.differential_pseudocount
 
         model_config = ModelConfig(
             name="MultitaskChromBPNetDifferentialParallel",

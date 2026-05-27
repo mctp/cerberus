@@ -324,7 +324,7 @@ helper picks it from the training fold's per-channel quantile:
 from cerberus import resolve_noise_floor_pseudocount
 
 # Datamodule must already be set up.
-count_pseudocount = resolve_noise_floor_pseudocount(
+delta_count_pseudocount = resolve_noise_floor_pseudocount(
     datamodule,
     quantile=0.10,          # 10th percentile per channel
     seed=42,                # reproducible across runs

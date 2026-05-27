@@ -351,6 +351,7 @@ def main() -> None:
         loss_args={
             "cond_a_idx": args.cond_a_idx,
             "cond_b_idx": args.cond_b_idx,
+            "delta_count_pseudocount": phase2_pseudocount,
         },
         metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
         metrics_args={

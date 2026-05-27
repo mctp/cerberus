@@ -1,3 +1,4 @@
+import inspect
 import logging
 from typing import Any
 
@@ -433,6 +434,15 @@ def instantiate_metrics_and_loss(
         "count_pseudocount": model_config.count_pseudocount,
         "log_counts_include_pseudocount": loss_cls.uses_count_pseudocount,
     }
+    metrics_params = inspect.signature(metrics_cls).parameters
+    if (
+        "delta_count_pseudocount" in model_config.loss_args
+        and "delta_count_pseudocount" in metrics_params
+    ):
+        metrics_args.setdefault(
+            "delta_count_pseudocount",
+            model_config.loss_args["delta_count_pseudocount"],
+        )
     metrics = metrics_cls(**metrics_args)
 
     if device is not None:

@@ -575,7 +575,7 @@ class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         delta_weight: float | None = None,
-        delta_pseudocount: float | None = None,
+        delta_count_pseudocount: float | None = None,
         count_pseudocount: float = 1.0,
         **kwargs,
     ):
@@ -588,13 +588,13 @@ class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
         self.delta_weight = alpha if delta_weight is None else delta_weight
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
-        self.delta_pseudocount = (
-            count_pseudocount if delta_pseudocount is None else delta_pseudocount
-        )
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
+        self.delta_count_pseudocount = delta_count_pseudocount
         self._differential_loss = DifferentialCountLoss(
             cond_a_idx=cond_a_idx,
             cond_b_idx=cond_b_idx,
-            count_pseudocount=self.delta_pseudocount,
+            delta_count_pseudocount=self.delta_count_pseudocount,
         )
 
     def loss_components(
@@ -654,8 +654,8 @@ class DifferentialBPNetMetricCollection(MetricCollection):
     MetricCollection for log-fold-change supervision (``DifferentialCountLoss``).
     Exposes ``mse_delta_log_counts``, ``rmse_delta_log_counts``, and
     ``pearson_delta_log_counts``; all three compare
-    ``log_counts[:, b] - log_counts[:, a]`` against the inline-derived target
-    ``log((sum_b + pc) / (sum_a + pc))``.
+    ``log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))``
+    against the inline-derived target ``log((sum_b + pc) / (sum_a + pc))``.
     """
 
     def __init__(
@@ -664,33 +664,36 @@ class DifferentialBPNetMetricCollection(MetricCollection):
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
         count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float | None = None,
         log_counts_include_pseudocount: bool = False,
     ):
         # log1p_targets / count_pseudocount / log_counts_include_pseudocount
         # are the standard triple instantiate_metrics_and_loss forwards to
         # every metric collection; mirroring the BPNetMetricCollection
         # signature keeps the dispatch interchangeable.
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
         super().__init__(
             {
                 "mse_delta_log_counts": DifferentialLogCountsMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "rmse_delta_log_counts": DifferentialLogCountsRootMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "pearson_delta_log_counts": DifferentialLogCountsPearsonCorrCoef(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
             }
@@ -706,6 +709,7 @@ class JointBPNetMetricCollection(MetricCollection):
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
         count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float | None = None,
         log_counts_include_pseudocount: bool = False,
     ):
         metrics = dict(
@@ -722,6 +726,7 @@ class JointBPNetMetricCollection(MetricCollection):
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     count_pseudocount=count_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 )
             )

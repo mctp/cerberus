@@ -189,14 +189,50 @@ def test_joint_metric_collection_reports_absolute_and_delta_metrics():
     assert "pearson_delta_log_counts" in metrics
 
 
-def test_joint_differential_loss_can_use_separate_delta_pseudocount():
+def test_joint_differential_loss_can_use_separate_delta_count_pseudocount():
     loss_fn = MultitaskBPNetJointDifferentialLoss(
         count_pseudocount=1.0,
-        delta_pseudocount=7.0,
+        delta_count_pseudocount=7.0,
     )
     assert loss_fn.count_pseudocount == 1.0
-    assert loss_fn.delta_pseudocount == 7.0
-    assert loss_fn._differential_loss.count_pseudocount == 7.0
+    assert loss_fn.delta_count_pseudocount == 7.0
+    assert loss_fn._differential_loss.delta_count_pseudocount == 7.0
+
+
+def test_joint_metrics_can_use_separate_delta_count_pseudocount():
+    metrics = JointBPNetMetricCollection(
+        count_pseudocount=1.0,
+        delta_count_pseudocount=7.0,
+    )
+    assert metrics["mse_log_counts"].count_pseudocount == 1.0
+    assert metrics["mse_delta_log_counts"].delta_count_pseudocount == 7.0
+
+
+def test_joint_delta_count_pseudocount_is_forwarded_to_metrics_from_loss_args():
+    from cerberus.config import ModelConfig
+    from cerberus.module import instantiate_metrics_and_loss
+
+    config = ModelConfig.model_construct(
+        name="joint",
+        model_cls="cerberus.models.bpnet.MultitaskBPNet",
+        loss_cls="cerberus.models.bpnet.MultitaskBPNetJointDifferentialLoss",
+        loss_args={
+            "cond_a_idx": 0,
+            "cond_b_idx": 1,
+            "delta_count_pseudocount": 7.0,
+        },
+        metrics_cls="cerberus.models.bpnet.JointBPNetMetricCollection",
+        metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
+        model_args={"output_channels": ["a", "b"]},
+        pretrained=[],
+        count_pseudocount=1.0,
+    )
+
+    metrics, criterion = instantiate_metrics_and_loss(config)
+    assert criterion.count_pseudocount == 1.0
+    assert criterion.delta_count_pseudocount == 7.0
+    assert metrics["mse_log_counts"].count_pseudocount == 1.0
+    assert metrics["mse_delta_log_counts"].delta_count_pseudocount == 7.0
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +245,20 @@ def _make_output(log_counts: torch.Tensor, output_len: int = OUTPUT_LEN) -> Prof
     B, N = log_counts.shape
     logits = torch.zeros(B, N, output_len)
     return ProfileCountOutput(logits=logits, log_counts=log_counts)
+
+
+def _pred_delta_from_log_counts(
+    log_counts: torch.Tensor,
+    pc: float,
+    cond_a_idx: int = 0,
+    cond_b_idx: int = 1,
+) -> torch.Tensor:
+    if pc == 0:
+        return log_counts[:, cond_b_idx] - log_counts[:, cond_a_idx]
+    log_pc = log_counts.new_tensor(float(pc)).log()
+    return torch.logaddexp(log_counts[:, cond_b_idx], log_pc) - torch.logaddexp(
+        log_counts[:, cond_a_idx], log_pc
+    )
 
 
 def _bnl_targets_with_known_delta(
@@ -234,18 +284,15 @@ def test_differential_count_loss_derives_delta_from_targets():
     """Delta is derived from (B, N, L) targets: log((sum_B + pc) / (sum_A + pc))."""
     pc = 1.0
     loss_fn = DifferentialCountLoss(
-        cond_a_idx=0, cond_b_idx=1, count_pseudocount=pc
+        cond_a_idx=0, cond_b_idx=1, delta_count_pseudocount=pc
     )
-    sum_a = torch.tensor([3.0, 1.0, 7.0, 0.0])
-    sum_b = torch.tensor([15.0, 3.0, 1.0, 0.0])
+    sum_a = torch.tensor([3.0, 1.0, 7.0, 2.0])
+    sum_b = torch.tensor([15.0, 3.0, 1.0, 2.0])
     targets = _bnl_targets_with_known_delta(
         sum_a, sum_b, n_channels=2, output_len=OUTPUT_LEN
     )
-    # If the model predicts exactly log((sum_b + pc) / (sum_a + pc)) as
-    # log_counts[:, 1] - log_counts[:, 0], MSE is zero.
-    expected_delta = torch.log((sum_b + pc) / (sum_a + pc))
-    log_counts = torch.zeros(4, 2)
-    log_counts[:, 1] = expected_delta  # (b - a) = expected_delta since a=0
+    # If the model's count-scale predictions match the target sums, MSE is zero.
+    log_counts = torch.stack([sum_a.log(), sum_b.log()], dim=1)
     out = _make_output(log_counts)
 
     loss = loss_fn(out, targets)
@@ -257,7 +304,7 @@ def test_differential_count_loss_nonzero_when_prediction_off():
     """Shifting the prediction by a constant moves MSE predictably."""
     pc = 1.0
     loss_fn = DifferentialCountLoss(
-        cond_a_idx=0, cond_b_idx=1, count_pseudocount=pc
+        cond_a_idx=0, cond_b_idx=1, delta_count_pseudocount=pc
     )
     sum_a = torch.tensor([3.0, 7.0])
     sum_b = torch.tensor([15.0, 1.0])
@@ -270,13 +317,13 @@ def test_differential_count_loss_nonzero_when_prediction_off():
 
 
 def test_differential_count_loss_pseudocount_affects_target():
-    """Changing ``count_pseudocount`` changes the derived delta target."""
+    """Changing ``delta_count_pseudocount`` changes the derived delta target."""
     sum_a = torch.tensor([0.0])
     sum_b = torch.tensor([1.0])
     targets = _bnl_targets_with_known_delta(sum_a, sum_b, 2, OUTPUT_LEN)
     out = _make_output(torch.zeros(1, 2))
-    loss_small = DifferentialCountLoss(count_pseudocount=0.1)(out, targets)
-    loss_large = DifferentialCountLoss(count_pseudocount=100.0)(out, targets)
+    loss_small = DifferentialCountLoss(delta_count_pseudocount=0.1)(out, targets)
+    loss_large = DifferentialCountLoss(delta_count_pseudocount=100.0)(out, targets)
     # Larger pseudocount → smaller |log ratio| → smaller MSE
     assert loss_large.item() < loss_small.item()
 
@@ -340,7 +387,7 @@ def test_differential_count_loss_rejects_negative_idx(cond_a, cond_b):
 
 
 def test_differential_count_loss_swapping_idx_negates_prediction_term():
-    """Sign convention: ``delta = log_counts[:, B] - log_counts[:, A]``.
+    """Sign convention: ``delta = log((exp(log_B) + pc) / (exp(log_A) + pc))``.
 
     Swapping ``cond_a_idx`` and ``cond_b_idx`` must negate the predicted-
     delta term. Regression guard against anyone flipping the subtraction
@@ -366,7 +413,9 @@ def test_differential_count_loss_swapping_idx_negates_prediction_term():
 
     # Stronger: sanity-check the reversed (B, A) loss against hand-computed.
     expected_delta_ba = torch.log((sum_a + pc) / (sum_b + pc))
-    delta_pred_ba = log_counts[:, 0] - log_counts[:, 1]
+    delta_pred_ba = _pred_delta_from_log_counts(
+        log_counts, pc, cond_a_idx=1, cond_b_idx=0
+    )
     expected_loss_ba = ((delta_pred_ba - expected_delta_ba) ** 2).mean()
     assert ba.item() == pytest.approx(expected_loss_ba.item(), rel=1e-6)
 
@@ -442,10 +491,29 @@ def test_differential_count_loss_gradient_reaches_log_counts():
     assert log_counts.grad[:, 1].abs().sum() > 0
 
 
+def test_differential_count_loss_prediction_pseudocount_dampens_low_counts():
+    """The same predicted fold-change is penalized less at low abundance."""
+    pc = 1.4
+    loss_fn = DifferentialCountLoss(delta_count_pseudocount=pc)
+    targets = _bnl_targets_with_known_delta(
+        torch.tensor([5.0]),
+        torch.tensor([5.0]),
+        2,
+        OUTPUT_LEN,
+    )
+
+    low_counts = torch.tensor([[0.1, 1.0]]).log()
+    high_counts = torch.tensor([[100.0, 1000.0]]).log()
+
+    low_loss = loss_fn(_make_output(low_counts), targets)
+    high_loss = loss_fn(_make_output(high_counts), targets)
+    assert low_loss.item() < high_loss.item()
+
+
 def test_differential_count_loss_integer_targets_work():
     """Integer-dtype targets must produce the right answer (not crash)."""
     pc = 1.0
-    loss_fn = DifferentialCountLoss(count_pseudocount=pc)
+    loss_fn = DifferentialCountLoss(delta_count_pseudocount=pc)
     # ``targets.float().sum(-1)`` should cast correctly.
     targets = torch.zeros(1, 2, OUTPUT_LEN, dtype=torch.int64)
     targets[0, 0, :3] = 1  # sum_a = 3
@@ -475,8 +543,8 @@ def test_differential_count_loss_rejects_4d_targets():
 
 
 def test_differential_count_loss_pseudocount_injected_via_model_config():
-    """``ModelConfig.count_pseudocount`` must be injected into
-    :class:`DifferentialCountLoss` by :func:`instantiate_metrics_and_loss`.
+    """``ModelConfig.count_pseudocount`` must reach
+    :class:`DifferentialCountLoss` as ``delta_count_pseudocount``.
 
     This is the contract that keeps Phase 1 and Phase 2 log-spaces aligned
     under the standard :func:`cerberus.train.train_single` pipeline — a
@@ -499,7 +567,7 @@ def test_differential_count_loss_pseudocount_injected_via_model_config():
     )
     metrics, criterion = instantiate_metrics_and_loss(config)
     assert isinstance(criterion, DifferentialCountLoss)
-    assert criterion.count_pseudocount == 42.0
+    assert criterion.delta_count_pseudocount == 42.0
     assert criterion.cond_a_idx == 0
     assert criterion.cond_b_idx == 1
     # The collection wires the three delta-log-counts metrics expected by
