@@ -166,11 +166,13 @@ def main():
         # Replicate training evaluation: peaks + complexity-matched background.
         # Requires a 'peak' sampler config stored in the model checkpoint.
         sampler_config = cerberus_config.sampler_config
-        if sampler_config.sampler_type != "peak":
+        if sampler_config.sampler_type not in ("peak", "peak_fixed_background"):
             raise ValueError(
-                f"--include-background only supports 'peak' sampler type, "
-                f"got '{sampler_config.sampler_type}'. "
-                f"Only models trained with PeakSampler can generate complexity-matched background."
+                f"--include-background only supports 'peak' or "
+                f"'peak_fixed_background' sampler types, got "
+                f"'{sampler_config.sampler_type}'. "
+                f"Only models trained with one of those samplers carry a "
+                f"background interval set."
             )
 
         # Override peaks path with the user-provided file; keep all other sampler args.
@@ -178,18 +180,27 @@ def main():
         # (e.g. larger window for complexity computation), but predict_intervals_batched
         # requires intervals pre-sized to input_len.
         orig_sampler_args = sampler_config.sampler_args
-        bg_ratio = (
-            args.background_ratio
-            if args.background_ratio is not None
-            else orig_sampler_args["background_ratio"]
-        )
-        bg_sampler_args = {
-            "intervals_path": Path(args.peaks),
-            "background_ratio": bg_ratio,
-            "complexity_center_size": orig_sampler_args["complexity_center_size"]
-            if "complexity_center_size" in orig_sampler_args
-            else None,
-        }
+        if sampler_config.sampler_type == "peak_fixed_background":
+            # Fixed external negatives: reuse the same negatives.bed, no resampling.
+            bg_sampler_args = {
+                "intervals_path": Path(args.peaks),
+                "background_intervals_path": orig_sampler_args[
+                    "background_intervals_path"
+                ],
+            }
+        else:
+            bg_ratio = (
+                args.background_ratio
+                if args.background_ratio is not None
+                else orig_sampler_args["background_ratio"]
+            )
+            bg_sampler_args = {
+                "intervals_path": Path(args.peaks),
+                "background_ratio": bg_ratio,
+                "complexity_center_size": orig_sampler_args["complexity_center_size"]
+                if "complexity_center_size" in orig_sampler_args
+                else None,
+            }
         bg_sampler_config = SamplerConfig(
             sampler_type=sampler_config.sampler_type,
             padded_size=padded_size,
@@ -197,7 +208,7 @@ def main():
         )
 
         logger.info(
-            f"Building PeakSampler with background_ratio={bg_ratio} "
+            f"Building {bg_sampler_config.sampler_type} sampler "
             f"(seed={args.seed})..."
         )
         combined_sampler = create_sampler(
@@ -234,7 +245,10 @@ def main():
             combined_sampler.get_interval_source(i) for i in range(n_combined)
         ]
         sampler_to_use: IntervalSampler | list = all_intervals
-        n_peaks = sum(1 for s in all_interval_source if s == "IntervalSampler")
+        # Peaks are IntervalSampler before fold splitting, but split_folds()
+        # materializes them as ListSampler subsets.
+        peak_sources = {"IntervalSampler", "ListSampler"}
+        n_peaks = sum(1 for s in all_interval_source if s in peak_sources)
         logger.info(
             f"Combined sampler ({args.eval_split} split): {n_peaks} peaks + "
             f"{n_combined - n_peaks} background intervals."

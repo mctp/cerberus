@@ -485,14 +485,14 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 `tools/train_multitask_differential_bpnet.py` trains a [MultitaskBPNet](models.md#multitaskbpnet) on two conditions in two phases, following the recipe from bpAI-TAC (Chandra et al. 2025) and Naqvi et al. 2025:
 
 - **Phase 1 — multi-task absolute model.** Jointly trains a shared BPNet trunk on condition A and condition B with `MultitaskBPNetLoss` (per-condition profile + count heads). The trunk learns sequence features that matter for *both* conditions, not the confound of separately-trained solo models.
-- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises `log_counts_B − log_counts_A` on the per-peak natural-log fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log-fold-change table.
+- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises the `delta_count_pseudocount`-shrunk predicted fold-change against the per-peak natural-log fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log-fold-change table.
 - **Optional interpretation.** With `--interpret`, runs DeepLIFTSHAP on the fine-tuned model through `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` and pipes the result into TF-MoDISco.
 
 Both phases run on the standard `train_single` / `train_multi` pipeline. The companion library primitives are [MultitaskBPNet](models.md#multitaskbpnet), [MultitaskBPNetLoss](models.md#loss-multitaskbpnetloss), and [DifferentialCountLoss](models.md#differentialcountloss).
 
 Phase 2 logs differential metrics via `DifferentialBPNetMetricCollection`: `mse_delta_log_counts`, `rmse_delta_log_counts`, and `pearson_delta_log_counts`. These score predictions in the same space `DifferentialCountLoss` optimises (the per-peak log fold-change), not the absolute log-counts. The val-end scatter is emitted as `val_delta_log_counts_scatter_epoch_NNN.png` accordingly.
 
-Phase 2's `count_pseudocount` is derived from the training data by default (10th-percentile-per-channel of length-summed counts), via `cerberus.pseudocount.resolve_noise_floor_pseudocount`. Override with `--phase2-pseudocount-override SCALED_VALUE`.
+Phase 2's `delta_count_pseudocount` is derived from the training data by default (10th-percentile-per-channel of length-summed counts), via `cerberus.pseudocount.resolve_noise_floor_pseudocount`. Override with `--phase2-pseudocount-override SCALED_VALUE`.
 
 ```bash
 # Single-fold two-condition training + interpretation in one call.
@@ -1337,7 +1337,7 @@ helper picks it from the training fold's per-channel quantile:
 from cerberus import resolve_noise_floor_pseudocount
 
 # Datamodule must already be set up.
-count_pseudocount = resolve_noise_floor_pseudocount(
+delta_count_pseudocount = resolve_noise_floor_pseudocount(
     datamodule,
     quantile=0.10,          # 10th percentile per channel
     seed=42,                # reproducible across runs
@@ -1575,6 +1575,16 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Config type**: `"negative_peak"` — same args as `"peak"` (`intervals_path`, `background_ratio`, `complexity_center_size`).
 *   **Epoch size**: Controlled by `background_ratio` (number of background intervals = num_peaks × background_ratio).
 *   **Interval source**: `get_interval_source()` returns `"ComplexityMatchedSampler"` for all intervals (background only).
+
+### FixedBackgroundSampler
+*   **Function**: Loads a **fixed** background (non-peak) set from a BED/narrowPeak file, exactly like `IntervalSampler`, but reports a distinct `"FixedBackgroundSampler"` interval source. Unlike `ComplexityMatchedSampler`, the set is **static** — `resample()` is a no-op, so the model sees the same negatives every epoch.
+*   **Splitting**: `split_folds` is overridden so train/val/test splits remain `FixedBackgroundSampler` instances. (The base `ListSampler.split_folds` returns plain `ListSampler` objects, which would collapse the source label to `"ListSampler"` — identical to split peaks — and break peak/background separation in evaluation.)
+
+### PeakFixedBackgroundSampler
+*   **Function**: Like `PeakSampler`, mixes peaks with negatives, but uses a **fixed external negative set** (`FixedBackgroundSampler`) instead of generating complexity-matched negatives on the fly. Reproduces reference [chrombpnet-pytorch](https://github.com/jsxlei/chrombpnet-pytorch)'s static `negatives.bed` setup so the two implementations can be compared on an identical peak **and** negative set.
+*   **Config type**: `"peak_fixed_background"` — args `intervals_path` (peaks) and `background_intervals_path` (fixed negatives BED). No `fasta_path`/complexity metrics needed.
+*   **Interval source**: `"IntervalSampler"` (→ `"ListSampler"` after `split_folds`) for peaks, `"FixedBackgroundSampler"` for negatives.
+*   **Tooling**: `tools/train_chrombpnet.py --negatives <bed>` selects this sampler; `tools/export_predictions.py --include-background` evaluates on the same fixed negatives.
 
 ## Best Practices for Users
 
@@ -2702,13 +2712,16 @@ For the companion differential loss see [DifferentialCountLoss](#differentialcou
 
 **Implementation**: `cerberus.loss.DifferentialCountLoss`
 
-Differential count-head fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak natural-log fold-change derived inline from the two-channel `(B, N, L)` targets tensor:
+Differential count-head fine-tuning loss. Supervises a pseudocount-shrunk predicted natural-log fold-change against the matching per-peak fold-change derived inline from the two-channel `(B, N, L)` targets tensor:
 
 ```
-target_delta = log((sum_B + pc) / (sum_A + pc))
+pred_delta = log((exp(log_counts[:, B]) + delta_count_pseudocount) /
+                 (exp(log_counts[:, A]) + delta_count_pseudocount))
+target_delta = log((sum_B + delta_count_pseudocount) /
+                   (sum_A + delta_count_pseudocount))
 ```
 
-where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). `pc` here is an empirical-Bayes shrinkage prior; the recommended value comes from `cerberus.pseudocount.resolve_noise_floor_pseudocount` (training-fold per-channel quantile, max across channels). Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
+where `sum_A` / `sum_B` are the length-sums of channels A / B and `delta_count_pseudocount` is on *linear* scale — same units as the length-summed signal, not a log-space offset. It is an empirical-Bayes shrinkage prior; the recommended value comes from `cerberus.pseudocount.resolve_noise_floor_pseudocount` (training-fold per-channel quantile, max across channels). Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
 
 Single path: `forward(outputs, targets)` returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be `(B, N, L)` with `N >= max(cond_a_idx, cond_b_idx) + 1`.
 
@@ -2723,7 +2736,11 @@ model_config = ModelConfig(
     name="MultitaskBPNet_differential",
     model_cls="cerberus.models.bpnet.MultitaskBPNet",
     loss_cls="cerberus.loss.DifferentialCountLoss",
-    loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+    loss_args={
+        "cond_a_idx": 0,
+        "cond_b_idx": 1,
+        "delta_count_pseudocount": 150.0,
+    },
     metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
     metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
     model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
@@ -2733,7 +2750,7 @@ model_config = ModelConfig(
             source=None, target=None,
         )
     ],
-    count_pseudocount=150.0,  # data-derived noise-floor recommended
+    count_pseudocount=150.0,  # stored for shared pseudocount/output metadata
 )
 ```
 
@@ -2743,7 +2760,7 @@ model_config = ModelConfig(
 - `rmse_delta_log_counts` — `sqrt(MSE)`, clamped at zero.
 - `pearson_delta_log_counts` — Pearson correlation of predicted vs. target delta accumulated across the epoch.
 
-All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `log_counts[:, b] - log_counts[:, a]`. Constructor kwargs (`cond_a_idx`, `cond_b_idx`, `count_pseudocount`, `log1p_targets`, `log_counts_include_pseudocount`) match the rest of the BPNet collections so dispatch through `instantiate_metrics_and_loss` is uniform.
+All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `pred_delta = log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))`. Constructor kwargs (`cond_a_idx`, `cond_b_idx`, `delta_count_pseudocount`, `count_pseudocount`, `log1p_targets`, `log_counts_include_pseudocount`) match the rest of the BPNet collections so dispatch through `instantiate_metrics_and_loss` is uniform.
 
 For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
 
@@ -6597,6 +6614,59 @@ class IntervalSampler(ListSampler):
             ]
 
 
+class FixedBackgroundSampler(IntervalSampler):
+    """Background (non-peak) intervals loaded from a fixed BED/narrowPeak file.
+
+    Behaves exactly like :class:`IntervalSampler` (loads a concrete list of
+    intervals from disk, centers them to ``padded_size``), but is a distinct
+    class so that :meth:`MultiSampler.get_interval_source` reports
+    ``"FixedBackgroundSampler"`` for these intervals rather than the generic
+    ``"IntervalSampler"``/``"ListSampler"`` used for peaks.
+
+    This lets a :class:`PeakFixedBackgroundSampler` mix peaks (positives) with a
+    **fixed**, externally-supplied negative set (e.g. a GC-matched
+    ``negatives.bed``) while keeping peak-vs-background distinguishable in
+    downstream evaluation — which separates them by interval source.
+
+    Unlike :class:`ComplexityMatchedSampler`, the negative set is static: it is
+    never regenerated on :meth:`resample` (inherited no-op), so the model sees
+    the same negatives every epoch — matching reference chrombpnet-pytorch.
+
+    NOTE: :meth:`split_folds` is overridden so the train/val/test splits remain
+    ``FixedBackgroundSampler`` instances. The base :class:`ListSampler`
+    implementation returns plain ``ListSampler`` objects, which would collapse
+    the source label to ``"ListSampler"`` (identical to split peaks) and break
+    peak/background separation after fold splitting.
+    """
+
+    def _make_split(self, intervals: list[Interval]) -> "FixedBackgroundSampler":
+        """Build a FixedBackgroundSampler from a concrete interval list.
+
+        Bypasses ``__init__`` (which would re-read the source file) by setting
+        the ``ListSampler`` state directly via ``__new__``.
+        """
+        sub = FixedBackgroundSampler.__new__(FixedBackgroundSampler)
+        ListSampler.__init__(
+            sub,
+            intervals=intervals,
+            chrom_sizes=self.chrom_sizes,
+            folds=self.folds,
+            exclude_intervals=self.exclude_intervals,
+        )
+        return sub
+
+    def _subset(self, indices: list[int]) -> "FixedBackgroundSampler":
+        return self._make_split([self._intervals[i] for i in indices])
+
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple["FixedBackgroundSampler", "FixedBackgroundSampler", "FixedBackgroundSampler"]:
+        train, val, test = partition_intervals_by_fold(
+            self._intervals, self.folds, test_fold, val_fold
+        )
+        return self._make_split(train), self._make_split(val), self._make_split(test)
+
+
 class SlidingWindowSampler(ListSampler):
     """
     Generates samples by sliding a window across the genome.
@@ -7140,6 +7210,88 @@ class PeakSampler(MultiSampler):
         )
 
 
+class PeakFixedBackgroundSampler(MultiSampler):
+    """Combines peaks with a **fixed**, externally-supplied negative set.
+
+    Like :class:`PeakSampler`, this mixes positive intervals (peaks) with
+    negatives, but instead of generating complexity-matched negatives on the
+    fly (:class:`ComplexityMatchedSampler`, regenerated each epoch), it loads a
+    static negative BED from disk via :class:`FixedBackgroundSampler` and uses
+    it unchanged every epoch.
+
+    This reproduces the reference chrombpnet-pytorch data setup, where the
+    GC-matched ``negatives.bed`` is generated once offline and fed to the model
+    as a fixed file. Use it to compare Cerberus and chrombpnet-pytorch on an
+    identical peak **and** negative set.
+
+    Sub-sampler ordering (``samplers[0]`` = peaks, ``samplers[1]`` = negatives)
+    matches :class:`PeakSampler`, so :meth:`get_interval_source` reports
+    ``"IntervalSampler"`` (→ ``"ListSampler"`` after :meth:`split_folds`) for
+    peaks and ``"FixedBackgroundSampler"`` for negatives.
+    """
+
+    def __init__(
+        self,
+        intervals_path: Path | str,
+        background_intervals_path: Path | str,
+        chrom_sizes: dict[str, int],
+        padded_size: int,
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+        seed: int = 42,
+    ):
+        """
+        Args:
+            intervals_path: Path to peaks (BED/narrowPeak).
+            background_intervals_path: Path to the fixed negative set
+                (BED/narrowPeak), e.g. a GC-matched ``negatives.bed``.
+            chrom_sizes: Chromosome sizes.
+            padded_size: Interval size (after centering).
+            folds: Fold definitions for cross-validation.
+            exclude_intervals: Excluded regions (blacklist/gaps).
+            seed: Random seed (controls only the mixed iteration order).
+        """
+        self.intervals_path = Path(intervals_path)
+        self.background_intervals_path = Path(background_intervals_path)
+
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loading positive intervals from {self.intervals_path}..."
+        )
+        self.positives = IntervalSampler(
+            file_path=self.intervals_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+        )
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loaded {len(self.positives)} positive intervals."
+        )
+
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loading fixed background intervals from "
+            f"{self.background_intervals_path}..."
+        )
+        self.negatives = FixedBackgroundSampler(
+            file_path=self.background_intervals_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+        )
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loaded {len(self.negatives)} fixed background intervals."
+        )
+
+        super().__init__(
+            samplers=[self.positives, self.negatives],
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+            seed=seed,
+        )
+
+
 class NegativePeakSampler(MultiSampler):
     """Background-only sampler: complexity-matched non-peak intervals.
 
@@ -7365,6 +7517,17 @@ def create_sampler(
             seed=seed,
             prepare_cache=prepare_cache,
             complexity_center_size=sampler_args.get("complexity_center_size"),
+        )
+
+    elif sampler_type == "peak_fixed_background":
+        return PeakFixedBackgroundSampler(
+            intervals_path=sampler_args["intervals_path"],
+            background_intervals_path=sampler_args["background_intervals_path"],
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+            seed=seed,
         )
 
     elif sampler_type == "negative_peak":
@@ -8797,6 +8960,7 @@ class CerberusDataModule(pl.LightningDataModule):
 
 ## src/cerberus/module.py
 
+import inspect
 import logging
 from typing import Any
 
@@ -9232,6 +9396,15 @@ def instantiate_metrics_and_loss(
         "count_pseudocount": model_config.count_pseudocount,
         "log_counts_include_pseudocount": loss_cls.uses_count_pseudocount,
     }
+    metrics_params = inspect.signature(metrics_cls).parameters
+    if (
+        "delta_count_pseudocount" in model_config.loss_args
+        and "delta_count_pseudocount" in metrics_params
+    ):
+        metrics_args.setdefault(
+            "delta_count_pseudocount",
+            model_config.loss_args["delta_count_pseudocount"],
+        )
     metrics = metrics_cls(**metrics_args)
 
     if device is not None:
@@ -10408,6 +10581,18 @@ from cerberus.output import (
 from cerberus.utils import import_class
 
 
+def _log_count_plus_pseudocount(
+    log_count_values: torch.Tensor,
+    delta_count_pseudocount: float,
+) -> torch.Tensor:
+    """Stable ``log(exp(log_count_values) + delta_count_pseudocount)``."""
+    log_count_values = log_count_values.float()
+    if delta_count_pseudocount == 0:
+        return log_count_values
+    log_pc = log_count_values.new_tensor(float(delta_count_pseudocount)).log()
+    return torch.logaddexp(log_count_values, log_pc)
+
+
 class CerberusLoss(Protocol):
     """Protocol for all cerberus loss functions.
 
@@ -10941,7 +11126,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
 
 
 class DifferentialCountLoss(nn.Module):
-    """Differential count-head loss supervising ``log_counts[:, B] - log_counts[:, A]``.
+    """Differential count-head loss supervising pc-shrunk predicted log-ratios.
 
     The delta target is derived inline from the ``(B, N, L)`` ``targets``
     tensor (per-condition absolute-signal tracks; channels A and B are
@@ -10956,13 +11141,15 @@ class DifferentialCountLoss(nn.Module):
         \\right)
 
     where the sum is over the length axis and ``pc`` is
-    ``count_pseudocount``. Here ``pc`` plays the empirical-Bayes
+    ``delta_count_pseudocount``. Here ``pc`` plays the empirical-Bayes
     shrinkage-prior role: it pulls the log-ratio toward zero for
     regions whose per-condition totals sit at the noise floor.
     :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount` derives
     a data-driven value (training-fold per-channel quantile, max across
     channels) suitable to pass here. The returned loss is
-    ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
+    ``MSE(pred_delta, target_delta)`` where
+    ``pred_delta = log((exp(log_counts[:, B]) + pc) /
+    (exp(log_counts[:, A]) + pc))``.
 
     Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
     the count head needs to be retargeted. The profile heads are expected
@@ -10977,12 +11164,14 @@ class DifferentialCountLoss(nn.Module):
     Args:
         cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
         cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
-        count_pseudocount: Additive pseudocount used in the log
+        delta_count_pseudocount: Additive pseudocount used in the log
             fold-change derivation, in the same scaled units as
             ``ModelConfig.count_pseudocount``. Acts as an empirical-Bayes
             shrinkage prior — derive from data via
             :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount`,
             or pass an explicit scaled value. Default 1.0.
+        count_pseudocount: Backwards-compatible alias for
+            ``delta_count_pseudocount``.
 
     References:
         - Naqvi et al. (2025). *Transfer learning reveals sequence
@@ -10998,7 +11187,8 @@ class DifferentialCountLoss(nn.Module):
         self,
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
-        count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float | None = None,
+        count_pseudocount: float | None = None,
     ) -> None:
         super().__init__()
         if cond_a_idx == cond_b_idx:
@@ -11010,7 +11200,12 @@ class DifferentialCountLoss(nn.Module):
                 raise ValueError(f"{name} must be non-negative, got {idx}")
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
-        self.count_pseudocount = count_pseudocount
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = (
+                1.0 if count_pseudocount is None else count_pseudocount
+            )
+        self.delta_count_pseudocount = delta_count_pseudocount
+        self.count_pseudocount = delta_count_pseudocount
 
     def _delta_loss(
         self, outputs: object, targets: torch.Tensor
@@ -11045,11 +11240,14 @@ class DifferentialCountLoss(nn.Module):
             )
 
         counts = targets.float().sum(dim=-1)  # (B, N)
-        pc = self.count_pseudocount
+        pc = self.delta_count_pseudocount
         target_delta = torch.log(
             (counts[:, b] + pc) / (counts[:, a] + pc)
         )  # (B,)
-        delta_pred = log_counts[:, b] - log_counts[:, a]  # (B,)
+        delta_pred = (
+            _log_count_plus_pseudocount(log_counts[:, b], pc)
+            - _log_count_plus_pseudocount(log_counts[:, a], pc)
+        )  # (B,)
         return F.mse_loss(delta_pred, target_delta)
 
     def loss_components(
@@ -11235,26 +11433,32 @@ def _validate_differential_channel_indices(
     return cond_a_idx, cond_b_idx
 
 
+def _log_count_plus_pseudocount(
+    log_count_values: torch.Tensor,
+    delta_count_pseudocount: float,
+) -> torch.Tensor:
+    """Stable ``log(exp(log_count_values) + delta_count_pseudocount)``."""
+    log_count_values = log_count_values.float()
+    if delta_count_pseudocount == 0:
+        return log_count_values
+    log_pc = log_count_values.new_tensor(float(delta_count_pseudocount)).log()
+    return torch.logaddexp(log_count_values, log_pc)
+
+
 def _extract_differential_log_count_pairs(
     preds: ProfileCountOutput,
     target: torch.Tensor,
     cond_a_idx: int,
     cond_b_idx: int,
-    count_pseudocount: float,
+    delta_count_pseudocount: float,
     log1p_targets: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Derive predicted and target delta-log-count scalars for each example.
 
     Mirrors :class:`cerberus.loss.DifferentialCountLoss`: prediction is
-    ``log_counts[:, b] - log_counts[:, a]`` and target is
-    ``log((sum_b + pc) / (sum_a + pc))`` with sums over the length axis
-    of the ``(B, N, L)`` targets tensor.
-
-    The prediction is read directly from ``log_counts`` regardless of
-    whether the model's log-space includes the pseudocount or not — the
-    loss optimises that same subtraction, so the metric must report on
-    it.  Inserting a pc-aware correction here would measure something
-    the loss is not optimising and produce a biased training signal.
+    ``log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))``
+    and target is ``log((sum_b + pc) / (sum_a + pc))`` with sums over
+    the length axis of the ``(B, N, L)`` targets tensor.
     """
     if not isinstance(preds, ProfileCountOutput):
         raise TypeError(
@@ -11295,9 +11499,13 @@ def _extract_differential_log_count_pairs(
 
     counts = target.sum(dim=-1)  # (B, N)
     target_delta = torch.log(
-        (counts[:, b] + count_pseudocount) / (counts[:, a] + count_pseudocount)
+        (counts[:, b] + delta_count_pseudocount)
+        / (counts[:, a] + delta_count_pseudocount)
     )  # (B,)
-    pred_delta = (log_counts[:, b] - log_counts[:, a]).float()  # (B,)
+    pred_delta = (
+        _log_count_plus_pseudocount(log_counts[:, b], delta_count_pseudocount)
+        - _log_count_plus_pseudocount(log_counts[:, a], delta_count_pseudocount)
+    )  # (B,)
     return pred_delta.flatten(), target_delta.flatten()
 
 
@@ -11693,7 +11901,9 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
     Companion to :class:`cerberus.loss.DifferentialCountLoss`: for each
     example, reduces the ``(B, N, L)`` targets tensor to a per-example
     scalar ``target_delta = log((sum_b + pc) / (sum_a + pc))`` and
-    compares it against ``pred_delta = log_counts[:, b] - log_counts[:, a]``.
+    compares it against
+    ``pred_delta = log((exp(log_counts[:, b]) + pc) /
+    (exp(log_counts[:, a]) + pc))``.
     """
 
     def __init__(
@@ -11701,7 +11911,8 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float | None = None,
+        count_pseudocount: float | None = None,
         log_counts_include_pseudocount: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -11710,9 +11921,13 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
             cond_a_idx, cond_b_idx
         )
         self.log1p_targets = log1p_targets
-        self.count_pseudocount = count_pseudocount
-        # Dispatch-time kwarg; intentionally not consulted -- see
-        # _extract_differential_log_count_pairs for the math reason.
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = (
+                1.0 if count_pseudocount is None else count_pseudocount
+            )
+        self.delta_count_pseudocount = delta_count_pseudocount
+        self.count_pseudocount = delta_count_pseudocount
+        # Kept for constructor compatibility with the standard metric dispatch.
         self.log_counts_include_pseudocount = log_counts_include_pseudocount
 
     def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None:  # type: ignore[override]
@@ -11721,7 +11936,7 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
             target,
             cond_a_idx=self.cond_a_idx,
             cond_b_idx=self.cond_b_idx,
-            count_pseudocount=self.count_pseudocount,
+            delta_count_pseudocount=self.delta_count_pseudocount,
             log1p_targets=self.log1p_targets,
         )
         super().update(pred_delta, target_delta)
@@ -11761,7 +11976,8 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float | None = None,
+        count_pseudocount: float | None = None,
         log_counts_include_pseudocount: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -11770,9 +11986,13 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
             cond_a_idx, cond_b_idx
         )
         self.log1p_targets = log1p_targets
-        self.count_pseudocount = count_pseudocount
-        # Dispatch-time kwarg; intentionally not consulted -- see
-        # _extract_differential_log_count_pairs for the math reason.
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = (
+                1.0 if count_pseudocount is None else count_pseudocount
+            )
+        self.delta_count_pseudocount = delta_count_pseudocount
+        self.count_pseudocount = delta_count_pseudocount
+        # Kept for constructor compatibility with the standard metric dispatch.
         self.log_counts_include_pseudocount = log_counts_include_pseudocount
         self.add_state("preds_list", default=[], dist_reduce_fx="cat")
         self.add_state("targets_list", default=[], dist_reduce_fx="cat")
@@ -11783,7 +12003,7 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
             target,
             cond_a_idx=self.cond_a_idx,
             cond_b_idx=self.cond_b_idx,
-            count_pseudocount=self.count_pseudocount,
+            delta_count_pseudocount=self.delta_count_pseudocount,
             log1p_targets=self.log1p_targets,
         )
         self.preds_list.append(pred_delta.detach())
@@ -12309,6 +12529,14 @@ def parse_hparams_config(path: str | Path) -> CerberusConfig:
         raise FileNotFoundError(f"hparams file not found at: {p}")
     with open(p) as f:
         data = yaml.safe_load(f)
+    model_config = data.get("model_config") if isinstance(data, dict) else None
+    pretrained = (
+        model_config.get("pretrained") if isinstance(model_config, dict) else None
+    )
+    if isinstance(pretrained, list):
+        for entry in pretrained:
+            if isinstance(entry, dict):
+                entry.pop("freeze", None)
     return CerberusConfig.model_validate(data)
 
 
@@ -13979,7 +14207,7 @@ import torch.nn.functional as F
 from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
 from torchmetrics import MetricCollection
 
-from cerberus.loss import MSEMultinomialLoss
+from cerberus.loss import DifferentialCountLoss, MSEMultinomialLoss
 
 logger = logging.getLogger(__name__)
 from cerberus.layers import DilatedResidualBlock
@@ -14532,6 +14760,63 @@ class MultitaskBPNetLoss(MSEMultinomialLoss):
         )
 
 
+class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
+    """Multi-task absolute BPNet loss with an added differential count target.
+
+    This keeps the standard per-channel absolute profile/count objective and
+    adds a delta-log-count MSE term between two task channels.  By default the
+    delta term receives the same weight as the absolute count term (``alpha``),
+    so the two count-space objectives are calibrated as peers while the profile
+    multinomial term keeps its usual ``beta`` weight.
+    """
+
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        beta: float = 1.0,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        delta_weight: float | None = None,
+        delta_count_pseudocount: float | None = None,
+        count_pseudocount: float = 1.0,
+        **kwargs,
+    ):
+        super().__init__(
+            alpha=alpha,
+            beta=beta,
+            count_pseudocount=count_pseudocount,
+            **kwargs,
+        )
+        self.delta_weight = alpha if delta_weight is None else delta_weight
+        self.cond_a_idx = cond_a_idx
+        self.cond_b_idx = cond_b_idx
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
+        self.delta_count_pseudocount = delta_count_pseudocount
+        self._differential_loss = DifferentialCountLoss(
+            cond_a_idx=cond_a_idx,
+            cond_b_idx=cond_b_idx,
+            delta_count_pseudocount=self.delta_count_pseudocount,
+        )
+
+    def loss_components(
+        self, outputs: object, targets, **kwargs: object
+    ) -> dict[str, object]:
+        components = super().loss_components(outputs, targets, **kwargs)
+        components["delta_loss"] = self._differential_loss._delta_loss(
+            outputs, targets
+        )
+        return components
+
+    def forward(self, outputs: object, targets, **kwargs: object):
+        components = self.loss_components(outputs, targets, **kwargs)
+        return (
+            self.profile_weight * components["profile_loss"]
+            + self.count_weight * components["count_loss"]
+            + self.delta_weight * components["delta_loss"]
+        )
+
+
 class BPNetMetricCollection(MetricCollection):
     """
     MetricCollection for BPNet models.
@@ -14571,8 +14856,8 @@ class DifferentialBPNetMetricCollection(MetricCollection):
     MetricCollection for log-fold-change supervision (``DifferentialCountLoss``).
     Exposes ``mse_delta_log_counts``, ``rmse_delta_log_counts``, and
     ``pearson_delta_log_counts``; all three compare
-    ``log_counts[:, b] - log_counts[:, a]`` against the inline-derived target
-    ``log((sum_b + pc) / (sum_a + pc))``.
+    ``log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))``
+    against the inline-derived target ``log((sum_b + pc) / (sum_a + pc))``.
     """
 
     def __init__(
@@ -14581,37 +14866,74 @@ class DifferentialBPNetMetricCollection(MetricCollection):
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
         count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float | None = None,
         log_counts_include_pseudocount: bool = False,
     ):
         # log1p_targets / count_pseudocount / log_counts_include_pseudocount
         # are the standard triple instantiate_metrics_and_loss forwards to
         # every metric collection; mirroring the BPNetMetricCollection
         # signature keeps the dispatch interchangeable.
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
         super().__init__(
             {
                 "mse_delta_log_counts": DifferentialLogCountsMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "rmse_delta_log_counts": DifferentialLogCountsRootMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "pearson_delta_log_counts": DifferentialLogCountsPearsonCorrCoef(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
             }
         )
+
+
+class JointBPNetMetricCollection(MetricCollection):
+    """Absolute profile/count metrics plus differential log-count metrics."""
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float | None = None,
+        log_counts_include_pseudocount: bool = False,
+    ):
+        metrics = dict(
+            BPNetMetricCollection(
+                log1p_targets=log1p_targets,
+                count_pseudocount=count_pseudocount,
+                log_counts_include_pseudocount=log_counts_include_pseudocount,
+            )
+        )
+        metrics.update(
+            dict(
+                DifferentialBPNetMetricCollection(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                )
+            )
+        )
+        super().__init__(metrics)
 
 ## src/cerberus/models/pomeranian.py
 

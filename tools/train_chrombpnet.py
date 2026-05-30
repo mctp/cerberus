@@ -184,14 +184,24 @@ def _estimate_bias_offset(
     # data_config copy with ``max_jitter=0`` would let the sampler use
     # narrower background regions and tighten the estimate.
     padded_size = data_config.input_len + 2 * data_config.max_jitter
-    negative_sampler_config = SamplerConfig(
-        sampler_type="negative_peak",
-        padded_size=padded_size,
-        sampler_args={
-            "intervals_path": args.peaks,
-            "background_ratio": 1.0,
-        },
-    )
+    if args.negatives is not None:
+        # Estimate the offset on the same fixed negative set used for training.
+        negative_sampler_config = SamplerConfig(
+            sampler_type="interval",
+            padded_size=padded_size,
+            sampler_args={
+                "intervals_path": args.negatives,
+            },
+        )
+    else:
+        negative_sampler_config = SamplerConfig(
+            sampler_type="negative_peak",
+            padded_size=padded_size,
+            sampler_args={
+                "intervals_path": args.peaks,
+                "background_ratio": 1.0,
+            },
+        )
     datamodule = CerberusDataModule(
         genome_config=genome_config,
         data_config=data_config,
@@ -235,6 +245,18 @@ def get_args() -> argparse.Namespace:
         type=str,
         required=True,
         help="Peak BED/narrowPeak used for stage-2 ChromBPNet training",
+    )
+    parser.add_argument(
+        "--negatives",
+        type=str,
+        default=None,
+        help=(
+            "Optional fixed negative/background BED (e.g. a GC-matched "
+            "negatives.bed). When provided, Cerberus trains on this static "
+            "negative set every epoch (sampler_type='peak_fixed_background'), "
+            "matching reference chrombpnet-pytorch, instead of generating "
+            "complexity-matched negatives on the fly."
+        ),
     )
 
     # --- Genome / reference ---
@@ -365,6 +387,19 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=0.0)
     parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument(
+        "--reload-dataloaders-every-n-epochs",
+        type=int,
+        default=0,
+        help=(
+            "How often Lightning rebuilds the train DataLoader, which is what "
+            "triggers the sampler's per-epoch resample(). Default 0 = build once "
+            "and freeze the negative set for the whole run. Set to 1 to draw a "
+            "fresh background subset every epoch (e.g. a new complexity-matched "
+            "1x-peaks subset from the candidate pool, or a fresh subsample of a "
+            "fixed negatives set), which is the intended dynamic-sampler behavior."
+        ),
+    )
     parser.add_argument("--optimizer", type=str, default="adam")
     parser.add_argument("--scheduler-type", type=str, default="default")
     parser.add_argument("--warmup-epochs", type=int, default=0)
@@ -451,14 +486,26 @@ def main() -> None:
         target_scale=target_scale,
     )
 
-    sampler_config = SamplerConfig(
-        sampler_type="peak",
-        padded_size=padded_size,
-        sampler_args={
-            "intervals_path": args.peaks,
-            "background_ratio": args.background_ratio,
-        },
-    )
+    if args.negatives is not None:
+        # Fixed external negative set (matches chrombpnet-pytorch's static
+        # negatives.bed): no per-epoch complexity-matched resampling.
+        sampler_config = SamplerConfig(
+            sampler_type="peak_fixed_background",
+            padded_size=padded_size,
+            sampler_args={
+                "intervals_path": args.peaks,
+                "background_intervals_path": args.negatives,
+            },
+        )
+    else:
+        sampler_config = SamplerConfig(
+            sampler_type="peak",
+            padded_size=padded_size,
+            sampler_args={
+                "intervals_path": args.peaks,
+                "background_ratio": args.background_ratio,
+            },
+        )
 
     train_config = TrainConfig(
         batch_size=args.batch_size,
@@ -468,7 +515,7 @@ def main() -> None:
         patience=args.patience,
         optimizer=args.optimizer,
         filter_bias_and_bn=True,
-        reload_dataloaders_every_n_epochs=0,
+        reload_dataloaders_every_n_epochs=args.reload_dataloaders_every_n_epochs,
         scheduler_type=args.scheduler_type,
         scheduler_args={
             "num_epochs": args.max_epochs,

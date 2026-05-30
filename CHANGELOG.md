@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`tools/train_chrombpnet.py --reload-dataloaders-every-n-epochs`** (default
+  0): exposes Lightning's dataloader-reload cadence, which is what triggers the
+  sampler's per-epoch `resample()`. Default 0 preserves prior behavior (negative
+  set drawn once and frozen for the whole run). Set to 1 to draw a fresh
+  background subset every epoch — e.g. a new complexity-matched 1×-peaks subset
+  from the candidate pool (the intended dynamic-sampler regularization), or a
+  fresh subsample of a fixed negative set.
+- **`FixedBackgroundSampler`** and **`PeakFixedBackgroundSampler`**
+  (`cerberus.samplers`), plus the `"peak_fixed_background"`
+  `sampler_type` in `create_sampler`. These mix peaks with a **fixed,
+  externally-supplied** negative set (e.g. a GC-matched
+  `negatives.bed`) loaded once from disk and held static every epoch —
+  unlike `PeakSampler`, which regenerates complexity-matched negatives.
+  This reproduces reference chrombpnet-pytorch's static-negatives data
+  setup so the two implementations can be compared on an identical peak
+  **and** negative set. `FixedBackgroundSampler.split_folds` is
+  overridden so fold splits keep a distinct `"FixedBackgroundSampler"`
+  interval source (the base `ListSampler` would collapse it to
+  `"ListSampler"`, breaking peak/background separation in evaluation).
+- **`tools/train_chrombpnet.py --negatives <bed>`**: when set, trains on
+  the given fixed negative set via `peak_fixed_background` (and estimates
+  the optional bias log-count offset on the same negatives). Honored by
+  `tools/export_predictions.py --include-background` for evaluation on the
+  identical negatives.
+
 ## [1.0.0a6] - 2026-05-20
 
 ### Added
