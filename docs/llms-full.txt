@@ -2760,7 +2760,7 @@ model_config = ModelConfig(
 - `rmse_delta_log_counts` — `sqrt(MSE)`, clamped at zero.
 - `pearson_delta_log_counts` — Pearson correlation of predicted vs. target delta accumulated across the epoch.
 
-All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `pred_delta = log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))`. Constructor kwargs (`cond_a_idx`, `cond_b_idx`, `delta_count_pseudocount`, `count_pseudocount`, `log1p_targets`, `log_counts_include_pseudocount`) match the rest of the BPNet collections so dispatch through `instantiate_metrics_and_loss` is uniform.
+All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `pred_delta = log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))`. Its constructor kwargs are exactly the ones it uses — `cond_a_idx`, `cond_b_idx`, `delta_count_pseudocount`, `log1p_targets`. `instantiate_metrics_and_loss` injects `delta_count_pseudocount` (defaulting to the model's `count_pseudocount`) because the collection declares it; it passes no `count_pseudocount`/`log_counts_include_pseudocount` here, since the differential metrics have no absolute-count term.
 
 For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
 
@@ -9366,6 +9366,32 @@ def instantiate(
     )
 
 
+def _constructor_accepts(cls: type, name: str) -> bool:
+    """Whether ``cls`` or any ancestor declares ``name`` as an explicit __init__
+    parameter.
+
+    Walks the MRO so a parameter forwarded through ``**kwargs`` to a base class
+    (e.g. ``BPNetLoss(alpha, beta, **kwargs)`` -> ``MSEMultinomialLoss(...,
+    count_pseudocount)``) still counts as accepted, while a ``**kwargs`` that
+    only feeds an unrelated base (e.g. a torchmetrics ``Metric``) does not.
+    """
+    keyword_kinds = (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
+    for klass in cls.__mro__:
+        init = klass.__dict__.get("__init__")
+        if init is None:
+            continue
+        try:
+            param = inspect.signature(init).parameters.get(name)
+        except (ValueError, TypeError):
+            continue
+        if param is not None and param.kind in keyword_kinds:
+            return True
+    return False
+
+
 def instantiate_metrics_and_loss(
     model_config: ModelConfig, device: torch.device | None = None
 ) -> tuple[MetricCollection, CerberusLoss]:
@@ -9384,28 +9410,35 @@ def instantiate_metrics_and_loss(
         tuple: (metrics, criterion)
     """
     loss_cls = import_class(model_config.loss_cls)
-    loss_args = {
-        **model_config.loss_args,
-        "count_pseudocount": model_config.count_pseudocount,
-    }
-    criterion = loss_cls(**loss_args)
-
     metrics_cls = import_class(model_config.metrics_cls)
-    metrics_args = {
-        **model_config.metrics_args,
-        "count_pseudocount": model_config.count_pseudocount,
+
+    # Pseudocount injection is capability-based: each value is passed to a
+    # constructor only when it declares the matching parameter, and only as a
+    # default (an explicit value in loss_args/metrics_args always wins). This
+    # lets every loss/metric declare exactly the pseudocounts it uses, with no
+    # universally injected kwargs for unrelated constructors to absorb.
+    count_pseudocount = model_config.count_pseudocount
+    # The differential shrinkage pseudocount: an explicit loss_args value wins;
+    # otherwise it defaults to the model count pseudocount so the loss and its
+    # companion metrics shrink the log-ratio identically.
+    delta_count_pseudocount = model_config.loss_args.get(
+        "delta_count_pseudocount", count_pseudocount
+    )
+    pseudocount_defaults = {
+        "count_pseudocount": count_pseudocount,
+        "delta_count_pseudocount": delta_count_pseudocount,
         "log_counts_include_pseudocount": loss_cls.uses_count_pseudocount,
     }
-    metrics_params = inspect.signature(metrics_cls).parameters
-    if (
-        "delta_count_pseudocount" in model_config.loss_args
-        and "delta_count_pseudocount" in metrics_params
-    ):
-        metrics_args.setdefault(
-            "delta_count_pseudocount",
-            model_config.loss_args["delta_count_pseudocount"],
-        )
-    metrics = metrics_cls(**metrics_args)
+
+    def _with_pseudocounts(cls: type, base_args: dict[str, Any]) -> dict[str, Any]:
+        args = dict(base_args)
+        for name, value in pseudocount_defaults.items():
+            if _constructor_accepts(cls, name):
+                args.setdefault(name, value)
+        return args
+
+    criterion = loss_cls(**_with_pseudocounts(loss_cls, model_config.loss_args))
+    metrics = metrics_cls(**_with_pseudocounts(metrics_cls, model_config.metrics_args))
 
     if device is not None:
         metrics = metrics.to(device)
@@ -11170,8 +11203,6 @@ class DifferentialCountLoss(nn.Module):
             shrinkage prior — derive from data via
             :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount`,
             or pass an explicit scaled value. Default 1.0.
-        count_pseudocount: Backwards-compatible alias for
-            ``delta_count_pseudocount``.
 
     References:
         - Naqvi et al. (2025). *Transfer learning reveals sequence
@@ -11187,8 +11218,7 @@ class DifferentialCountLoss(nn.Module):
         self,
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
-        delta_count_pseudocount: float | None = None,
-        count_pseudocount: float | None = None,
+        delta_count_pseudocount: float = 1.0,
     ) -> None:
         super().__init__()
         if cond_a_idx == cond_b_idx:
@@ -11200,12 +11230,7 @@ class DifferentialCountLoss(nn.Module):
                 raise ValueError(f"{name} must be non-negative, got {idx}")
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
-        if delta_count_pseudocount is None:
-            delta_count_pseudocount = (
-                1.0 if count_pseudocount is None else count_pseudocount
-            )
         self.delta_count_pseudocount = delta_count_pseudocount
-        self.count_pseudocount = delta_count_pseudocount
 
     def _delta_loss(
         self, outputs: object, targets: torch.Tensor
@@ -11911,9 +11936,7 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        delta_count_pseudocount: float | None = None,
-        count_pseudocount: float | None = None,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -11921,14 +11944,7 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
             cond_a_idx, cond_b_idx
         )
         self.log1p_targets = log1p_targets
-        if delta_count_pseudocount is None:
-            delta_count_pseudocount = (
-                1.0 if count_pseudocount is None else count_pseudocount
-            )
         self.delta_count_pseudocount = delta_count_pseudocount
-        self.count_pseudocount = delta_count_pseudocount
-        # Kept for constructor compatibility with the standard metric dispatch.
-        self.log_counts_include_pseudocount = log_counts_include_pseudocount
 
     def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None:  # type: ignore[override]
         pred_delta, target_delta = _extract_differential_log_count_pairs(
@@ -11976,9 +11992,7 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        delta_count_pseudocount: float | None = None,
-        count_pseudocount: float | None = None,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -11986,14 +12000,7 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
             cond_a_idx, cond_b_idx
         )
         self.log1p_targets = log1p_targets
-        if delta_count_pseudocount is None:
-            delta_count_pseudocount = (
-                1.0 if count_pseudocount is None else count_pseudocount
-            )
         self.delta_count_pseudocount = delta_count_pseudocount
-        self.count_pseudocount = delta_count_pseudocount
-        # Kept for constructor compatibility with the standard metric dispatch.
-        self.log_counts_include_pseudocount = log_counts_include_pseudocount
         self.add_state("preds_list", default=[], dist_reduce_fx="cat")
         self.add_state("targets_list", default=[], dist_reduce_fx="cat")
 
@@ -14202,6 +14209,7 @@ class GlobalProfileCNN(nn.Module):
 
 import logging
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
@@ -14800,15 +14808,15 @@ class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
         )
 
     def loss_components(
-        self, outputs: object, targets, **kwargs: object
-    ) -> dict[str, object]:
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
         components = super().loss_components(outputs, targets, **kwargs)
-        components["delta_loss"] = self._differential_loss._delta_loss(
-            outputs, targets
-        )
+        components["delta_loss"] = self._differential_loss._delta_loss(outputs, targets)
         return components
 
-    def forward(self, outputs: object, targets, **kwargs: object):
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
         components = self.loss_components(outputs, targets, **kwargs)
         return (
             self.profile_weight * components["profile_loss"]
@@ -14865,16 +14873,8 @@ class DifferentialBPNetMetricCollection(MetricCollection):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        count_pseudocount: float = 1.0,
-        delta_count_pseudocount: float | None = None,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
     ):
-        # log1p_targets / count_pseudocount / log_counts_include_pseudocount
-        # are the standard triple instantiate_metrics_and_loss forwards to
-        # every metric collection; mirroring the BPNetMetricCollection
-        # signature keeps the dispatch interchangeable.
-        if delta_count_pseudocount is None:
-            delta_count_pseudocount = count_pseudocount
         super().__init__(
             {
                 "mse_delta_log_counts": DifferentialLogCountsMeanSquaredError(
@@ -14882,21 +14882,18 @@ class DifferentialBPNetMetricCollection(MetricCollection):
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     delta_count_pseudocount=delta_count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "rmse_delta_log_counts": DifferentialLogCountsRootMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     delta_count_pseudocount=delta_count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "pearson_delta_log_counts": DifferentialLogCountsPearsonCorrCoef(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     delta_count_pseudocount=delta_count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
             }
         )
@@ -14914,26 +14911,27 @@ class JointBPNetMetricCollection(MetricCollection):
         delta_count_pseudocount: float | None = None,
         log_counts_include_pseudocount: bool = False,
     ):
-        metrics = dict(
-            BPNetMetricCollection(
-                log1p_targets=log1p_targets,
-                count_pseudocount=count_pseudocount,
-                log_counts_include_pseudocount=log_counts_include_pseudocount,
-            )
-        )
-        metrics.update(
-            dict(
+        # The absolute sub-collection uses count_pseudocount; the differential
+        # sub-collection uses delta_count_pseudocount. They are distinct in the
+        # joint objective (e.g. a read-coverage count pc vs. a noise-floor delta
+        # pc); delta defaults to the count pc only when left unset.
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
+        super().__init__(
+            [
+                BPNetMetricCollection(
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
                 DifferentialBPNetMetricCollection(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
                     delta_count_pseudocount=delta_count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
-                )
-            )
+                ),
+            ]
         )
-        super().__init__(metrics)
 
 ## src/cerberus/models/pomeranian.py
 

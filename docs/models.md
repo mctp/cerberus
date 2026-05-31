@@ -272,7 +272,7 @@ model_config = ModelConfig(
 - `rmse_delta_log_counts` — `sqrt(MSE)`, clamped at zero.
 - `pearson_delta_log_counts` — Pearson correlation of predicted vs. target delta accumulated across the epoch.
 
-All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `pred_delta = log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))`. Constructor kwargs (`cond_a_idx`, `cond_b_idx`, `delta_count_pseudocount`, `count_pseudocount`, `log1p_targets`, `log_counts_include_pseudocount`) match the rest of the BPNet collections so dispatch through `instantiate_metrics_and_loss` is uniform.
+All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `pred_delta = log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))`. Its constructor kwargs are exactly the ones it uses — `cond_a_idx`, `cond_b_idx`, `delta_count_pseudocount`, `log1p_targets`. `instantiate_metrics_and_loss` injects `delta_count_pseudocount` (defaulting to the model's `count_pseudocount`) because the collection declares it; it passes no `count_pseudocount`/`log_counts_include_pseudocount` here, since the differential metrics have no absolute-count term.
 
 For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
 

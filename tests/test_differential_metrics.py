@@ -23,7 +23,6 @@ from cerberus.models.bpnet import DifferentialBPNetMetricCollection
 from cerberus.module import instantiate_metrics_and_loss
 from cerberus.output import ProfileCountOutput
 
-
 OUTPUT_LEN = 32
 
 
@@ -100,7 +99,9 @@ def test_metrics_reject_non_profile_count_output():
 def test_mse_zero_when_prediction_matches_target():
     pc = 1.0
     metric = DifferentialLogCountsMeanSquaredError(
-        cond_a_idx=0, cond_b_idx=1, delta_count_pseudocount=pc,
+        cond_a_idx=0,
+        cond_b_idx=1,
+        delta_count_pseudocount=pc,
     )
     sum_a = torch.tensor([3.0, 1.0, 7.0, 2.0])
     sum_b = torch.tensor([15.0, 3.0, 1.0, 2.0])
@@ -114,7 +115,9 @@ def test_mse_zero_when_prediction_matches_target():
 def test_rmse_matches_root_mse():
     pc = 1.0
     metric = DifferentialLogCountsRootMeanSquaredError(
-        cond_a_idx=0, cond_b_idx=1, delta_count_pseudocount=pc,
+        cond_a_idx=0,
+        cond_b_idx=1,
+        delta_count_pseudocount=pc,
     )
     sum_a = torch.tensor([3.0, 7.0])
     sum_b = torch.tensor([15.0, 1.0])
@@ -122,7 +125,7 @@ def test_rmse_matches_root_mse():
     expected_delta = torch.log((sum_b + pc) / (sum_a + pc))
 
     metric.update(_make_output(torch.zeros(2, 2)), targets)
-    expected_rmse = torch.sqrt((expected_delta ** 2).mean())
+    expected_rmse = torch.sqrt((expected_delta**2).mean())
     assert metric.compute().item() == pytest.approx(expected_rmse.item(), rel=1e-6)
 
 
@@ -147,7 +150,7 @@ def test_mse_accumulates_across_batches():
     metric.update(_make_output(torch.zeros(2, 2)), targets2)
 
     # Mean over 3 examples: (0 + delta2[0]**2 + delta2[1]**2) / 3
-    expected = (delta2 ** 2).sum() / 3
+    expected = (delta2**2).sum() / 3
     assert metric.compute().item() == pytest.approx(expected.item(), rel=1e-6)
 
 
@@ -159,9 +162,7 @@ def test_mse_pseudocount_affects_target_delta():
     out = _make_output(torch.zeros(1, 2))  # always predicts zero
 
     metric_small = DifferentialLogCountsMeanSquaredError(delta_count_pseudocount=0.1)
-    metric_large = DifferentialLogCountsMeanSquaredError(
-        delta_count_pseudocount=100.0
-    )
+    metric_large = DifferentialLogCountsMeanSquaredError(delta_count_pseudocount=100.0)
     metric_small.update(out, targets)
     metric_large.update(out, targets)
     # Larger pc shrinks the log-ratio toward 0, so MSE shrinks too.
@@ -177,10 +178,14 @@ def test_mse_sign_convention_swap_is_invariant():
     log_counts = torch.tensor([[0.5, 1.2], [2.0, 0.3]])
 
     ab = DifferentialLogCountsMeanSquaredError(
-        cond_a_idx=0, cond_b_idx=1, delta_count_pseudocount=pc,
+        cond_a_idx=0,
+        cond_b_idx=1,
+        delta_count_pseudocount=pc,
     )
     ba = DifferentialLogCountsMeanSquaredError(
-        cond_a_idx=1, cond_b_idx=0, delta_count_pseudocount=pc,
+        cond_a_idx=1,
+        cond_b_idx=0,
+        delta_count_pseudocount=pc,
     )
     ab.update(_make_output(log_counts), targets)
     ba.update(_make_output(log_counts), targets)
@@ -198,7 +203,6 @@ def test_pearson_perfect_correlation_returns_one():
     sum_a = torch.tensor([1.0, 2.0, 4.0, 8.0])
     sum_b = torch.tensor([8.0, 4.0, 2.0, 1.0])
     targets = _bnl_targets_with_known_delta(sum_a, sum_b)
-    true_delta = torch.log((sum_b + pc) / (sum_a + pc))
 
     log_counts = torch.stack([sum_a.log(), sum_b.log()], dim=1)
     metric.update(_make_output(log_counts), targets)
@@ -247,7 +251,6 @@ def test_pearson_accumulates_across_batches():
         (torch.tensor([4.0, 8.0]), torch.tensor([2.0, 1.0])),
     ]:
         targets = _bnl_targets_with_known_delta(sum_a, sum_b)
-        true_delta = torch.log((sum_b + pc) / (sum_a + pc))
         log_counts = torch.stack([sum_a.log(), sum_b.log()], dim=1)
         metric.update(_make_output(log_counts), targets)
 
@@ -274,14 +277,16 @@ def test_collection_forwards_kwargs_to_each_member():
         cond_a_idx=3,
         cond_b_idx=5,
         delta_count_pseudocount=99.0,
-        log_counts_include_pseudocount=True,
     )
-    for key in ("mse_delta_log_counts", "rmse_delta_log_counts", "pearson_delta_log_counts"):
+    for key in (
+        "mse_delta_log_counts",
+        "rmse_delta_log_counts",
+        "pearson_delta_log_counts",
+    ):
         m = metrics[key]
         assert m.cond_a_idx == 3
         assert m.cond_b_idx == 5
         assert m.delta_count_pseudocount == 99.0
-        assert m.log_counts_include_pseudocount is True
 
 
 def test_collection_update_compute_matches_standalone_members():
@@ -296,7 +301,9 @@ def test_collection_update_compute_matches_standalone_members():
     out = _make_output(log_counts)
 
     collection = DifferentialBPNetMetricCollection(
-        cond_a_idx=0, cond_b_idx=1, delta_count_pseudocount=pc,
+        cond_a_idx=0,
+        cond_b_idx=1,
+        delta_count_pseudocount=pc,
     )
     collection.update(out, targets)
     results = collection.compute()
@@ -309,13 +316,16 @@ def test_collection_update_compute_matches_standalone_members():
         m.update(out, targets)
 
     assert results["mse_delta_log_counts"].item() == pytest.approx(
-        mse_solo.compute().item(), rel=1e-6,
+        mse_solo.compute().item(),
+        rel=1e-6,
     )
     assert results["rmse_delta_log_counts"].item() == pytest.approx(
-        rmse_solo.compute().item(), rel=1e-6,
+        rmse_solo.compute().item(),
+        rel=1e-6,
     )
     assert results["pearson_delta_log_counts"].item() == pytest.approx(
-        pearson_solo.compute().item(), rel=1e-6,
+        pearson_solo.compute().item(),
+        rel=1e-6,
     )
 
 
@@ -327,9 +337,9 @@ def test_instantiate_metrics_and_loss_builds_differential_collection():
         loss_cls="cerberus.loss.DifferentialCountLoss",
         loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
         metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
-        # log_counts_include_pseudocount is unconditionally written by the
-        # dispatch from loss_cls.uses_count_pseudocount, so the user does
-        # not need to (and cannot meaningfully) set it via metrics_args.
+        # Dispatch injects delta_count_pseudocount (defaulting to
+        # count_pseudocount) into the collection because it declares that
+        # parameter; the user only sets cond_a/b_idx via metrics_args.
         metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
         model_args={"output_channels": ["a", "b"]},
         pretrained=[],
@@ -352,6 +362,3 @@ def test_instantiate_metrics_and_loss_builds_differential_collection():
     assert metrics["mse_delta_log_counts"].delta_count_pseudocount == 42.0
     assert metrics["pearson_delta_log_counts"].cond_a_idx == 0
     assert metrics["pearson_delta_log_counts"].cond_b_idx == 1
-    # DifferentialCountLoss.uses_count_pseudocount=True, so the dispatch
-    # writes log_counts_include_pseudocount=True on every wrapped metric.
-    assert metrics["mse_delta_log_counts"].log_counts_include_pseudocount is True

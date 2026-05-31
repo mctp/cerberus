@@ -664,16 +664,8 @@ class DifferentialBPNetMetricCollection(MetricCollection):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        count_pseudocount: float = 1.0,
-        delta_count_pseudocount: float | None = None,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
     ):
-        # log1p_targets / count_pseudocount / log_counts_include_pseudocount
-        # are the standard triple instantiate_metrics_and_loss forwards to
-        # every metric collection; mirroring the BPNetMetricCollection
-        # signature keeps the dispatch interchangeable.
-        if delta_count_pseudocount is None:
-            delta_count_pseudocount = count_pseudocount
         super().__init__(
             {
                 "mse_delta_log_counts": DifferentialLogCountsMeanSquaredError(
@@ -681,21 +673,18 @@ class DifferentialBPNetMetricCollection(MetricCollection):
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     delta_count_pseudocount=delta_count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "rmse_delta_log_counts": DifferentialLogCountsRootMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     delta_count_pseudocount=delta_count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
                 "pearson_delta_log_counts": DifferentialLogCountsPearsonCorrCoef(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
                     delta_count_pseudocount=delta_count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
             }
         )
@@ -713,6 +702,12 @@ class JointBPNetMetricCollection(MetricCollection):
         delta_count_pseudocount: float | None = None,
         log_counts_include_pseudocount: bool = False,
     ):
+        # The absolute sub-collection uses count_pseudocount; the differential
+        # sub-collection uses delta_count_pseudocount. They are distinct in the
+        # joint objective (e.g. a read-coverage count pc vs. a noise-floor delta
+        # pc); delta defaults to the count pc only when left unset.
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
         super().__init__(
             [
                 BPNetMetricCollection(
@@ -724,9 +719,7 @@ class JointBPNetMetricCollection(MetricCollection):
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
                     delta_count_pseudocount=delta_count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
             ]
         )

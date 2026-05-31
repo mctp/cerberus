@@ -229,6 +229,7 @@ def test_joint_delta_count_pseudocount_is_forwarded_to_metrics_from_loss_args():
     )
 
     metrics, criterion = instantiate_metrics_and_loss(config)
+    assert isinstance(criterion, MultitaskBPNetJointDifferentialLoss)
     assert criterion.count_pseudocount == 1.0
     assert criterion.delta_count_pseudocount == 7.0
     assert metrics["mse_log_counts"].count_pseudocount == 1.0
@@ -240,7 +241,9 @@ def test_joint_delta_count_pseudocount_is_forwarded_to_metrics_from_loss_args():
 # ---------------------------------------------------------------------------
 
 
-def _make_output(log_counts: torch.Tensor, output_len: int = OUTPUT_LEN) -> ProfileCountOutput:
+def _make_output(
+    log_counts: torch.Tensor, output_len: int = OUTPUT_LEN
+) -> ProfileCountOutput:
     """Create a ProfileCountOutput with dummy logits."""
     B, N = log_counts.shape
     logits = torch.zeros(B, N, output_len)
@@ -313,7 +316,7 @@ def test_differential_count_loss_nonzero_when_prediction_off():
     expected_delta = torch.log((sum_b + pc) / (sum_a + pc))
     out = _make_output(torch.zeros(2, 2))
     loss = loss_fn(out, targets)
-    assert loss.item() == pytest.approx((expected_delta ** 2).mean().item(), rel=1e-6)
+    assert loss.item() == pytest.approx((expected_delta**2).mean().item(), rel=1e-6)
 
 
 def test_differential_count_loss_pseudocount_affects_target():
@@ -438,7 +441,9 @@ def test_differential_count_loss_ignores_batch_context_kwargs():
         targets,
         interval_source=["IntervalSampler"] * 2,
         intervals=None,
-        log2fc=torch.zeros(2),   # formerly a supported kwarg — must be ignored, not raise.
+        log2fc=torch.zeros(
+            2
+        ),  # formerly a supported kwarg — must be ignored, not raise.
     )
     assert loss.ndim == 0
 
@@ -522,7 +527,7 @@ def test_differential_count_loss_integer_targets_work():
     log_counts = torch.zeros(1, 2)
     out = _make_output(log_counts)
     loss = loss_fn(out, targets)
-    expected = (torch.log(torch.tensor((7.0 + pc) / (3.0 + pc))) ** 2)
+    expected = torch.log(torch.tensor((7.0 + pc) / (3.0 + pc))) ** 2
     assert loss.item() == pytest.approx(expected.item(), rel=1e-6)
 
 

@@ -33,6 +33,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tools/export_predictions.py --include-background` for evaluation on the
   identical negatives.
 
+### Changed
+- **Capability-based pseudocount injection in `instantiate_metrics_and_loss`.**
+  Each pseudocount (`count_pseudocount`, `delta_count_pseudocount`,
+  `log_counts_include_pseudocount`) is now passed to a loss/metric constructor
+  only when that constructor (or an ancestor, via `**kwargs` forwarding)
+  declares the parameter, and only as a default — an explicit value in
+  `loss_args`/`metrics_args` still wins. Replaces the previous universal
+  injection plus a `delta_count_pseudocount` reflection special-case. No
+  behavior change for existing configs.
+
+### Removed
+- **`count_pseudocount` alias on the differential API.**
+  `DifferentialCountLoss`, `DifferentialLogCountsMeanSquaredError`,
+  `DifferentialLogCountsPearsonCorrCoef`, and `DifferentialBPNetMetricCollection`
+  no longer accept `count_pseudocount` (a backwards-compatible alias for
+  `delta_count_pseudocount`) or the unused `log_counts_include_pseudocount`
+  parameter. Pass `delta_count_pseudocount` directly. The joint
+  `MultitaskBPNetJointDifferentialLoss` / `JointBPNetMetricCollection` retain
+  both `count_pseudocount` (absolute count term) and `delta_count_pseudocount`
+  (differential term), which are genuinely distinct quantities there.
+
 ### Fixed
 - **Type annotations on the joint differential BPNet API.**
   `MultitaskBPNetJointDifferentialLoss.loss_components`/`forward` now match the

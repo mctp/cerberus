@@ -601,8 +601,6 @@ class DifferentialCountLoss(nn.Module):
             shrinkage prior — derive from data via
             :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount`,
             or pass an explicit scaled value. Default 1.0.
-        count_pseudocount: Backwards-compatible alias for
-            ``delta_count_pseudocount``.
 
     References:
         - Naqvi et al. (2025). *Transfer learning reveals sequence
@@ -618,8 +616,7 @@ class DifferentialCountLoss(nn.Module):
         self,
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
-        delta_count_pseudocount: float | None = None,
-        count_pseudocount: float | None = None,
+        delta_count_pseudocount: float = 1.0,
     ) -> None:
         super().__init__()
         if cond_a_idx == cond_b_idx:
@@ -631,16 +628,9 @@ class DifferentialCountLoss(nn.Module):
                 raise ValueError(f"{name} must be non-negative, got {idx}")
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
-        if delta_count_pseudocount is None:
-            delta_count_pseudocount = (
-                1.0 if count_pseudocount is None else count_pseudocount
-            )
         self.delta_count_pseudocount = delta_count_pseudocount
-        self.count_pseudocount = delta_count_pseudocount
 
-    def _delta_loss(
-        self, outputs: object, targets: torch.Tensor
-    ) -> torch.Tensor:
+    def _delta_loss(self, outputs: object, targets: torch.Tensor) -> torch.Tensor:
         if not isinstance(outputs, ProfileCountOutput):
             raise TypeError(
                 f"DifferentialCountLoss requires ProfileCountOutput, "
@@ -672,13 +662,10 @@ class DifferentialCountLoss(nn.Module):
 
         counts = targets.float().sum(dim=-1)  # (B, N)
         pc = self.delta_count_pseudocount
-        target_delta = torch.log(
-            (counts[:, b] + pc) / (counts[:, a] + pc)
-        )  # (B,)
-        delta_pred = (
-            _log_count_plus_pseudocount(log_counts[:, b], pc)
-            - _log_count_plus_pseudocount(log_counts[:, a], pc)
-        )  # (B,)
+        target_delta = torch.log((counts[:, b] + pc) / (counts[:, a] + pc))  # (B,)
+        delta_pred = _log_count_plus_pseudocount(
+            log_counts[:, b], pc
+        ) - _log_count_plus_pseudocount(log_counts[:, a], pc)  # (B,)
         return F.mse_loss(delta_pred, target_delta)
 
     def loss_components(

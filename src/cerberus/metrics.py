@@ -119,10 +119,9 @@ def _extract_differential_log_count_pairs(
         (counts[:, b] + delta_count_pseudocount)
         / (counts[:, a] + delta_count_pseudocount)
     )  # (B,)
-    pred_delta = (
-        _log_count_plus_pseudocount(log_counts[:, b], delta_count_pseudocount)
-        - _log_count_plus_pseudocount(log_counts[:, a], delta_count_pseudocount)
-    )  # (B,)
+    pred_delta = _log_count_plus_pseudocount(
+        log_counts[:, b], delta_count_pseudocount
+    ) - _log_count_plus_pseudocount(log_counts[:, a], delta_count_pseudocount)  # (B,)
     return pred_delta.flatten(), target_delta.flatten()
 
 
@@ -528,9 +527,7 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        delta_count_pseudocount: float | None = None,
-        count_pseudocount: float | None = None,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -538,14 +535,7 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
             cond_a_idx, cond_b_idx
         )
         self.log1p_targets = log1p_targets
-        if delta_count_pseudocount is None:
-            delta_count_pseudocount = (
-                1.0 if count_pseudocount is None else count_pseudocount
-            )
         self.delta_count_pseudocount = delta_count_pseudocount
-        self.count_pseudocount = delta_count_pseudocount
-        # Kept for constructor compatibility with the standard metric dispatch.
-        self.log_counts_include_pseudocount = log_counts_include_pseudocount
 
     def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None:  # type: ignore[override]
         pred_delta, target_delta = _extract_differential_log_count_pairs(
@@ -593,9 +583,7 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        delta_count_pseudocount: float | None = None,
-        count_pseudocount: float | None = None,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -603,14 +591,7 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
             cond_a_idx, cond_b_idx
         )
         self.log1p_targets = log1p_targets
-        if delta_count_pseudocount is None:
-            delta_count_pseudocount = (
-                1.0 if count_pseudocount is None else count_pseudocount
-            )
         self.delta_count_pseudocount = delta_count_pseudocount
-        self.count_pseudocount = delta_count_pseudocount
-        # Kept for constructor compatibility with the standard metric dispatch.
-        self.log_counts_include_pseudocount = log_counts_include_pseudocount
         self.add_state("preds_list", default=[], dist_reduce_fx="cat")
         self.add_state("targets_list", default=[], dist_reduce_fx="cat")
 

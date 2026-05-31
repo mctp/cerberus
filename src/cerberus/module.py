@@ -41,18 +41,24 @@ class CerberusModule(pl.LightningModule):
     # in val_metrics wins.  Differential collections (log-fold-change) precede
     # the absolute one so a differential collection scatters in its native space.
     _SCATTER_DISPATCH: tuple[tuple[str, dict[str, str]], ...] = (
-        ("pearson_delta_log_counts", {
-            "x_label": "True delta log counts",
-            "y_label": "Predicted delta log counts",
-            "title": "Val delta log counts",
-            "filename_prefix": "val_delta_log_counts_scatter",
-        }),
-        ("pearson_log_counts", {
-            "x_label": "True log counts",
-            "y_label": "Predicted log counts",
-            "title": "Val counts",
-            "filename_prefix": "val_count_scatter",
-        }),
+        (
+            "pearson_delta_log_counts",
+            {
+                "x_label": "True delta log counts",
+                "y_label": "Predicted delta log counts",
+                "title": "Val delta log counts",
+                "filename_prefix": "val_delta_log_counts_scatter",
+            },
+        ),
+        (
+            "pearson_log_counts",
+            {
+                "x_label": "True log counts",
+                "y_label": "Predicted log counts",
+                "title": "Val counts",
+                "filename_prefix": "val_count_scatter",
+            },
+        ),
     )
 
     def __init__(
@@ -404,6 +410,32 @@ def instantiate(
     )
 
 
+def _constructor_accepts(cls: type, name: str) -> bool:
+    """Whether ``cls`` or any ancestor declares ``name`` as an explicit __init__
+    parameter.
+
+    Walks the MRO so a parameter forwarded through ``**kwargs`` to a base class
+    (e.g. ``BPNetLoss(alpha, beta, **kwargs)`` -> ``MSEMultinomialLoss(...,
+    count_pseudocount)``) still counts as accepted, while a ``**kwargs`` that
+    only feeds an unrelated base (e.g. a torchmetrics ``Metric``) does not.
+    """
+    keyword_kinds = (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
+    for klass in cls.__mro__:
+        init = klass.__dict__.get("__init__")
+        if init is None:
+            continue
+        try:
+            param = inspect.signature(init).parameters.get(name)
+        except (ValueError, TypeError):
+            continue
+        if param is not None and param.kind in keyword_kinds:
+            return True
+    return False
+
+
 def instantiate_metrics_and_loss(
     model_config: ModelConfig, device: torch.device | None = None
 ) -> tuple[MetricCollection, CerberusLoss]:
@@ -422,28 +454,35 @@ def instantiate_metrics_and_loss(
         tuple: (metrics, criterion)
     """
     loss_cls = import_class(model_config.loss_cls)
-    loss_args = {
-        **model_config.loss_args,
-        "count_pseudocount": model_config.count_pseudocount,
-    }
-    criterion = loss_cls(**loss_args)
-
     metrics_cls = import_class(model_config.metrics_cls)
-    metrics_args = {
-        **model_config.metrics_args,
-        "count_pseudocount": model_config.count_pseudocount,
+
+    # Pseudocount injection is capability-based: each value is passed to a
+    # constructor only when it declares the matching parameter, and only as a
+    # default (an explicit value in loss_args/metrics_args always wins). This
+    # lets every loss/metric declare exactly the pseudocounts it uses, with no
+    # universally injected kwargs for unrelated constructors to absorb.
+    count_pseudocount = model_config.count_pseudocount
+    # The differential shrinkage pseudocount: an explicit loss_args value wins;
+    # otherwise it defaults to the model count pseudocount so the loss and its
+    # companion metrics shrink the log-ratio identically.
+    delta_count_pseudocount = model_config.loss_args.get(
+        "delta_count_pseudocount", count_pseudocount
+    )
+    pseudocount_defaults = {
+        "count_pseudocount": count_pseudocount,
+        "delta_count_pseudocount": delta_count_pseudocount,
         "log_counts_include_pseudocount": loss_cls.uses_count_pseudocount,
     }
-    metrics_params = inspect.signature(metrics_cls).parameters
-    if (
-        "delta_count_pseudocount" in model_config.loss_args
-        and "delta_count_pseudocount" in metrics_params
-    ):
-        metrics_args.setdefault(
-            "delta_count_pseudocount",
-            model_config.loss_args["delta_count_pseudocount"],
-        )
-    metrics = metrics_cls(**metrics_args)
+
+    def _with_pseudocounts(cls: type, base_args: dict[str, Any]) -> dict[str, Any]:
+        args = dict(base_args)
+        for name, value in pseudocount_defaults.items():
+            if _constructor_accepts(cls, name):
+                args.setdefault(name, value)
+        return args
+
+    criterion = loss_cls(**_with_pseudocounts(loss_cls, model_config.loss_args))
+    metrics = metrics_cls(**_with_pseudocounts(metrics_cls, model_config.metrics_args))
 
     if device is not None:
         metrics = metrics.to(device)
