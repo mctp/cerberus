@@ -1410,6 +1410,20 @@ ModelConfig(..., freeze=[FreezeSpec(pattern="iconv.weight")])
 See `docs/models.md` for the `named_children()` of each shipped
 architecture.
 
+### Scope: static freezing only
+
+`FreezeSpec` is deliberately limited to *static* freezing of a subtree
+or a single parameter (no scheduled freeze/unfreeze epochs, no
+"freeze everything **except** X" inversion). Freezing all of a branch
+except one head — e.g. ChromBPNet differential fine-tuning that trains
+only `accessibility_model.count_dense` — is the inverse operation and is
+handled by a dedicated **training callback**, not the config schema:
+`tools/train_chrombpnet_multitask_differential.py --accessibility-count-head-only`
+installs an `AccessibilityCountHeadOnly` callback that freezes the
+branch and re-enables just the count head at `fit` time. Use `FreezeSpec`
+for "freeze this pretrained subtree" (e.g. `bias_model`); use a callback
+for selective unfreezing or any per-epoch schedule.
+
 ## DataModule Runtime Arguments
 
 Arguments passed to `CerberusDataModule.__init__` for hardware optimization:
@@ -14804,7 +14818,9 @@ class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
         self, outputs: object, targets: torch.Tensor, **kwargs: object
     ) -> dict[str, torch.Tensor]:
         components = super().loss_components(outputs, targets, **kwargs)
-        components["delta_loss"] = self._differential_loss._delta_loss(outputs, targets)
+        # Use the composed loss's public interface; its forward() is exactly the
+        # delta-loss scalar (profile loss disabled), so no private access needed.
+        components["delta_loss"] = self._differential_loss(outputs, targets)
         return components
 
     def forward(
