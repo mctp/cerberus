@@ -47,6 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   identical negatives.
 
 ### Changed
+- **ChromBPNet trainers default to `--precision full`.** `train_chrombpnet.py`,
+  `train_chrombpnet_bias.py`, `train_chrombpnet_multitask.py`,
+  `train_chrombpnet_multitask_differential.py`, and
+  `train_chrombpnet_multitask_differential_parallel.py` now all default to
+  `full` precision (previously some defaulted to `bf16`), reflecting the
+  bias-subtraction / count-head numerical sensitivity of the ChromBPNet family.
+  Non-ChromBPNet trainers (BPNet, ASAP, Gopher, Pomeranian, Dalmatian, BiasNet)
+  keep their `bf16` default. Override per run with `--precision`.
 - **Differential objective now shrinks the *predicted* log-fold-change too.**
   `DifferentialCountLoss` and the differential log-count metrics
   (`mse/rmse/pearson_delta_log_counts`) changed the predicted delta from the

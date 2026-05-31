@@ -7,10 +7,11 @@ The ChromBPNet analogue of ``tools/train_multitask_differential_bpnet.py``:
    phase-1 model produced by ``tools/train_chrombpnet_multitask.py``.
 2. Reload the accessibility branch as trainable.
 3. Reload the shared bias branch as frozen.
-4. Fine-tune with :class:`cerberus.loss.DifferentialCountLoss` on
-   ``log_counts[:, cond_b] - log_counts[:, cond_a]`` with shrinkage
-   pseudocount derived from training data via
-   :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount`
+4. Fine-tune with :class:`cerberus.loss.DifferentialCountLoss`, which
+   supervises the pseudocount-shrunk predicted log fold-change between
+   ``cond_b`` and ``cond_a`` against the inline-derived per-peak target
+   log fold-change; the shrinkage pseudocount is derived from training
+   data via :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount`
    (override with ``--phase2-pseudocount-override``).
 
 The resulting checkpoint keeps the same multi-condition output heads,
@@ -178,23 +179,31 @@ def get_args() -> argparse.Namespace:
 
     phase1 = p.add_argument_group("Phase-1 model")
     phase1.add_argument(
-        "--phase1-checkpoint-dir", type=Path, required=True,
+        "--phase1-checkpoint-dir",
+        type=Path,
+        required=True,
         help="ModelEnsemble-compatible phase-1 root, e.g. models/run/single-fold.",
     )
     phase1.add_argument("--phase1-fold", type=int, default=0)
     phase1.add_argument(
-        "--phase1-model", type=Path, default=None,
+        "--phase1-model",
+        type=Path,
+        default=None,
         help="Optional direct path to phase-1 model.pt. Defaults to fold_N/model.pt.",
     )
 
     data = p.add_argument_group("Data")
     data.add_argument(
-        "--peaks", type=Path, default=None,
+        "--peaks",
+        type=Path,
+        default=None,
         help="Optional BED/narrowPeak for phase-2 sampling. Defaults to the "
         "phase-1 sampler_config.sampler_args['intervals_path'].",
     )
     data.add_argument(
-        "--background-ratio", type=float, default=0.0,
+        "--background-ratio",
+        type=float,
+        default=0.0,
         help="Phase-2 background ratio. Differential fine-tuning usually uses peaks only.",
     )
     data.add_argument("--cond-a-idx", type=int, default=0)
@@ -215,12 +224,16 @@ def get_args() -> argparse.Namespace:
     train.add_argument("--warmup-epochs", type=int, default=0)
     train.add_argument("--min-lr", type=float, default=1e-6)
     train.add_argument(
-        "--phase2-pseudocount-quantile", type=float, default=0.10,
+        "--phase2-pseudocount-quantile",
+        type=float,
+        default=0.10,
         help="Quantile of training-region per-channel counts for delta shrinkage.",
     )
     train.add_argument("--phase2-pseudocount-samples", type=int, default=2000)
     train.add_argument(
-        "--phase2-pseudocount-override", type=float, default=None,
+        "--phase2-pseudocount-override",
+        type=float,
+        default=None,
         help="Explicit pseudocount in scaled target units; bypasses the "
         "noise-floor estimate.",
     )
@@ -234,14 +247,17 @@ def get_args() -> argparse.Namespace:
     )
 
     hw = p.add_argument_group("Hardware")
-    hw.add_argument("--accelerator", default="auto", choices=["auto", "gpu", "cpu", "mps"])
     hw.add_argument(
-        "--devices", default="1",
+        "--accelerator", default="auto", choices=["auto", "gpu", "cpu", "mps"]
+    )
+    hw.add_argument(
+        "--devices",
+        default="1",
         help="Devices passed to Lightning. Default is single-GPU because the "
         "phase-2 pseudocount is sampled before Trainer setup; pass an explicit "
         "--phase2-pseudocount-override before multi-GPU DDP.",
     )
-    hw.add_argument("--precision", default="bf16", choices=["bf16", "mps", "full"])
+    hw.add_argument("--precision", default="full", choices=["bf16", "mps", "full"])
     hw.add_argument("--num-workers", type=int, default=8)
     hw.add_argument("--seed", type=int, default=42)
     hw.add_argument("--silent", action="store_true")
@@ -286,7 +302,9 @@ def main() -> None:
     if not peaks_path.exists():
         raise FileNotFoundError(f"Phase-2 peaks not found: {peaks_path}")
 
-    output_root = args.output_dir.resolve() / ("multi-fold" if args.multi else "single-fold")
+    output_root = args.output_dir.resolve() / (
+        "multi-fold" if args.multi else "single-fold"
+    )
     output_root.mkdir(parents=True, exist_ok=True)
 
     # Phase-2 data: no jitter (stable per-region differential target),
