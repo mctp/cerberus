@@ -879,6 +879,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#fixedbackgroundsampler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FixedBackgroundSampler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#peakfixedbackgroundsampler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PeakFixedBackgroundSampler
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1454,6 +1476,18 @@
 <li><strong>Epoch size</strong>: Controlled by <code>background_ratio</code> (number of background intervals = num_peaks × background_ratio).</li>
 <li><strong>Interval source</strong>: <code>get_interval_source()</code> returns <code>"ComplexityMatchedSampler"</code> for all intervals (background only).</li>
 </ul>
+<h3 id="fixedbackgroundsampler">FixedBackgroundSampler<a class="headerlink" href="#fixedbackgroundsampler" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Function</strong>: Loads a <strong>fixed</strong> background (non-peak) set from a BED/narrowPeak file, exactly like <code>IntervalSampler</code>, but reports a distinct <code>"FixedBackgroundSampler"</code> interval source. Unlike <code>ComplexityMatchedSampler</code>, the set is <strong>static</strong> — <code>resample()</code> is a no-op, so the model sees the same negatives every epoch.</li>
+<li><strong>Splitting</strong>: <code>split_folds</code> is overridden so train/val/test splits remain <code>FixedBackgroundSampler</code> instances. (The base <code>ListSampler.split_folds</code> returns plain <code>ListSampler</code> objects, which would collapse the source label to <code>"ListSampler"</code> — identical to split peaks — and break peak/background separation in evaluation.)</li>
+</ul>
+<h3 id="peakfixedbackgroundsampler">PeakFixedBackgroundSampler<a class="headerlink" href="#peakfixedbackgroundsampler" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Function</strong>: Like <code>PeakSampler</code>, mixes peaks with negatives, but uses a <strong>fixed external negative set</strong> (<code>FixedBackgroundSampler</code>) instead of generating complexity-matched negatives on the fly. Reproduces reference <a href="https://github.com/jsxlei/chrombpnet-pytorch">chrombpnet-pytorch</a>'s static <code>negatives.bed</code> setup so the two implementations can be compared on an identical peak <strong>and</strong> negative set.</li>
+<li><strong>Config type</strong>: <code>"peak_fixed_background"</code> — args <code>intervals_path</code> (peaks) and <code>background_intervals_path</code> (fixed negatives BED). No <code>fasta_path</code>/complexity metrics needed.</li>
+<li><strong>Interval source</strong>: <code>"IntervalSampler"</code> (→ <code>"ListSampler"</code> after <code>split_folds</code>) for peaks, <code>"FixedBackgroundSampler"</code> for negatives.</li>
+<li><strong>Tooling</strong>: <code>tools/train_chrombpnet.py --negatives &lt;bed&gt;</code> selects this sampler; <code>tools/export_predictions.py --include-background</code> evaluates on the same fixed negatives.</li>
+</ul>
 <h2 id="best-practices-for-users">Best Practices for Users<a class="headerlink" href="#best-practices-for-users" title="Permanent link">&para;</a></h2>
 <ol>
 <li><strong>Global Configuration</strong>: Set a single random seed in your configuration. The <code>create_sampler</code> factory will propagate this seed correctly to all nested samplers.</li>
@@ -1512,7 +1546,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 14, 2026 23:41:47 UTC">April 14, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 30, 2026 07:23:34 UTC">May 30, 2026</span>
   </span>
 
     
