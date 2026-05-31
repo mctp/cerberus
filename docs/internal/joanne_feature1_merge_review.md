@@ -498,5 +498,10 @@ item references Section 8's inventory.
     (`test_dalmatian_loss_split_peaks_labeled_listsampler`,
     `test_peak_interval_sources_separates_post_split`). The DalmatianLoss tests
     that hardcoded `"IntervalSampler"` still pass (it remains a peak label).
+  - **Full fix scoped in a dedicated brief:**
+    `docs/internal/interval_source_provenance_smell.md` (identifies the
+    class-name-as-provenance smell and proposes role/`source_label` as
+    first-class data; the manifest-string compatibility decision is why it's
+    punted).
 
 - **#11–#12 legacy shims** — pending (investigate-then-decide).
