@@ -47,6 +47,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   identical negatives.
 
 ### Changed
+- **Differential objective now shrinks the *predicted* log-fold-change too.**
+  `DifferentialCountLoss` and the differential log-count metrics
+  (`mse/rmse/pearson_delta_log_counts`) changed the predicted delta from the
+  bare head difference `log_counts[:, b] - log_counts[:, a]` to the
+  pseudocount-shrunk form `log((exp(log_counts[:, b]) + pc) /
+  (exp(log_counts[:, a]) + pc))`, matching the shrinkage already applied to the
+  target `log((sum_b + pc) / (sum_a + pc))`. With `pc` acting as the
+  empirical-Bayes shrinkage prior, shrinking only the target previously biased
+  the objective at the noise floor (the model was optimized against a target it
+  could not structurally match); shrinking both sides makes loss and metric
+  symmetric. **This changes the differential loss surface** — models trained
+  before and after this release are not directly comparable. `pc == 0` recovers
+  the prior bare-difference behavior. (Differential *attribution* via
+  `AttributionTarget(reduction="delta_log_counts")` is unaffected and remains
+  the bare head difference.)
 - **Capability-based pseudocount injection in `instantiate_metrics_and_loss`.**
   Each pseudocount (`count_pseudocount`, `delta_count_pseudocount`,
   `log_counts_include_pseudocount`) is now passed to a loss/metric constructor
