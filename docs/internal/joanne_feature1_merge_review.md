@@ -504,4 +504,14 @@ item references Section 8's inventory.
     first-class data; the manifest-string compatibility decision is why it's
     punted).
 
-- **#11–#12 legacy shims** — pending (investigate-then-decide).
+- **#11 `chrombpnet_wo_bias` attribute fallback** — REMOVED. No Cerberus model
+  ever exposed the attribute (history-verified), so the fallback was dead; the
+  resolvers now use `accessibility_model` directly. This also **fixed an active
+  bug**: `score_motif_insertions.py --chrombpnet-accessibility-only` checked only
+  the dead attribute and was broken for every current ChromBPNet model. The
+  `chrombpnet_wo_bias.pt` filename is unchanged.
+- **#12 `pretrained[].freeze` hparams strip shim** — REMOVED (decision B). The
+  shim was load-bearing for hparams.yaml from the 2026-03-18..04-18
+  `PretrainedConfig.freeze` window; removing it means those now fail
+  `extra="forbid"` validation (re-train or hand-edit the obsolete key). Test
+  updated to assert rejection.
