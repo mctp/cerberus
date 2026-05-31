@@ -1,5 +1,6 @@
 import logging
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
@@ -598,15 +599,15 @@ class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
         )
 
     def loss_components(
-        self, outputs: object, targets, **kwargs: object
-    ) -> dict[str, object]:
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
         components = super().loss_components(outputs, targets, **kwargs)
-        components["delta_loss"] = self._differential_loss._delta_loss(
-            outputs, targets
-        )
+        components["delta_loss"] = self._differential_loss._delta_loss(outputs, targets)
         return components
 
-    def forward(self, outputs: object, targets, **kwargs: object):
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
         components = self.loss_components(outputs, targets, **kwargs)
         return (
             self.profile_weight * components["profile_loss"]
@@ -712,15 +713,13 @@ class JointBPNetMetricCollection(MetricCollection):
         delta_count_pseudocount: float | None = None,
         log_counts_include_pseudocount: bool = False,
     ):
-        metrics = dict(
-            BPNetMetricCollection(
-                log1p_targets=log1p_targets,
-                count_pseudocount=count_pseudocount,
-                log_counts_include_pseudocount=log_counts_include_pseudocount,
-            )
-        )
-        metrics.update(
-            dict(
+        super().__init__(
+            [
+                BPNetMetricCollection(
+                    log1p_targets=log1p_targets,
+                    count_pseudocount=count_pseudocount,
+                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                ),
                 DifferentialBPNetMetricCollection(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
@@ -728,7 +727,6 @@ class JointBPNetMetricCollection(MetricCollection):
                     count_pseudocount=count_pseudocount,
                     delta_count_pseudocount=delta_count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
-                )
-            )
+                ),
+            ]
         )
-        super().__init__(metrics)

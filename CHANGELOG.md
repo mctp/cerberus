@@ -33,6 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tools/export_predictions.py --include-background` for evaluation on the
   identical negatives.
 
+### Fixed
+- **Type annotations on the joint differential BPNet API.**
+  `MultitaskBPNetJointDifferentialLoss.loss_components`/`forward` now match the
+  parent `MSEMultinomialLoss` signatures (`dict[str, torch.Tensor]` /
+  `-> torch.Tensor`) instead of `dict[str, object]`, and `bpnet.py` now imports
+  `torch`. `JointBPNetMetricCollection` is built by passing its two
+  sub-collections to `MetricCollection` as a list (torchmetrics flattens nested
+  collections) rather than constructing them only to `dict()` them apart and
+  rebuild — clearing the pyright errors and removing the construct-to-destruct
+  pattern. `_resolve_chrombpnet_accessibility_model` is annotated `model: object`
+  (it only calls `getattr`). No behavior change.
+
 ## [1.0.0a6] - 2026-05-20
 
 ### Added

@@ -33,8 +33,8 @@ from torch.utils.data import DataLoader
 
 import cerberus
 from cerberus.attribution import (
-    AttributionTarget,
     TARGET_REDUCTIONS,
+    AttributionTarget,
     compute_ism_attributions,
     compute_taylor_ism_attributions,
     mean_center_attributions,
@@ -466,7 +466,7 @@ def _resolve_target_channels(args: argparse.Namespace) -> int | tuple[int, int]:
     return args.target_channel
 
 
-def _resolve_chrombpnet_accessibility_model(model: torch.nn.Module) -> torch.nn.Module | None:
+def _resolve_chrombpnet_accessibility_model(model: object) -> torch.nn.Module | None:
     """Return the bias-stripped ChromBPNet branch when a loaded model exposes one."""
     accessibility_model = getattr(model, "chrombpnet_wo_bias", None)
     if accessibility_model is None:
@@ -905,10 +905,14 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         "batch_size": args.batch_size,
         "num_workers": args.num_workers,
         "intervals_path_override": (
-            str(args.intervals_path.resolve()) if args.intervals_path is not None else None
+            str(args.intervals_path.resolve())
+            if args.intervals_path is not None
+            else None
         ),
         "intervals_as_simple_sampler": bool(args.intervals_as_simple_sampler),
-        "include_sources": sorted(include_sources) if include_sources is not None else None,
+        "include_sources": sorted(include_sources)
+        if include_sources is not None
+        else None,
         "attribution_method": args.attribution_method,
         "chrombpnet_accessibility_only": bool(use_chrombpnet_accessibility_only),
         "target_mode": args.target_mode,
