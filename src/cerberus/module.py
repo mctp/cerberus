@@ -456,15 +456,11 @@ def instantiate_metrics_and_loss(
     loss_cls = import_class(model_config.loss_cls)
     metrics_cls = import_class(model_config.metrics_cls)
 
-    # Pseudocount injection is capability-based: each value is passed to a
-    # constructor only when it declares the matching parameter, and only as a
-    # default (an explicit value in loss_args/metrics_args always wins). This
-    # lets every loss/metric declare exactly the pseudocounts it uses, with no
-    # universally injected kwargs for unrelated constructors to absorb.
+    # Capability-based injection: pass each pseudocount only to a constructor
+    # that declares it, via setdefault (explicit loss_args/metrics_args win).
     count_pseudocount = model_config.count_pseudocount
-    # The differential shrinkage pseudocount: an explicit loss_args value wins;
-    # otherwise it defaults to the model count pseudocount so the loss and its
-    # companion metrics shrink the log-ratio identically.
+    # delta defaults to the model count pseudocount so loss and metrics shrink
+    # the log-ratio identically; an explicit loss_args value overrides.
     delta_count_pseudocount = model_config.loss_args.get(
         "delta_count_pseudocount", count_pseudocount
     )

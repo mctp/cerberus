@@ -743,11 +743,9 @@ class DalmatianLoss(nn.Module):
         )
         l_recon = self.base_loss(combined, targets)
 
-        # 2. Bias-only reconstruction (non-peak examples)
-        # Peaks report "IntervalSampler" pre-split and "ListSampler" after
-        # split_folds (the training path), so test membership in
-        # PEAK_INTERVAL_SOURCES rather than a single label — otherwise split
-        # peaks leak into the bias-only term.
+        # 2. Bias-only reconstruction (non-peak examples). Peaks report
+        # "ListSampler" after split_folds, so match PEAK_INTERVAL_SOURCES (not a
+        # single label) or split peaks leak into the bias term.
         non_peak = torch.tensor(
             [s not in PEAK_INTERVAL_SOURCES for s in interval_source],
             dtype=torch.bool,

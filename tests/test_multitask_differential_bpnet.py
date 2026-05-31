@@ -189,6 +189,17 @@ def test_joint_metric_collection_reports_absolute_and_delta_metrics():
     assert "pearson_delta_log_counts" in metrics
 
 
+def test_joint_classes_exported_from_models_package():
+    """The joint loss/metrics are part of the public cerberus.models API."""
+    from cerberus import models
+
+    assert (
+        models.MultitaskBPNetJointDifferentialLoss
+        is MultitaskBPNetJointDifferentialLoss
+    )
+    assert models.JointBPNetMetricCollection is JointBPNetMetricCollection
+
+
 def test_joint_differential_loss_can_use_separate_delta_count_pseudocount():
     loss_fn = MultitaskBPNetJointDifferentialLoss(
         count_pseudocount=1.0,

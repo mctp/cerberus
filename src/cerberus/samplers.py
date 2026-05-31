@@ -17,17 +17,11 @@ from .interval import Interval
 
 logger = logging.getLogger(__name__)
 
-# Interval-source labels (as returned by ``get_interval_source`` /
-# ``MultiSampler.get_interval_source``) that denote peak / positive intervals.
-# A peak sub-sampler is an :class:`IntervalSampler`, but the base
-# :meth:`ListSampler.split_folds` materializes its fold splits as plain
-# :class:`ListSampler` subsets, so a peak reports ``"IntervalSampler"`` before a
-# fold split and ``"ListSampler"`` after one — both mean "peak". Background
-# sub-samplers (:class:`ComplexityMatchedSampler`, :class:`FixedBackgroundSampler`)
-# override ``split_folds`` to keep their own distinct label, so they never
-# collapse into this set. Use this single source of truth wherever peak vs.
-# background must be decided from an interval source (training loss masks,
-# evaluation interval selection) so the predicate stays consistent.
+# Interval-source labels (from get_interval_source) that mean "peak/positive".
+# A peak IntervalSampler reports "IntervalSampler" before a fold split and
+# "ListSampler" after one (base ListSampler.split_folds returns plain
+# ListSampler); background samplers override split_folds to keep distinct
+# labels. Single source of truth for the peak-vs-background predicate.
 PEAK_INTERVAL_SOURCES = frozenset({"IntervalSampler", "ListSampler"})
 
 

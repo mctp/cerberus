@@ -81,12 +81,9 @@ def _freeze_accessibility_except_count_dense(model: torch.nn.Module) -> None:
 class AccessibilityCountHeadOnly(pl.Callback):
     """Keep only ``accessibility_model.count_dense`` trainable in phase 2.
 
-    This is a "freeze the whole branch **except** one head" operation, which
-    ``FreezeSpec``/``ModelConfig.freeze`` deliberately does not express (it does
-    static subtree/parameter freezing only — see ``docs/configuration.md`` and
-    ``docs/internal/parameter_freezing_design.md`` §"out of scope v1"). Selective
-    unfreezing is handled by a dedicated callback instead, re-applied at
-    ``setup`` and ``on_fit_start`` so it survives module re-initialisation.
+    Freezing a branch *except* one head is the inverse of what ``FreezeSpec``
+    expresses (static subtree freezing only — see ``docs/configuration.md``), so
+    it lives in a callback. Re-applied at ``setup`` and ``on_fit_start``.
     """
 
     def __init__(self) -> None:
