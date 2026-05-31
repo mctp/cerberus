@@ -224,13 +224,16 @@ For the companion differential loss see [DifferentialCountLoss](#differentialcou
 
 **Implementation**: `cerberus.loss.DifferentialCountLoss`
 
-Differential count-head fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak natural-log fold-change derived inline from the two-channel `(B, N, L)` targets tensor:
+Differential count-head fine-tuning loss. Supervises a pseudocount-shrunk predicted natural-log fold-change against the matching per-peak fold-change derived inline from the two-channel `(B, N, L)` targets tensor:
 
 ```
-target_delta = log((sum_B + pc) / (sum_A + pc))
+pred_delta = log((exp(log_counts[:, B]) + delta_count_pseudocount) /
+                 (exp(log_counts[:, A]) + delta_count_pseudocount))
+target_delta = log((sum_B + delta_count_pseudocount) /
+                   (sum_A + delta_count_pseudocount))
 ```
 
-where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). `pc` here is an empirical-Bayes shrinkage prior; the recommended value comes from `cerberus.pseudocount.resolve_noise_floor_pseudocount` (training-fold per-channel quantile, max across channels). Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
+where `sum_A` / `sum_B` are the length-sums of channels A / B and `delta_count_pseudocount` is on *linear* scale — same units as the length-summed signal, not a log-space offset. It is an empirical-Bayes shrinkage prior; the recommended value comes from `cerberus.pseudocount.resolve_noise_floor_pseudocount` (training-fold per-channel quantile, max across channels). Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
 
 Single path: `forward(outputs, targets)` returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be `(B, N, L)` with `N >= max(cond_a_idx, cond_b_idx) + 1`.
 
@@ -245,7 +248,11 @@ model_config = ModelConfig(
     name="MultitaskBPNet_differential",
     model_cls="cerberus.models.bpnet.MultitaskBPNet",
     loss_cls="cerberus.loss.DifferentialCountLoss",
-    loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+    loss_args={
+        "cond_a_idx": 0,
+        "cond_b_idx": 1,
+        "delta_count_pseudocount": 150.0,
+    },
     metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
     metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
     model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
@@ -255,7 +262,7 @@ model_config = ModelConfig(
             source=None, target=None,
         )
     ],
-    count_pseudocount=150.0,  # data-derived noise-floor recommended
+    count_pseudocount=150.0,  # stored for shared pseudocount/output metadata
 )
 ```
 
@@ -265,9 +272,18 @@ model_config = ModelConfig(
 - `rmse_delta_log_counts` — `sqrt(MSE)`, clamped at zero.
 - `pearson_delta_log_counts` — Pearson correlation of predicted vs. target delta accumulated across the epoch.
 
-All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `log_counts[:, b] - log_counts[:, a]`. Constructor kwargs (`cond_a_idx`, `cond_b_idx`, `count_pseudocount`, `log1p_targets`, `log_counts_include_pseudocount`) match the rest of the BPNet collections so dispatch through `instantiate_metrics_and_loss` is uniform.
+All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `pred_delta = log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))`. Its constructor kwargs are exactly the ones it uses — `cond_a_idx`, `cond_b_idx`, `delta_count_pseudocount`, `log1p_targets`. `instantiate_metrics_and_loss` injects `delta_count_pseudocount` (defaulting to the model's `count_pseudocount`) because the collection declares it; it passes no `count_pseudocount`/`log_counts_include_pseudocount` here, since the differential metrics have no absolute-count term.
 
 For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+
+### Joint absolute + differential objective
+
+`DifferentialCountLoss` above retargets a pretrained model's count heads to the log-fold-change *only* (profile loss disabled). When you instead want to train from scratch on the standard per-channel absolute profile/count objective **and** add the differential term, use:
+
+- **`MultitaskBPNetJointDifferentialLoss`** (`cerberus.models.MultitaskBPNetJointDifferentialLoss`) — `MultitaskBPNetLoss` plus a delta-log-count MSE term between `cond_a_idx` and `cond_b_idx`. The delta term defaults to the same weight as the absolute count term (`alpha`); override via `delta_weight`. It uses two distinct pseudocounts: `count_pseudocount` for the absolute count loss and `delta_count_pseudocount` for the differential term (defaulting to `count_pseudocount` when unset).
+- **`JointBPNetMetricCollection`** (`cerberus.models.JointBPNetMetricCollection`) — reports the absolute `BPNetMetricCollection` metrics together with the three differential metrics from `DifferentialBPNetMetricCollection`.
+
+The end-to-end trainer is `tools/train_chrombpnet_multitask_differential_parallel.py` (the from-scratch counterpart to the phase-2-only `train_chrombpnet_multitask_differential.py`).
 
 ### References
 - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.

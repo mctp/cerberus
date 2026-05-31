@@ -9,6 +9,8 @@ from cerberus.output import (
     ProfileCountOutput,
     ProfileLogRates,
 )
+from cerberus.pseudocount import _log_count_plus_pseudocount
+from cerberus.samplers import PEAK_INTERVAL_SOURCES
 from cerberus.utils import import_class
 
 
@@ -545,7 +547,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
 
 
 class DifferentialCountLoss(nn.Module):
-    """Differential count-head loss supervising ``log_counts[:, B] - log_counts[:, A]``.
+    """Differential count-head loss supervising pc-shrunk predicted log-ratios.
 
     The delta target is derived inline from the ``(B, N, L)`` ``targets``
     tensor (per-condition absolute-signal tracks; channels A and B are
@@ -560,13 +562,15 @@ class DifferentialCountLoss(nn.Module):
         \\right)
 
     where the sum is over the length axis and ``pc`` is
-    ``count_pseudocount``. Here ``pc`` plays the empirical-Bayes
+    ``delta_count_pseudocount``. Here ``pc`` plays the empirical-Bayes
     shrinkage-prior role: it pulls the log-ratio toward zero for
     regions whose per-condition totals sit at the noise floor.
     :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount` derives
     a data-driven value (training-fold per-channel quantile, max across
     channels) suitable to pass here. The returned loss is
-    ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
+    ``MSE(pred_delta, target_delta)`` where
+    ``pred_delta = log((exp(log_counts[:, B]) + pc) /
+    (exp(log_counts[:, A]) + pc))``.
 
     Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
     the count head needs to be retargeted. The profile heads are expected
@@ -581,7 +585,7 @@ class DifferentialCountLoss(nn.Module):
     Args:
         cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
         cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
-        count_pseudocount: Additive pseudocount used in the log
+        delta_count_pseudocount: Additive pseudocount used in the log
             fold-change derivation, in the same scaled units as
             ``ModelConfig.count_pseudocount``. Acts as an empirical-Bayes
             shrinkage prior — derive from data via
@@ -602,7 +606,7 @@ class DifferentialCountLoss(nn.Module):
         self,
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
-        count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float = 1.0,
     ) -> None:
         super().__init__()
         if cond_a_idx == cond_b_idx:
@@ -614,11 +618,9 @@ class DifferentialCountLoss(nn.Module):
                 raise ValueError(f"{name} must be non-negative, got {idx}")
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
-        self.count_pseudocount = count_pseudocount
+        self.delta_count_pseudocount = delta_count_pseudocount
 
-    def _delta_loss(
-        self, outputs: object, targets: torch.Tensor
-    ) -> torch.Tensor:
+    def _delta_loss(self, outputs: object, targets: torch.Tensor) -> torch.Tensor:
         if not isinstance(outputs, ProfileCountOutput):
             raise TypeError(
                 f"DifferentialCountLoss requires ProfileCountOutput, "
@@ -649,11 +651,11 @@ class DifferentialCountLoss(nn.Module):
             )
 
         counts = targets.float().sum(dim=-1)  # (B, N)
-        pc = self.count_pseudocount
-        target_delta = torch.log(
-            (counts[:, b] + pc) / (counts[:, a] + pc)
-        )  # (B,)
-        delta_pred = log_counts[:, b] - log_counts[:, a]  # (B,)
+        pc = self.delta_count_pseudocount
+        target_delta = torch.log((counts[:, b] + pc) / (counts[:, a] + pc))  # (B,)
+        delta_pred = _log_count_plus_pseudocount(
+            log_counts[:, b], pc
+        ) - _log_count_plus_pseudocount(log_counts[:, a], pc)  # (B,)
         return F.mse_loss(delta_pred, target_delta)
 
     def loss_components(
@@ -741,9 +743,11 @@ class DalmatianLoss(nn.Module):
         )
         l_recon = self.base_loss(combined, targets)
 
-        # 2. Bias-only reconstruction (non-peak examples)
+        # 2. Bias-only reconstruction (non-peak examples). Peaks report
+        # "ListSampler" after split_folds, so match PEAK_INTERVAL_SOURCES (not a
+        # single label) or split peaks leak into the bias term.
         non_peak = torch.tensor(
-            [s != "IntervalSampler" for s in interval_source],
+            [s not in PEAK_INTERVAL_SOURCES for s in interval_source],
             dtype=torch.bool,
             device=targets.device,
         )

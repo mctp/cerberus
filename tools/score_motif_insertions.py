@@ -112,8 +112,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Score the ChromBPNet accessibility branch only, excluding the bias "
-            "branch. Default: auto; use chrombpnet_wo_bias when the checkpoint "
-            "exposes it."
+            "branch. Default: auto; use the accessibility_model branch when the "
+            "checkpoint exposes it."
         ),
     )
     parser.add_argument(
@@ -218,9 +218,7 @@ def _collect_motifs(args: argparse.Namespace) -> list[tuple[str, str]]:
     motifs = _parse_inline_motifs(args.motif)
     if args.meme_path is not None:
         motifs.extend(
-            _load_meme_consensus_motifs(
-                args.meme_path.resolve(), args.motif_name_regex
-            )
+            _load_meme_consensus_motifs(args.meme_path.resolve(), args.motif_name_regex)
         )
     motifs = _deduplicate_motif_names(motifs)
     if not motifs:
@@ -335,11 +333,15 @@ def _make_background_inputs(
     raise ValueError(f"Unknown background mode: {mode}")
 
 
-def _prediction_log_counts(model: torch.nn.Module, inputs: torch.Tensor) -> torch.Tensor:
+def _prediction_log_counts(
+    model: torch.nn.Module, inputs: torch.Tensor
+) -> torch.Tensor:
     out = model(inputs)
     log_counts = out.log_counts
     if log_counts.ndim != 2:
-        raise ValueError(f"Expected log_counts shape (B, C), got {tuple(log_counts.shape)}")
+        raise ValueError(
+            f"Expected log_counts shape (B, C), got {tuple(log_counts.shape)}"
+        )
     return log_counts.float()
 
 
@@ -411,9 +413,7 @@ def _wilcoxon_pvalue(values: list[float]) -> float | None:
 
 
 def _write_summary(
-    summary_values: dict[
-        tuple[str, str, int, str, int], dict[str, list[float]]
-    ],
+    summary_values: dict[tuple[str, str, int, str, int], dict[str, list[float]]],
     summary_path: Path,
     background_mode: str,
 ) -> int:
@@ -451,7 +451,9 @@ def _write_summary(
             for metric in _SUMMARY_METRICS:
                 metric_stats = _summarize_values(summary_values[key][metric])
                 row.extend(_float_or_blank(metric_stats[stat]) for stat in stat_names)
-                row.append(_float_or_blank(_wilcoxon_pvalue(summary_values[key][metric])))
+                row.append(
+                    _float_or_blank(_wilcoxon_pvalue(summary_values[key][metric]))
+                )
             writer.writerow(row)
             rows_written += 1
     return rows_written
@@ -472,10 +474,12 @@ def main() -> None:
     device = resolve_device(args.device)
     logger.info("Using device: %s", device)
 
-    ensemble = ModelEnsemble(args.checkpoint_dir.resolve(), device=device, fold=args.fold)
+    ensemble = ModelEnsemble(
+        args.checkpoint_dir.resolve(), device=device, fold=args.fold
+    )
     cfg = ensemble.cerberus_config
     model = ensemble[str(args.fold)]
-    accessibility_model = getattr(model, "chrombpnet_wo_bias", None)
+    accessibility_model = getattr(model, "accessibility_model", None)
     use_chrombpnet_accessibility_only = args.chrombpnet_accessibility_only
     if use_chrombpnet_accessibility_only is None:
         use_chrombpnet_accessibility_only = accessibility_model is not None
@@ -484,7 +488,7 @@ def main() -> None:
         if accessibility_model is None:
             raise ValueError(
                 "--chrombpnet-accessibility-only requested, but the model has no "
-                "chrombpnet_wo_bias branch."
+                "accessibility_model branch."
             )
         model = accessibility_model
         logger.info("Scoring accessibility-only branch: %s", model.__class__.__name__)
@@ -558,9 +562,7 @@ def main() -> None:
                 ).to(device)
                 no_motif_log_counts = _prediction_log_counts(model, background_inputs)
                 no_motif_exp = torch.exp(no_motif_log_counts)
-                no_motif_minus_pc = (
-                    no_motif_exp - count_pseudocount
-                ).clamp_min(0.0)
+                no_motif_minus_pc = (no_motif_exp - count_pseudocount).clamp_min(0.0)
 
                 for motif_name, motif_seq in motifs:
                     for offset in args.offset:
@@ -571,9 +573,7 @@ def main() -> None:
                         delta_log = motif_log_counts - no_motif_log_counts
                         motif_exp = torch.exp(motif_log_counts)
                         delta_exp = motif_exp - no_motif_exp
-                        motif_minus_pc = (
-                            motif_exp - count_pseudocount
-                        ).clamp_min(0.0)
+                        motif_minus_pc = (motif_exp - count_pseudocount).clamp_min(0.0)
                         delta_minus_pc = motif_minus_pc - no_motif_minus_pc
 
                         for row_idx, interval_repr in enumerate(intervals):
@@ -597,12 +597,14 @@ def main() -> None:
                                 summary_values[summary_key]["delta_log_count"].append(
                                     float(delta_log[row_idx, head_idx].item())
                                 )
-                                summary_values[summary_key]["delta_exp_log_count"].append(
-                                    float(delta_exp[row_idx, head_idx].item())
-                                )
+                                summary_values[summary_key][
+                                    "delta_exp_log_count"
+                                ].append(float(delta_exp[row_idx, head_idx].item()))
                                 summary_values[summary_key][
                                     "delta_count_minus_pseudocount"
-                                ].append(float(delta_minus_pc[row_idx, head_idx].item()))
+                                ].append(
+                                    float(delta_minus_pc[row_idx, head_idx].item())
+                                )
                                 writer.writerow(
                                     [
                                         global_idx,

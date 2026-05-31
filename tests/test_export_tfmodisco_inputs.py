@@ -18,6 +18,7 @@ if str(_TOOLS_DIR) not in sys.path:
 from tools.export_tfmodisco_inputs import (  # noqa: E402
     _DELTA_TARGET_MODES,
     _build_arg_parser,
+    _resolve_chrombpnet_accessibility_model,
     _resolve_target_channels,
 )
 
@@ -58,6 +59,20 @@ def test_resolve_target_channels_for_delta_profile_window_sum():
     assert _resolve_target_channels(args) == (1, 2)
 
 
+def test_resolve_chrombpnet_accessibility_model_returns_accessibility_branch():
+    class Model:
+        accessibility_model = object()
+
+    assert _resolve_chrombpnet_accessibility_model(Model()) is Model.accessibility_model
+
+
+def test_resolve_chrombpnet_accessibility_model_none_without_branch():
+    class Model:
+        pass
+
+    assert _resolve_chrombpnet_accessibility_model(Model()) is None
+
+
 # ---------------------------------------------------------------------------
 # CLI parser surface -- regression guards for the new flags
 # ---------------------------------------------------------------------------
@@ -74,7 +89,7 @@ def test_parser_exposes_intervals_as_simple_sampler():
 
 def test_parser_exposes_chrombpnet_accessibility_only_default_none():
     """Default is ``None`` so the export auto-detects whether the loaded
-    checkpoint has a chrombpnet_wo_bias branch."""
+    checkpoint has a bias-stripped accessibility branch."""
     parser = _build_arg_parser()
     args = parser.parse_args(_REQUIRED)
     assert args.chrombpnet_accessibility_only is None
@@ -93,9 +108,15 @@ def test_parser_exposes_target_cond_a_and_b():
     args = parser.parse_args(_REQUIRED)
     assert args.target_cond_a == 0
     assert args.target_cond_b == 1
-    args = parser.parse_args(_REQUIRED + [
-        "--target-cond-a", "7", "--target-cond-b", "9",
-    ])
+    args = parser.parse_args(
+        _REQUIRED
+        + [
+            "--target-cond-a",
+            "7",
+            "--target-cond-b",
+            "9",
+        ]
+    )
     assert args.target_cond_a == 7
     assert args.target_cond_b == 9
 

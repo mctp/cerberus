@@ -1,11 +1,12 @@
 import logging
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
 from torchmetrics import MetricCollection
 
-from cerberus.loss import MSEMultinomialLoss
+from cerberus.loss import DifferentialCountLoss, MSEMultinomialLoss
 
 logger = logging.getLogger(__name__)
 from cerberus.layers import DilatedResidualBlock
@@ -558,6 +559,65 @@ class MultitaskBPNetLoss(MSEMultinomialLoss):
         )
 
 
+class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
+    """Multi-task absolute BPNet loss with an added differential count target.
+
+    This keeps the standard per-channel absolute profile/count objective and
+    adds a delta-log-count MSE term between two task channels.  By default the
+    delta term receives the same weight as the absolute count term (``alpha``),
+    so the two count-space objectives are calibrated as peers while the profile
+    multinomial term keeps its usual ``beta`` weight.
+    """
+
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        beta: float = 1.0,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        delta_weight: float | None = None,
+        delta_count_pseudocount: float | None = None,
+        count_pseudocount: float = 1.0,
+        **kwargs,
+    ):
+        super().__init__(
+            alpha=alpha,
+            beta=beta,
+            count_pseudocount=count_pseudocount,
+            **kwargs,
+        )
+        self.delta_weight = alpha if delta_weight is None else delta_weight
+        self.cond_a_idx = cond_a_idx
+        self.cond_b_idx = cond_b_idx
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
+        self.delta_count_pseudocount = delta_count_pseudocount
+        self._differential_loss = DifferentialCountLoss(
+            cond_a_idx=cond_a_idx,
+            cond_b_idx=cond_b_idx,
+            delta_count_pseudocount=self.delta_count_pseudocount,
+        )
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
+        components = super().loss_components(outputs, targets, **kwargs)
+        # Use the composed loss's public interface; its forward() is exactly the
+        # delta-loss scalar (profile loss disabled), so no private access needed.
+        components["delta_loss"] = self._differential_loss(outputs, targets)
+        return components
+
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
+        components = self.loss_components(outputs, targets, **kwargs)
+        return (
+            self.profile_weight * components["profile_loss"]
+            + self.count_weight * components["count_loss"]
+            + self.delta_weight * components["delta_loss"]
+        )
+
+
 class BPNetMetricCollection(MetricCollection):
     """
     MetricCollection for BPNet models.
@@ -597,8 +657,8 @@ class DifferentialBPNetMetricCollection(MetricCollection):
     MetricCollection for log-fold-change supervision (``DifferentialCountLoss``).
     Exposes ``mse_delta_log_counts``, ``rmse_delta_log_counts``, and
     ``pearson_delta_log_counts``; all three compare
-    ``log_counts[:, b] - log_counts[:, a]`` against the inline-derived target
-    ``log((sum_b + pc) / (sum_a + pc))``.
+    ``log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))``
+    against the inline-derived target ``log((sum_b + pc) / (sum_a + pc))``.
     """
 
     def __init__(
@@ -606,35 +666,62 @@ class DifferentialBPNetMetricCollection(MetricCollection):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        count_pseudocount: float = 1.0,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
     ):
-        # log1p_targets / count_pseudocount / log_counts_include_pseudocount
-        # are the standard triple instantiate_metrics_and_loss forwards to
-        # every metric collection; mirroring the BPNetMetricCollection
-        # signature keeps the dispatch interchangeable.
         super().__init__(
             {
                 "mse_delta_log_counts": DifferentialLogCountsMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                 ),
                 "rmse_delta_log_counts": DifferentialLogCountsRootMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                 ),
                 "pearson_delta_log_counts": DifferentialLogCountsPearsonCorrCoef(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
+                    delta_count_pseudocount=delta_count_pseudocount,
+                ),
+            }
+        )
+
+
+class JointBPNetMetricCollection(MetricCollection):
+    """Absolute profile/count metrics plus differential log-count metrics."""
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float | None = None,
+        log_counts_include_pseudocount: bool = False,
+    ):
+        # The absolute sub-collection uses count_pseudocount; the differential
+        # sub-collection uses delta_count_pseudocount. They are distinct in the
+        # joint objective (e.g. a read-coverage count pc vs. a noise-floor delta
+        # pc); delta defaults to the count pc only when left unset.
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
+        super().__init__(
+            [
+                BPNetMetricCollection(
+                    log1p_targets=log1p_targets,
                     count_pseudocount=count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
-            }
+                DifferentialBPNetMetricCollection(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    delta_count_pseudocount=delta_count_pseudocount,
+                ),
+            ]
         )

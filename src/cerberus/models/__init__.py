@@ -6,7 +6,9 @@ from .bpnet import (
     BPNetLoss,
     BPNetMetricCollection,
     DifferentialBPNetMetricCollection,
+    JointBPNetMetricCollection,
     MultitaskBPNet,
+    MultitaskBPNetJointDifferentialLoss,
     MultitaskBPNetLoss,
 )
 from .chrombpnet import ChromBPNet, MultitaskChromBPNet
@@ -22,7 +24,9 @@ __all__ = [
     "BPNetLoss",
     "BPNetMetricCollection",
     "DifferentialBPNetMetricCollection",
+    "JointBPNetMetricCollection",
     "MultitaskBPNet",
+    "MultitaskBPNetJointDifferentialLoss",
     "MultitaskBPNetLoss",
     "ChromBPNet",
     "MultitaskChromBPNet",

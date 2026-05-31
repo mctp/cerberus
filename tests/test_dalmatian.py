@@ -292,6 +292,32 @@ def test_dalmatian_loss_all_peaks():
     assert torch.allclose(loss_all_peak, loss_recon)
 
 
+def test_dalmatian_loss_split_peaks_labeled_listsampler():
+    """Regression: split peaks report "ListSampler", not "IntervalSampler".
+
+    ``CerberusDataset.split_folds`` materializes peak ``IntervalSampler``
+    subsets as plain ``ListSampler`` during training, so the loss must treat
+    "ListSampler" as a peak too. A batch of all-"ListSampler" examples must
+    therefore behave like all-peaks (bias term zero), not all-background.
+    """
+    loss_fn = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        bias_weight=1.0,
+    )
+    output = _make_factorized_output(batch_size=4)
+    target = torch.rand(4, 1, 100).abs() + 0.1
+    interval_source = ["ListSampler"] * 4
+
+    loss_split_peaks = loss_fn(output, target, interval_source=interval_source)
+
+    recon_only = DalmatianLoss(
+        base_loss_cls="cerberus.loss.MSEMultinomialLoss",
+        bias_weight=0.0,
+    )
+    loss_recon = recon_only(output, target, interval_source=interval_source)
+    assert torch.allclose(loss_split_peaks, loss_recon)
+
+
 def test_dalmatian_loss_all_background():
     """When all examples are background, both terms contribute."""
     loss_fn = DalmatianLoss(

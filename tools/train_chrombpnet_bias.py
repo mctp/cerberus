@@ -18,6 +18,10 @@ from pathlib import Path
 from pprint import pformat
 
 import torch
+from _pseudocount_cli import (
+    add_pseudocount_cli_args,
+    resolve_count_pseudocount_from_args,
+)
 
 import cerberus
 from cerberus.config import (
@@ -31,11 +35,6 @@ from cerberus.download import download_human_reference
 from cerberus.genome import create_genome_config
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
-
-from _pseudocount_cli import (
-    add_pseudocount_cli_args,
-    resolve_count_pseudocount_from_args,
-)
 
 
 def _parse_alpha(value: str) -> float | str:
@@ -153,7 +152,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--precision",
         type=str,
-        default="bf16",
+        default="full",
         choices=["bf16", "mps", "full"],
     )
 
@@ -285,7 +284,9 @@ def main() -> None:
         model_args=model_args,
         pretrained=pretrained,
         count_pseudocount=resolve_count_pseudocount_from_args(
-            args, bin_size=output_bin_size, target_scale=target_scale,
+            args,
+            bin_size=output_bin_size,
+            target_scale=target_scale,
         ),
     )
 

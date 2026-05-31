@@ -7,6 +7,135 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a7] - 2026-05-31
+
+### Added
+- **`MultitaskBPNetJointDifferentialLoss`** and **`JointBPNetMetricCollection`**
+  (`cerberus.models.bpnet`, exported from `cerberus.models`): a from-scratch
+  multi-task objective that keeps the standard per-channel absolute
+  profile/count loss and adds a delta-log-count term between two task channels
+  (default weight equal to the absolute count term). `JointBPNetMetricCollection`
+  reports both the absolute BPNet metrics and the differential log-count metrics.
+- **`tools/train_chrombpnet_multitask_differential_parallel.py`**: from-scratch
+  trainer pairing the absolute multi-task ChromBPNet objective with the parallel
+  differential loss above (counterpart to the phase-2-only
+  `train_chrombpnet_multitask_differential.py`).
+- **`tools/train_chrombpnet_multitask_differential.py --accessibility-count-head-only`**:
+  freezes the pretrained accessibility branch except `accessibility_model.count_dense`
+  during phase-2 fine-tuning.
+- **`tools/train_chrombpnet.py --reload-dataloaders-every-n-epochs`** (default
+  0): exposes Lightning's dataloader-reload cadence, which is what triggers the
+  sampler's per-epoch `resample()`. Default 0 preserves prior behavior (negative
+  set drawn once and frozen for the whole run). Set to 1 to draw a fresh
+  background subset every epoch — e.g. a new complexity-matched 1×-peaks subset
+  from the candidate pool (the intended dynamic-sampler regularization), or a
+  fresh subsample of a fixed negative set.
+- **`FixedBackgroundSampler`** and **`PeakFixedBackgroundSampler`**
+  (`cerberus.samplers`), plus the `"peak_fixed_background"`
+  `sampler_type` in `create_sampler`. These mix peaks with a **fixed,
+  externally-supplied** negative set (e.g. a GC-matched
+  `negatives.bed`) loaded once from disk and held static every epoch —
+  unlike `PeakSampler`, which regenerates complexity-matched negatives.
+  This reproduces reference chrombpnet-pytorch's static-negatives data
+  setup so the two implementations can be compared on an identical peak
+  **and** negative set. `FixedBackgroundSampler.split_folds` is
+  overridden so fold splits keep a distinct `"FixedBackgroundSampler"`
+  interval source (the base `ListSampler` would collapse it to
+  `"ListSampler"`, breaking peak/background separation in evaluation).
+- **`tools/train_chrombpnet.py --negatives <bed>`**: when set, trains on
+  the given fixed negative set via `peak_fixed_background` (and estimates
+  the optional bias log-count offset on the same negatives). Honored by
+  `tools/export_predictions.py --include-background` for evaluation on the
+  identical negatives.
+
+### Changed
+- **ChromBPNet trainers default to `--precision full`.** `train_chrombpnet.py`,
+  `train_chrombpnet_bias.py`, `train_chrombpnet_multitask.py`,
+  `train_chrombpnet_multitask_differential.py`, and
+  `train_chrombpnet_multitask_differential_parallel.py` now all default to
+  `full` precision (previously some defaulted to `bf16`), reflecting the
+  bias-subtraction / count-head numerical sensitivity of the ChromBPNet family.
+  Non-ChromBPNet trainers (BPNet, ASAP, Gopher, Pomeranian, Dalmatian, BiasNet)
+  keep their `bf16` default. Override per run with `--precision`.
+- **Differential objective now shrinks the *predicted* log-fold-change too.**
+  `DifferentialCountLoss` and the differential log-count metrics
+  (`mse/rmse/pearson_delta_log_counts`) changed the predicted delta from the
+  bare head difference `log_counts[:, b] - log_counts[:, a]` to the
+  pseudocount-shrunk form `log((exp(log_counts[:, b]) + pc) /
+  (exp(log_counts[:, a]) + pc))`, matching the shrinkage already applied to the
+  target `log((sum_b + pc) / (sum_a + pc))`. With `pc` acting as the
+  empirical-Bayes shrinkage prior, shrinking only the target previously biased
+  the objective at the noise floor (the model was optimized against a target it
+  could not structurally match); shrinking both sides makes loss and metric
+  symmetric. **This changes the differential loss surface** — models trained
+  before and after this release are not directly comparable. `pc == 0` recovers
+  the prior bare-difference behavior. (Differential *attribution* via
+  `AttributionTarget(reduction="delta_log_counts")` is unaffected and remains
+  the bare head difference.)
+- **Capability-based pseudocount injection in `instantiate_metrics_and_loss`.**
+  Each pseudocount (`count_pseudocount`, `delta_count_pseudocount`,
+  `log_counts_include_pseudocount`) is now passed to a loss/metric constructor
+  only when that constructor (or an ancestor, via `**kwargs` forwarding)
+  declares the parameter, and only as a default — an explicit value in
+  `loss_args`/`metrics_args` still wins. Replaces the previous universal
+  injection plus a `delta_count_pseudocount` reflection special-case. No
+  behavior change for existing configs.
+
+### Removed
+- **Legacy `chrombpnet_wo_bias` attribute fallback.** The ChromBPNet
+  accessibility-branch resolvers in `export_tfmodisco_inputs.py` and
+  `score_motif_insertions.py` no longer check a `chrombpnet_wo_bias` model
+  attribute (no Cerberus model ever exposed one); they resolve
+  `accessibility_model` directly. The standalone `chrombpnet_wo_bias.pt`
+  *checkpoint filename* is unchanged.
+- **Backwards-compat strip of the legacy `pretrained[].freeze` hparams key.**
+  `model_ensemble.parse_hparams_config` no longer silently removes a `freeze`
+  key from `pretrained` entries (`PretrainedConfig.freeze` was removed in the
+  2026-04-18 FreezeSpec migration; freezing lives on `ModelConfig.freeze`).
+  `hparams.yaml` written between 2026-03-18 and 2026-04-18 with
+  `pretrained[].freeze` now fails `extra="forbid"` validation — re-train or
+  delete the obsolete key from the YAML.
+- **`count_pseudocount` alias on the differential API.**
+  `DifferentialCountLoss`, `DifferentialLogCountsMeanSquaredError`,
+  `DifferentialLogCountsPearsonCorrCoef`, and `DifferentialBPNetMetricCollection`
+  no longer accept `count_pseudocount` (a backwards-compatible alias for
+  `delta_count_pseudocount`) or the unused `log_counts_include_pseudocount`
+  parameter. Pass `delta_count_pseudocount` directly. The joint
+  `MultitaskBPNetJointDifferentialLoss` / `JointBPNetMetricCollection` retain
+  both `count_pseudocount` (absolute count term) and `delta_count_pseudocount`
+  (differential term), which are genuinely distinct quantities there.
+
+### Fixed
+- **`score_motif_insertions.py --chrombpnet-accessibility-only` now works on
+  current ChromBPNet checkpoints.** It resolved the accessibility branch via the
+  legacy `getattr(model, "chrombpnet_wo_bias")` attribute, which current
+  ChromBPNet/MultitaskChromBPNet models never expose (they use
+  `accessibility_model`), so the flag raised "no chrombpnet_wo_bias branch". Now
+  resolves `accessibility_model`, matching `export_tfmodisco_inputs.py`.
+- **Peak/background interval-source predicate unified via `PEAK_INTERVAL_SOURCES`.**
+  Peak intervals report source `"IntervalSampler"` before a fold split and
+  `"ListSampler"` after one (the base `ListSampler.split_folds` materializes
+  peak subsets as plain `ListSampler`). Callers that classified peaks by a
+  single label were inconsistent: `Differential... ` aside, `DalmatianLoss`
+  checked `!= "IntervalSampler"` for its bias-only term — so on the **split
+  training sampler** peaks were misclassified as background and leaked into the
+  bias reconstruction (an active training-objective bug); `predict_misc.get_eval_intervals`
+  had the same `== "IntervalSampler"` mistake. Introduced
+  `cerberus.samplers.PEAK_INTERVAL_SOURCES = {"IntervalSampler", "ListSampler"}`
+  as the single source of truth and routed `DalmatianLoss`, `predict_misc`, and
+  `tools/export_predictions.py` through it. **Fixes Dalmatian training** (peaks
+  are now correctly excluded from the bias term) and adds regression tests.
+- **Type annotations on the joint differential BPNet API.**
+  `MultitaskBPNetJointDifferentialLoss.loss_components`/`forward` now match the
+  parent `MSEMultinomialLoss` signatures (`dict[str, torch.Tensor]` /
+  `-> torch.Tensor`) instead of `dict[str, object]`, and `bpnet.py` now imports
+  `torch`. `JointBPNetMetricCollection` is built by passing its two
+  sub-collections to `MetricCollection` as a list (torchmetrics flattens nested
+  collections) rather than constructing them only to `dict()` them apart and
+  rebuild — clearing the pyright errors and removing the construct-to-destruct
+  pattern. `_resolve_chrombpnet_accessibility_model` is annotated `model: object`
+  (it only calls `getattr`). No behavior change.
+
 ## [1.0.0a6] - 2026-05-20
 
 ### Added
