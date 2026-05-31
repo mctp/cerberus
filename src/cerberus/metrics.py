@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torchmetrics import MeanSquaredError, Metric, MetricCollection
 
 from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
+from cerberus.pseudocount import _log_count_plus_pseudocount
 
 
 def _per_example_pearson(
@@ -48,18 +49,6 @@ def _validate_differential_channel_indices(
         if idx < 0:
             raise ValueError(f"{name} must be non-negative, got {idx}")
     return cond_a_idx, cond_b_idx
-
-
-def _log_count_plus_pseudocount(
-    log_count_values: torch.Tensor,
-    delta_count_pseudocount: float,
-) -> torch.Tensor:
-    """Stable ``log(exp(log_count_values) + delta_count_pseudocount)``."""
-    log_count_values = log_count_values.float()
-    if delta_count_pseudocount == 0:
-        return log_count_values
-    log_pc = log_count_values.new_tensor(float(delta_count_pseudocount)).log()
-    return torch.logaddexp(log_count_values, log_pc)
 
 
 def _extract_differential_log_count_pairs(

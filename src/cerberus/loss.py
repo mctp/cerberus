@@ -9,19 +9,8 @@ from cerberus.output import (
     ProfileCountOutput,
     ProfileLogRates,
 )
+from cerberus.pseudocount import _log_count_plus_pseudocount
 from cerberus.utils import import_class
-
-
-def _log_count_plus_pseudocount(
-    log_count_values: torch.Tensor,
-    delta_count_pseudocount: float,
-) -> torch.Tensor:
-    """Stable ``log(exp(log_count_values) + delta_count_pseudocount)``."""
-    log_count_values = log_count_values.float()
-    if delta_count_pseudocount == 0:
-        return log_count_values
-    log_pc = log_count_values.new_tensor(float(delta_count_pseudocount)).log()
-    return torch.logaddexp(log_count_values, log_pc)
 
 
 class CerberusLoss(Protocol):
