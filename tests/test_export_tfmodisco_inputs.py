@@ -59,19 +59,18 @@ def test_resolve_target_channels_for_delta_profile_window_sum():
     assert _resolve_target_channels(args) == (1, 2)
 
 
-def test_resolve_chrombpnet_accessibility_model_accepts_current_branch_name():
+def test_resolve_chrombpnet_accessibility_model_returns_accessibility_branch():
     class Model:
         accessibility_model = object()
 
     assert _resolve_chrombpnet_accessibility_model(Model()) is Model.accessibility_model
 
 
-def test_resolve_chrombpnet_accessibility_model_prefers_legacy_branch_name():
+def test_resolve_chrombpnet_accessibility_model_none_without_branch():
     class Model:
-        chrombpnet_wo_bias = object()
-        accessibility_model = object()
+        pass
 
-    assert _resolve_chrombpnet_accessibility_model(Model()) is Model.chrombpnet_wo_bias
+    assert _resolve_chrombpnet_accessibility_model(Model()) is None
 
 
 # ---------------------------------------------------------------------------
@@ -109,9 +108,15 @@ def test_parser_exposes_target_cond_a_and_b():
     args = parser.parse_args(_REQUIRED)
     assert args.target_cond_a == 0
     assert args.target_cond_b == 1
-    args = parser.parse_args(_REQUIRED + [
-        "--target-cond-a", "7", "--target-cond-b", "9",
-    ])
+    args = parser.parse_args(
+        _REQUIRED
+        + [
+            "--target-cond-a",
+            "7",
+            "--target-cond-b",
+            "9",
+        ]
+    )
     assert args.target_cond_a == 7
     assert args.target_cond_b == 9
 

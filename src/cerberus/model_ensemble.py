@@ -47,14 +47,6 @@ def parse_hparams_config(path: str | Path) -> CerberusConfig:
         raise FileNotFoundError(f"hparams file not found at: {p}")
     with open(p) as f:
         data = yaml.safe_load(f)
-    model_config = data.get("model_config") if isinstance(data, dict) else None
-    pretrained = (
-        model_config.get("pretrained") if isinstance(model_config, dict) else None
-    )
-    if isinstance(pretrained, list):
-        for entry in pretrained:
-            if isinstance(entry, dict):
-                entry.pop("freeze", None)
     return CerberusConfig.model_validate(data)
 
 
@@ -126,9 +118,7 @@ def load_backbone_weights_from_checkpoint(
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     raw_state = checkpoint.get("state_dict")
     if not isinstance(raw_state, dict):
-        raise ValueError(
-            f"Checkpoint missing 'state_dict' mapping: {checkpoint_path}"
-        )
+        raise ValueError(f"Checkpoint missing 'state_dict' mapping: {checkpoint_path}")
 
     state_dict = _extract_backbone_state_dict_from_lightning(raw_state)
     if not state_dict:
@@ -355,9 +345,7 @@ class ModelEnsemble(nn.ModuleDict):
         for fold_idx, fold_map in enumerate(self.folds):
             if interval.chrom in fold_map:
                 if any(
-                    fold_map[interval.chrom].find(
-                        (interval.start, interval.end - 1)
-                    )
+                    fold_map[interval.chrom].find((interval.start, interval.end - 1))
                 ):
                     partitions.add(fold_idx)
         return partitions
@@ -458,7 +446,9 @@ class ModelEnsemble(nn.ModuleDict):
                     continue
 
                 sample_indices = model_to_samples[m_idx]
-                idx_tensor = torch.tensor(sample_indices, device=x.device, dtype=torch.long)
+                idx_tensor = torch.tensor(
+                    sample_indices, device=x.device, dtype=torch.long
+                )
 
                 sub_x = x[idx_tensor]
                 sub_out = self[key](sub_x)
@@ -772,12 +762,16 @@ class _ModelManager:
             fold_dir = self.checkpoint_path / f"fold_{fold_idx}"
             key = f"fold_{fold_idx}"
             if not fold_dir.is_dir():
-                logger.warning("Fold directory missing for fold %s: %s", fold_idx, fold_dir)
+                logger.warning(
+                    "Fold directory missing for fold %s: %s", fold_idx, fold_dir
+                )
                 continue
             try:
                 models_dict[str(fold_idx)] = self._load_model_from_fold(key, fold_dir)
             except FileNotFoundError:
-                logger.warning("No checkpoint found for fold %s in %s", fold_idx, fold_dir)
+                logger.warning(
+                    "No checkpoint found for fold %s in %s", fold_idx, fold_dir
+                )
 
         return models_dict, self.folds
 

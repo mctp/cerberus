@@ -651,9 +651,7 @@ class TestSerializationRoundTrip:
         assert restored == mc
 
     def test_pretrained_config_round_trip(self):
-        pc = PretrainedConfig(
-            weights_path="/w.pt", source="encoder", target="encoder"
-        )
+        pc = PretrainedConfig(weights_path="/w.pt", source="encoder", target="encoder")
         dumped = pc.model_dump()
         restored = PretrainedConfig.model_validate(dumped)
         assert restored == pc
@@ -829,8 +827,15 @@ class TestBackwardCompatibility:
         config = parse_hparams_config(hparams_path)
         assert isinstance(config, CerberusConfig)
 
-    def test_legacy_pretrained_freeze_key_ignored(self, tmp_path):
-        """Old YAML used PretrainedConfig.freeze before freeze specs existed."""
+    def test_legacy_pretrained_freeze_key_rejected(self, tmp_path):
+        """The legacy PretrainedConfig.freeze key is no longer accepted.
+
+        ``PretrainedConfig.freeze`` was removed in the FreezeSpec migration
+        (2026-04-18); freezing now lives on ``ModelConfig.freeze``. The
+        backwards-compat shim that silently stripped a legacy ``freeze`` key
+        from old hparams.yaml has been removed, so such an entry now fails
+        ``extra="forbid"`` validation. Re-train or hand-edit obsolete hparams.
+        """
         d = _full_config_dict(tmp_path)
         d["model_config"]["pretrained"] = [
             {
@@ -842,8 +847,8 @@ class TestBackwardCompatibility:
         ]
 
         hparams_path = self._write_hparams(tmp_path, d)
-        config = parse_hparams_config(hparams_path)
-        assert config.model_config_.pretrained[0].target == "bias_model"
+        with pytest.raises(ValidationError, match="freeze"):
+            parse_hparams_config(hparams_path)
 
     def test_missing_required_section_raises(self, tmp_path):
         """Missing required top-level key raises ValidationError."""

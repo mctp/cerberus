@@ -80,6 +80,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behavior change for existing configs.
 
 ### Removed
+- **Legacy `chrombpnet_wo_bias` attribute fallback.** The ChromBPNet
+  accessibility-branch resolvers in `export_tfmodisco_inputs.py` and
+  `score_motif_insertions.py` no longer check a `chrombpnet_wo_bias` model
+  attribute (no Cerberus model ever exposed one); they resolve
+  `accessibility_model` directly. The standalone `chrombpnet_wo_bias.pt`
+  *checkpoint filename* is unchanged.
+- **Backwards-compat strip of the legacy `pretrained[].freeze` hparams key.**
+  `model_ensemble.parse_hparams_config` no longer silently removes a `freeze`
+  key from `pretrained` entries (`PretrainedConfig.freeze` was removed in the
+  2026-04-18 FreezeSpec migration; freezing lives on `ModelConfig.freeze`).
+  `hparams.yaml` written between 2026-03-18 and 2026-04-18 with
+  `pretrained[].freeze` now fails `extra="forbid"` validation — re-train or
+  delete the obsolete key from the YAML.
 - **`count_pseudocount` alias on the differential API.**
   `DifferentialCountLoss`, `DifferentialLogCountsMeanSquaredError`,
   `DifferentialLogCountsPearsonCorrCoef`, and `DifferentialBPNetMetricCollection`
@@ -91,6 +104,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (differential term), which are genuinely distinct quantities there.
 
 ### Fixed
+- **`score_motif_insertions.py --chrombpnet-accessibility-only` now works on
+  current ChromBPNet checkpoints.** It resolved the accessibility branch via the
+  legacy `getattr(model, "chrombpnet_wo_bias")` attribute, which current
+  ChromBPNet/MultitaskChromBPNet models never expose (they use
+  `accessibility_model`), so the flag raised "no chrombpnet_wo_bias branch". Now
+  resolves `accessibility_model`, matching `export_tfmodisco_inputs.py`.
 - **Peak/background interval-source predicate unified via `PEAK_INTERVAL_SOURCES`.**
   Peak intervals report source `"IntervalSampler"` before a fold split and
   `"ListSampler"` after one (the base `ListSampler.split_folds` materializes
