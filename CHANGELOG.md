@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`MultitaskBPNetJointDifferentialLoss`** and **`JointBPNetMetricCollection`**
+  (`cerberus.models.bpnet`, exported from `cerberus.models`): a from-scratch
+  multi-task objective that keeps the standard per-channel absolute
+  profile/count loss and adds a delta-log-count term between two task channels
+  (default weight equal to the absolute count term). `JointBPNetMetricCollection`
+  reports both the absolute BPNet metrics and the differential log-count metrics.
+- **`tools/train_chrombpnet_multitask_differential_parallel.py`**: from-scratch
+  trainer pairing the absolute multi-task ChromBPNet objective with the parallel
+  differential loss above (counterpart to the phase-2-only
+  `train_chrombpnet_multitask_differential.py`).
+- **`tools/train_chrombpnet_multitask_differential.py --accessibility-count-head-only`**:
+  freezes the pretrained accessibility branch except `accessibility_model.count_dense`
+  during phase-2 fine-tuning.
 - **`tools/train_chrombpnet.py --reload-dataloaders-every-n-epochs`** (default
   0): exposes Lightning's dataloader-reload cadence, which is what triggers the
   sampler's per-epoch `resample()`. Default 0 preserves prior behavior (negative

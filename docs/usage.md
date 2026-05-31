@@ -368,13 +368,15 @@ For quick training on custom data, use the model-specific scripts in the `tools/
         --output-dir models/chrombpnet_multitask
     ```
 
-*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, supervises `log_counts[:, cond_b] - log_counts[:, cond_a]` with `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
+*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, and supervises the `delta_count_pseudocount`-shrunk predicted log fold-change between `cond_b` and `cond_a` against the inline-derived per-peak target log fold-change, using `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
     ```bash
     python tools/train_chrombpnet_multitask_differential.py \
         --phase1-checkpoint-dir models/chrombpnet_multitask/single-fold \
         --cond-a-idx 0 --cond-b-idx 1 \
         --output-dir models/chrombpnet_multitask_diff
     ```
+
+*   `tools/train_chrombpnet_multitask_differential_parallel.py`: From-scratch multi-task ChromBPNet training that keeps the absolute per-channel profile/count objective and adds a parallel differential log-count term (via `MultitaskBPNetJointDifferentialLoss` / `JointBPNetMetricCollection`). The counterpart to the phase-2-only `train_chrombpnet_multitask_differential.py`.
 
 *   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
     ```bash

@@ -276,6 +276,15 @@ All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from t
 
 For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
 
+### Joint absolute + differential objective
+
+`DifferentialCountLoss` above retargets a pretrained model's count heads to the log-fold-change *only* (profile loss disabled). When you instead want to train from scratch on the standard per-channel absolute profile/count objective **and** add the differential term, use:
+
+- **`MultitaskBPNetJointDifferentialLoss`** (`cerberus.models.MultitaskBPNetJointDifferentialLoss`) — `MultitaskBPNetLoss` plus a delta-log-count MSE term between `cond_a_idx` and `cond_b_idx`. The delta term defaults to the same weight as the absolute count term (`alpha`); override via `delta_weight`. It uses two distinct pseudocounts: `count_pseudocount` for the absolute count loss and `delta_count_pseudocount` for the differential term (defaulting to `count_pseudocount` when unset).
+- **`JointBPNetMetricCollection`** (`cerberus.models.JointBPNetMetricCollection`) — reports the absolute `BPNetMetricCollection` metrics together with the three differential metrics from `DifferentialBPNetMetricCollection`.
+
+The end-to-end trainer is `tools/train_chrombpnet_multitask_differential_parallel.py` (the from-scratch counterpart to the phase-2-only `train_chrombpnet_multitask_differential.py`).
+
 ### References
 - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.
 - Naqvi et al. (2025). *Transfer learning reveals sequence determinants of the quantitative response to transcription factor dosage.* Cell Genomics. PMC11160683.

@@ -450,13 +450,15 @@ For quick training on custom data, use the model-specific scripts in the `tools/
         --output-dir models/chrombpnet_multitask
     ```
 
-*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, supervises `log_counts[:, cond_b] - log_counts[:, cond_a]` with `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
+*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, and supervises the `delta_count_pseudocount`-shrunk predicted log fold-change between `cond_b` and `cond_a` against the inline-derived per-peak target log fold-change, using `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
     ```bash
     python tools/train_chrombpnet_multitask_differential.py \
         --phase1-checkpoint-dir models/chrombpnet_multitask/single-fold \
         --cond-a-idx 0 --cond-b-idx 1 \
         --output-dir models/chrombpnet_multitask_diff
     ```
+
+*   `tools/train_chrombpnet_multitask_differential_parallel.py`: From-scratch multi-task ChromBPNet training that keeps the absolute per-channel profile/count objective and adds a parallel differential log-count term (via `MultitaskBPNetJointDifferentialLoss` / `JointBPNetMetricCollection`). The counterpart to the phase-2-only `train_chrombpnet_multitask_differential.py`.
 
 *   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
     ```bash
@@ -2763,6 +2765,15 @@ model_config = ModelConfig(
 All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `pred_delta = log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))`. Its constructor kwargs are exactly the ones it uses — `cond_a_idx`, `cond_b_idx`, `delta_count_pseudocount`, `log1p_targets`. `instantiate_metrics_and_loss` injects `delta_count_pseudocount` (defaulting to the model's `count_pseudocount`) because the collection declares it; it passes no `count_pseudocount`/`log_counts_include_pseudocount` here, since the differential metrics have no absolute-count term.
 
 For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+
+### Joint absolute + differential objective
+
+`DifferentialCountLoss` above retargets a pretrained model's count heads to the log-fold-change *only* (profile loss disabled). When you instead want to train from scratch on the standard per-channel absolute profile/count objective **and** add the differential term, use:
+
+- **`MultitaskBPNetJointDifferentialLoss`** (`cerberus.models.MultitaskBPNetJointDifferentialLoss`) — `MultitaskBPNetLoss` plus a delta-log-count MSE term between `cond_a_idx` and `cond_b_idx`. The delta term defaults to the same weight as the absolute count term (`alpha`); override via `delta_weight`. It uses two distinct pseudocounts: `count_pseudocount` for the absolute count loss and `delta_count_pseudocount` for the differential term (defaulting to `count_pseudocount` when unset).
+- **`JointBPNetMetricCollection`** (`cerberus.models.JointBPNetMetricCollection`) — reports the absolute `BPNetMetricCollection` metrics together with the three differential metrics from `DifferentialBPNetMetricCollection`.
+
+The end-to-end trainer is `tools/train_chrombpnet_multitask_differential_parallel.py` (the from-scratch counterpart to the phase-2-only `train_chrombpnet_multitask_differential.py`).
 
 ### References
 - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.
@@ -9003,18 +9014,24 @@ class CerberusModule(pl.LightningModule):
     # in val_metrics wins.  Differential collections (log-fold-change) precede
     # the absolute one so a differential collection scatters in its native space.
     _SCATTER_DISPATCH: tuple[tuple[str, dict[str, str]], ...] = (
-        ("pearson_delta_log_counts", {
-            "x_label": "True delta log counts",
-            "y_label": "Predicted delta log counts",
-            "title": "Val delta log counts",
-            "filename_prefix": "val_delta_log_counts_scatter",
-        }),
-        ("pearson_log_counts", {
-            "x_label": "True log counts",
-            "y_label": "Predicted log counts",
-            "title": "Val counts",
-            "filename_prefix": "val_count_scatter",
-        }),
+        (
+            "pearson_delta_log_counts",
+            {
+                "x_label": "True delta log counts",
+                "y_label": "Predicted delta log counts",
+                "title": "Val delta log counts",
+                "filename_prefix": "val_delta_log_counts_scatter",
+            },
+        ),
+        (
+            "pearson_log_counts",
+            {
+                "x_label": "True log counts",
+                "y_label": "Predicted log counts",
+                "title": "Val counts",
+                "filename_prefix": "val_count_scatter",
+            },
+        ),
     )
 
     def __init__(
@@ -10611,19 +10628,8 @@ from cerberus.output import (
     ProfileCountOutput,
     ProfileLogRates,
 )
+from cerberus.pseudocount import _log_count_plus_pseudocount
 from cerberus.utils import import_class
-
-
-def _log_count_plus_pseudocount(
-    log_count_values: torch.Tensor,
-    delta_count_pseudocount: float,
-) -> torch.Tensor:
-    """Stable ``log(exp(log_count_values) + delta_count_pseudocount)``."""
-    log_count_values = log_count_values.float()
-    if delta_count_pseudocount == 0:
-        return log_count_values
-    log_pc = log_count_values.new_tensor(float(delta_count_pseudocount)).log()
-    return torch.logaddexp(log_count_values, log_pc)
 
 
 class CerberusLoss(Protocol):
@@ -11232,9 +11238,7 @@ class DifferentialCountLoss(nn.Module):
         self.cond_b_idx = cond_b_idx
         self.delta_count_pseudocount = delta_count_pseudocount
 
-    def _delta_loss(
-        self, outputs: object, targets: torch.Tensor
-    ) -> torch.Tensor:
+    def _delta_loss(self, outputs: object, targets: torch.Tensor) -> torch.Tensor:
         if not isinstance(outputs, ProfileCountOutput):
             raise TypeError(
                 f"DifferentialCountLoss requires ProfileCountOutput, "
@@ -11266,13 +11270,10 @@ class DifferentialCountLoss(nn.Module):
 
         counts = targets.float().sum(dim=-1)  # (B, N)
         pc = self.delta_count_pseudocount
-        target_delta = torch.log(
-            (counts[:, b] + pc) / (counts[:, a] + pc)
-        )  # (B,)
-        delta_pred = (
-            _log_count_plus_pseudocount(log_counts[:, b], pc)
-            - _log_count_plus_pseudocount(log_counts[:, a], pc)
-        )  # (B,)
+        target_delta = torch.log((counts[:, b] + pc) / (counts[:, a] + pc))  # (B,)
+        delta_pred = _log_count_plus_pseudocount(
+            log_counts[:, b], pc
+        ) - _log_count_plus_pseudocount(log_counts[:, a], pc)  # (B,)
         return F.mse_loss(delta_pred, target_delta)
 
     def loss_components(
@@ -11413,6 +11414,7 @@ import torch.nn.functional as F
 from torchmetrics import MeanSquaredError, Metric, MetricCollection
 
 from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
+from cerberus.pseudocount import _log_count_plus_pseudocount
 
 
 def _per_example_pearson(
@@ -11456,18 +11458,6 @@ def _validate_differential_channel_indices(
         if idx < 0:
             raise ValueError(f"{name} must be non-negative, got {idx}")
     return cond_a_idx, cond_b_idx
-
-
-def _log_count_plus_pseudocount(
-    log_count_values: torch.Tensor,
-    delta_count_pseudocount: float,
-) -> torch.Tensor:
-    """Stable ``log(exp(log_count_values) + delta_count_pseudocount)``."""
-    log_count_values = log_count_values.float()
-    if delta_count_pseudocount == 0:
-        return log_count_values
-    log_pc = log_count_values.new_tensor(float(delta_count_pseudocount)).log()
-    return torch.logaddexp(log_count_values, log_pc)
 
 
 def _extract_differential_log_count_pairs(
@@ -11527,10 +11517,9 @@ def _extract_differential_log_count_pairs(
         (counts[:, b] + delta_count_pseudocount)
         / (counts[:, a] + delta_count_pseudocount)
     )  # (B,)
-    pred_delta = (
-        _log_count_plus_pseudocount(log_counts[:, b], delta_count_pseudocount)
-        - _log_count_plus_pseudocount(log_counts[:, a], delta_count_pseudocount)
-    )  # (B,)
+    pred_delta = _log_count_plus_pseudocount(
+        log_counts[:, b], delta_count_pseudocount
+    ) - _log_count_plus_pseudocount(log_counts[:, a], delta_count_pseudocount)  # (B,)
     return pred_delta.flatten(), target_delta.flatten()
 
 
@@ -13971,7 +13960,9 @@ from .bpnet import (
     BPNetLoss,
     BPNetMetricCollection,
     DifferentialBPNetMetricCollection,
+    JointBPNetMetricCollection,
     MultitaskBPNet,
+    MultitaskBPNetJointDifferentialLoss,
     MultitaskBPNetLoss,
 )
 from .chrombpnet import ChromBPNet, MultitaskChromBPNet
@@ -13987,7 +13978,9 @@ __all__ = [
     "BPNetLoss",
     "BPNetMetricCollection",
     "DifferentialBPNetMetricCollection",
+    "JointBPNetMetricCollection",
     "MultitaskBPNet",
+    "MultitaskBPNetJointDifferentialLoss",
     "MultitaskBPNetLoss",
     "ChromBPNet",
     "MultitaskChromBPNet",
