@@ -20,7 +20,12 @@ from cerberus.output import (
     compute_total_log_counts,
     get_log_count_params,
 )
-from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
+from cerberus.samplers import (
+    PEAK_INTERVAL_SOURCES,
+    IntervalSampler,
+    MultiSampler,
+    create_sampler,
+)
 from cerberus.utils import parse_use_folds, resolve_device
 
 logger = logging.getLogger(__name__)
@@ -208,8 +213,7 @@ def main():
         )
 
         logger.info(
-            f"Building {bg_sampler_config.sampler_type} sampler "
-            f"(seed={args.seed})..."
+            f"Building {bg_sampler_config.sampler_type} sampler (seed={args.seed})..."
         )
         combined_sampler = create_sampler(
             bg_sampler_config,
@@ -246,9 +250,9 @@ def main():
         ]
         sampler_to_use: IntervalSampler | list = all_intervals
         # Peaks are IntervalSampler before fold splitting, but split_folds()
-        # materializes them as ListSampler subsets.
-        peak_sources = {"IntervalSampler", "ListSampler"}
-        n_peaks = sum(1 for s in all_interval_source if s in peak_sources)
+        # materializes them as ListSampler subsets — both are in
+        # PEAK_INTERVAL_SOURCES (the shared peak/background predicate).
+        n_peaks = sum(1 for s in all_interval_source if s in PEAK_INTERVAL_SOURCES)
         logger.info(
             f"Combined sampler ({args.eval_split} split): {n_peaks} peaks + "
             f"{n_combined - n_peaks} background intervals."

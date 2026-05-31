@@ -17,6 +17,19 @@ from .interval import Interval
 
 logger = logging.getLogger(__name__)
 
+# Interval-source labels (as returned by ``get_interval_source`` /
+# ``MultiSampler.get_interval_source``) that denote peak / positive intervals.
+# A peak sub-sampler is an :class:`IntervalSampler`, but the base
+# :meth:`ListSampler.split_folds` materializes its fold splits as plain
+# :class:`ListSampler` subsets, so a peak reports ``"IntervalSampler"`` before a
+# fold split and ``"ListSampler"`` after one — both mean "peak". Background
+# sub-samplers (:class:`ComplexityMatchedSampler`, :class:`FixedBackgroundSampler`)
+# override ``split_folds`` to keep their own distinct label, so they never
+# collapse into this set. Use this single source of truth wherever peak vs.
+# background must be decided from an interval source (training loss masks,
+# evaluation interval selection) so the predicate stays consistent.
+PEAK_INTERVAL_SOURCES = frozenset({"IntervalSampler", "ListSampler"})
+
 
 def _select_from_bins(
     target_hist: dict[tuple[int, ...], int],
@@ -887,7 +900,9 @@ class FixedBackgroundSampler(IntervalSampler):
 
     def split_folds(
         self, test_fold: int | None = None, val_fold: int | None = None
-    ) -> tuple["FixedBackgroundSampler", "FixedBackgroundSampler", "FixedBackgroundSampler"]:
+    ) -> tuple[
+        "FixedBackgroundSampler", "FixedBackgroundSampler", "FixedBackgroundSampler"
+    ]:
         train, val, test = partition_intervals_by_fold(
             self._intervals, self.folds, test_fold, val_fold
         )

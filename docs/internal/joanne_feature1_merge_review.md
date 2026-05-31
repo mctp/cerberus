@@ -439,3 +439,64 @@ direction:
 
 None of these are blockers for the merge that already happened; all are
 addressable as the additional commits in step 3.
+
+---
+
+## 10. Resolution log (step-3 clean-up commits)
+
+Outcomes of the iterative fix pass on `marcin-feature` after the merge. Each
+item references Section 8's inventory.
+
+- **#1 pyright (14 errors)** — DONE. Joint-loss/metric type annotations matched
+  to the parent (`dict[str, torch.Tensor]` / `-> Tensor`), `import torch` added,
+  `JointBPNetMetricCollection` rebuilt by passing sub-collections as a list
+  (also resolved #5's construct-to-destruct), tfmodisco resolver annotated
+  `object`.
+- **#2 `count_pseudocount` alias** — DONE. Removed from the differential
+  loss/metrics; dispatch is now **capability-based** (`_constructor_accepts`
+  walks the MRO), which also resolved **#13** (reflection special-case) and the
+  dead `log_counts_include_pseudocount` params. Joint classes keep both
+  pseudocounts (distinct there).
+- **#3 duplicated `_log_count_plus_pseudocount`** — DONE. Single definition in
+  `pseudocount.py`, imported by `loss.py` and `metrics.py`.
+- **#4 exports** — DONE. `MultitaskBPNetJointDifferentialLoss` /
+  `JointBPNetMetricCollection` exported from `cerberus.models`; the joint
+  loss/metrics, the parallel trainer, and `--accessibility-count-head-only`
+  (all undocumented by joanne) added to CHANGELOG + docs.
+- **#6 private `_delta_loss` reach** — DONE. Joint loss calls the composed
+  `DifferentialCountLoss`'s public `__call__` (its `forward` is exactly the
+  delta scalar).
+- **#7 pc-shrunk-prediction semantics (`cf4d40a`)** — KEPT + documented as a
+  `Changed` entry (decision: the symmetric objective is more correct; `pc==0`
+  recovers prior behavior; attribution unaffected).
+- **#8 precision default** — RESOLVED by unifying: the **entire** ChromBPNet
+  family (`chrombpnet`, `chrombpnet_bias`, `multitask`, `multitask_differential`,
+  `multitask_differential_parallel`) now defaults to `--precision full`.
+- **#9 count-head-only callback** — KEPT (decision A). Provenance: `FreezeSpec`
+  was deliberately scoped to *static* freezing only (Marcin, 2026-04-18 design
+  doc, §"out of scope v1: …unfreeze_epoch…"), explicitly anticipating "a
+  dedicated callback" for selective unfreezing. Joanne's `AccessibilityCountHeadOnly`
+  is exactly that. Documented the division of labor in `docs/configuration.md`
+  and the callback docstring.
+- **#10 class-name-as-label / `split_folds` override** — SCOPED FIX (decision A).
+  The scheme (`get_interval_source` → `type(self).__name__`) is **pre-existing
+  repo architecture**, and joanne's `FixedBackgroundSampler` override merely
+  follows the existing `ComplexityMatchedSampler` convention — *not* a new leak.
+  The full provenance-as-first-class-data refactor (which would change the
+  `interval_source` strings written to BED manifests) was **deferred** as
+  pre-existing debt beyond the joanne merge.
+  - **Bug found and fixed.** Because `IntervalSampler` peaks collapse to
+    `"ListSampler"` after `split_folds`, callers keying on a single label were
+    wrong: `DalmatianLoss` used `!= "IntervalSampler"` for its bias-only term,
+    so on the **split training sampler** peaks were misclassified as background
+    and leaked into the bias reconstruction — an **active** training-objective
+    bug (pre-existing, unrelated to joanne). `predict_misc.get_eval_intervals`
+    had the same mistake (but is currently uncalled). Both, plus
+    `export_predictions.py`, now route through the new
+    `cerberus.samplers.PEAK_INTERVAL_SOURCES = {"IntervalSampler", "ListSampler"}`
+    single source of truth. Regression tests added
+    (`test_dalmatian_loss_split_peaks_labeled_listsampler`,
+    `test_peak_interval_sources_separates_post_split`). The DalmatianLoss tests
+    that hardcoded `"IntervalSampler"` still pass (it remains a peak label).
+
+- **#11–#12 legacy shims** — pending (investigate-then-decide).

@@ -91,6 +91,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (differential term), which are genuinely distinct quantities there.
 
 ### Fixed
+- **Peak/background interval-source predicate unified via `PEAK_INTERVAL_SOURCES`.**
+  Peak intervals report source `"IntervalSampler"` before a fold split and
+  `"ListSampler"` after one (the base `ListSampler.split_folds` materializes
+  peak subsets as plain `ListSampler`). Callers that classified peaks by a
+  single label were inconsistent: `Differential... ` aside, `DalmatianLoss`
+  checked `!= "IntervalSampler"` for its bias-only term — so on the **split
+  training sampler** peaks were misclassified as background and leaked into the
+  bias reconstruction (an active training-objective bug); `predict_misc.get_eval_intervals`
+  had the same `== "IntervalSampler"` mistake. Introduced
+  `cerberus.samplers.PEAK_INTERVAL_SOURCES = {"IntervalSampler", "ListSampler"}`
+  as the single source of truth and routed `DalmatianLoss`, `predict_misc`, and
+  `tools/export_predictions.py` through it. **Fixes Dalmatian training** (peaks
+  are now correctly excluded from the bias term) and adds regression tests.
 - **Type annotations on the joint differential BPNet API.**
   `MultitaskBPNetJointDifferentialLoss.loss_components`/`forward` now match the
   parent `MSEMultinomialLoss` signatures (`dict[str, torch.Tensor]` /

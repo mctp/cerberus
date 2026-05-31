@@ -5,6 +5,7 @@ set (e.g. a GC-matched ``negatives.bed``) — matching reference
 chrombpnet-pytorch — while keeping peak vs background distinguishable after
 fold splitting.
 """
+
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -13,6 +14,7 @@ from interlap import InterLap
 
 from cerberus.config import SamplerConfig
 from cerberus.samplers import (
+    PEAK_INTERVAL_SOURCES,
     FixedBackgroundSampler,
     MultiSampler,
     PeakFixedBackgroundSampler,
@@ -38,9 +40,7 @@ def _write_bed(path: Path, rows: list[tuple[str, int, int, str]]) -> None:
         for chrom, start, end, name in rows:
             # 10-col narrowPeak-like; summit centered (matches negatives.bed layout)
             summit = (end - start) // 2
-            fh.write(
-                f"{chrom}\t{start}\t{end}\t{name}\t0\t.\t0\t0\t0\t{summit}\n"
-            )
+            fh.write(f"{chrom}\t{start}\t{end}\t{name}\t0\t.\t0\t0\t0\t{summit}\n")
 
 
 class TestFixedBackgroundSampler(unittest.TestCase):
@@ -114,6 +114,22 @@ class TestFixedBackgroundSampler(unittest.TestCase):
             if test.get_interval_source(i) == "FixedBackgroundSampler"
         ]
         self.assertEqual(len(bg), 2)
+
+    def test_peak_interval_sources_separates_post_split(self):
+        """PEAK_INTERVAL_SOURCES is the shared peak/background predicate.
+
+        After split_folds, peaks report "ListSampler" and fixed negatives
+        report "FixedBackgroundSampler"; the shared constant must classify the
+        former as peak and the latter as background (the predicate used by the
+        training loss and evaluation interval selection).
+        """
+        _train, _val, test = self._make().split_folds(test_fold=0, val_fold=1)
+        sources = [test.get_interval_source(i) for i in range(len(test))]
+        peaks = [s for s in sources if s in PEAK_INTERVAL_SOURCES]
+        background = [s for s in sources if s not in PEAK_INTERVAL_SOURCES]
+        self.assertEqual(len(peaks), 2)
+        self.assertEqual(set(peaks), {"ListSampler"})
+        self.assertEqual(set(background), {"FixedBackgroundSampler"})
 
     def test_resample_is_noop_fixed_set(self):
         """Negatives are static: resample never changes the set (vs ComplexityMatched)."""

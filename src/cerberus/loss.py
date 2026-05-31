@@ -10,6 +10,7 @@ from cerberus.output import (
     ProfileLogRates,
 )
 from cerberus.pseudocount import _log_count_plus_pseudocount
+from cerberus.samplers import PEAK_INTERVAL_SOURCES
 from cerberus.utils import import_class
 
 
@@ -743,8 +744,12 @@ class DalmatianLoss(nn.Module):
         l_recon = self.base_loss(combined, targets)
 
         # 2. Bias-only reconstruction (non-peak examples)
+        # Peaks report "IntervalSampler" pre-split and "ListSampler" after
+        # split_folds (the training path), so test membership in
+        # PEAK_INTERVAL_SOURCES rather than a single label — otherwise split
+        # peaks leak into the bias-only term.
         non_peak = torch.tensor(
-            [s != "IntervalSampler" for s in interval_source],
+            [s not in PEAK_INTERVAL_SOURCES for s in interval_source],
             dtype=torch.bool,
             device=targets.device,
         )

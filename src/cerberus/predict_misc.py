@@ -24,7 +24,12 @@ from cerberus.output import (
     compute_total_log_counts,
     get_log_count_params,
 )
-from cerberus.samplers import IntervalSampler, MultiSampler, create_sampler
+from cerberus.samplers import (
+    PEAK_INTERVAL_SOURCES,
+    IntervalSampler,
+    MultiSampler,
+    create_sampler,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,14 +148,18 @@ def get_eval_intervals(
     sources = [split_sampler.get_interval_source(i) for i in range(n)]
 
     peak_intervals = [
-        iv for iv, s in zip(intervals, sources, strict=True) if s == "IntervalSampler"
+        iv
+        for iv, s in zip(intervals, sources, strict=True)
+        if s in PEAK_INTERVAL_SOURCES
     ]
 
     if not include_background:
         return peak_intervals
 
     bg_intervals = [
-        iv for iv, s in zip(intervals, sources, strict=True) if s != "IntervalSampler"
+        iv
+        for iv, s in zip(intervals, sources, strict=True)
+        if s not in PEAK_INTERVAL_SOURCES
     ]
     return peak_intervals, bg_intervals
 
