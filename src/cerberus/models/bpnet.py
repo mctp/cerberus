@@ -602,7 +602,9 @@ class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
         self, outputs: object, targets: torch.Tensor, **kwargs: object
     ) -> dict[str, torch.Tensor]:
         components = super().loss_components(outputs, targets, **kwargs)
-        components["delta_loss"] = self._differential_loss._delta_loss(outputs, targets)
+        # Use the composed loss's public interface; its forward() is exactly the
+        # delta-loss scalar (profile loss disabled), so no private access needed.
+        components["delta_loss"] = self._differential_loss(outputs, targets)
         return components
 
     def forward(
