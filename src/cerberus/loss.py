@@ -82,6 +82,92 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
         return components["poisson_nll_loss"]
 
 
+class BPAITACPoissonNLLLoss(nn.Module):
+    """
+    bpAI-TAC-style Poisson NLL on reconstructed base-resolution counts.
+
+    Unlike :class:`PoissonMultinomialLoss`, this is not a profile loss plus a
+    separate count-head loss. It reconstructs the per-base log-rate from a
+    factored BPNet/ChromBPNet output,
+
+    ``log_rate = log_softmax(profile_logits) + log_counts``,
+
+    and applies Poisson negative log-likelihood directly to that full
+    ``(batch, task, length)`` rate tensor. For multi-task ChromBPNet this
+    requires per-task ``log_counts`` with shape ``(batch, task)``.
+
+    The target tensor should be non-negative count-like signal. When training
+    on already comparable CPM-normalised tracks, use ``DataConfig.target_scale``
+    / ``--target-scale`` to multiply every track by the same constant count
+    scale before this loss sees the targets.
+    """
+
+    uses_count_pseudocount: bool = False
+
+    def __init__(
+        self,
+        log1p_targets: bool = False,
+        full: bool = False,
+        eps: float = 1e-8,
+        count_pseudocount: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.log1p_targets = log1p_targets
+        self.full = full
+        self.eps = eps
+        # Accepted for compatibility with the common training constructor
+        # plumbing. PNLL trains raw log-counts, so this value is intentionally
+        # not used.
+        self.count_pseudocount = count_pseudocount
+
+    @staticmethod
+    def _reconstruct_log_rates(outputs: ProfileCountOutput) -> torch.Tensor:
+        logits = outputs.logits.float()
+        log_counts = outputs.log_counts.float()
+        if log_counts.ndim == 1:
+            log_counts = log_counts.unsqueeze(1)
+        expected_count_shape = logits.shape[:2]
+        if log_counts.shape != expected_count_shape:
+            raise ValueError(
+                "BPAITACPoissonNLLLoss requires per-channel log_counts with "
+                f"shape {expected_count_shape}, but model predicted "
+                f"{log_counts.shape}. Set predict_total_count=False for the "
+                "accessibility/count branch when using multi-task PNLL."
+            )
+        return F.log_softmax(logits, dim=-1) + log_counts.unsqueeze(-1)
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
+        targets = targets.float()
+        if self.log1p_targets:
+            targets = torch.expm1(targets).clamp_min(0.0)
+        if not isinstance(outputs, ProfileCountOutput):
+            raise TypeError("BPAITACPoissonNLLLoss requires ProfileCountOutput")
+        if outputs.logits.shape != targets.shape:
+            raise ValueError(
+                "BPAITACPoissonNLLLoss requires logits and targets to have "
+                f"matching shape, got logits {outputs.logits.shape} and "
+                f"targets {targets.shape}."
+            )
+        log_rates = self._reconstruct_log_rates(outputs)
+        poisson_nll = F.poisson_nll_loss(
+            log_rates,
+            targets,
+            log_input=True,
+            full=self.full,
+            eps=self.eps,
+            reduction="mean",
+        )
+        return {"poisson_nll_loss": poisson_nll}
+
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
+        components = self.loss_components(outputs, targets, **kwargs)
+        return components["poisson_nll_loss"]
+
+
 class MSEMultinomialLoss(nn.Module):
     """
     Multinomial NLL Profile Loss + MSE Count Loss.

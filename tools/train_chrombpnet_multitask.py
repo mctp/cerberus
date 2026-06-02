@@ -19,7 +19,11 @@ ChromBPNet trainer's export convention.
 Assumes the per-task target BigWigs are already on a comparable scale
 (e.g. CPM-normalised + constitutive-rescaled via
 ``tools/scatac_normalize_pseudobulk.py``); the count head trains
-absolute log-counts per task.
+absolute log-counts per task.  When using the bpAI-TAC-style PNLL loss
+on comparable CPM tracks, pass a single global ``--target-scale`` (for
+example the average library-size denominator used to make the CPMs) so
+all tracks move back to count-like units without changing their relative
+normalisation.
 """
 
 from __future__ import annotations
@@ -234,7 +238,9 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--target-scale", type=float, default=1.0,
         help="Multiplicative scaling factor for already-normalised targets "
-        "(typically 1.0 when targets came through scatac_normalize_pseudobulk).",
+        "(typically 1.0 for the original MNLL+MSE objective; for "
+        "bpaitac-pnll on comparable CPM tracks, use one shared count-scale "
+        "multiplier such as mean(library_size / 1e6)).",
     )
 
     # --- Pseudocount CLI family (shared with the other train_* tools) ---
@@ -297,6 +303,18 @@ def get_args() -> argparse.Namespace:
     )
 
     # --- Loss ---
+    parser.add_argument(
+        "--loss",
+        type=str,
+        default="multinomial-mse",
+        choices=["multinomial-mse", "bpaitac-pnll"],
+        help=(
+            "Training objective. 'multinomial-mse' is the existing multi-task "
+            "ChromBPNet profile MNLL + log-count MSE objective. "
+            "'bpaitac-pnll' reconstructs per-base rates from logits and "
+            "per-task log-counts, then applies Poisson NLL directly."
+        ),
+    )
     parser.add_argument("--alpha", type=_parse_alpha, default="adaptive")
     parser.add_argument("--beta", type=float, default=1.0)
 
@@ -440,9 +458,26 @@ def main() -> None:
             gradient_clip_val=None,
         )
 
-        count_pseudocount_scaled = resolve_count_pseudocount_from_args(
-            args, bin_size=output_bin_size, target_scale=target_scale,
-        )
+        if args.loss == "bpaitac-pnll":
+            count_pseudocount_scaled = 0.0
+            loss_cls = "cerberus.loss.BPAITACPoissonNLLLoss"
+            loss_args = {}
+            model_name = "MultitaskChromBPNet_BPAITACPNLL"
+            metrics_args = {"count_pseudocount": 0.0}
+            logger.info(
+                "Using bpAI-TAC-style PNLL: targets are multiplied by "
+                "--target-scale=%.6g and count_pseudocount is forced to 0 "
+                "because the model predicts raw log-counts.",
+                target_scale,
+            )
+        else:
+            count_pseudocount_scaled = resolve_count_pseudocount_from_args(
+                args, bin_size=output_bin_size, target_scale=target_scale,
+            )
+            loss_cls = "cerberus.models.bpnet.MultitaskBPNetLoss"
+            loss_args = {"alpha": args.alpha, "beta": args.beta}
+            model_name = "MultitaskChromBPNet"
+            metrics_args = {}
 
         model_args = {
             "input_channels": ["A", "C", "G", "T"],
@@ -495,12 +530,12 @@ def main() -> None:
             freeze.append(FreezeSpec(pattern="bias_model", eval_mode=True))
 
         model_config = ModelConfig(
-            name="MultitaskChromBPNet",
+            name=model_name,
             model_cls="cerberus.models.chrombpnet.MultitaskChromBPNet",
-            loss_cls="cerberus.models.bpnet.MultitaskBPNetLoss",
-            loss_args={"alpha": args.alpha, "beta": args.beta},
+            loss_cls=loss_cls,
+            loss_args=loss_args,
             metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-            metrics_args={},
+            metrics_args=metrics_args,
             model_args=model_args,
             pretrained=pretrained,
             freeze=freeze,
