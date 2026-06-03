@@ -140,9 +140,48 @@ class TargetCrop:
 _DEFAULT_DNA_CHANNELS = slice(0, 4)
 
 
+def _resolve_channel_pair_indices(
+    channel_names: list[str],
+    channel_pairs: list[tuple[str, str]],
+    *,
+    index_offset: int = 0,
+    field_name: str,
+) -> list[tuple[int, int]]:
+    """Resolve named channel pairs to tensor channel indices."""
+    if not channel_pairs:
+        return []
+
+    channel_to_index = {name: index for index, name in enumerate(channel_names)}
+    swaps: list[tuple[int, int]] = []
+    for left_name, right_name in channel_pairs:
+        missing = [
+            name for name in (left_name, right_name) if name not in channel_to_index
+        ]
+        if missing:
+            available = ", ".join(channel_names) or "<none>"
+            missing_names = ", ".join(missing)
+            raise ValueError(
+                f"{field_name} references unknown channel(s): {missing_names}. "
+                f"Available channels: {available}"
+            )
+
+        swaps.append(
+            (
+                channel_to_index[left_name] + index_offset,
+                channel_to_index[right_name] + index_offset,
+            )
+        )
+
+    return swaps
+
+
 class ReverseComplement:
     """
-    Randomly reverse complements the sequence and reverses the signal.
+    Randomly reverse complements the sequence and reverses signal positions.
+
+    Optional channel swaps support stranded signal tracks. For example, a
+    plus-strand target becomes a minus-strand target after reverse complement.
+
     Updates interval strand.
 
     Assumes inputs are (Channels, Length) where first 4 channels are DNA (ACGT).
@@ -152,15 +191,37 @@ class ReverseComplement:
         self,
         probability: float = 0.5,
         dna_channels: slice | list[int] = _DEFAULT_DNA_CHANNELS,
+        input_channel_swaps: list[tuple[int, int]] | None = None,
+        target_channel_swaps: list[tuple[int, int]] | None = None,
     ):
         """
         Args:
             probability: Probability of applying the transformation.
             dna_channels: Slice or list of indices indicating DNA channels.
                           Assumes channel order corresponds to ACGT (or similar symmetric mapping).
+            input_channel_swaps: Tensor channel index pairs to swap in inputs after
+                reversing positions, excluding DNA complementation.
+            target_channel_swaps: Tensor channel index pairs to swap in targets after
+                reversing positions.
         """
         self.probability = probability
         self.dna_channels = dna_channels
+        self.input_channel_swaps = input_channel_swaps or []
+        self.target_channel_swaps = target_channel_swaps or []
+
+    @staticmethod
+    def _swap_channel_pairs(
+        tensor: torch.Tensor, channel_swaps: list[tuple[int, int]]
+    ) -> torch.Tensor:
+        if not channel_swaps:
+            return tensor
+
+        tensor = tensor.clone()
+        for left_index, right_index in channel_swaps:
+            left_values = tensor[left_index].clone()
+            tensor[left_index] = tensor[right_index]
+            tensor[right_index] = left_values
+        return tensor
 
     def __call__(
         self, inputs: torch.Tensor, targets: torch.Tensor, interval: Interval
@@ -172,9 +233,15 @@ class ReverseComplement:
         inputs = torch.flip(inputs, dims=[-1])
         targets = torch.flip(targets, dims=[-1])
 
+        inputs = self._swap_channel_pairs(inputs, self.input_channel_swaps)
+        targets = self._swap_channel_pairs(targets, self.target_channel_swaps)
+
         # Complement DNA (Flip Channels)
         # Reversing ACGT (0123) -> TGCA (3210) maps A->T, C->G.
         if isinstance(self.dna_channels, slice):
+            dna = inputs[self.dna_channels]
+            inputs[self.dna_channels] = torch.flip(dna, dims=[-2])
+        else:
             dna = inputs[self.dna_channels]
             inputs[self.dna_channels] = torch.flip(dna, dims=[-2])
 
@@ -365,7 +432,26 @@ def create_default_transforms(
     # 2. Reverse Complement (random)
     # If deterministic, skip RC
     if data_config.reverse_complement and not deterministic:
-        transforms.append(ReverseComplement(dna_channels=slice(0, 4)))
+        input_channel_names = sorted(data_config.inputs)
+        target_channel_names = sorted(data_config.targets)
+        input_channel_swaps = _resolve_channel_pair_indices(
+            input_channel_names,
+            getattr(data_config, "reverse_complement_input_channel_pairs", []),
+            index_offset=4 if data_config.use_sequence else 0,
+            field_name="reverse_complement_input_channel_pairs",
+        )
+        target_channel_swaps = _resolve_channel_pair_indices(
+            target_channel_names,
+            getattr(data_config, "reverse_complement_target_channel_pairs", []),
+            field_name="reverse_complement_target_channel_pairs",
+        )
+        transforms.append(
+            ReverseComplement(
+                dna_channels=slice(0, 4),
+                input_channel_swaps=input_channel_swaps,
+                target_channel_swaps=target_channel_swaps,
+            )
+        )
 
     # 3. Target Cropping (deterministic)
     if data_config.output_len < data_config.input_len:

@@ -11,6 +11,7 @@ Models:
 
 Usage:
     python tools/train_bpnet.py --bigwig path/to/signal.bw --peaks path/to/peaks.narrowPeak --output-dir models/my_model
+    python tools/train_bpnet.py --plus-bigwig path/to/plus.bw --minus-bigwig path/to/minus.bw --peaks path/to/peaks.bed --output-dir models/my_stranded_model
 """
 
 import argparse
@@ -60,7 +61,17 @@ def get_args():
 
     # Input files
     parser.add_argument(
-        "--bigwig", type=str, required=True, help="Path to the BigWig file (signal)"
+        "--bigwig", type=str, help="Path to an unstranded BigWig file (signal)"
+    )
+    parser.add_argument(
+        "--plus-bigwig",
+        type=str,
+        help="Path to plus-strand BigWig file for stranded BPNet training",
+    )
+    parser.add_argument(
+        "--minus-bigwig",
+        type=str,
+        help="Path to minus-strand BigWig file for stranded BPNet training",
     )
     parser.add_argument(
         "--peaks",
@@ -116,6 +127,14 @@ def get_args():
         "--silent",
         action="store_true",
         help="Disable tqdm progress bar during training",
+    )
+    parser.add_argument(
+        "--no-reverse-complement",
+        action="store_true",
+        help=(
+            "Disable reverse-complement augmentation. In stranded mode, the default "
+            "reverse-complement path also swaps plus/minus target channels."
+        ),
     )
 
     # Mode arguments
@@ -295,6 +314,36 @@ def main():
 
     args = get_args()
 
+    has_unstranded = args.bigwig is not None
+    has_plus = args.plus_bigwig is not None
+    has_minus = args.minus_bigwig is not None
+    has_stranded = has_plus or has_minus
+    if has_unstranded == has_stranded:
+        raise ValueError(
+            "Specify either --bigwig for unstranded training or both "
+            "--plus-bigwig and --minus-bigwig for stranded training."
+        )
+    if has_stranded and not (has_plus and has_minus):
+        raise ValueError(
+            "Stranded training requires both --plus-bigwig and --minus-bigwig."
+        )
+
+    if has_stranded:
+        targets = {
+            "minus": Path(args.minus_bigwig),
+            "plus": Path(args.plus_bigwig),
+        }
+        output_channels = sorted(targets)
+        rc_target_channel_pairs = [("plus", "minus")]
+        logging.info(
+            "Using stranded targets with reverse-complement plus/minus swaps: %s",
+            output_channels,
+        )
+    else:
+        targets = {"signal": Path(args.bigwig)}
+        output_channels = ["signal"]
+        rc_target_channel_pairs = []
+
     # Stable mode: override optimizer/scheduler defaults when user has not set them explicitly.
     # Individual flags still take precedence (e.g. --optimizer sgd --stable keeps sgd).
     if args.stable:
@@ -379,17 +428,21 @@ def main():
     output_bin_size = 1
     max_jitter = args.jitter
     target_scale = args.target_scale
+    reverse_complement = not args.no_reverse_complement
 
     data_config = DataConfig(
         inputs={},
-        targets={"signal": args.bigwig},
+        targets=targets,
         input_len=input_len,
         output_len=output_len,
         max_jitter=max_jitter,
         output_bin_size=output_bin_size,
         encoding="ACGT",
         log_transform=False,  # BPNet uses raw counts for multinomial loss
-        reverse_complement=True,  # Augmentation
+        reverse_complement=reverse_complement,  # Augmentation
+        reverse_complement_target_channel_pairs=(
+            rc_target_channel_pairs if reverse_complement else []
+        ),
         use_sequence=True,
         target_scale=target_scale,
     )
@@ -438,7 +491,7 @@ def main():
         logging.info("Using BPNet1024 (2112bp -> 1024bp) Model...")
         model_args = {
             "input_channels": ["A", "C", "G", "T"],
-            "output_channels": ["signal"],
+            "output_channels": output_channels,
             "filters": 77,
             "n_dilated_layers": 8,
             "conv_kernel_size": 21,
@@ -455,7 +508,7 @@ def main():
         logging.info("Using BPNet (Standard, 2114bp -> 1000bp) Model...")
         model_args = {
             "input_channels": ["A", "C", "G", "T"],
-            "output_channels": ["signal"],
+            "output_channels": output_channels,
             "filters": 64,
             "n_dilated_layers": 8,
             "conv_kernel_size": 21,
@@ -472,14 +525,39 @@ def main():
     if args.loss == "poisson":
         loss_cls = "cerberus.loss.PoissonMultinomialLoss"
         loss_args = {"count_weight": args.alpha}
-        logging.info("Using PoissonMultinomialLoss (count_weight=%s)...", args.alpha)
+        if has_stranded:
+            loss_args["flatten_channels"] = True
+            loss_args["count_per_channel"] = False
+        logging.info(
+            "Using PoissonMultinomialLoss (count_weight=%s, stranded=%s)...",
+            args.alpha,
+            has_stranded,
+        )
     elif args.loss == "nb":
         loss_cls = "cerberus.loss.NegativeBinomialMultinomialLoss"
         loss_args = {"count_weight": args.alpha, "total_count": args.total_count}
+        if has_stranded:
+            loss_args["flatten_channels"] = True
+            loss_args["count_per_channel"] = False
         logging.info(
-            "Using NegativeBinomialMultinomialLoss (count_weight=%s, total_count=%s)...",
+            "Using NegativeBinomialMultinomialLoss "
+            "(count_weight=%s, total_count=%s, stranded=%s)...",
             args.alpha,
             args.total_count,
+            has_stranded,
+        )
+    elif has_stranded:
+        loss_cls = "cerberus.loss.MSEMultinomialLoss"
+        loss_args = {
+            "count_weight": args.alpha,
+            "profile_weight": 1.0,
+            "flatten_channels": True,
+            "count_per_channel": False,
+        }
+        logging.info(
+            "Using MSEMultinomialLoss for stranded BPNet "
+            "(count_weight=%s, flatten_channels=True, count_per_channel=False)...",
+            args.alpha,
         )
     else:
         loss_cls = "cerberus.models.bpnet.BPNetLoss"

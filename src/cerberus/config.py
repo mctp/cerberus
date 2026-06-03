@@ -87,6 +87,11 @@ class DataConfig(BaseModel):
         encoding: DNA encoding strategy (e.g. ``'ACGT'``).
         log_transform: Whether to apply ``log(x + 1)`` to signal.
         reverse_complement: Whether to apply reverse-complement augmentation.
+        reverse_complement_input_channel_pairs: Input signal channel name pairs
+            to swap after reverse-complementing, e.g. ``[("plus", "minus")]``.
+            Indices are resolved after DNA sequence channels.
+        reverse_complement_target_channel_pairs: Target channel name pairs
+            to swap after reverse-complementing, e.g. ``[("plus", "minus")]``.
         use_sequence: Whether to include one-hot sequence as input.
         target_scale: Multiplicative scaling factor applied to targets.
     """
@@ -102,6 +107,12 @@ class DataConfig(BaseModel):
     encoding: str
     log_transform: bool
     reverse_complement: bool
+    reverse_complement_input_channel_pairs: list[tuple[str, str]] = Field(
+        default_factory=list
+    )
+    reverse_complement_target_channel_pairs: list[tuple[str, str]] = Field(
+        default_factory=list
+    )
     use_sequence: bool
     target_scale: float = Field(gt=0)
 

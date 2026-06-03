@@ -182,7 +182,7 @@ Cerberus provides a composable transformation pipeline via `cerberus.transform.C
 When `transforms` are not explicitly provided to `CerberusDataset`, they are automatically constructed from `DataConfig` by `create_default_transforms` in the following order:
 
 1.  **Jitter**: Crops to `input_len`, with random offset up to `max_jitter` (or centered for inference).
-2.  **ReverseComplement**: (If `reverse_complement=True` and not in deterministic/inference mode).
+2.  **ReverseComplement**: (If `reverse_complement=True` and not in deterministic/inference mode). DNA sequence channels are complemented, signal positions are reversed, and any named pairs in `reverse_complement_input_channel_pairs` or `reverse_complement_target_channel_pairs` are swapped for stranded tracks.
 3.  **TargetCrop**: Crops targets to `output_len` (if `output_len < input_len`).
 4.  **Scale**: Multiplies targets by `target_scale` (if `target_scale != 1.0`).
 5.  **Bin**: Downsamples targets by `output_bin_size` (if `output_bin_size > 1`).

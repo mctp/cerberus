@@ -90,6 +90,27 @@ class TestCreateDefaultTransforms:
         has_crop = any(isinstance(t, TargetCrop) for t in transforms)
         assert has_crop
 
+    def test_reverse_complement_resolves_named_target_swaps(self):
+        dc = self._make_data_config(
+            targets={"minus": "minus.bw", "plus": "plus.bw"},
+            reverse_complement=True,
+            reverse_complement_target_channel_pairs=[("plus", "minus")],
+        )
+        transforms = create_default_transforms(dc)
+        rc = next(t for t in transforms if isinstance(t, ReverseComplement))
+
+        assert rc.target_channel_swaps == [(1, 0)]
+
+    def test_reverse_complement_unknown_target_swap_raises(self):
+        dc = self._make_data_config(
+            targets={"minus": "minus.bw", "plus": "plus.bw"},
+            reverse_complement=True,
+            reverse_complement_target_channel_pairs=[("plus", "unknown")],
+        )
+
+        with pytest.raises(ValueError, match="unknown channel"):
+            create_default_transforms(dc)
+
 
 # ---------------------------------------------------------------------------
 # Log1p apply_to variants

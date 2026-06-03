@@ -109,6 +109,15 @@ class DataConfig(BaseModel):
     # Whether to apply reverse complement augmentation during training
     reverse_complement: bool
 
+    # Input signal channel-name pairs to swap under reverse complement.
+    # Use for stranded input tracks, e.g. [("plus", "minus")].
+    # DNA sequence channels are handled separately and should not be listed here.
+    reverse_complement_input_channel_pairs: list[tuple[str, str]] = []
+
+    # Target channel-name pairs to swap under reverse complement.
+    # Use for stranded target tracks, e.g. [("plus", "minus")].
+    reverse_complement_target_channel_pairs: list[tuple[str, str]] = []
+
     # Multiplicative scaling factor applied to targets before log transform.
     # Useful for rescaling normalized BigWig values to integer-like counts.
     # Set to 1.0 to disable.
