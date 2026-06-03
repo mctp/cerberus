@@ -12,6 +12,9 @@ Models:
 Usage:
     python tools/train_bpnet.py --bigwig path/to/signal.bw --peaks path/to/peaks.narrowPeak --output-dir models/my_model
     python tools/train_bpnet.py --plus-bigwig path/to/plus.bw --minus-bigwig path/to/minus.bw --peaks path/to/peaks.bed --output-dir models/my_stranded_model
+    python tools/train_bpnet.py --bigwig path/to/signal.bw --peaks path/to/peaks.bed --output-dir models/chrombpnet_sized_bpnet \
+        --filters 512 --n-layers 8 --conv-kernel-size 21 --dil-kernel-size 3 --profile-kernel-size 75 \
+        --residual-architecture residual_post-activation_conv
 """
 
 import argparse
@@ -173,6 +176,36 @@ def get_args():
         help="Output signal length (ignored when --1024 is set)",
     )
     parser.add_argument(
+        "--filters",
+        type=int,
+        default=64,
+        help="Number of convolution filters for standard BPNet (ignored when --1024 is set)",
+    )
+    parser.add_argument(
+        "--n-layers",
+        type=int,
+        default=8,
+        help="Number of dilated residual layers for standard BPNet (ignored when --1024 is set)",
+    )
+    parser.add_argument(
+        "--conv-kernel-size",
+        type=int,
+        default=21,
+        help="Initial convolution kernel size for standard BPNet (ignored when --1024 is set)",
+    )
+    parser.add_argument(
+        "--dil-kernel-size",
+        type=int,
+        default=3,
+        help="Dilated residual block kernel size for standard BPNet (ignored when --1024 is set)",
+    )
+    parser.add_argument(
+        "--profile-kernel-size",
+        type=int,
+        default=75,
+        help="Profile head convolution kernel size for standard BPNet (ignored when --1024 is set)",
+    )
+    parser.add_argument(
         "--jitter",
         type=int,
         default=256,
@@ -297,11 +330,12 @@ def get_args():
     parser.add_argument(
         "--precision",
         type=str,
-        default="bf16",
+        default="full",
         choices=["bf16", "mps", "full"],
-        help="Precision strategy: 'bf16' for NVIDIA bf16-mixed (default), "
+        help="Precision strategy: 'full' for safest float32 (32-true, default), "
+        "'bf16' for NVIDIA bf16-mixed, "
         "'mps' for Apple Silicon fp16-mixed, "
-        "'full' for safest float32 (32-true, matmul=highest, no compile)",
+        "with full mode using matmul=highest and no compile",
     )
 
     return parser.parse_args()
@@ -505,15 +539,26 @@ def main():
         model_cls_name = "cerberus.models.bpnet.BPNet1024"
         model_name = "BPNet1024"
     else:
-        logging.info("Using BPNet (Standard, 2114bp -> 1000bp) Model...")
+        logging.info(
+            "Using BPNet (Standard, %dbp -> %dbp) Model with filters=%d, "
+            "n_layers=%d, conv_kernel_size=%d, dil_kernel_size=%d, "
+            "profile_kernel_size=%d...",
+            input_len,
+            output_len,
+            args.filters,
+            args.n_layers,
+            args.conv_kernel_size,
+            args.dil_kernel_size,
+            args.profile_kernel_size,
+        )
         model_args = {
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": output_channels,
-            "filters": 64,
-            "n_dilated_layers": 8,
-            "conv_kernel_size": 21,
-            "dil_kernel_size": 3,
-            "profile_kernel_size": 75,
+            "filters": args.filters,
+            "n_dilated_layers": args.n_layers,
+            "conv_kernel_size": args.conv_kernel_size,
+            "dil_kernel_size": args.dil_kernel_size,
+            "profile_kernel_size": args.profile_kernel_size,
             "predict_total_count": True,
             "activation": activation,
             "weight_norm": use_weight_norm,
