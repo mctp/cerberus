@@ -586,6 +586,60 @@ class TestSaveLoadPrepareCache:
         assert not list(tmp_path.glob(".*.tmp"))
 
 
+class TestCacheBuildLock:
+    """Tests for the advisory build lock that serializes cache construction."""
+
+    def test_lock_is_reentrant_friendly_context(self, tmp_path):
+        """The lock is a working context manager that creates its lock file."""
+        from cerberus.cache import cache_build_lock
+
+        with cache_build_lock(tmp_path):
+            pass
+        # Lock file is created in the cache dir (sequential acquire works too).
+        with cache_build_lock(tmp_path):
+            pass
+        assert (tmp_path / ".lock").exists()
+
+    def test_lock_serializes_concurrent_critical_sections(self, tmp_path):
+        """With flock available, no two threads may be inside the lock at once
+        (regression for the redundant-compute / write race that Layer 2 fixes)."""
+        import threading
+        import time
+
+        import cerberus.cache as cache_mod
+        from cerberus.cache import cache_build_lock
+
+        if not cache_mod._HAS_FCNTL:
+            pytest.skip("flock unavailable on this platform")
+
+        inside = 0
+        max_inside = 0
+        counter_guard = threading.Lock()
+        errors: list[BaseException] = []
+
+        def worker():
+            nonlocal inside, max_inside
+            try:
+                with cache_build_lock(tmp_path):
+                    with counter_guard:
+                        inside += 1
+                        max_inside = max(max_inside, inside)
+                    time.sleep(0.02)
+                    with counter_guard:
+                        inside -= 1
+            except BaseException as exc:  # pragma: no cover - only on failure
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == [], f"locked section raised: {errors}"
+        assert max_inside == 1, "file lock failed to serialize critical sections"
+
+
 # --- Commit 3: prepare_data() + setup() integration tests ---
 
 

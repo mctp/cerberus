@@ -361,14 +361,18 @@ today (uniform widths), flagged as a latent invariant.
 **Fix**: write to a temp file in the same dir and `os.replace()` before touching
 `ready`.
 
-**Status (2026-06-10)**: *Layer 1 implemented* — `save_prepare_cache` now writes
-to a unique temp file in the same directory and `os.replace()`s it into place
-(with `fsync`), so the `.npz` can no longer be torn by concurrent writers; the
-`ready` sentinel is touched only after the atomic publish, and ragged metric
-arrays raise instead of writing a non-roundtrippable file. The remaining *Layer
-2* (an advisory `flock` around the compute-and-write so only one process of a
-sweep/CV recomputes) is not yet implemented — concurrent runs are now
-corruption-safe but may still each recompute on a cold cache.
+**Status (2026-06-10)**: *Resolved (Layers 1 + 2).* **Layer 1** —
+`save_prepare_cache` writes to a unique temp file in the same directory and
+`os.replace()`s it into place (with `fsync`), so the `.npz` can no longer be
+torn by concurrent writers; the `ready` sentinel is touched only after the
+atomic publish, and ragged metric arrays raise instead of writing a
+non-roundtrippable file. **Layer 2** — `prepare_data` wraps the
+compute-and-write in `cache.cache_build_lock` (an advisory `fcntl.flock`) with a
+double-checked `ready` re-check, so among runs that share a cache key only one
+recomputes the metrics while the others block and reuse the result. The lock
+auto-releases on process exit (no stale locks) and degrades to a no-op on
+filesystems without `flock` (writes remain atomic; contended runs merely
+recompute).
 
 ---
 

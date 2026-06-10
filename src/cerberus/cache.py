@@ -6,16 +6,25 @@ of precomputed data (e.g. complexity metrics) to avoid redundant computation
 across DDP ranks and training runs.
 """
 
+import contextlib
 import hashlib
 import json
 import logging
 import os
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
 
 from .config import SamplerConfig
+
+try:
+    import fcntl
+
+    _HAS_FCNTL = True
+except ImportError:  # pragma: no cover - non-POSIX platforms
+    _HAS_FCNTL = False
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +79,52 @@ def resolve_cache_dir(
     )
     h = hashlib.sha256(key_data.encode()).hexdigest()[:16]
     return cache_dir / h
+
+
+@contextlib.contextmanager
+def cache_build_lock(cache_dir: Path) -> Iterator[None]:
+    """Best-effort exclusive lock that serializes cache *construction*.
+
+    Among processes that share a cache directory — which happens by default for
+    parallel cross-validation folds or a hyperparameter sweep that hash to the
+    same config key (the key excludes the model, learning rate and fold, and the
+    seed defaults to a fixed ``42``) — this ensures only one process computes and
+    writes the cache while the others block, then fall through to read it. Use it
+    together with a *re-check* of the ``ready`` sentinel after acquiring the
+    lock (double-checked locking), e.g.::
+
+        with cache_build_lock(cache_dir):
+            if (cache_dir / "ready").exists():
+                return            # built by another process while we waited
+            ...                   # compute
+            save_prepare_cache(cache_dir, metrics)
+
+    The lock is advisory (``fcntl.flock``) and is released automatically when the
+    file object is closed — including on process crash — so a dead holder never
+    leaves a stale lock. On platforms / filesystems without ``flock`` support it
+    degrades to a no-op: correctness still holds because
+    :func:`save_prepare_cache` publishes atomically; the contended processes
+    merely each recompute (Layer 1's guarantee), they cannot corrupt the file.
+
+    Args:
+        cache_dir: The config-specific cache subdirectory to guard.
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    if not _HAS_FCNTL:  # pragma: no cover - non-POSIX platforms
+        yield
+        return
+    lock_path = cache_dir / ".lock"
+    with open(lock_path, "w") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        except OSError as exc:  # pragma: no cover - exotic network filesystems
+            logger.debug(
+                "cache_build_lock: flock unavailable (%s); proceeding without "
+                "the lock — writes remain atomic but may be recomputed.",
+                exc,
+            )
+        yield
+        # The advisory lock is released when ``lock_file`` is closed here.
 
 
 def save_prepare_cache(cache_dir: Path, cache: dict[str, np.ndarray]) -> None:

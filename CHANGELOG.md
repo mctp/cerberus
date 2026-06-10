@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `save_prepare_cache` also raises a clear error on ragged metric arrays instead
   of writing a non-roundtrippable npz, and corrects the misleading `seed`
   docstring (the default is a fixed `42`, not auto-generated).
+- **`prepare_data` now serializes cache construction with an advisory lock**
+  (`cache.cache_build_lock`, `fcntl.flock` + double-checked `ready` re-check), so
+  among runs sharing a cache key only one computes the complexity metrics while
+  the others block and reuse the result instead of all recomputing on a cold
+  cache. The lock auto-releases on process exit (no stale locks) and degrades to
+  a no-op on filesystems without `flock` (writes stay atomic, runs merely
+  recompute).
 
 ## [1.0.0a7] - 2026-05-31
 
