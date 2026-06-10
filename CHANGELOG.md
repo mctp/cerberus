@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`cache.save_prepare_cache` now writes the `prepare_data` metrics cache
+  atomically** (temp file in the same directory + `os.replace`, with `fsync`
+  before rename). Previously `np.savez_compressed` wrote `metrics_cache.npz`
+  in place, so two independent runs sharing a cache key — which happens by
+  default for parallel cross-validation folds or hyperparameter sweeps, since
+  the key excludes the model, learning rate, and fold and the seed defaults to a
+  fixed `42` — could tear the file when their writes overlapped on a cold cache.
+  The `ready` sentinel is now touched only after the payload is fully published.
+  `save_prepare_cache` also raises a clear error on ragged metric arrays instead
+  of writing a non-roundtrippable npz, and corrects the misleading `seed`
+  docstring (the default is a fixed `42`, not auto-generated).
+
 ## [1.0.0a7] - 2026-05-31
 
 ### Added

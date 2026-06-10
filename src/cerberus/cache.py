@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -48,7 +49,9 @@ def resolve_cache_dir(
         cache_dir: Base cache directory.
         fasta_path: Path to genome FASTA file.
         sampler_config: Sampler configuration dictionary.
-        seed: Random seed (always an int; CerberusDataModule auto-generates one if not provided).
+        seed: Random seed. Always an int; ``CerberusDataModule`` uses a fixed
+            default (``42``) when none is given, so two runs that do not both
+            override it share the same cache key.
         chrom_sizes: Chromosome sizes dictionary.
 
     Returns:
@@ -71,17 +74,69 @@ def resolve_cache_dir(
 
 def save_prepare_cache(cache_dir: Path, cache: dict[str, np.ndarray]) -> None:
     """
-    Serializes a prepare_data cache dict to disk.
+    Serializes a prepare_data cache dict to disk **atomically**.
+
+    The ``.npz`` payload is written to a unique temporary file inside
+    ``cache_dir`` and then atomically moved into place with :func:`os.replace`.
+    Because ``os.replace`` is atomic on POSIX within a single filesystem, a
+    concurrent reader — or a second writer racing on the same config-hash
+    directory (e.g. parallel cross-validation folds or a hyperparameter sweep
+    sharing one cache key) — can never observe a partially written file: it
+    sees either the previous complete file or the new complete one. The
+    ``ready`` sentinel is touched only *after* the payload is fully published,
+    so a reader gated on ``ready`` is always paired with a complete ``.npz``.
+
+    Note: ``os.replace`` is atomic only within one filesystem, which is why the
+    temporary file is created inside ``cache_dir`` rather than ``$TMPDIR``. The
+    unique temp name lets two concurrent writers proceed without clobbering each
+    other's in-progress file (last rename wins; both files are complete).
 
     Args:
         cache_dir: Directory to write cache files into.
         cache: Dictionary mapping interval string keys to metric arrays.
+
+    Raises:
+        ValueError: If the metric arrays are ragged (different lengths), which
+            would serialize as an ``object`` array and fail to round-trip
+            through ``np.load(..., allow_pickle=False)``.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     keys = np.array(list(cache.keys()))
-    values = np.array(list(cache.values()))
+    # Ragged metric arrays cannot round-trip through np.load(allow_pickle=False).
+    # Newer numpy raises ValueError when stacking inhomogeneous rows; older
+    # numpy silently builds an object array. Normalize both into a clear error.
+    try:
+        values = np.array(list(cache.values()))
+    except ValueError as exc:
+        raise ValueError(
+            "metrics_cache has ragged rows; refusing to write a "
+            "non-roundtrippable npz (all metric arrays must share a length)."
+        ) from exc
+    if values.dtype == object:
+        raise ValueError(
+            "metrics_cache has ragged rows; refusing to write a "
+            "non-roundtrippable npz (all metric arrays must share a length)."
+        )
     cache_path = cache_dir / "metrics_cache.npz"
-    np.savez_compressed(cache_path, keys=keys, values=values)
+
+    # Write to a unique temp file in the SAME directory, fsync, then rename.
+    fd, tmp_name = tempfile.mkstemp(
+        dir=cache_dir, prefix=".metrics_cache.", suffix=".npz.tmp"
+    )
+    try:
+        with os.fdopen(fd, "wb") as f:
+            np.savez_compressed(f, keys=keys, values=values)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, cache_path)
+    except BaseException:
+        # Best-effort cleanup so a failed write does not leave a stray temp file.
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
+
     (cache_dir / "ready").touch()
     logger.info(f"Saved {len(cache)} cache entries to {cache_dir}")
 

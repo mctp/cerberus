@@ -528,6 +528,63 @@ class TestSaveLoadPrepareCache:
     def test_load_returns_none_when_dir_missing(self, tmp_path):
         assert load_prepare_cache(tmp_path / "nonexistent") is None
 
+    def test_save_leaves_no_temp_files(self, tmp_path):
+        """Atomic write must clean up its temporary file after renaming."""
+        cache = {"chr1:0-100(+)": np.array([1.0, 2.0], dtype=np.float32)}
+        save_prepare_cache(tmp_path, cache)
+        leftovers = list(tmp_path.glob("*.tmp")) + list(tmp_path.glob(".*.tmp"))
+        assert leftovers == [], f"stray temp files left behind: {leftovers}"
+
+    def test_save_ragged_raises(self, tmp_path):
+        """Ragged metric arrays would not round-trip; saving must refuse."""
+        cache = {
+            "chr1:0-100(+)": np.array([1.0, 2.0], dtype=np.float32),
+            "chr1:100-200(+)": np.array([1.0, 2.0, 3.0], dtype=np.float32),
+        }
+        with pytest.raises(ValueError, match="ragged"):
+            save_prepare_cache(tmp_path, cache)
+
+    def test_overwrite_is_atomic_and_loadable(self, tmp_path):
+        """A second save to the same dir publishes a complete, loadable file."""
+        first = {"chr1:0-100(+)": np.array([1.0, 2.0], dtype=np.float32)}
+        second = {"chr2:0-100(+)": np.array([3.0, 4.0], dtype=np.float32)}
+        save_prepare_cache(tmp_path, first)
+        save_prepare_cache(tmp_path, second)
+        loaded = load_prepare_cache(tmp_path)
+        assert loaded is not None
+        assert set(loaded.keys()) == set(second.keys())
+
+    def test_concurrent_saves_never_corrupt(self, tmp_path):
+        """Many threads writing the same config-hash dir must never produce a
+        torn .npz: the final cache always loads cleanly (regression for the
+        non-atomic prepare_data cache write race)."""
+        import threading
+
+        caches = [
+            {f"chr1:{i}-{i + 100}(+)": np.array([float(i), float(i) + 1.0])}
+            for i in range(16)
+        ]
+        errors: list[BaseException] = []
+
+        def worker(c):
+            try:
+                save_prepare_cache(tmp_path, c)
+            except BaseException as exc:  # pragma: no cover - only on failure
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(c,)) for c in caches]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == [], f"concurrent save raised: {errors}"
+        # No matter the interleaving, the published file must be complete.
+        loaded = load_prepare_cache(tmp_path)
+        assert loaded is not None
+        assert len(loaded) == 1  # each save writes a single-entry cache
+        assert not list(tmp_path.glob(".*.tmp"))
+
 
 # --- Commit 3: prepare_data() + setup() integration tests ---
 
