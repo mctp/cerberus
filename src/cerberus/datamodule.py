@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from .cache import (
+    cache_build_lock,
     get_default_cache_dir,
     load_prepare_cache,
     resolve_cache_dir,
@@ -154,39 +155,55 @@ class CerberusDataModule(pl.LightningDataModule):
             logger.info(f"prepare_data cache already exists at {cache_dir}")
             return
 
-        logger.info("prepare_data: computing complexity metrics for caching...")
-
-        # Create a temporary dataset to trigger sampler initialization and
-        # metric computation. This opens FASTA/BigWig files on rank 0 only.
-        tmp_dataset = CerberusDataset(
-            genome_config=self.genome_config,
-            data_config=self.data_config,
-            sampler_config=self.sampler_config,
-            seed=self.seed,
-        )
-
-        # Extract metrics_cache from the sampler
-        sampler = tmp_dataset.sampler
-        sampler_type = self.sampler_config.sampler_type
-        # NOTE: Keep in sync with _resolve_cache_dir — every sampler type
-        # listed there must have a branch here to extract its metrics_cache.
-        if sampler_type == "complexity_matched":
-            metrics_cache = sampler.metrics_cache  # type: ignore[union-attr]
-        elif sampler_type == "peak":
-            if sampler.negatives is not None:  # type: ignore[union-attr]
-                metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
-            else:
+        # Serialize construction across processes that share this cache key
+        # (e.g. parallel CV folds / a hyperparameter sweep): only one computes
+        # and writes; the others block here, then fall through to the re-check
+        # and reuse the freshly written cache. Degrades to a no-op without
+        # flock — the write itself stays atomic (see save_prepare_cache).
+        with cache_build_lock(cache_dir):
+            # Re-check after acquiring the lock: another process may have built
+            # the cache while we were blocked (double-checked locking).
+            if (cache_dir / "ready").exists():
                 logger.info(
-                    "prepare_data: peak sampler has no negatives, nothing to cache"
+                    f"prepare_data cache built by another process at {cache_dir}"
                 )
                 return
-        elif sampler_type == "negative_peak":
-            metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
-        else:
-            return
 
-        save_prepare_cache(cache_dir, metrics_cache)
-        logger.info(f"prepare_data: cached {len(metrics_cache)} entries to {cache_dir}")
+            logger.info("prepare_data: computing complexity metrics for caching...")
+
+            # Create a temporary dataset to trigger sampler initialization and
+            # metric computation. This opens FASTA/BigWig files on rank 0 only.
+            tmp_dataset = CerberusDataset(
+                genome_config=self.genome_config,
+                data_config=self.data_config,
+                sampler_config=self.sampler_config,
+                seed=self.seed,
+            )
+
+            # Extract metrics_cache from the sampler
+            sampler = tmp_dataset.sampler
+            sampler_type = self.sampler_config.sampler_type
+            # NOTE: Keep in sync with _resolve_cache_dir — every sampler type
+            # listed there must have a branch here to extract its metrics_cache.
+            if sampler_type == "complexity_matched":
+                metrics_cache = sampler.metrics_cache  # type: ignore[union-attr]
+            elif sampler_type == "peak":
+                if sampler.negatives is not None:  # type: ignore[union-attr]
+                    metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
+                else:
+                    logger.info(
+                        "prepare_data: peak sampler has no negatives, nothing to cache"
+                    )
+                    return
+            elif sampler_type == "negative_peak":
+                metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
+            else:
+                return
+
+            save_prepare_cache(cache_dir, metrics_cache)
+            logger.info(
+                f"prepare_data: cached {len(metrics_cache)} entries to {cache_dir}"
+            )
 
     def _load_prepare_cache(self) -> dict[str, np.ndarray] | None:
         """
@@ -548,6 +565,8 @@ class CerberusDataModule(pl.LightningDataModule):
         logger.info(
             "Sampled %d training intervals × %d target channel(s) for "
             "quantile pseudocount calibration (target_scale=%s).",
-            scaled.shape[0], n_channels, target_scale,
+            scaled.shape[0],
+            n_channels,
+            target_scale,
         )
         return result
