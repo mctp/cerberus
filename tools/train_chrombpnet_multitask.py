@@ -19,8 +19,8 @@ ChromBPNet trainer's export convention.
 Assumes the per-task target BigWigs are already on a comparable scale
 (e.g. CPM-normalised + constitutive-rescaled via
 ``tools/scatac_normalize_pseudobulk.py``); the count head trains
-absolute log-counts per task.  When using the bpAI-TAC-style PNLL loss
-on comparable CPM tracks, pass a single global ``--target-scale`` (for
+absolute log-counts per task.  When using Poisson-family losses on
+comparable CPM tracks, pass a single global ``--target-scale`` (for
 example the average library-size denominator used to make the CPMs) so
 all tracks move back to count-like units without changing their relative
 normalisation.
@@ -239,8 +239,8 @@ def get_args() -> argparse.Namespace:
         "--target-scale", type=float, default=1.0,
         help="Multiplicative scaling factor for already-normalised targets "
         "(typically 1.0 for the original MNLL+MSE objective; for "
-        "bpaitac-pnll on comparable CPM tracks, use one shared count-scale "
-        "multiplier such as mean(library_size / 1e6)).",
+        "Poisson-family losses on comparable CPM tracks, use one shared "
+        "count-scale multiplier such as mean(library_size / 1e6)).",
     )
 
     # --- Pseudocount CLI family (shared with the other train_* tools) ---
@@ -307,12 +307,14 @@ def get_args() -> argparse.Namespace:
         "--loss",
         type=str,
         default="multinomial-mse",
-        choices=["multinomial-mse", "bpaitac-pnll"],
+        choices=["multinomial-mse", "bpaitac-pnll", "poisson-multinomial"],
         help=(
             "Training objective. 'multinomial-mse' is the existing multi-task "
             "ChromBPNet profile MNLL + log-count MSE objective. "
             "'bpaitac-pnll' reconstructs per-base rates from logits and "
-            "per-task log-counts, then applies Poisson NLL directly."
+            "per-task log-counts, then applies Poisson NLL directly. "
+            "'poisson-multinomial' keeps the factorized profile/count "
+            "objective but swaps the per-channel count MSE for Poisson NLL."
         ),
     )
     parser.add_argument("--alpha", type=_parse_alpha, default="adaptive")
@@ -468,6 +470,26 @@ def main() -> None:
                 "Using bpAI-TAC-style PNLL: targets are multiplied by "
                 "--target-scale=%.6g and count_pseudocount is forced to 0 "
                 "because the model predicts raw log-counts.",
+                target_scale,
+            )
+        elif args.loss == "poisson-multinomial":
+            count_pseudocount_scaled = 0.0
+            loss_cls = "cerberus.loss.PoissonMultinomialLoss"
+            loss_args = {
+                "count_weight": args.alpha,
+                "profile_weight": args.beta,
+                "count_per_channel": True,
+                "average_channels": True,
+                "flatten_channels": False,
+                "log1p_targets": False,
+            }
+            model_name = "MultitaskChromBPNet_PoissonMultinomial"
+            metrics_args = {"count_pseudocount": 0.0}
+            logger.info(
+                "Using PoissonMultinomialLoss: targets are multiplied by "
+                "--target-scale=%.6g, count loss is per-channel Poisson NLL, "
+                "and count_pseudocount is forced to 0 because the model "
+                "predicts raw log-counts.",
                 target_scale,
             )
         else:

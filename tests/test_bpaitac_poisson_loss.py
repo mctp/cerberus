@@ -100,3 +100,27 @@ def test_multitask_trainer_exposes_bpaitac_pnll_loss(monkeypatch):
     args = get_args()
 
     assert args.loss == "bpaitac-pnll"
+
+
+def test_multitask_trainer_exposes_poisson_multinomial_loss(monkeypatch):
+    from tools.train_chrombpnet_multitask import get_args
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train_chrombpnet_multitask.py",
+            "--targets-json",
+            "targets.json",
+            "--output-dir",
+            "out",
+            "--pretrained-bias",
+            "bias.pt",
+            "--loss",
+            "poisson-multinomial",
+        ],
+    )
+
+    args = get_args()
+
+    assert args.loss == "poisson-multinomial"
