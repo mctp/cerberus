@@ -521,7 +521,7 @@ def test_poisson_multinomial_loss_forward():
 
 
 def test_poisson_multinomial_loss_count_component():
-    """Test that count loss component uses PoissonNLLLoss"""
+    """Test that shifted count loss is minimized at the observed count."""
     loss_fn = PoissonMultinomialLoss(count_weight=10.0, flatten_channels=True)
 
     # Total counts = 10
@@ -546,7 +546,34 @@ def test_poisson_multinomial_loss_count_component():
         ProfileCountOutput(logits=logits, log_counts=pred_log_counts_bad), targets
     )
 
+    count_components = loss_fn.loss_components(
+        ProfileCountOutput(logits=logits, log_counts=pred_log_counts_perfect), targets
+    )
+    assert torch.allclose(
+        count_components["count_loss"], torch.zeros(()), atol=1e-5
+    )
     assert loss2 > loss1
+
+
+def test_poisson_multinomial_loss_legacy_count_component_can_be_negative():
+    """The opt-out path preserves the old unshifted PoissonNLLLoss behavior."""
+    loss_fn = PoissonMultinomialLoss(
+        count_weight=1.0,
+        profile_weight=0.0,
+        flatten_channels=True,
+        shift_poisson_loss=False,
+    )
+
+    targets = torch.zeros(1, 1, 10)
+    targets[0, 0, 0] = 10.0
+    outputs = ProfileCountOutput(
+        logits=torch.zeros(1, 1, 10),
+        log_counts=torch.log(torch.tensor([[10.0]])),
+    )
+
+    components = loss_fn.loss_components(outputs, targets)
+
+    assert components["count_loss"] < 0
 
 
 def test_poisson_multinomial_loss_log1p_targets():

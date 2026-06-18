@@ -482,12 +482,13 @@ def main() -> None:
                 "average_channels": True,
                 "flatten_channels": False,
                 "log1p_targets": False,
+                "shift_poisson_loss": True,
             }
             model_name = "MultitaskChromBPNet_PoissonMultinomial"
             metrics_args = {"count_pseudocount": 0.0}
             logger.info(
                 "Using PoissonMultinomialLoss: targets are multiplied by "
-                "--target-scale=%.6g, count loss is per-channel Poisson NLL, "
+                "--target-scale=%.6g, count loss is per-channel shifted Poisson NLL, "
                 "and count_pseudocount is forced to 0 because the model "
                 "predicts raw log-counts.",
                 target_scale,

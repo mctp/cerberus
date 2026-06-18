@@ -364,7 +364,12 @@ class PoissonMultinomialLoss(nn.Module):
 
     Objective:
       1. Profile Loss: Cross Entropy (Multinomial NLL form).
-      2. Count Loss: Poisson NLL on Global Count.
+      2. Count Loss: Shifted Poisson NLL on Global Count.
+
+    The shifted Poisson term matches AlphaGenome's convention: subtract the
+    target-dependent optimum so the count term is zero when predicted counts
+    equal observed counts. This keeps gradients identical to PoissonNLLLoss with
+    ``full=False`` but makes the logged count component non-negative.
 
     Requires ProfileCountOutput.
     """
@@ -381,6 +386,7 @@ class PoissonMultinomialLoss(nn.Module):
         log1p_targets: bool = False,
         epsilon: float = 1e-8,
         count_pseudocount: float = 1.0,
+        shift_poisson_loss: bool = True,
     ) -> None:
         """
         Args:
@@ -399,7 +405,11 @@ class PoissonMultinomialLoss(nn.Module):
             log1p_targets (bool): If True, assumes targets are log1p transformed.
             epsilon (float): Small constant for numerical stability.
             count_pseudocount (float): Accepted for compatibility with propagate_pseudocount.
-                Not used by Poisson count loss (which uses PoissonNLLLoss directly).
+                Not used by the Poisson count loss.
+            shift_poisson_loss (bool): If True (default), subtracts the
+                target-dependent optimum from the Poisson count term, following
+                AlphaGenome. If False, uses torch.nn.PoissonNLLLoss(full=False),
+                the previous Cerberus behavior.
         """
         super().__init__()
         self.count_weight = count_weight
@@ -409,6 +419,7 @@ class PoissonMultinomialLoss(nn.Module):
         self.average_channels = average_channels
         self.log1p_targets = log1p_targets
         self.epsilon = epsilon
+        self.shift_poisson_loss = shift_poisson_loss
         self.count_loss_fn = nn.PoissonNLLLoss(log_input=True, full=False)
 
     def _compute_profile_loss(
@@ -427,6 +438,21 @@ class PoissonMultinomialLoss(nn.Module):
             else:
                 loss_shape = loss_shape_per_channel.sum(dim=-1).mean()
         return loss_shape
+
+    def _compute_count_loss(
+        self, pred_log_counts: torch.Tensor, target_counts: torch.Tensor
+    ) -> torch.Tensor:
+        if not self.shift_poisson_loss:
+            return self.count_loss_fn(pred_log_counts, target_counts)
+
+        target_counts = target_counts.float().clamp_min(0.0)
+        pred_log_counts = pred_log_counts.float()
+        pred_counts = torch.exp(pred_log_counts)
+        loss = pred_counts - target_counts * pred_log_counts
+        min_value = target_counts - target_counts * torch.log(
+            target_counts + self.epsilon
+        )
+        return (loss - min_value).mean()
 
     def loss_components(
         self, predictions: object, targets: torch.Tensor, **kwargs: object
@@ -448,10 +474,10 @@ class PoissonMultinomialLoss(nn.Module):
                     f"{pred_log_counts.shape}. Set predict_total_count=False "
                     f"in model_args when using count_per_channel=True."
                 )
-            count_loss = self.count_loss_fn(pred_log_counts, target_counts)
+            count_loss = self._compute_count_loss(pred_log_counts, target_counts)
         else:
             target_global_count = targets.sum(dim=(1, 2))
-            count_loss = self.count_loss_fn(
+            count_loss = self._compute_count_loss(
                 pred_log_counts.flatten(), target_global_count
             )
         profile_loss = self._compute_profile_loss(logits, targets)
@@ -474,7 +500,7 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
 
     Objective:
       1. Profile Loss: Cross Entropy.
-      2. Count Loss: Poisson NLL on Global Count.
+      2. Count Loss: Shifted Poisson NLL on Global Count.
 
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp of logits over all channels.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
@@ -497,12 +523,14 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
         if self.count_per_channel:
             pred_log_counts = torch.logsumexp(logits.float(), dim=2)
             target_counts = targets.sum(dim=2)
-            count_loss = self.count_loss_fn(pred_log_counts, target_counts)
+            count_loss = self._compute_count_loss(pred_log_counts, target_counts)
         else:
             logits_flat = logits.flatten(start_dim=1)
             pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1)
             target_global_count = targets.sum(dim=(1, 2))
-            count_loss = self.count_loss_fn(pred_log_counts, target_global_count)
+            count_loss = self._compute_count_loss(
+                pred_log_counts, target_global_count
+            )
         profile_loss = self._compute_profile_loss(logits, targets)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
