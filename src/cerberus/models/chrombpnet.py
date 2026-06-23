@@ -93,8 +93,11 @@ class ChromBPNet(nn.Module):
       :attr:`ModelConfig.freeze`.
     - Profile combination: raw logit addition
       (``acc.logits + bias.logits``).
-    - Count combination: ``torch.logaddexp`` (numerically stable form
-      of ``log(exp(acc) + exp(bias))``).
+    - Count combination: either ``profile_and_counts`` mode, where bias
+      counts are added to accessibility counts with ``torch.logaddexp``,
+      or a bpAI-TAC-style ``profile_only`` mode where the bias branch
+      contributes only profile logits and final counts come directly from
+      the accessibility branch.
 
     Returns a plain :class:`ProfileCountOutput`, unlike
     :class:`cerberus.models.dalmatian.Dalmatian` which returns the
@@ -136,6 +139,13 @@ class ChromBPNet(nn.Module):
         bias_logcount_offset (float): Initial value for the additive
             offset applied to bias log-counts before ``logaddexp``
             combination. Default: ``0.0``.
+        bias_count_mode (str): How the bias branch contributes to count
+            predictions. ``"profile_and_counts"`` preserves reference
+            ChromBPNet behavior by adding bias to both profile shape and count
+            predictions. ``"profile_only"`` adds bias logits to profile shape
+            but ignores bias log-counts, matching bpAI-TAC's treatment of Tn5
+            bias as a local profile-shape effect rather than an
+            accessibility/count signal. Default: ``"profile_and_counts"``.
         shared_bias (bool): If ``True``, the bias branch is built with
             ``output_channels=["bias"]`` (one channel) and broadcast
             across the accessibility branch's channels at forward time.
@@ -154,9 +164,16 @@ class ChromBPNet(nn.Module):
         accessibility_args: dict[str, Any] | None = None,
         bias_args: dict[str, Any] | None = None,
         bias_logcount_offset: float = 0.0,
+        bias_count_mode: str = "profile_and_counts",
         shared_bias: bool = False,
     ):
         super().__init__()
+        allowed_bias_count_modes = {"profile_and_counts", "profile_only"}
+        if bias_count_mode not in allowed_bias_count_modes:
+            raise ValueError(
+                "bias_count_mode must be one of "
+                f"{sorted(allowed_bias_count_modes)}, got {bias_count_mode!r}"
+            )
         if input_channels is None:
             input_channels = ["A", "C", "G", "T"]
         if output_channels is None:
@@ -189,6 +206,7 @@ class ChromBPNet(nn.Module):
         )
 
         self.shared_bias = shared_bias
+        self.bias_count_mode = bias_count_mode
         self.accessibility_model = BPNet(**acc_kw)
         self.bias_model = BPNet(**bias_kw)
 
@@ -205,11 +223,12 @@ class ChromBPNet(nn.Module):
         logger.info(
             "ChromBPNet initialized: accessibility_model=%s params, "
             "bias_model=%s params, total=%s params, bias_logcount_offset=%.4f, "
-            "shared_bias=%s",
+            "bias_count_mode=%s, shared_bias=%s",
             f"{acc_params:,}",
             f"{bias_params:,}",
             f"{acc_params + bias_params:,}",
             float(bias_logcount_offset),
+            bias_count_mode,
             shared_bias,
         )
 
@@ -223,7 +242,9 @@ class ChromBPNet(nn.Module):
         Returns:
             ProfileCountOutput: Contains ``logits`` (Batch, Out_Channels,
                 Output_Len) from raw logit addition and ``log_counts``
-                (Batch, Out_Channels) from ``logaddexp`` combination.
+                (Batch, Out_Channels) from either ``logaddexp`` combination
+                or the accessibility branch, depending on
+                :attr:`bias_count_mode`.
         """
         acc_out = self.accessibility_model(x)
         bias_out = self.bias_model(x)
@@ -233,20 +254,22 @@ class ChromBPNet(nn.Module):
         bias_logits = _resolve_branch_shapes(
             "bias logits", bias_out.logits, acc_out.logits,
         )
-        bias_log_counts_raw = _resolve_branch_shapes(
-            "bias log_counts", bias_out.log_counts, acc_out.log_counts,
-        )
-
-        # Deviation vs chrombpnet-pytorch: reference bakes this offset into
-        # bias_model.linear.bias before training; we apply it at forward time
-        # from a wrapper-level buffer.  Forward math is identical.
-        offset: torch.Tensor = self.bias_logcount_offset.to(  # type: ignore[union-attr]
-            dtype=bias_log_counts_raw.dtype, device=bias_log_counts_raw.device,
-        )
-        bias_log_counts = bias_log_counts_raw + offset
-
         combined_logits = acc_out.logits + bias_logits
-        combined_log_counts = torch.logaddexp(acc_out.log_counts, bias_log_counts)
+        if self.bias_count_mode == "profile_and_counts":
+            bias_log_counts_raw = _resolve_branch_shapes(
+                "bias log_counts", bias_out.log_counts, acc_out.log_counts,
+            )
+
+            # Deviation vs chrombpnet-pytorch: reference bakes this offset into
+            # bias_model.linear.bias before training; we apply it at forward time
+            # from a wrapper-level buffer.  Forward math is identical.
+            offset: torch.Tensor = self.bias_logcount_offset.to(  # type: ignore[union-attr]
+                dtype=bias_log_counts_raw.dtype, device=bias_log_counts_raw.device,
+            )
+            bias_log_counts = bias_log_counts_raw + offset
+            combined_log_counts = torch.logaddexp(acc_out.log_counts, bias_log_counts)
+        else:
+            combined_log_counts = acc_out.log_counts
         return ProfileCountOutput(
             logits=combined_logits,
             log_counts=combined_log_counts,
@@ -275,7 +298,7 @@ class MultitaskChromBPNet(ChromBPNet):
 
     Args:
         input_len, output_len, output_bin_size, input_channels,
-        accessibility_args, bias_args, bias_logcount_offset: forwarded
+        accessibility_args, bias_args, bias_logcount_offset, bias_count_mode: forwarded
             to :class:`ChromBPNet`.
         output_channels (list[str]): Task names; must contain at least
             two entries.
@@ -294,6 +317,7 @@ class MultitaskChromBPNet(ChromBPNet):
         accessibility_args: dict[str, Any] | None = None,
         bias_args: dict[str, Any] | None = None,
         bias_logcount_offset: float = 0.0,
+        bias_count_mode: str = "profile_and_counts",
     ):
         if output_channels is None or len(output_channels) < 2:
             raise ValueError(
@@ -337,6 +361,7 @@ class MultitaskChromBPNet(ChromBPNet):
             accessibility_args=acc_kw,
             bias_args=bias_kw,
             bias_logcount_offset=bias_logcount_offset,
+            bias_count_mode=bias_count_mode,
             shared_bias=True,
         )
 

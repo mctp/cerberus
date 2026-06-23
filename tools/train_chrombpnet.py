@@ -345,6 +345,19 @@ def get_args() -> argparse.Namespace:
         default=None,
         help="Optional cap on batches used during bias-count offset estimation",
     )
+    parser.add_argument(
+        "--bias-count-mode",
+        type=str,
+        default="profile_and_counts",
+        choices=["profile_and_counts", "profile_only"],
+        help=(
+            "How the frozen bias branch contributes to count predictions. "
+            "'profile_and_counts' adds bias to both profile shape and count "
+            "predictions. 'profile_only' adds bias logits to profile shape but "
+            "uses only the accessibility branch for absolute count prediction, "
+            "matching bpAI-TAC-style profile/accessibility decoupling."
+        ),
+    )
 
     # --- Accessibility branch architecture (chrombpnet-pytorch defaults) ---
     parser.add_argument("--filters", type=int, default=512)
@@ -531,7 +544,12 @@ def main() -> None:
     )
 
     bias_logcount_offset = 0.0
-    if args.adjust_bias_logcounts:
+    if args.adjust_bias_logcounts and args.bias_count_mode == "profile_only":
+        logging.warning(
+            "--adjust-bias-logcounts has no effect with "
+            "--bias-count-mode=profile_only; skipping offset estimation."
+        )
+    elif args.adjust_bias_logcounts:
         if args.multi:
             # TODO: estimate the offset per-fold inside the train_multi loop
             # instead of once at the top.  Each fold's training set differs
@@ -554,6 +572,7 @@ def main() -> None:
         "input_channels": ["A", "C", "G", "T"],
         "output_channels": ["signal"],
         "bias_logcount_offset": bias_logcount_offset,
+        "bias_count_mode": args.bias_count_mode,
         "accessibility_args": {
             "filters": args.filters,
             "n_dilated_layers": args.n_layers,

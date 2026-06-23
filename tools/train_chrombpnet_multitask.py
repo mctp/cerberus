@@ -277,6 +277,20 @@ def get_args() -> argparse.Namespace:
         "logaddexp combination. Use estimate_bias_logcount_offset() to calibrate "
         "from data, or pass an explicit value.",
     )
+    parser.add_argument(
+        "--bias-count-mode",
+        type=str,
+        default="profile_and_counts",
+        choices=["profile_and_counts", "profile_only"],
+        help=(
+            "How the frozen shared bias branch contributes to count predictions. "
+            "'profile_and_counts' adds bias to both profile shape and count "
+            "predictions. 'profile_only' adds bias logits to profile shape but "
+            "uses only the accessibility branch's per-task count heads for "
+            "absolute count prediction, matching bpAI-TAC-style "
+            "profile/accessibility decoupling."
+        ),
+    )
 
     # --- Accessibility branch architecture (chrombpnet-pytorch defaults) ---
     parser.add_argument("--filters", type=int, default=512)
@@ -339,7 +353,7 @@ def get_args() -> argparse.Namespace:
         "--precision", type=str, default="full",
         choices=["bf16", "mps", "full"],
         help="Default 'full' (fp32) for ChromBPNet: the bias-count "
-        "logaddexp branch is sensitive to bf16 underflow.",
+        "profile_and_counts path is sensitive to bf16 underflow.",
     )
 
     return parser.parse_args()
@@ -506,6 +520,7 @@ def main() -> None:
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": output_channels,
             "bias_logcount_offset": args.bias_logcount_offset,
+            "bias_count_mode": args.bias_count_mode,
             "accessibility_args": {
                 "filters": args.filters,
                 "n_dilated_layers": args.n_layers,

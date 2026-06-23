@@ -168,6 +168,81 @@ class BPAITACPoissonNLLLoss(nn.Module):
         return components["poisson_nll_loss"]
 
 
+class ProfileJSDLoss(nn.Module):
+    """Profile-only Jensen-Shannon divergence loss.
+
+    This is the bpAI-TAC-style bias-model objective: train the profile logits
+    to match the observed base-resolution profile shape and apply no scalar
+    count-head loss. The model may still instantiate a count head for checkpoint
+    compatibility with :class:`cerberus.models.bpnet.BPNet`; that head simply
+    receives no direct loss from this objective.
+    """
+
+    uses_count_pseudocount: bool = False
+
+    def __init__(
+        self,
+        log1p_targets: bool = False,
+        epsilon: float = 1e-15,
+        flatten_channels: bool = False,
+        average_channels: bool = True,
+        count_pseudocount: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.log1p_targets = log1p_targets
+        self.epsilon = epsilon
+        self.flatten_channels = flatten_channels
+        self.average_channels = average_channels
+        # Accepted for common constructor plumbing; intentionally unused.
+        self.count_pseudocount = count_pseudocount
+
+    def _target_probs(self, targets: torch.Tensor) -> torch.Tensor:
+        if self.flatten_channels:
+            targets = targets.flatten(start_dim=1)
+        targets = targets.clamp_min(0.0) + self.epsilon
+        return targets / targets.sum(dim=-1, keepdim=True)
+
+    def _pred_probs(self, logits: torch.Tensor) -> torch.Tensor:
+        if self.flatten_channels:
+            logits = logits.flatten(start_dim=1)
+        probs = F.softmax(logits.float(), dim=-1) + self.epsilon
+        return probs / probs.sum(dim=-1, keepdim=True)
+
+    def _compute_jsd(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        pred = self._pred_probs(logits)
+        obs = self._target_probs(targets)
+        midpoint = 0.5 * (pred + obs)
+        kl_pred = (pred * (pred.log2() - midpoint.log2())).sum(dim=-1)
+        kl_obs = (obs * (obs.log2() - midpoint.log2())).sum(dim=-1)
+        jsd = 0.5 * (kl_pred + kl_obs)
+        if self.flatten_channels or self.average_channels:
+            return jsd.mean()
+        return jsd.sum(dim=-1).mean()
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
+        targets = targets.float()
+        if self.log1p_targets:
+            targets = torch.expm1(targets).clamp_min(0.0)
+        if not isinstance(outputs, ProfileCountOutput):
+            raise TypeError("ProfileJSDLoss requires ProfileCountOutput")
+        if outputs.logits.shape != targets.shape:
+            raise ValueError(
+                "ProfileJSDLoss requires logits and targets to have matching "
+                f"shape, got logits {outputs.logits.shape} and targets "
+                f"{targets.shape}."
+            )
+        profile_loss = self._compute_jsd(outputs.logits, targets)
+        return {"profile_jsd_loss": profile_loss}
+
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
+        components = self.loss_components(outputs, targets, **kwargs)
+        return components["profile_jsd_loss"]
+
+
 class MSEMultinomialLoss(nn.Module):
     """
     Multinomial NLL Profile Loss + MSE Count Loss.

@@ -19,7 +19,7 @@ import torch.nn as nn
 import cerberus.models as _cerberus_models
 from cerberus.config import FreezeSpec, PretrainedConfig
 from cerberus.freeze import apply_freeze
-from cerberus.loss import MSEMultinomialLoss
+from cerberus.loss import MSEMultinomialLoss, ProfileJSDLoss
 from cerberus.models import ChromBPNet, MultitaskChromBPNet
 from cerberus.models.bpnet import BPNet, MultitaskBPNetLoss
 from cerberus.models.chrombpnet import (
@@ -109,6 +109,97 @@ def test_chrombpnet_combines_logits_and_counts_exactly():
     )
     assert torch.allclose(out.logits, expected_logits)
     assert torch.allclose(out.log_counts, expected_log_counts)
+
+
+def test_chrombpnet_profile_only_bias_keeps_accessibility_counts():
+    """bpAI-TAC-style mode adds bias logits but ignores bias log-counts."""
+    model = _make_small_model()
+    model.bias_count_mode = "profile_only"
+    model.accessibility_model = _FixedBranch(  # type: ignore[assignment]
+        logits=torch.tensor([[[1.0, 2.0, 3.0]]]),
+        log_counts=torch.tensor([[0.5]]),
+    )
+    model.bias_model = _FixedBranch(  # type: ignore[assignment]
+        logits=torch.tensor([[[0.2, -0.5, 1.1]]]),
+        log_counts=torch.tensor([[100.0]]),
+    )
+    model.bias_logcount_offset.fill_(100.0)  # type: ignore[operator]
+
+    out = model(torch.randn(2, 4, 128))
+    expected_logits = torch.tensor([[[1.2, 1.5, 4.1]]]).expand(2, -1, -1)
+    expected_log_counts = torch.full((2, 1), 0.5)
+    assert torch.allclose(out.logits, expected_logits)
+    assert torch.allclose(out.log_counts, expected_log_counts)
+
+
+def test_chrombpnet_rejects_unknown_bias_count_mode():
+    with pytest.raises(ValueError, match="bias_count_mode"):
+        ChromBPNet(
+            input_len=128,
+            output_len=64,
+            bias_count_mode="not-a-mode",
+        )
+
+
+def test_profile_jsd_loss_ignores_count_head_gradients():
+    logits = torch.tensor([[[2.0, 0.0, -1.0, 1.0]]], requires_grad=True)
+    log_counts = torch.tensor([[123.0]], requires_grad=True)
+    targets = torch.tensor([[[8.0, 1.0, 0.0, 3.0]]])
+    outputs = ProfileCountOutput(logits=logits, log_counts=log_counts)
+
+    loss = ProfileJSDLoss()(outputs, targets)
+    loss.backward()
+
+    assert logits.grad is not None
+    assert torch.any(logits.grad != 0)
+    assert log_counts.grad is None
+
+
+def test_profile_jsd_loss_leaves_bpnet_count_head_untrained():
+    model = BPNet(
+        input_len=128,
+        output_len=64,
+        output_channels=["signal"],
+        filters=4,
+        n_dilated_layers=1,
+        conv_kernel_size=11,
+        dil_kernel_size=3,
+        profile_kernel_size=11,
+        residual_architecture="residual_post-activation_conv",
+    )
+    outputs = model(torch.randn(2, 4, 128))
+    targets = torch.rand_like(outputs.logits)
+
+    loss = ProfileJSDLoss()(outputs, targets)
+    loss.backward()
+
+    assert model.profile_conv.weight.grad is not None
+    assert torch.any(model.profile_conv.weight.grad != 0)
+    assert model.count_dense.weight.grad is None
+    assert model.count_dense.bias.grad is None
+
+
+def test_profile_jsd_loss_uses_base2_divergence():
+    outputs = ProfileCountOutput(
+        logits=torch.zeros(1, 1, 2),
+        log_counts=torch.zeros(1, 1),
+    )
+    targets = torch.tensor([[[1.0, 0.0]]])
+
+    loss = ProfileJSDLoss()(outputs, targets)
+
+    assert torch.allclose(loss, torch.tensor(0.31127813), atol=1e-6)
+
+
+def test_profile_jsd_loss_handles_silent_targets():
+    outputs = ProfileCountOutput(
+        logits=torch.zeros(2, 1, 4),
+        log_counts=torch.randn(2, 1),
+    )
+    targets = torch.zeros(2, 1, 4)
+    loss = ProfileJSDLoss()(outputs, targets)
+    assert loss.shape == ()
+    assert torch.isfinite(loss)
 
 
 class _ConstantCountBiasModel(nn.Module):
