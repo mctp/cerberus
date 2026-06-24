@@ -151,7 +151,7 @@ This tool:
 4. Reconstructs linear signal per window (softmax × counts for BPNet, exp for log-rates) then spatially merges overlapping predictions using a streaming accumulator.
 5. Automatically reads `count_pseudocount` from the model config and subtracts it when inverting `log_counts` (MSE-trained models).
 
-The exported track contains the reconstructed linear signal (counts per bp). For multi-channel models, only channel 0 is written (BigWig is single-track).
+The exported track contains the reconstructed linear signal (counts per bp). BigWig is single-track, so multi-channel models must be exported one channel at a time via `--channel-index` (defaults to channel 0; out-of-range and negative values are rejected).
 
 #### Optional arguments
 
@@ -162,6 +162,7 @@ The exported track contains the reconstructed linear signal (counts per bp). For
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val`. |
 | `--batch_size` | Batch size for inference (default: 64). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
+| `--channel-index` | Output channel index to export (default: `0`). Run once per channel for multi-channel models. |
 
 ### Export Predictions (`tools/export_predictions.py`)
 Exports predicted vs observed log-counts for a set of peaks to a TSV file. This is useful for evaluating model performance on peak sets.

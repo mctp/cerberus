@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--precision bf16` to opt back into mixed precision for throughput.
 
 ### Added
+- **`cerberus.predict_bigwig.predict_to_bigwig(..., channel_index=0)`** and
+  **`tools/export_bigwig.py --channel-index`**: select which output channel of
+  a multi-channel model is written to the single-track BigWig. Default 0
+  preserves previous behaviour; out-of-range and negative values raise a clear
+  `ValueError` (no silent IndexError, no Python-style wraparound). The
+  multi-channel warning is now silent when the user explicitly picks a
+  non-default channel.
 - **`cerberus.loss.ProfileJSDLoss`**: profile-only base-2 Jensen-Shannon
   divergence loss. Trains the profile logits to match the observed
   base-resolution profile shape with no scalar count-head loss. Used for
