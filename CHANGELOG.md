@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Stranded reverse-complement channel swaps** (`DataConfig.reverse_complement_input_channel_pairs`
+  and `reverse_complement_target_channel_pairs`): declare named channel pairs to
+  swap after the positional flip so strand-specific tracks (e.g.
+  `{"plus": plus.bw, "minus": minus.bw}`) RC correctly under augmentation.
+  Resolves audit #3 (2026-06-10): the prior `ReverseComplement` reversed
+  stranded targets along length but never swapped strand channels — silent
+  training-data corruption for stranded multi-channel runs. Pair lists are
+  validated at `DataConfig` construction (self-pairs and overlapping pairs are
+  rejected).
+- **`tools/train_bpnet.py --plus-bigwig`/`--minus-bigwig` and
+  `--no-reverse-complement`**: stranded BPNet training mode wires the
+  `("plus", "minus")` channel-pair swap automatically and configures multinomial
+  losses with `flatten_channels=True, count_per_channel=False` so the joint
+  plus/minus count is what is regressed.
 - **`cerberus.loss.BPAITACPoissonNLLLoss`**: bpAI-TAC-style Poisson NLL on the
   reconstructed base-resolution log-rate
   `log_softmax(profile_logits) + log_counts.unsqueeze(-1)`. Preserves the
@@ -19,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   objective. Forces zero count pseudocount (raw log-counts).
 
 ### Fixed
+- **`ReverseComplement` now also DNA-complements when `dna_channels` is
+  `list[int]`** (e.g. `[0, 1, 2, 3]`). Previously the channel-flip step was
+  gated on `isinstance(slice)` and silently skipped for the list form, so any
+  caller passing a list received reversed-but-not-complemented sequence. The
+  `slice` callers (all current call sites) were unaffected.
 - **`cache.save_prepare_cache` now writes the `prepare_data` metrics cache
   atomically** (temp file in the same directory + `os.replace`, with `fsync`
   before rename). Previously `np.savez_compressed` wrote `metrics_cache.npz`

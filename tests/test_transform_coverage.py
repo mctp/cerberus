@@ -111,6 +111,52 @@ class TestCreateDefaultTransforms:
         with pytest.raises(ValueError, match="unknown channel"):
             create_default_transforms(dc)
 
+    def test_reverse_complement_input_swaps_use_dna_offset_when_use_sequence(self):
+        """Input channels are laid out after the 4 DNA one-hot channels, so
+        named input pairs must resolve to indices shifted by +4 when
+        use_sequence=True."""
+        dc = self._make_data_config(
+            inputs={"minus": "minus.bw", "plus": "plus.bw"},
+            reverse_complement=True,
+            reverse_complement_input_channel_pairs=[("plus", "minus")],
+            use_sequence=True,
+        )
+        transforms = create_default_transforms(dc)
+        rc = next(t for t in transforms if isinstance(t, ReverseComplement))
+
+        # sorted(inputs) == ["minus", "plus"]; +4 for DNA leading channels.
+        assert rc.input_channel_swaps == [(5, 4)]
+
+    def test_reverse_complement_input_swaps_no_offset_without_sequence(self):
+        # model_construct bypasses validation so we can exercise the
+        # use_sequence=False path even though the validator would normally
+        # reject reverse_complement=True without DNA channels.
+        dc = self._make_data_config(
+            inputs={"minus": "minus.bw", "plus": "plus.bw"},
+            reverse_complement=True,
+            reverse_complement_input_channel_pairs=[("plus", "minus")],
+            use_sequence=False,
+        )
+        transforms = create_default_transforms(dc)
+        rc = next(t for t in transforms if isinstance(t, ReverseComplement))
+
+        assert rc.input_channel_swaps == [(1, 0)]
+
+    def test_reverse_complement_resolves_both_input_and_target_swaps(self):
+        dc = self._make_data_config(
+            inputs={"in_minus": "in_minus.bw", "in_plus": "in_plus.bw"},
+            targets={"out_minus": "out_minus.bw", "out_plus": "out_plus.bw"},
+            reverse_complement=True,
+            reverse_complement_input_channel_pairs=[("in_plus", "in_minus")],
+            reverse_complement_target_channel_pairs=[("out_plus", "out_minus")],
+            use_sequence=True,
+        )
+        transforms = create_default_transforms(dc)
+        rc = next(t for t in transforms if isinstance(t, ReverseComplement))
+
+        assert rc.input_channel_swaps == [(5, 4)]
+        assert rc.target_channel_swaps == [(1, 0)]
+
 
 # ---------------------------------------------------------------------------
 # Log1p apply_to variants

@@ -190,6 +190,22 @@ def test_reverse_complement_no_dna(dummy_interval):
     assert out_int.strand == "-"
 
 
+def test_reverse_complement_dna_list_channels(dummy_interval):
+    """``dna_channels`` accepts list[int]; the DNA channel-flip step must run
+    via advanced indexing for that path too (a single ``A`` at position 0 must
+    become a single ``T`` at the last position)."""
+    inputs = torch.zeros(4, 4)
+    inputs[0, 0] = 1.0  # A at position 0
+    targets = torch.zeros(1, 4)
+
+    rc = ReverseComplement(probability=1.0, dna_channels=[0, 1, 2, 3])
+    out_in, _, _ = rc(inputs, targets, dummy_interval)
+
+    expected = torch.zeros(4, 4)
+    expected[3, 3] = 1.0  # T at last position
+    assert torch.equal(out_in, expected)
+
+
 def test_log1p(dummy_interval):
     targets = torch.tensor([0.0, 1.0, 10.0]).unsqueeze(0)
     inputs = torch.randn(4, 3)

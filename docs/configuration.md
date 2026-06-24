@@ -127,6 +127,30 @@ class DataConfig(BaseModel):
     use_sequence: bool
 ```
 
+#### Reverse-complement channel swaps for stranded tracks
+
+When targets (or inputs) are strand-specific, `reverse_complement=True` alone is
+**not** sufficient: a `+`-strand pileup flipped along length stays in the `+`
+channel, which teaches the model an inconsistent strand convention.  Declare
+strand-paired channel names so the augmentation also swaps them after the
+positional flip:
+
+```python
+DataConfig(
+    inputs={},
+    targets={"plus": "plus.bw", "minus": "minus.bw"},
+    encoding="ACGT",
+    use_sequence=True,
+    reverse_complement=True,
+    reverse_complement_target_channel_pairs=[("plus", "minus")],
+    # ... other fields ...
+)
+```
+
+Pair-order is symmetric (`("plus", "minus")` and `("minus", "plus")` resolve to
+the same swap).  Self-pairs and overlapping pairs are rejected at construction
+time.
+
 ### Performance: In-Memory vs Disk-Based
 
 The `in_memory` flag (passed at runtime to `CerberusDataModule.setup()`) significantly impacts performance.

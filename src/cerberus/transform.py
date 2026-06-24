@@ -238,12 +238,10 @@ class ReverseComplement:
 
         # Complement DNA (Flip Channels)
         # Reversing ACGT (0123) -> TGCA (3210) maps A->T, C->G.
-        if isinstance(self.dna_channels, slice):
-            dna = inputs[self.dna_channels]
-            inputs[self.dna_channels] = torch.flip(dna, dims=[-2])
-        else:
-            dna = inputs[self.dna_channels]
-            inputs[self.dna_channels] = torch.flip(dna, dims=[-2])
+        # Works for both ``slice`` and ``list[int]`` indices; the latter uses
+        # advanced indexing, which still round-trips through this assignment.
+        dna = inputs[self.dna_channels]
+        inputs[self.dna_channels] = torch.flip(dna, dims=[-2])
 
         # Flip strand
         interval.strand = "-" if interval.strand == "+" else "+"
@@ -436,13 +434,13 @@ def create_default_transforms(
         target_channel_names = sorted(data_config.targets)
         input_channel_swaps = _resolve_channel_pair_indices(
             input_channel_names,
-            getattr(data_config, "reverse_complement_input_channel_pairs", []),
+            data_config.reverse_complement_input_channel_pairs,
             index_offset=4 if data_config.use_sequence else 0,
             field_name="reverse_complement_input_channel_pairs",
         )
         target_channel_swaps = _resolve_channel_pair_indices(
             target_channel_names,
-            getattr(data_config, "reverse_complement_target_channel_pairs", []),
+            data_config.reverse_complement_target_channel_pairs,
             field_name="reverse_complement_target_channel_pairs",
         )
         transforms.append(

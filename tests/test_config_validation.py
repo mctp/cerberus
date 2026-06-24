@@ -87,6 +87,49 @@ def test_validate_data_config_rc_without_sequence():
         )
 
 
+def _base_data_config_kwargs() -> dict:
+    return {
+        "inputs": {},
+        "targets": {},
+        "input_len": 100,
+        "output_len": 100,
+        "max_jitter": 0,
+        "output_bin_size": 1,
+        "encoding": "ACGT",
+        "log_transform": False,
+        "reverse_complement": True,
+        "use_sequence": True,
+        "target_scale": 1.0,
+    }
+
+
+def test_validate_data_config_rc_target_self_pair_raises():
+    with pytest.raises(ValidationError, match="self-pair"):
+        DataConfig(
+            **_base_data_config_kwargs(),
+            reverse_complement_target_channel_pairs=[("plus", "plus")],
+        )
+
+
+def test_validate_data_config_rc_input_overlapping_pairs_raises():
+    with pytest.raises(ValidationError, match="reuses channel"):
+        DataConfig(
+            **_base_data_config_kwargs(),
+            reverse_complement_input_channel_pairs=[
+                ("a", "b"),
+                ("a", "c"),
+            ],
+        )
+
+
+def test_validate_data_config_rc_disjoint_pairs_accepted():
+    cfg = DataConfig(
+        **_base_data_config_kwargs(),
+        reverse_complement_target_channel_pairs=[("a", "b"), ("c", "d")],
+    )
+    assert cfg.reverse_complement_target_channel_pairs == [("a", "b"), ("c", "d")]
+
+
 # --- Sampler Config Tests ---
 
 

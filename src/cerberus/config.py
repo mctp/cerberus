@@ -125,6 +125,41 @@ class DataConfig(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def check_rc_channel_pairs(self) -> DataConfig:
+        """Reject misconfigured RC channel-pair lists.
+
+        A swap of a channel with itself is a no-op, and reusing a channel name
+        across multiple pairs would scramble channels under the cumulative
+        sequence of in-place swaps in :class:`~cerberus.transform.ReverseComplement`.
+        Either case is almost certainly a config bug.
+        """
+        for field_name, pairs in (
+            (
+                "reverse_complement_input_channel_pairs",
+                self.reverse_complement_input_channel_pairs,
+            ),
+            (
+                "reverse_complement_target_channel_pairs",
+                self.reverse_complement_target_channel_pairs,
+            ),
+        ):
+            seen_names: set[str] = set()
+            for left, right in pairs:
+                if left == right:
+                    raise ValueError(
+                        f"{field_name} contains a self-pair {(left, right)!r}: "
+                        "a channel cannot be reverse-complement-swapped with itself."
+                    )
+                for name in (left, right):
+                    if name in seen_names:
+                        raise ValueError(
+                            f"{field_name} reuses channel {name!r} across multiple "
+                            "pairs. Overlapping swaps would scramble channels."
+                        )
+                    seen_names.add(name)
+        return self
+
 
 class TrainConfig(BaseModel):
     """Configuration for training hyperparameters.
