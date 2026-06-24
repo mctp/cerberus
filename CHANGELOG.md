@@ -7,124 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- **`PoissonMultinomialLoss` and `CoupledPoissonMultinomialLoss` default to a
-  shifted count term** (`shift_poisson_loss=True`) that subtracts the
-  target-dependent optimum `y - y·log(y+ε)` from each element before mean
-  reduction. The count_loss is now non-negative and exactly 0 at perfect
-  prediction (`λ = log y`). **Gradients are identical** to the legacy
-  `nn.PoissonNLLLoss(log_input=True, full=False)` path because the shift
-  depends only on the targets — training trajectories are unchanged, only the
-  logged scalar moves. Pass `shift_poisson_loss=False` to opt back into the
-  legacy behavior. Downstream trainers (`train_bpnet`, `train_biasnet`,
-  `train_dalmatian`, `train_dalmatian_multitask`, `train_pomeranian`, and the
-  `--loss poisson-multinomial` path in `train_chrombpnet_multitask`) silently
-  inherit the new default.
-- **`docs/preprocessing.md` scATAC pseudobulk normalization section expanded**
-  into a full math + anchor-selection + tradeoff walkthrough with CREsted
-  source references. CLI flag names are now annotated alongside the algorithm
-  variables they control.
-- **`tools/train_bpnet.py` now defaults to `--precision full`** (was `bf16`).
-  Supersedes the 1.0.0a7 policy line that grouped BPNet with the bf16-default
-  trainers. The change is motivated by the same numerical sensitivity that
-  motivated the ChromBPNet trainers' flip in 1.0.0a7: BPNet's softmax-over-length
-  profile head can develop pileup spikes that overflow in bf16. Pass
-  `--precision bf16` to opt back into mixed precision for throughput.
+## [1.0.0a8] - 2026-06-24
+
+Closes correctness audit (`docs/internal/correctness_audit_2026_06_10.md`)
+items #3 (stranded reverse-complement) and #8 (`prepare_data` cache
+concurrency).  Items #1, #2, #4, #5, #6, #7, and #9 remain open.
 
 ### Added
 - **`cerberus.predict_bigwig.predict_to_bigwig(..., channel_index=0)`** and
   **`tools/export_bigwig.py --channel-index`**: select which output channel of
   a multi-channel model is written to the single-track BigWig. Default 0
-  preserves previous behaviour; out-of-range and negative values raise a clear
+  preserves previous behaviour; out-of-range and negative values raise
   `ValueError` (no silent IndexError, no Python-style wraparound). The
-  multi-channel warning is now silent when the user explicitly picks a
-  non-default channel.
+  multi-channel warning is now silent on explicit non-default selection.
 - **`cerberus.loss.ProfileJSDLoss`**: profile-only base-2 Jensen-Shannon
-  divergence loss. Trains the profile logits to match the observed
-  base-resolution profile shape with no scalar count-head loss. Used for
-  bpAI-TAC-style Tn5 bias-model training, where Tn5 bias is treated as a local
-  profile-shape effect rather than a count signal. Epsilon stabilisation
-  defends both pred (softmax) and target normalisation against `log(0)`. The
-  model may still instantiate a count head for checkpoint compatibility; that
-  head receives no gradient from this loss.
-- **`cerberus.models.ChromBPNet.bias_count_mode`** (and the same parameter on
+  divergence loss for bpAI-TAC-style Tn5 bias training (treat bias as a
+  profile-shape effect, not a count signal). No scalar count-head loss; the
+  model may still instantiate a count head for checkpoint compatibility, but
+  that head receives no gradient. Epsilon stabilisation defends both pred
+  (softmax) and target normalisation against `log(0)`.
+- **`cerberus.models.ChromBPNet.bias_count_mode`** (and on
   `MultitaskChromBPNet`): selects how the frozen bias branch contributes to
   count predictions. `"profile_and_counts"` (default) preserves the existing
   `torch.logaddexp(acc, bias + offset)` combination. `"profile_only"` adds
   bias logits to profile shape but takes final log-counts entirely from the
-  accessibility branch — matching bpAI-TAC's treatment of Tn5 bias. The
-  `bias_logcount_offset` buffer is preserved for state-dict compatibility but
-  becomes a no-op in `profile_only` mode.
+  accessibility branch — matching bpAI-TAC. `bias_logcount_offset` is preserved
+  for state-dict compatibility but becomes a no-op in `profile_only`.
 - **`tools/train_chrombpnet.py --bias-count-mode`** and
   **`tools/train_chrombpnet_multitask.py --bias-count-mode`**: expose the new
-  ChromBPNet bias-count routing. With `--bias-count-mode profile_only`, the
-  trainer warns and skips `--adjust-bias-logcounts` offset estimation
-  (which has no effect in profile_only mode).
+  ChromBPNet bias-count routing. Combining `--bias-count-mode profile_only`
+  with `--adjust-bias-logcounts` logs a warning and skips the offset
+  estimation (which is a no-op in that mode).
 - **`tools/train_chrombpnet_bias.py --loss profile-jsd`**: stage-1 bias-model
-  training with the new `ProfileJSDLoss`. Forces zero count pseudocount.
+  training with `ProfileJSDLoss`. Forces zero count pseudocount.
 - **`tools/train_chrombpnet_multitask.py --loss poisson-multinomial`**: third
-  multi-task objective alongside the default MNLL+MSE and `bpaitac-pnll`. Wires
-  `cerberus.loss.PoissonMultinomialLoss` with per-channel shifted Poisson count
-  NLL and channel-averaged profile MNLL (`count_per_channel=True`,
-  `average_channels=True`), mirroring `MultitaskBPNetLoss`'s mean-over-(B, C)
-  reduction so the profile/count weighting stays calibrated as task count
-  grows. Forces zero count pseudocount (raw log-counts).
+  multi-task objective alongside the default MNLL+MSE and `bpaitac-pnll`.
+  Wires `PoissonMultinomialLoss` with per-channel shifted Poisson count NLL
+  and channel-averaged profile MNLL — mirrors `MultitaskBPNetLoss`'s
+  mean-over-(B, C) reduction so the profile/count weighting stays calibrated
+  as task count grows. Forces zero count pseudocount.
 - **`tools/train_bpnet.py` standard-BPNet architecture overrides**:
   `--filters`, `--n-layers`, `--conv-kernel-size`, `--dil-kernel-size`,
   `--profile-kernel-size`. Defaults (64, 8, 21, 3, 75) preserve the existing
   BPNet variant; the new flags enable training a ChromBPNet-accessibility-sized
-  BPNet (`--filters 512 --n-layers 8 --conv-kernel-size 21 --dil-kernel-size 3
-  --profile-kernel-size 75 --residual-architecture residual_post-activation_conv`)
-  from the same trainer without code duplication. The resolved dimensions are
-  now logged.
-- **Stranded reverse-complement channel swaps** (`DataConfig.reverse_complement_input_channel_pairs`
-  and `reverse_complement_target_channel_pairs`): declare named channel pairs to
-  swap after the positional flip so strand-specific tracks (e.g.
-  `{"plus": plus.bw, "minus": minus.bw}`) RC correctly under augmentation.
-  Resolves audit #3 (2026-06-10): the prior `ReverseComplement` reversed
-  stranded targets along length but never swapped strand channels — silent
-  training-data corruption for stranded multi-channel runs. Pair lists are
-  validated at `DataConfig` construction (self-pairs and overlapping pairs are
-  rejected).
+  standalone BPNet (`--filters 512 --n-layers 8 --conv-kernel-size 21
+  --dil-kernel-size 3 --profile-kernel-size 75 --residual-architecture
+  residual_post-activation_conv`) from the same trainer. Resolved dimensions
+  are logged.
+- **Stranded reverse-complement channel swaps**
+  (`DataConfig.reverse_complement_input_channel_pairs` /
+  `reverse_complement_target_channel_pairs`): named channel pairs are swapped
+  after the positional flip so strand-specific tracks (e.g.
+  `{"plus": plus.bw, "minus": minus.bw}`) RC correctly. Closes audit #3 —
+  prior behaviour reversed stranded targets along length but never swapped
+  strand channels, silently corrupting training data on stranded multi-channel
+  runs. Pair lists are validated at construction (self-pairs and overlapping
+  pairs rejected).
 - **`tools/train_bpnet.py --plus-bigwig`/`--minus-bigwig` and
   `--no-reverse-complement`**: stranded BPNet training mode wires the
-  `("plus", "minus")` channel-pair swap automatically and configures multinomial
-  losses with `flatten_channels=True, count_per_channel=False` so the joint
-  plus/minus count is what is regressed.
+  `("plus", "minus")` channel-pair swap automatically and configures
+  multinomial losses with `flatten_channels=True, count_per_channel=False` so
+  the joint plus/minus count is what is regressed.
 - **`cerberus.loss.BPAITACPoissonNLLLoss`**: bpAI-TAC-style Poisson NLL on the
-  reconstructed base-resolution log-rate
-  `log_softmax(profile_logits) + log_counts.unsqueeze(-1)`. Preserves the
-  factored `ProfileCountOutput` API (profile logits + per-task `log_counts`,
-  `(batch, task)`) and applies one direct PNLL on the `(batch, task, length)`
-  rate tensor. Requires `predict_total_count=False` on the accessibility branch.
-- **`tools/train_chrombpnet_multitask.py --loss bpaitac-pnll`**: wires the new
-  loss into the multi-task ChromBPNet trainer alongside the default MNLL+MSE
-  objective. Forces zero count pseudocount (raw log-counts).
+  reconstructed base-resolution log-rate `log_softmax(logits) +
+  log_counts.unsqueeze(-1)`. Preserves the factored `ProfileCountOutput` API
+  (per-task `log_counts`, `(batch, task)`) and applies one direct PNLL on the
+  `(batch, task, length)` rate tensor. Requires `predict_total_count=False` on
+  the accessibility branch.
+- **`tools/train_chrombpnet_multitask.py --loss bpaitac-pnll`**: wires
+  `BPAITACPoissonNLLLoss` into the multi-task ChromBPNet trainer alongside
+  the default MNLL+MSE. Forces zero count pseudocount.
+
+### Changed
+- **`PoissonMultinomialLoss` and `CoupledPoissonMultinomialLoss` default to a
+  shifted count term** (`shift_poisson_loss=True`) that subtracts the
+  target-dependent optimum `y - y·log(y+ε)` before mean reduction. The
+  count_loss is now non-negative and exactly 0 at perfect prediction
+  (`λ = log y`). **Gradients are identical** to the legacy
+  `nn.PoissonNLLLoss(log_input=True, full=False)` path because the shift is
+  target-only — training trajectories are unchanged, only the logged scalar
+  moves. Pass `shift_poisson_loss=False` to opt back in. All downstream
+  PoissonMultinomial users (BPNet, BiasNet, Dalmatian, Pomeranian, ChromBPNet
+  multitask `poisson-multinomial`) silently inherit the new default.
+- **`tools/train_bpnet.py` now defaults to `--precision full`** (was `bf16`).
+  Supersedes the 1.0.0a7 policy line that grouped BPNet with the bf16-default
+  trainers — same numerical sensitivity that motivated the ChromBPNet trainers'
+  flip in 1.0.0a7 (softmax-over-length pileup spikes can overflow in bf16).
+  Pass `--precision bf16` to opt back into mixed precision.
+- **`docs/preprocessing.md`** scATAC pseudobulk normalization section expanded
+  with full math, anchor-selection logic, baseline-weight strategy, biological
+  tradeoff discussion, and CREsted source references. CLI flag names are
+  annotated alongside the algorithm variables they control.
 
 ### Fixed
 - **`ReverseComplement` now also DNA-complements when `dna_channels` is
   `list[int]`** (e.g. `[0, 1, 2, 3]`). Previously the channel-flip step was
-  gated on `isinstance(slice)` and silently skipped for the list form, so any
-  caller passing a list received reversed-but-not-complemented sequence. The
+  gated on `isinstance(slice)` and silently skipped for the list form. The
   `slice` callers (all current call sites) were unaffected.
-- **`cache.save_prepare_cache` now writes the `prepare_data` metrics cache
-  atomically** (temp file in the same directory + `os.replace`, with `fsync`
-  before rename). Previously `np.savez_compressed` wrote `metrics_cache.npz`
-  in place, so two independent runs sharing a cache key — which happens by
-  default for parallel cross-validation folds or hyperparameter sweeps, since
-  the key excludes the model, learning rate, and fold and the seed defaults to a
-  fixed `42` — could tear the file when their writes overlapped on a cold cache.
-  The `ready` sentinel is now touched only after the payload is fully published.
-  `save_prepare_cache` also raises a clear error on ragged metric arrays instead
-  of writing a non-roundtrippable npz, and corrects the misleading `seed`
-  docstring (the default is a fixed `42`, not auto-generated).
-- **`prepare_data` now serializes cache construction with an advisory lock**
-  (`cache.cache_build_lock`, `fcntl.flock` + double-checked `ready` re-check), so
-  among runs sharing a cache key only one computes the complexity metrics while
-  the others block and reuse the result instead of all recomputing on a cold
-  cache. The lock auto-releases on process exit (no stale locks) and degrades to
-  a no-op on filesystems without `flock` (writes stay atomic, runs merely
-  recompute).
+- **`cache.save_prepare_cache` writes the `prepare_data` metrics cache
+  atomically** (temp file in the same directory + `os.replace` with `fsync`
+  before rename), closing audit #8 layer 1. Previously `np.savez_compressed`
+  wrote `metrics_cache.npz` in place, so two independent runs sharing a cache
+  key — common for parallel cross-validation folds or sweeps since the key
+  excludes the model, LR, and fold and the seed defaults to a fixed `42` —
+  could tear the file when their writes overlapped on a cold cache. The
+  `ready` sentinel is now touched only after the payload is fully published.
+  `save_prepare_cache` also raises on ragged metric arrays instead of writing
+  a non-roundtrippable npz, and corrects the misleading `seed` docstring
+  (default is fixed `42`, not auto-generated).
+- **`prepare_data` serialises cache construction with an advisory lock**
+  (`cache.cache_build_lock`, `fcntl.flock` + double-checked `ready` re-check),
+  closing audit #8 layer 2. Among runs sharing a cache key, only one computes
+  the complexity metrics while the others block and reuse the result. The lock
+  auto-releases on process exit (no stale locks) and degrades to a no-op on
+  filesystems without `flock` (writes stay atomic, runs merely recompute).
 
 ## [1.0.0a7] - 2026-05-31
 

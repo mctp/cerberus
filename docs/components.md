@@ -204,7 +204,7 @@ Use the table below as a starting point:
 | Low-coverage or high-variance signal | `NegativeBinomialMultinomialLoss` | `ProfileCountOutput` | NB count loss accounts for overdispersion (variance >> mean). Set `total_count` to control dispersion. |
 | Poisson count model | `PoissonMultinomialLoss` | `ProfileCountOutput` | Poisson count loss. Better statistical match when counts follow a Poisson distribution. Defaults to a shifted form (`shift_poisson_loss=True`) that is zero at perfect prediction; gradients match the unshifted PNLL. Pass `shift_poisson_loss=False` for the legacy behavior. |
 | Single output head (no count head) | `CoupledMSEMultinomialLoss` | `ProfileLogRates` | Derives total count via LogSumExp of log-rates. No separate count head needed. |
-| Single head, Poisson counts | `CoupledPoissonMultinomialLoss` | `ProfileLogRates` | Coupled Poisson variant for log-rate models. |
+| Single head, Poisson counts | `CoupledPoissonMultinomialLoss` | `ProfileLogRates` | Coupled Poisson variant for log-rate models. Inherits the same shifted-default behavior as `PoissonMultinomialLoss`. |
 | Single head, overdispersed | `CoupledNegativeBinomialMultinomialLoss` | `ProfileLogRates` | Coupled NB variant for log-rate models. |
 | Bias-factorized (Dalmatian) | `DalmatianLoss` | `FactorizedProfileCountOutput` | Wraps any base loss. Adds bias-only reconstruction on background examples. |
 | Direct log-rate regression | `ProfilePoissonNLLLoss` | `ProfileLogRates` | Standard Poisson NLL without profile/count factorization. |
