@@ -489,6 +489,10 @@ def main() -> None:
         elif args.loss == "poisson-multinomial":
             count_pseudocount_scaled = 0.0
             loss_cls = "cerberus.loss.PoissonMultinomialLoss"
+            # count_per_channel + average_channels mirrors MultitaskBPNetLoss:
+            # both terms reduce by mean over (B, C) so profile/count weighting
+            # stays calibrated as the number of tasks grows (dodges the
+            # average=False sum-over-channels scaling issue from audit #4).
             loss_args = {
                 "count_weight": args.alpha,
                 "profile_weight": args.beta,

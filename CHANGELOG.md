@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--precision bf16` to opt back into mixed precision for throughput.
 
 ### Added
+- **`tools/train_chrombpnet_multitask.py --loss poisson-multinomial`**: third
+  multi-task objective alongside the default MNLL+MSE and `bpaitac-pnll`. Wires
+  `cerberus.loss.PoissonMultinomialLoss` with per-channel shifted Poisson count
+  NLL and channel-averaged profile MNLL (`count_per_channel=True`,
+  `average_channels=True`), mirroring `MultitaskBPNetLoss`'s mean-over-(B, C)
+  reduction so the profile/count weighting stays calibrated as task count
+  grows. Forces zero count pseudocount (raw log-counts).
 - **`tools/train_bpnet.py` standard-BPNet architecture overrides**:
   `--filters`, `--n-layers`, `--conv-kernel-size`, `--dil-kernel-size`,
   `--profile-kernel-size`. Defaults (64, 8, 21, 3, 75) preserve the existing
