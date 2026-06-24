@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`tools/train_bpnet.py` now defaults to `--precision full`** (was `bf16`).
+  Supersedes the 1.0.0a7 policy line that grouped BPNet with the bf16-default
+  trainers. The change is motivated by the same numerical sensitivity that
+  motivated the ChromBPNet trainers' flip in 1.0.0a7: BPNet's softmax-over-length
+  profile head can develop pileup spikes that overflow in bf16. Pass
+  `--precision bf16` to opt back into mixed precision for throughput.
+
 ### Added
+- **`tools/train_bpnet.py` standard-BPNet architecture overrides**:
+  `--filters`, `--n-layers`, `--conv-kernel-size`, `--dil-kernel-size`,
+  `--profile-kernel-size`. Defaults (64, 8, 21, 3, 75) preserve the existing
+  BPNet variant; the new flags enable training a ChromBPNet-accessibility-sized
+  BPNet (`--filters 512 --n-layers 8 --conv-kernel-size 21 --dil-kernel-size 3
+  --profile-kernel-size 75 --residual-architecture residual_post-activation_conv`)
+  from the same trainer without code duplication. The resolved dimensions are
+  now logged.
 - **Stranded reverse-complement channel swaps** (`DataConfig.reverse_complement_input_channel_pairs`
   and `reverse_complement_target_channel_pairs`): declare named channel pairs to
   swap after the positional flip so strand-specific tracks (e.g.

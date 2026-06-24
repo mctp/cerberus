@@ -52,7 +52,7 @@ An implementation of the BPNet architecture (Avsec et al., 2021) for base-resolu
 *   **Binning**: Optional output binning via average pooling (`output_bin_size > 1`).
 *   **Variants**:
     *   **BPNet** (Default): Canonical dimensions (2114bp → 1000bp), 64 filters, `profile_kernel_size=75`.
-    *   **ChromBPNet accessibility-sized standalone BPNet**: Configure with `--filters 512 --n-layers 8 --conv-kernel-size 21 --dil-kernel-size 3 --profile-kernel-size 75 --residual-architecture residual_post-activation_conv`.
+    *   **ChromBPNet accessibility-sized standalone BPNet**: A bias-free baseline that pairs the canonical ChromBPNet accessibility branch (filters=512, 8 dilated layers) with the standalone BPNet trainer. Useful for ablating the bias-correction step on the same architecture, or for training when a paired bias model is unavailable. Configure with `--filters 512 --n-layers 8 --conv-kernel-size 21 --dil-kernel-size 3 --profile-kernel-size 75 --residual-architecture residual_post-activation_conv`.
     *   **BPNet1024**: Tuned for 2112bp → 1024bp with no center-cropping; 77 filters, `profile_kernel_size=49`. Receptive-field shrinkage is exactly 1088bp (20 + 1020 + 48).
 
 ### Recommended Training Settings
