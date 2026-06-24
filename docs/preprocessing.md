@@ -105,8 +105,8 @@ CREsted-style peak-height normalization strategy.
 
 For each consensus peak, the script scores a fixed-width window centered on the
 narrowPeak summit when available, otherwise on the peak center. The default
-window is 1000 bp and the default statistic is the BigWig `sum` over that
-window.
+window is 1000 bp (`--peak-window`) and the default statistic is the BigWig
+`sum` over that window (`--peak-stat`).
 
 The scored peak-by-group matrix is first converted to CPM units:
 
@@ -120,20 +120,26 @@ cutoff is:
 
 ```text
 gini_threshold = mean(peak_gini) - gini_std_threshold * std(peak_gini)
+                                  ^^^^^^^^^^^^^^^^^^^^^
+                                  --gini-std-threshold
 ```
 
 For each group independently:
 
 ```text
 candidates[group] = peaks where cpm_matrix[:, group] > peak_threshold
-top_peaks[group] = top_k_percent strongest candidates in that group
-anchors[group] = top_peaks[group] intersect low_gini_peaks
+                                                       ^^^^^^^^^^^^^^
+                                                       --peak-threshold
+top_peaks[group]  = top_k_percent strongest candidates in that group
+                    ^^^^^^^^^^^^^
+                    --top-k-percent
+anchors[group]    = top_peaks[group] intersect low_gini_peaks
 constitutive_mean[group] = mean(cpm_matrix[anchors[group], group])
 ```
 
-If a group has fewer than `min_anchor_peaks` anchors, the tool can fall back to
-the lowest-Gini peaks among that group's top peaks unless
-`--no-anchor-fallback` is set.
+If a group has fewer than `min_anchor_peaks` (`--min-anchor-peaks`) anchors,
+the tool can fall back to the lowest-Gini peaks among that group's top peaks
+unless `--no-anchor-fallback` is set.
 
 ### Baseline weights
 

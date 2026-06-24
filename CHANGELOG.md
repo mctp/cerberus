@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`docs/preprocessing.md` scATAC pseudobulk normalization section expanded**
+  into a full math + anchor-selection + tradeoff walkthrough with CREsted
+  source references. CLI flag names are now annotated alongside the algorithm
+  variables they control.
 - **`tools/train_bpnet.py` now defaults to `--precision full`** (was `bf16`).
   Supersedes the 1.0.0a7 policy line that grouped BPNet with the bf16-default
   trainers. The change is motivated by the same numerical sensitivity that
