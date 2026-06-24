@@ -9,6 +9,8 @@ from cerberus.config import ModelConfig
 from cerberus.loss import BPAITACPoissonNLLLoss
 from cerberus.output import ProfileCountOutput, get_log_count_params
 
+# train_chrombpnet_multitask.py imports its sibling ``_pseudocount_cli`` helper
+# the way a script would, so the trainer-CLI tests need ``tools/`` on sys.path.
 _TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
@@ -57,6 +59,22 @@ def test_bpaitac_poisson_nll_validates_profile_shape():
 
     with pytest.raises(ValueError, match="matching shape"):
         BPAITACPoissonNLLLoss()(outputs, targets)
+
+
+def test_bpaitac_poisson_nll_log1p_targets_roundtrip():
+    """log1p_targets=True must produce the same loss as the raw-counts path when
+    targets are log1p of the same raw counts."""
+    torch.manual_seed(0)
+    logits = torch.randn(2, 3, 7)
+    log_counts = torch.randn(2, 3)
+    raw_targets = torch.rand(2, 3, 7) * 5.0
+    log1p_targets = torch.log1p(raw_targets)
+    outputs = ProfileCountOutput(logits=logits, log_counts=log_counts)
+
+    raw_loss = BPAITACPoissonNLLLoss(log1p_targets=False)(outputs, raw_targets)
+    log1p_loss = BPAITACPoissonNLLLoss(log1p_targets=True)(outputs, log1p_targets)
+
+    assert torch.allclose(raw_loss, log1p_loss, atol=1e-6)
 
 
 def test_bpaitac_poisson_nll_uses_raw_log_counts_for_prediction():

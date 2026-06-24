@@ -208,6 +208,7 @@ Use the table below as a starting point:
 | Single head, overdispersed | `CoupledNegativeBinomialMultinomialLoss` | `ProfileLogRates` | Coupled NB variant for log-rate models. |
 | Bias-factorized (Dalmatian) | `DalmatianLoss` | `FactorizedProfileCountOutput` | Wraps any base loss. Adds bias-only reconstruction on background examples. |
 | Direct log-rate regression | `ProfilePoissonNLLLoss` | `ProfileLogRates` | Standard Poisson NLL without profile/count factorization. |
+| Multitask ChromBPNet, bpAI-TAC PNLL | `BPAITACPoissonNLLLoss` | `ProfileCountOutput` | Single base-resolution Poisson NLL on `log_softmax(logits) + log_counts.unsqueeze(-1)`. Preserves the factored profile/count-head API; requires per-task `log_counts` (`predict_total_count=False`). |
 
 **Key distinctions:**
 

@@ -94,12 +94,15 @@ class BPAITACPoissonNLLLoss(nn.Module):
 
     and applies Poisson negative log-likelihood directly to that full
     ``(batch, task, length)`` rate tensor. For multi-task ChromBPNet this
-    requires per-task ``log_counts`` with shape ``(batch, task)``.
+    requires per-task ``log_counts`` with shape ``(batch, task)`` -- i.e.
+    ``predict_total_count=False`` on the accessibility/count branch.
 
-    The target tensor should be non-negative count-like signal. When training
-    on already comparable CPM-normalised tracks, use ``DataConfig.target_scale``
-    / ``--target-scale`` to multiply every track by the same constant count
-    scale before this loss sees the targets.
+    Targets default to raw non-negative counts. When training on CPM-normalised
+    tracks, use ``DataConfig.target_scale`` / ``--target-scale`` to multiply
+    every track by the **same** shared scalar before this loss sees the targets
+    -- per-task scaling would distort the joint per-base Poisson likelihood.
+    Pass ``log1p_targets=True`` only if the targets are already log1p-transformed
+    on disk; the loss will invert via ``expm1`` before evaluating the PNLL.
     """
 
     uses_count_pseudocount: bool = False
@@ -124,8 +127,6 @@ class BPAITACPoissonNLLLoss(nn.Module):
     def _reconstruct_log_rates(outputs: ProfileCountOutput) -> torch.Tensor:
         logits = outputs.logits.float()
         log_counts = outputs.log_counts.float()
-        if log_counts.ndim == 1:
-            log_counts = log_counts.unsqueeze(1)
         expected_count_shape = logits.shape[:2]
         if log_counts.shape != expected_count_shape:
             raise ValueError(

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`cerberus.loss.BPAITACPoissonNLLLoss`**: bpAI-TAC-style Poisson NLL on the
+  reconstructed base-resolution log-rate
+  `log_softmax(profile_logits) + log_counts.unsqueeze(-1)`. Preserves the
+  factored `ProfileCountOutput` API (profile logits + per-task `log_counts`,
+  `(batch, task)`) and applies one direct PNLL on the `(batch, task, length)`
+  rate tensor. Requires `predict_total_count=False` on the accessibility branch.
+- **`tools/train_chrombpnet_multitask.py --loss bpaitac-pnll`**: wires the new
+  loss into the multi-task ChromBPNet trainer alongside the default MNLL+MSE
+  objective. Forces zero count pseudocount (raw log-counts).
+
 ## [1.0.0a7] - 2026-05-31
 
 ### Added
