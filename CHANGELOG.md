@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`PoissonMultinomialLoss` and `CoupledPoissonMultinomialLoss` default to a
+  shifted count term** (`shift_poisson_loss=True`) that subtracts the
+  target-dependent optimum `y - y·log(y+ε)` from each element before mean
+  reduction. The count_loss is now non-negative and exactly 0 at perfect
+  prediction (`λ = log y`). **Gradients are identical** to the legacy
+  `nn.PoissonNLLLoss(log_input=True, full=False)` path because the shift
+  depends only on the targets — training trajectories are unchanged, only the
+  logged scalar moves. Pass `shift_poisson_loss=False` to opt back into the
+  legacy behavior. Downstream trainers (`train_bpnet`, `train_biasnet`,
+  `train_dalmatian`, `train_dalmatian_multitask`, `train_pomeranian`, and the
+  `--loss poisson-multinomial` path in `train_chrombpnet_multitask`) silently
+  inherit the new default.
 - **`docs/preprocessing.md` scATAC pseudobulk normalization section expanded**
   into a full math + anchor-selection + tradeoff walkthrough with CREsted
   source references. CLI flag names are now annotated alongside the algorithm
