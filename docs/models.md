@@ -650,8 +650,10 @@ Bias-factorized ATAC model composed of two `BPNet` sub-networks following the ch
 - **Accessibility branch** (`accessibility_model`): large `BPNet` — `filters=512`, `n_dilated_layers=8`. Learns regulatory grammar.
 - **Bias branch** (`bias_model`): smaller `BPNet` — `filters=128`, `n_dilated_layers=4`. Captures Tn5 enzymatic sequence preference; typically loaded pre-trained on background regions and frozen during stage-2 training (via `ModelConfig.freeze`). Train the bias-branch checkpoint with `tools/train_chrombpnet_bias.py` (sampler defaults to `negative_peak` so the model fits on background regions).
 - **Profile combination**: raw logit addition (`acc.logits + bias.logits`).
-- **Count combination**: `torch.logaddexp` (numerically stable form of `log(exp(acc) + exp(bias))`).
-- **`bias_logcount_offset`**: non-trainable scalar buffer added to the bias branch's log-count predictions before combination. Mirrors the chrombpnet-pytorch bias-count calibration step. Update in place via `model.bias_logcount_offset.fill_(value)`.
+- **Count combination** (`bias_count_mode`): controls how the bias branch contributes to count predictions.
+    - `"profile_and_counts"` (default, reference behaviour): `torch.logaddexp(acc.log_counts, bias.log_counts + bias_logcount_offset)` — numerically stable form of `log(exp(acc) + exp(bias_offset))`.
+    - `"profile_only"`: bias contributes only to profile logits; the final log-counts come entirely from the accessibility branch. Matches bpAI-TAC's treatment of Tn5 bias as a local profile-shape effect rather than a count signal. `bias_logcount_offset` becomes a no-op in this mode; the trainer logs a warning and skips offset estimation if `--adjust-bias-logcounts` is also set.
+- **`bias_logcount_offset`**: non-trainable scalar buffer added to the bias branch's log-count predictions before `logaddexp` combination (only when `bias_count_mode="profile_and_counts"`). Mirrors the chrombpnet-pytorch bias-count calibration step. Update in place via `model.bias_logcount_offset.fill_(value)`.
 
 ### Reference-equivalent training settings
 

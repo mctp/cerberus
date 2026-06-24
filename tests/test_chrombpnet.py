@@ -180,6 +180,16 @@ def test_profile_jsd_loss_leaves_bpnet_count_head_untrained():
 
 
 def test_profile_jsd_loss_uses_base2_divergence():
+    """JSD must be computed in base 2.
+
+    softmax(zero logits) = [0.5, 0.5], normalized targets ≈ [1, 0], so
+    P = [1, 0], Q = [0.5, 0.5], M = [0.75, 0.25]:
+        KL_2(P || M) = 1 * log2(1 / 0.75) = log2(4/3) ≈ 0.41504
+        KL_2(Q || M) = 0.5 * log2(0.5/0.75) + 0.5 * log2(0.5/0.25)
+                     = 0.5 * log2(2/3) + 0.5 * log2(2) ≈ 0.20752
+        JSD_2       = 0.5 * (KL_2(P||M) + KL_2(Q||M))    ≈ 0.31128
+    A natural-log regression would land on JSD_e ≈ 0.21576 instead.
+    """
     outputs = ProfileCountOutput(
         logits=torch.zeros(1, 1, 2),
         log_counts=torch.zeros(1, 1),
@@ -618,6 +628,45 @@ def test_multitask_chrombpnet_forward_shape_and_count_modes():
     assert model.accessibility_model.predict_total_count is False
     assert model.bias_model.n_output_channels == 1
     assert model.bias_model.predict_total_count is True
+
+
+def test_multitask_chrombpnet_profile_only_bias_keeps_accessibility_counts():
+    """The profile_only routing must also work through MultitaskChromBPNet's
+    shared-bias broadcast: bias logits broadcast over tasks, but the final
+    log_counts come purely from the per-task accessibility heads."""
+    model = MultitaskChromBPNet(
+        input_len=64, output_len=32,
+        output_channels=["task_a", "task_b", "task_c"],
+        accessibility_args=_multitask_args(filters=6),
+        bias_args=_multitask_args(filters=4),
+        bias_count_mode="profile_only",
+    )
+
+    # Replace branches with deterministic fixtures so the assertion does not
+    # depend on randomly-initialised weights.
+    model.accessibility_model = _FixedBranch(  # type: ignore[assignment]
+        logits=torch.tensor([[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]]),
+        log_counts=torch.tensor([[0.5, 1.5, 2.5]]),
+    )
+    # Shared-bias branch emits (B, 1, L) logits + (B, 1) log_counts; the
+    # ChromBPNet forward broadcasts these across the accessibility tasks.
+    model.bias_model = _FixedBranch(  # type: ignore[assignment]
+        logits=torch.tensor([[[1.0, 1.0, 1.0]]]),
+        log_counts=torch.tensor([[999.0]]),
+    )
+    model.bias_logcount_offset.fill_(999.0)  # type: ignore[operator]
+
+    out = model(torch.randn(2, 4, 64))
+
+    # Logits: bias broadcasts to (B, 3, L) and is added to accessibility logits.
+    expected_logits = torch.tensor(
+        [[[1.1, 1.2, 1.3], [1.4, 1.5, 1.6], [1.7, 1.8, 1.9]]]
+    ).expand(2, -1, -1)
+    # Counts: untouched by bias, exactly the accessibility per-task log-counts.
+    expected_log_counts = torch.tensor([[0.5, 1.5, 2.5]]).expand(2, -1)
+    assert torch.allclose(out.logits, expected_logits)
+    assert torch.allclose(out.log_counts, expected_log_counts)
+    assert model.bias_count_mode == "profile_only"
 
 
 def test_multitask_chrombpnet_requires_at_least_two_tasks():

@@ -32,6 +32,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--precision bf16` to opt back into mixed precision for throughput.
 
 ### Added
+- **`cerberus.loss.ProfileJSDLoss`**: profile-only base-2 Jensen-Shannon
+  divergence loss. Trains the profile logits to match the observed
+  base-resolution profile shape with no scalar count-head loss. Used for
+  bpAI-TAC-style Tn5 bias-model training, where Tn5 bias is treated as a local
+  profile-shape effect rather than a count signal. Epsilon stabilisation
+  defends both pred (softmax) and target normalisation against `log(0)`. The
+  model may still instantiate a count head for checkpoint compatibility; that
+  head receives no gradient from this loss.
+- **`cerberus.models.ChromBPNet.bias_count_mode`** (and the same parameter on
+  `MultitaskChromBPNet`): selects how the frozen bias branch contributes to
+  count predictions. `"profile_and_counts"` (default) preserves the existing
+  `torch.logaddexp(acc, bias + offset)` combination. `"profile_only"` adds
+  bias logits to profile shape but takes final log-counts entirely from the
+  accessibility branch — matching bpAI-TAC's treatment of Tn5 bias. The
+  `bias_logcount_offset` buffer is preserved for state-dict compatibility but
+  becomes a no-op in `profile_only` mode.
+- **`tools/train_chrombpnet.py --bias-count-mode`** and
+  **`tools/train_chrombpnet_multitask.py --bias-count-mode`**: expose the new
+  ChromBPNet bias-count routing. With `--bias-count-mode profile_only`, the
+  trainer warns and skips `--adjust-bias-logcounts` offset estimation
+  (which has no effect in profile_only mode).
+- **`tools/train_chrombpnet_bias.py --loss profile-jsd`**: stage-1 bias-model
+  training with the new `ProfileJSDLoss`. Forces zero count pseudocount.
 - **`tools/train_chrombpnet_multitask.py --loss poisson-multinomial`**: third
   multi-task objective alongside the default MNLL+MSE and `bpaitac-pnll`. Wires
   `cerberus.loss.PoissonMultinomialLoss` with per-channel shifted Poisson count

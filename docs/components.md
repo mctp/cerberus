@@ -209,6 +209,7 @@ Use the table below as a starting point:
 | Bias-factorized (Dalmatian) | `DalmatianLoss` | `FactorizedProfileCountOutput` | Wraps any base loss. Adds bias-only reconstruction on background examples. |
 | Direct log-rate regression | `ProfilePoissonNLLLoss` | `ProfileLogRates` | Standard Poisson NLL without profile/count factorization. |
 | Multitask ChromBPNet, bpAI-TAC PNLL | `BPAITACPoissonNLLLoss` | `ProfileCountOutput` | Single base-resolution Poisson NLL on `log_softmax(logits) + log_counts.unsqueeze(-1)`. Preserves the factored profile/count-head API; requires per-task `log_counts` (`predict_total_count=False`). |
+| Bias-model profile-only | `ProfileJSDLoss` | `ProfileCountOutput` | Base-2 Jensen-Shannon divergence on profile logits only, with no count-head loss. The model may still instantiate a count head for checkpoint compatibility; that head receives no gradient. Used for bpAI-TAC-style Tn5 bias training (treat bias as a profile-shape effect, not a count signal). |
 
 **Key distinctions:**
 
