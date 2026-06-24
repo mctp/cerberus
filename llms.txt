@@ -109,7 +109,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class Compose`** — Composes multiple transforms together.
 - **`class Jitter`** — Randomly crops input/target tensors to input_len.
 - **`class TargetCrop`** — Crops target tensors to the center to match output_len.
-- **`class ReverseComplement`** — Randomly reverse complements the sequence and reverses the signal.
+- **`class ReverseComplement`** — Randomly reverse complements the sequence and reverses signal positions.
 - **`class Log1p`** — Applies log1p transformation (log(x + 1)).
 - **`class Sqrt`** — Applies sqrt transformation.
 - **`class Arcsinh`** — Applies arcsinh transformation (log(x + sqrt(x^2 + 1))).
@@ -162,6 +162,8 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 - **`class CerberusLoss(Protocol)`** — Protocol for all cerberus loss functions.
 - **`class ProfilePoissonNLLLoss(nn.PoissonNLLLoss)`** — Poisson NLL Loss on Profile LogRates.
+- **`class BPAITACPoissonNLLLoss(nn.Module)`** — bpAI-TAC-style Poisson NLL on reconstructed base-resolution counts.
+- **`class ProfileJSDLoss(nn.Module)`** — Profile-only Jensen-Shannon divergence loss.
 - **`class MSEMultinomialLoss(nn.Module)`** — Multinomial NLL Profile Loss + MSE Count Loss.
 - **`class CoupledMSEMultinomialLoss(MSEMultinomialLoss)`** — Multinomial NLL Profile Loss + MSE Count Loss (Coupled).
 - **`class PoissonMultinomialLoss(nn.Module)`** — Poisson Multinomial Loss (Global Count).

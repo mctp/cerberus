@@ -650,6 +650,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="scATAC pseudobulk normalisation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#constitutive-anchor-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constitutive-anchor selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#baseline-weights" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baseline weights
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#interpretation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interpretation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1290,16 +1329,93 @@
 <li>Multiple BED files are concatenated, sorted, and merged into a single interval set.</li>
 </ul>
 <h2 id="scatac-pseudobulk-normalisation">scATAC pseudobulk normalisation<a class="headerlink" href="#scatac-pseudobulk-normalisation" title="Permanent link">&para;</a></h2>
-<p>For multi-task training on scATAC-seq cell-type pseudobulks, raw per-cell-type BigWigs need normalisation so the per-task count heads see comparable absolute values. <code>tools/scatac_normalize_pseudobulk.py</code> is a self-contained tool that combines two CREsted-style normalisation passes:</p>
+<p>For multi-task training on scATAC-seq cell-type pseudobulks, raw
+per-cell-type BigWigs often have different library sizes and different
+baseline peak-height scales. <code>tools/scatac_normalize_pseudobulk.py</code> is a
+self-contained tool that writes normalized BigWigs with two multiplicative
+passes:</p>
 <ol>
-<li><strong>CPM scaling</strong> — converts raw coverage to counts-per-million using library sizes (read from a <code>group_summary.tsv</code> or computed from each BigWig's running sum).</li>
-<li><strong>Constitutive-anchor baseline rescaling</strong> — picks the top-K% accessible peaks per cell-type, filters by Gini coefficient to keep broadly-accessible (low-Gini) anchors, then rescales each cell-type so the mean anchor signal matches the chosen reference (default: max).</li>
+<li><strong>CPM scaling</strong> converts raw coverage to counts-per-million using each
+   group's library size. Library sizes are read from <code>group_summary.tsv</code> when
+   available, or computed from each BigWig's total signal.</li>
+<li><strong>Constitutive-anchor baseline rescaling</strong> fits one additional scalar per
+   group. The scalar is estimated from strong peaks that are low-specificity
+   across groups, then applied to the entire group BigWig.</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>tools/scatac_normalize_pseudobulk.py<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>path/to/pseudobulk_dir<span class="w"> </span>path/to/output_dir<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--input-scale<span class="w"> </span>raw<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span>--reference-strategy<span class="w"> </span>max<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span>--top-k-percent<span class="w"> </span><span class="m">0</span>.01<span class="w"> </span>--gini-std-threshold<span class="w"> </span><span class="m">1</span>.0
+<p>The final output value for every record in a group BigWig is:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>normalized_signal[group] = raw_signal[group] * final_scale[group]
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>final_scale[group] = cpm_scale[group] * baseline_weight[group]
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>cpm_scale[group] = 1_000_000 / library_size[group]
+</code></pre></div>
+<h3 id="constitutive-anchor-selection">Constitutive-anchor selection<a class="headerlink" href="#constitutive-anchor-selection" title="Permanent link">&para;</a></h3>
+<p>The method uses a shared consensus peak universe, but the final anchor set is
+chosen separately for each group. This is intentional and matches the
+CREsted-style peak-height normalization strategy.</p>
+<p>For each consensus peak, the script scores a fixed-width window centered on the
+narrowPeak summit when available, otherwise on the peak center. The default
+window is 1000 bp (<code>--peak-window</code>) and the default statistic is the BigWig
+<code>sum</code> over that window (<code>--peak-stat</code>).</p>
+<p>The scored peak-by-group matrix is first converted to CPM units:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>cpm_matrix[peak, group] = raw_peak_signal[peak, group] * cpm_scale[group]
+</code></pre></div>
+<p>The script then computes one Gini value per peak across groups. Low Gini means
+the peak is broadly accessible rather than specific to one group. The low-Gini
+cutoff is:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>gini_threshold = mean(peak_gini) - gini_std_threshold * std(peak_gini)
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>                                  ^^^^^^^^^^^^^^^^^^^^^
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>                                  --gini-std-threshold
+</code></pre></div>
+<p>For each group independently:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>candidates[group] = peaks where cpm_matrix[:, group] &gt; peak_threshold
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>                                                       ^^^^^^^^^^^^^^
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>                                                       --peak-threshold
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>top_peaks[group]  = top_k_percent strongest candidates in that group
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>                    ^^^^^^^^^^^^^
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>                    --top-k-percent
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>anchors[group]    = top_peaks[group] intersect low_gini_peaks
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>constitutive_mean[group] = mean(cpm_matrix[anchors[group], group])
+</code></pre></div>
+<p>If a group has fewer than <code>min_anchor_peaks</code> (<code>--min-anchor-peaks</code>) anchors,
+the tool can fall back to the lowest-Gini peaks among that group's top peaks
+unless <code>--no-anchor-fallback</code> is set.</p>
+<h3 id="baseline-weights">Baseline weights<a class="headerlink" href="#baseline-weights" title="Permanent link">&para;</a></h3>
+<p>After each group has a <code>constitutive_mean</code>, the tool chooses a reference anchor
+level. The default is <code>--reference-strategy max</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>reference = max(constitutive_mean[group] for group in groups)
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>baseline_weight[group] = reference / constitutive_mean[group]
+</code></pre></div>
+<p>This means each group's strong, low-specificity anchor set is brought to the
+same average height as the highest such group. The script does not modify
+individual peaks separately; <code>baseline_weight[group]</code> is a single scalar applied
+to the full BigWig for that group.</p>
+<h3 id="interpretation">Interpretation<a class="headerlink" href="#interpretation" title="Permanent link">&para;</a></h3>
+<p>This is not a fixed housekeeping-peak normalization where every group is
+measured on the exact same regions. Instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>anchors[A] = top strong low-Gini peaks for group A
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>anchors[B] = top strong low-Gini peaks for group B
+</code></pre></div>
+<p>These anchor sets usually overlap, because low-Gini peaks are shared by design,
+but they are not required to be identical. The reason for this choice is that a
+single fixed anchor set can be weak or noisy in some groups. Per-group top peaks
+ensure every group estimates its baseline from high-confidence accessible
+regions, while the low-Gini filter removes strongly group-specific peaks.</p>
+<p>The tradeoff is important. This normalization is appropriate when global
+differences in peak height are treated mainly as technical depth or baseline
+scale effects. It is not appropriate if the biological signal of interest is a
+true global increase or decrease in accessibility across an entire cell type,
+because the normalization deliberately removes that kind of global scale
+difference.</p>
+<p>This mirrors CREsted's <code>crested.pp.normalize_peaks</code> approach, which computes
+normalization weights from the top values per cell type after low-Gini filtering
+and rescales each cell type by a single weight. See the CREsted
+<a href="https://crested.readthedocs.io/en/latest/api/_autosummary/crested.pp.normalize_peaks.html"><code>normalize_peaks</code> documentation</a>
+and
+<a href="https://github.com/aertslab/CREsted/blob/main/src/crested/pp/_normalization.py"><code>_normalization.py</code></a>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python<span class="w"> </span>tools/scatac_normalize_pseudobulk.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span>path/to/pseudobulk_dir<span class="w"> </span>path/to/output_dir<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span>--input-scale<span class="w"> </span>raw<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span>--reference-strategy<span class="w"> </span>max<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">    </span>--top-k-percent<span class="w"> </span><span class="m">0</span>.01<span class="w"> </span>--gini-std-threshold<span class="w"> </span><span class="m">1</span>.0
 </code></pre></div>
 <p>Outputs per group:</p>
 <table>
@@ -1359,7 +1475,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 14:52:32 UTC">May 20, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 24, 2026 23:01:01 UTC">June 24, 2026</span>
   </span>
 
     

@@ -1640,7 +1640,7 @@ You can override specific configs by passing <code>genome_config</code>, <code>d
 3. Slides a window across all allowed chromosomes, grouping contiguous windows into islands.
 4. Reconstructs linear signal per window (softmax × counts for BPNet, exp for log-rates) then spatially merges overlapping predictions using a streaming accumulator.
 5. Automatically reads <code>count_pseudocount</code> from the model config and subtracts it when inverting <code>log_counts</code> (MSE-trained models).</p>
-<p>The exported track contains the reconstructed linear signal (counts per bp). For multi-channel models, only channel 0 is written (BigWig is single-track).</p>
+<p>The exported track contains the reconstructed linear signal (counts per bp). BigWig is single-track, so multi-channel models must be exported one channel at a time via <code>--channel-index</code> (defaults to channel 0; out-of-range and negative values are rejected).</p>
 <h4 id="optional-arguments">Optional arguments<a class="headerlink" href="#optional-arguments" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
@@ -1669,6 +1669,10 @@ You can override specific configs by passing <code>genome_config</code>, <code>d
 <tr>
 <td><code>--device</code></td>
 <td>Override device selection (<code>cuda</code>, <code>mps</code>, <code>cpu</code>).</td>
+</tr>
+<tr>
+<td><code>--channel-index</code></td>
+<td>Output channel index to export (default: <code>0</code>). Run once per channel for multi-channel models.</td>
 </tr>
 </tbody>
 </table>
@@ -1914,7 +1918,7 @@ You can override specific configs by passing <code>genome_config</code>, <code>d
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 14:52:32 UTC">May 20, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 24, 2026 23:14:58 UTC">June 24, 2026</span>
   </span>
 
     

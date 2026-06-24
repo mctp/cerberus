@@ -1918,7 +1918,7 @@
 <p>When <code>transforms</code> are not explicitly provided to <code>CerberusDataset</code>, they are automatically constructed from <code>DataConfig</code> by <code>create_default_transforms</code> in the following order:</p>
 <ol>
 <li><strong>Jitter</strong>: Crops to <code>input_len</code>, with random offset up to <code>max_jitter</code> (or centered for inference).</li>
-<li><strong>ReverseComplement</strong>: (If <code>reverse_complement=True</code> and not in deterministic/inference mode).</li>
+<li><strong>ReverseComplement</strong>: (If <code>reverse_complement=True</code> and not in deterministic/inference mode). DNA sequence channels are complemented, signal positions are reversed, and any named pairs in <code>reverse_complement_input_channel_pairs</code> or <code>reverse_complement_target_channel_pairs</code> are swapped for stranded tracks.</li>
 <li><strong>TargetCrop</strong>: Crops targets to <code>output_len</code> (if <code>output_len &lt; input_len</code>).</li>
 <li><strong>Scale</strong>: Multiplies targets by <code>target_scale</code> (if <code>target_scale != 1.0</code>).</li>
 <li><strong>Bin</strong>: Downsamples targets by <code>output_bin_size</code> (if <code>output_bin_size &gt; 1</code>).</li>
@@ -1961,7 +1961,7 @@ Use the table below as a starting point:</p>
 <td>Poisson count model</td>
 <td><code>PoissonMultinomialLoss</code></td>
 <td><code>ProfileCountOutput</code></td>
-<td>Poisson count loss. Better statistical match when counts follow a Poisson distribution.</td>
+<td>Poisson count loss. Better statistical match when counts follow a Poisson distribution. Defaults to a shifted form (<code>shift_poisson_loss=True</code>) that is zero at perfect prediction; gradients match the unshifted PNLL. Pass <code>shift_poisson_loss=False</code> for the legacy behavior.</td>
 </tr>
 <tr>
 <td>Single output head (no count head)</td>
@@ -1973,7 +1973,7 @@ Use the table below as a starting point:</p>
 <td>Single head, Poisson counts</td>
 <td><code>CoupledPoissonMultinomialLoss</code></td>
 <td><code>ProfileLogRates</code></td>
-<td>Coupled Poisson variant for log-rate models.</td>
+<td>Coupled Poisson variant for log-rate models. Inherits the same shifted-default behavior as <code>PoissonMultinomialLoss</code>.</td>
 </tr>
 <tr>
 <td>Single head, overdispersed</td>
@@ -1992,6 +1992,18 @@ Use the table below as a starting point:</p>
 <td><code>ProfilePoissonNLLLoss</code></td>
 <td><code>ProfileLogRates</code></td>
 <td>Standard Poisson NLL without profile/count factorization.</td>
+</tr>
+<tr>
+<td>Multitask ChromBPNet, bpAI-TAC PNLL</td>
+<td><code>BPAITACPoissonNLLLoss</code></td>
+<td><code>ProfileCountOutput</code></td>
+<td>Single base-resolution Poisson NLL on <code>log_softmax(logits) + log_counts.unsqueeze(-1)</code>. Preserves the factored profile/count-head API; requires per-task <code>log_counts</code> (<code>predict_total_count=False</code>).</td>
+</tr>
+<tr>
+<td>Bias-model profile-only</td>
+<td><code>ProfileJSDLoss</code></td>
+<td><code>ProfileCountOutput</code></td>
+<td>Base-2 Jensen-Shannon divergence on profile logits only, with no count-head loss. The model may still instantiate a count head for checkpoint compatibility; that head receives no gradient. Used for bpAI-TAC-style Tn5 bias training (treat bias as a profile-shape effect, not a count signal).</td>
 </tr>
 </tbody>
 </table>
@@ -2205,7 +2217,7 @@ Use the table below as a starting point:</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 14, 2026 23:41:47 UTC">April 14, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 24, 2026 23:21:28 UTC">June 24, 2026</span>
   </span>
 
     

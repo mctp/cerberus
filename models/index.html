@@ -1893,6 +1893,7 @@
 <li><strong>Binning</strong>: Optional output binning via average pooling (<code>output_bin_size &gt; 1</code>).</li>
 <li><strong>Variants</strong>:<ul>
 <li><strong>BPNet</strong> (Default): Canonical dimensions (2114bp → 1000bp), 64 filters, <code>profile_kernel_size=75</code>.</li>
+<li><strong>ChromBPNet accessibility-sized standalone BPNet</strong>: A bias-free baseline that pairs the canonical ChromBPNet accessibility branch (filters=512, 8 dilated layers) with the standalone BPNet trainer. Useful for ablating the bias-correction step on the same architecture, or for training when a paired bias model is unavailable. Configure with <code>--filters 512 --n-layers 8 --conv-kernel-size 21 --dil-kernel-size 3 --profile-kernel-size 75 --residual-architecture residual_post-activation_conv</code>.</li>
 <li><strong>BPNet1024</strong>: Tuned for 2112bp → 1024bp with no center-cropping; 77 filters, <code>profile_kernel_size=49</code>. Receptive-field shrinkage is exactly 1088bp (20 + 1020 + 48).</li>
 </ul>
 </li>
@@ -2543,8 +2544,12 @@
 <li><strong>Accessibility branch</strong> (<code>accessibility_model</code>): large <code>BPNet</code> — <code>filters=512</code>, <code>n_dilated_layers=8</code>. Learns regulatory grammar.</li>
 <li><strong>Bias branch</strong> (<code>bias_model</code>): smaller <code>BPNet</code> — <code>filters=128</code>, <code>n_dilated_layers=4</code>. Captures Tn5 enzymatic sequence preference; typically loaded pre-trained on background regions and frozen during stage-2 training (via <code>ModelConfig.freeze</code>). Train the bias-branch checkpoint with <code>tools/train_chrombpnet_bias.py</code> (sampler defaults to <code>negative_peak</code> so the model fits on background regions).</li>
 <li><strong>Profile combination</strong>: raw logit addition (<code>acc.logits + bias.logits</code>).</li>
-<li><strong>Count combination</strong>: <code>torch.logaddexp</code> (numerically stable form of <code>log(exp(acc) + exp(bias))</code>).</li>
-<li><strong><code>bias_logcount_offset</code></strong>: non-trainable scalar buffer added to the bias branch's log-count predictions before combination. Mirrors the chrombpnet-pytorch bias-count calibration step. Update in place via <code>model.bias_logcount_offset.fill_(value)</code>.</li>
+<li><strong>Count combination</strong> (<code>bias_count_mode</code>): controls how the bias branch contributes to count predictions.<ul>
+<li><code>"profile_and_counts"</code> (default, reference behaviour): <code>torch.logaddexp(acc.log_counts, bias.log_counts + bias_logcount_offset)</code> — numerically stable form of <code>log(exp(acc) + exp(bias_offset))</code>.</li>
+<li><code>"profile_only"</code>: bias contributes only to profile logits; the final log-counts come entirely from the accessibility branch. Matches bpAI-TAC's treatment of Tn5 bias as a local profile-shape effect rather than a count signal. <code>bias_logcount_offset</code> becomes a no-op in this mode; the trainer logs a warning and skips offset estimation if <code>--adjust-bias-logcounts</code> is also set.</li>
+</ul>
+</li>
+<li><strong><code>bias_logcount_offset</code></strong>: non-trainable scalar buffer added to the bias branch's log-count predictions before <code>logaddexp</code> combination (only when <code>bias_count_mode="profile_and_counts"</code>). Mirrors the chrombpnet-pytorch bias-count calibration step. Update in place via <code>model.bias_logcount_offset.fill_(value)</code>.</li>
 </ul>
 <h3 id="reference-equivalent-training-settings">Reference-equivalent training settings<a class="headerlink" href="#reference-equivalent-training-settings" title="Permanent link">&para;</a></h3>
 <p><code>chrombpnet-pytorch</code> uses <code>log1p(counts)</code> as the count-head target, i.e. an additive pseudocount of 1.0 on raw counts. To reproduce that in Cerberus:</p>
@@ -2883,7 +2888,7 @@ sub-model directly (<code>"bias_model"</code>) or any nested path
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 31, 2026 21:08:18 UTC">May 31, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 24, 2026 23:10:53 UTC">June 24, 2026</span>
   </span>
 
     
