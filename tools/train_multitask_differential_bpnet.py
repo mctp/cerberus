@@ -601,7 +601,11 @@ def run_phase2(
         name="MultitaskBPNet_Phase2",
         model_cls="cerberus.models.bpnet.MultitaskBPNet",
         loss_cls="cerberus.loss.DifferentialCountLoss",
-        loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+        loss_args={
+            "cond_a_idx": 0,
+            "cond_b_idx": 1,
+            "delta_count_pseudocount": phase2_pseudocount,
+        },
         metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
         metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
         model_args=model_args,

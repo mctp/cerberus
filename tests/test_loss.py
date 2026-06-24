@@ -521,7 +521,7 @@ def test_poisson_multinomial_loss_forward():
 
 
 def test_poisson_multinomial_loss_count_component():
-    """Test that count loss component uses PoissonNLLLoss"""
+    """Test that shifted count loss is minimized at the observed count."""
     loss_fn = PoissonMultinomialLoss(count_weight=10.0, flatten_channels=True)
 
     # Total counts = 10
@@ -546,7 +546,114 @@ def test_poisson_multinomial_loss_count_component():
         ProfileCountOutput(logits=logits, log_counts=pred_log_counts_bad), targets
     )
 
+    count_components = loss_fn.loss_components(
+        ProfileCountOutput(logits=logits, log_counts=pred_log_counts_perfect), targets
+    )
+    assert torch.allclose(
+        count_components["count_loss"], torch.zeros(()), atol=1e-5
+    )
     assert loss2 > loss1
+
+
+def test_poisson_multinomial_loss_legacy_count_component_can_be_negative():
+    """The opt-out path preserves the old unshifted PoissonNLLLoss behavior."""
+    loss_fn = PoissonMultinomialLoss(
+        count_weight=1.0,
+        profile_weight=0.0,
+        flatten_channels=True,
+        shift_poisson_loss=False,
+    )
+
+    targets = torch.zeros(1, 1, 10)
+    targets[0, 0, 0] = 10.0
+    outputs = ProfileCountOutput(
+        logits=torch.zeros(1, 1, 10),
+        log_counts=torch.log(torch.tensor([[10.0]])),
+    )
+
+    components = loss_fn.loss_components(outputs, targets)
+
+    assert components["count_loss"] < 0
+
+
+def test_poisson_multinomial_loss_shift_preserves_gradients():
+    """The shift is a target-only constant, so backward() must yield the same
+    log-count gradients with shift_poisson_loss=True and =False."""
+    torch.manual_seed(0)
+    targets = torch.rand(2, 3, 5) * 4.0
+    logits = torch.zeros(2, 3, 5)
+    raw_log_counts = torch.randn(2, 3)
+
+    grads = []
+    for shift in (True, False):
+        log_counts = raw_log_counts.detach().clone().requires_grad_(True)
+        loss_fn = PoissonMultinomialLoss(
+            count_weight=1.0,
+            profile_weight=0.0,
+            count_per_channel=True,
+            average_channels=True,
+            flatten_channels=False,
+            shift_poisson_loss=shift,
+        )
+        components = loss_fn.loss_components(
+            ProfileCountOutput(logits=logits, log_counts=log_counts), targets
+        )
+        components["count_loss"].backward()
+        assert log_counts.grad is not None
+        grads.append(log_counts.grad.detach().clone())
+
+    assert torch.allclose(grads[0], grads[1], atol=1e-6)
+
+
+def test_poisson_multinomial_loss_shift_collapses_at_zero_target():
+    """At target=0, ``min_value = 0`` so the shifted and unshifted forms must
+    return the same count loss."""
+    targets = torch.zeros(1, 1, 4)
+    outputs = ProfileCountOutput(
+        logits=torch.zeros(1, 1, 4),
+        log_counts=torch.zeros(1, 1),
+    )
+
+    shifted = PoissonMultinomialLoss(
+        count_weight=1.0,
+        profile_weight=0.0,
+        count_per_channel=True,
+        flatten_channels=False,
+        shift_poisson_loss=True,
+    ).loss_components(outputs, targets)["count_loss"]
+    unshifted = PoissonMultinomialLoss(
+        count_weight=1.0,
+        profile_weight=0.0,
+        count_per_channel=True,
+        flatten_channels=False,
+        shift_poisson_loss=False,
+    ).loss_components(outputs, targets)["count_loss"]
+
+    assert torch.allclose(shifted, unshifted, atol=1e-7)
+    # Unshifted form at λ=0, y=0 is exp(0) - 0*0 = 1; both should equal 1.
+    assert torch.allclose(shifted, torch.ones(()), atol=1e-7)
+
+
+def test_poisson_multinomial_loss_shift_zero_at_perfect_per_channel():
+    """count_per_channel branch must also have shifted count_loss == 0 when
+    predicted log-counts equal log(observed per-channel sums)."""
+    targets = torch.tensor([[[2.0, 3.0, 5.0], [1.0, 1.0, 8.0]]])  # (1, 2, 3)
+    target_sums = targets.sum(dim=2)  # (1, 2) == [[10.0, 10.0]]
+    outputs = ProfileCountOutput(
+        logits=torch.zeros(1, 2, 3),
+        log_counts=torch.log(target_sums),
+    )
+
+    loss_fn = PoissonMultinomialLoss(
+        count_weight=1.0,
+        profile_weight=0.0,
+        count_per_channel=True,
+        flatten_channels=False,
+        shift_poisson_loss=True,
+    )
+    components = loss_fn.loss_components(outputs, targets)
+
+    assert torch.allclose(components["count_loss"], torch.zeros(()), atol=1e-5)
 
 
 def test_poisson_multinomial_loss_log1p_targets():

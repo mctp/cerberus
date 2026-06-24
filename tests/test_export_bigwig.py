@@ -1065,3 +1065,78 @@ def test_process_island_multichannel_exports_channel_zero(tmp_path):
     # Channel 0: 100/50 = 2.0 (not channel 1's 200/50 = 4.0)
     for _, _, _, val in results:
         assert abs(val - 2.0) < 0.01, f"Expected ch0 value ~2.0, got {val}"
+
+
+def test_process_island_multichannel_exports_selected_channel(tmp_path):
+    """Multi-channel model: channel_index selects the exported channel."""
+    ds, ens, _ = _make_setup(
+        tmp_path,
+        MultiChannelBPNetModel,
+        "tests.test_export_bigwig.MultiChannelBPNetModel",
+    )
+    intervals = [Interval("chr1", 500, 600)]
+
+    results = list(
+        _process_island(
+            intervals,
+            ds,
+            ens,
+            use_folds=["test", "val"],
+            batch_size=4,
+            count_pseudocount=0.0,
+            channel_index=1,
+        )
+    )
+
+    # Channel 1: 200/50 = 4.0
+    for _, _, _, val in results:
+        assert abs(val - 4.0) < 0.01, f"Expected ch1 value ~4.0, got {val}"
+
+
+def test_process_island_rejects_out_of_range_channel_index(tmp_path):
+    """Out-of-range channel_index must raise instead of falling through to
+    silent IndexError downstream."""
+    ds, ens, _ = _make_setup(
+        tmp_path,
+        MultiChannelBPNetModel,
+        "tests.test_export_bigwig.MultiChannelBPNetModel",
+    )
+    intervals = [Interval("chr1", 500, 600)]
+
+    with pytest.raises(ValueError, match="channel_index=99"):
+        list(
+            _process_island(
+                intervals,
+                ds,
+                ens,
+                use_folds=["test", "val"],
+                batch_size=4,
+                count_pseudocount=0.0,
+                channel_index=99,
+            )
+        )
+
+
+def test_process_island_rejects_negative_channel_index(tmp_path):
+    """Negative channel_index is rejected explicitly; Python-style wraparound
+    would silently change the exported channel and is not what an export tool
+    should do."""
+    ds, ens, _ = _make_setup(
+        tmp_path,
+        MultiChannelBPNetModel,
+        "tests.test_export_bigwig.MultiChannelBPNetModel",
+    )
+    intervals = [Interval("chr1", 500, 600)]
+
+    with pytest.raises(ValueError, match="channel_index=-1"):
+        list(
+            _process_island(
+                intervals,
+                ds,
+                ens,
+                use_folds=["test", "val"],
+                batch_size=4,
+                count_pseudocount=0.0,
+                channel_index=-1,
+            )
+        )

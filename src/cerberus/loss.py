@@ -9,6 +9,8 @@ from cerberus.output import (
     ProfileCountOutput,
     ProfileLogRates,
 )
+from cerberus.pseudocount import _log_count_plus_pseudocount
+from cerberus.samplers import PEAK_INTERVAL_SOURCES
 from cerberus.utils import import_class
 
 
@@ -78,6 +80,168 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     ) -> torch.Tensor:  # type: ignore[override]
         components = self.loss_components(outputs, targets, **kwargs)
         return components["poisson_nll_loss"]
+
+
+class BPAITACPoissonNLLLoss(nn.Module):
+    """
+    bpAI-TAC-style Poisson NLL on reconstructed base-resolution counts.
+
+    Unlike :class:`PoissonMultinomialLoss`, this is not a profile loss plus a
+    separate count-head loss. It reconstructs the per-base log-rate from a
+    factored BPNet/ChromBPNet output,
+
+    ``log_rate = log_softmax(profile_logits) + log_counts``,
+
+    and applies Poisson negative log-likelihood directly to that full
+    ``(batch, task, length)`` rate tensor. For multi-task ChromBPNet this
+    requires per-task ``log_counts`` with shape ``(batch, task)`` -- i.e.
+    ``predict_total_count=False`` on the accessibility/count branch.
+
+    Targets default to raw non-negative counts. When training on CPM-normalised
+    tracks, use ``DataConfig.target_scale`` / ``--target-scale`` to multiply
+    every track by the **same** shared scalar before this loss sees the targets
+    -- per-task scaling would distort the joint per-base Poisson likelihood.
+    Pass ``log1p_targets=True`` only if the targets are already log1p-transformed
+    on disk; the loss will invert via ``expm1`` before evaluating the PNLL.
+    """
+
+    uses_count_pseudocount: bool = False
+
+    def __init__(
+        self,
+        log1p_targets: bool = False,
+        full: bool = False,
+        eps: float = 1e-8,
+        count_pseudocount: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.log1p_targets = log1p_targets
+        self.full = full
+        self.eps = eps
+        # Accepted for compatibility with the common training constructor
+        # plumbing. PNLL trains raw log-counts, so this value is intentionally
+        # not used.
+        self.count_pseudocount = count_pseudocount
+
+    @staticmethod
+    def _reconstruct_log_rates(outputs: ProfileCountOutput) -> torch.Tensor:
+        logits = outputs.logits.float()
+        log_counts = outputs.log_counts.float()
+        expected_count_shape = logits.shape[:2]
+        if log_counts.shape != expected_count_shape:
+            raise ValueError(
+                "BPAITACPoissonNLLLoss requires per-channel log_counts with "
+                f"shape {expected_count_shape}, but model predicted "
+                f"{log_counts.shape}. Set predict_total_count=False for the "
+                "accessibility/count branch when using multi-task PNLL."
+            )
+        return F.log_softmax(logits, dim=-1) + log_counts.unsqueeze(-1)
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
+        targets = targets.float()
+        if self.log1p_targets:
+            targets = torch.expm1(targets).clamp_min(0.0)
+        if not isinstance(outputs, ProfileCountOutput):
+            raise TypeError("BPAITACPoissonNLLLoss requires ProfileCountOutput")
+        if outputs.logits.shape != targets.shape:
+            raise ValueError(
+                "BPAITACPoissonNLLLoss requires logits and targets to have "
+                f"matching shape, got logits {outputs.logits.shape} and "
+                f"targets {targets.shape}."
+            )
+        log_rates = self._reconstruct_log_rates(outputs)
+        poisson_nll = F.poisson_nll_loss(
+            log_rates,
+            targets,
+            log_input=True,
+            full=self.full,
+            eps=self.eps,
+            reduction="mean",
+        )
+        return {"poisson_nll_loss": poisson_nll}
+
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
+        components = self.loss_components(outputs, targets, **kwargs)
+        return components["poisson_nll_loss"]
+
+
+class ProfileJSDLoss(nn.Module):
+    """Profile-only Jensen-Shannon divergence loss.
+
+    This is the bpAI-TAC-style bias-model objective: train the profile logits
+    to match the observed base-resolution profile shape and apply no scalar
+    count-head loss. The model may still instantiate a count head for checkpoint
+    compatibility with :class:`cerberus.models.bpnet.BPNet`; that head simply
+    receives no direct loss from this objective.
+    """
+
+    uses_count_pseudocount: bool = False
+
+    def __init__(
+        self,
+        log1p_targets: bool = False,
+        epsilon: float = 1e-15,
+        flatten_channels: bool = False,
+        average_channels: bool = True,
+        count_pseudocount: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.log1p_targets = log1p_targets
+        self.epsilon = epsilon
+        self.flatten_channels = flatten_channels
+        self.average_channels = average_channels
+        # Accepted for common constructor plumbing; intentionally unused.
+        self.count_pseudocount = count_pseudocount
+
+    def _target_probs(self, targets: torch.Tensor) -> torch.Tensor:
+        if self.flatten_channels:
+            targets = targets.flatten(start_dim=1)
+        targets = targets.clamp_min(0.0) + self.epsilon
+        return targets / targets.sum(dim=-1, keepdim=True)
+
+    def _pred_probs(self, logits: torch.Tensor) -> torch.Tensor:
+        if self.flatten_channels:
+            logits = logits.flatten(start_dim=1)
+        probs = F.softmax(logits.float(), dim=-1) + self.epsilon
+        return probs / probs.sum(dim=-1, keepdim=True)
+
+    def _compute_jsd(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        pred = self._pred_probs(logits)
+        obs = self._target_probs(targets)
+        midpoint = 0.5 * (pred + obs)
+        kl_pred = (pred * (pred.log2() - midpoint.log2())).sum(dim=-1)
+        kl_obs = (obs * (obs.log2() - midpoint.log2())).sum(dim=-1)
+        jsd = 0.5 * (kl_pred + kl_obs)
+        if self.flatten_channels or self.average_channels:
+            return jsd.mean()
+        return jsd.sum(dim=-1).mean()
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
+        targets = targets.float()
+        if self.log1p_targets:
+            targets = torch.expm1(targets).clamp_min(0.0)
+        if not isinstance(outputs, ProfileCountOutput):
+            raise TypeError("ProfileJSDLoss requires ProfileCountOutput")
+        if outputs.logits.shape != targets.shape:
+            raise ValueError(
+                "ProfileJSDLoss requires logits and targets to have matching "
+                f"shape, got logits {outputs.logits.shape} and targets "
+                f"{targets.shape}."
+            )
+        profile_loss = self._compute_jsd(outputs.logits, targets)
+        return {"profile_jsd_loss": profile_loss}
+
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
+        components = self.loss_components(outputs, targets, **kwargs)
+        return components["profile_jsd_loss"]
 
 
 class MSEMultinomialLoss(nn.Module):
@@ -276,7 +440,12 @@ class PoissonMultinomialLoss(nn.Module):
 
     Objective:
       1. Profile Loss: Cross Entropy (Multinomial NLL form).
-      2. Count Loss: Poisson NLL on Global Count.
+      2. Count Loss: Shifted Poisson NLL on Global Count.
+
+    The shifted Poisson term matches AlphaGenome's convention: subtract the
+    target-dependent optimum so the count term is zero when predicted counts
+    equal observed counts. This keeps gradients identical to PoissonNLLLoss with
+    ``full=False`` but makes the logged count component non-negative.
 
     Requires ProfileCountOutput.
     """
@@ -293,6 +462,7 @@ class PoissonMultinomialLoss(nn.Module):
         log1p_targets: bool = False,
         epsilon: float = 1e-8,
         count_pseudocount: float = 1.0,
+        shift_poisson_loss: bool = True,
     ) -> None:
         """
         Args:
@@ -311,7 +481,11 @@ class PoissonMultinomialLoss(nn.Module):
             log1p_targets (bool): If True, assumes targets are log1p transformed.
             epsilon (float): Small constant for numerical stability.
             count_pseudocount (float): Accepted for compatibility with propagate_pseudocount.
-                Not used by Poisson count loss (which uses PoissonNLLLoss directly).
+                Not used by the Poisson count loss.
+            shift_poisson_loss (bool): If True (default), subtracts the
+                target-dependent optimum from the Poisson count term, following
+                AlphaGenome. If False, uses torch.nn.PoissonNLLLoss(full=False),
+                the previous Cerberus behavior.
         """
         super().__init__()
         self.count_weight = count_weight
@@ -321,6 +495,7 @@ class PoissonMultinomialLoss(nn.Module):
         self.average_channels = average_channels
         self.log1p_targets = log1p_targets
         self.epsilon = epsilon
+        self.shift_poisson_loss = shift_poisson_loss
         self.count_loss_fn = nn.PoissonNLLLoss(log_input=True, full=False)
 
     def _compute_profile_loss(
@@ -339,6 +514,21 @@ class PoissonMultinomialLoss(nn.Module):
             else:
                 loss_shape = loss_shape_per_channel.sum(dim=-1).mean()
         return loss_shape
+
+    def _compute_count_loss(
+        self, pred_log_counts: torch.Tensor, target_counts: torch.Tensor
+    ) -> torch.Tensor:
+        if not self.shift_poisson_loss:
+            return self.count_loss_fn(pred_log_counts, target_counts)
+
+        target_counts = target_counts.float().clamp_min(0.0)
+        pred_log_counts = pred_log_counts.float()
+        pred_counts = torch.exp(pred_log_counts)
+        loss = pred_counts - target_counts * pred_log_counts
+        min_value = target_counts - target_counts * torch.log(
+            target_counts + self.epsilon
+        )
+        return (loss - min_value).mean()
 
     def loss_components(
         self, predictions: object, targets: torch.Tensor, **kwargs: object
@@ -360,10 +550,10 @@ class PoissonMultinomialLoss(nn.Module):
                     f"{pred_log_counts.shape}. Set predict_total_count=False "
                     f"in model_args when using count_per_channel=True."
                 )
-            count_loss = self.count_loss_fn(pred_log_counts, target_counts)
+            count_loss = self._compute_count_loss(pred_log_counts, target_counts)
         else:
             target_global_count = targets.sum(dim=(1, 2))
-            count_loss = self.count_loss_fn(
+            count_loss = self._compute_count_loss(
                 pred_log_counts.flatten(), target_global_count
             )
         profile_loss = self._compute_profile_loss(logits, targets)
@@ -386,7 +576,7 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
 
     Objective:
       1. Profile Loss: Cross Entropy.
-      2. Count Loss: Poisson NLL on Global Count.
+      2. Count Loss: Shifted Poisson NLL on Global Count.
 
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp of logits over all channels.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
@@ -409,12 +599,14 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
         if self.count_per_channel:
             pred_log_counts = torch.logsumexp(logits.float(), dim=2)
             target_counts = targets.sum(dim=2)
-            count_loss = self.count_loss_fn(pred_log_counts, target_counts)
+            count_loss = self._compute_count_loss(pred_log_counts, target_counts)
         else:
             logits_flat = logits.flatten(start_dim=1)
             pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1)
             target_global_count = targets.sum(dim=(1, 2))
-            count_loss = self.count_loss_fn(pred_log_counts, target_global_count)
+            count_loss = self._compute_count_loss(
+                pred_log_counts, target_global_count
+            )
         profile_loss = self._compute_profile_loss(logits, targets)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
@@ -545,7 +737,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
 
 
 class DifferentialCountLoss(nn.Module):
-    """Differential count-head loss supervising ``log_counts[:, B] - log_counts[:, A]``.
+    """Differential count-head loss supervising pc-shrunk predicted log-ratios.
 
     The delta target is derived inline from the ``(B, N, L)`` ``targets``
     tensor (per-condition absolute-signal tracks; channels A and B are
@@ -560,13 +752,15 @@ class DifferentialCountLoss(nn.Module):
         \\right)
 
     where the sum is over the length axis and ``pc`` is
-    ``count_pseudocount``. Here ``pc`` plays the empirical-Bayes
+    ``delta_count_pseudocount``. Here ``pc`` plays the empirical-Bayes
     shrinkage-prior role: it pulls the log-ratio toward zero for
     regions whose per-condition totals sit at the noise floor.
     :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount` derives
     a data-driven value (training-fold per-channel quantile, max across
     channels) suitable to pass here. The returned loss is
-    ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
+    ``MSE(pred_delta, target_delta)`` where
+    ``pred_delta = log((exp(log_counts[:, B]) + pc) /
+    (exp(log_counts[:, A]) + pc))``.
 
     Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
     the count head needs to be retargeted. The profile heads are expected
@@ -581,7 +775,7 @@ class DifferentialCountLoss(nn.Module):
     Args:
         cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
         cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
-        count_pseudocount: Additive pseudocount used in the log
+        delta_count_pseudocount: Additive pseudocount used in the log
             fold-change derivation, in the same scaled units as
             ``ModelConfig.count_pseudocount``. Acts as an empirical-Bayes
             shrinkage prior — derive from data via
@@ -602,7 +796,7 @@ class DifferentialCountLoss(nn.Module):
         self,
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
-        count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float = 1.0,
     ) -> None:
         super().__init__()
         if cond_a_idx == cond_b_idx:
@@ -614,11 +808,9 @@ class DifferentialCountLoss(nn.Module):
                 raise ValueError(f"{name} must be non-negative, got {idx}")
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
-        self.count_pseudocount = count_pseudocount
+        self.delta_count_pseudocount = delta_count_pseudocount
 
-    def _delta_loss(
-        self, outputs: object, targets: torch.Tensor
-    ) -> torch.Tensor:
+    def _delta_loss(self, outputs: object, targets: torch.Tensor) -> torch.Tensor:
         if not isinstance(outputs, ProfileCountOutput):
             raise TypeError(
                 f"DifferentialCountLoss requires ProfileCountOutput, "
@@ -649,11 +841,11 @@ class DifferentialCountLoss(nn.Module):
             )
 
         counts = targets.float().sum(dim=-1)  # (B, N)
-        pc = self.count_pseudocount
-        target_delta = torch.log(
-            (counts[:, b] + pc) / (counts[:, a] + pc)
-        )  # (B,)
-        delta_pred = log_counts[:, b] - log_counts[:, a]  # (B,)
+        pc = self.delta_count_pseudocount
+        target_delta = torch.log((counts[:, b] + pc) / (counts[:, a] + pc))  # (B,)
+        delta_pred = _log_count_plus_pseudocount(
+            log_counts[:, b], pc
+        ) - _log_count_plus_pseudocount(log_counts[:, a], pc)  # (B,)
         return F.mse_loss(delta_pred, target_delta)
 
     def loss_components(
@@ -741,9 +933,11 @@ class DalmatianLoss(nn.Module):
         )
         l_recon = self.base_loss(combined, targets)
 
-        # 2. Bias-only reconstruction (non-peak examples)
+        # 2. Bias-only reconstruction (non-peak examples). Peaks report
+        # "ListSampler" after split_folds, so match PEAK_INTERVAL_SOURCES (not a
+        # single label) or split peaks leak into the bias term.
         non_peak = torch.tensor(
-            [s != "IntervalSampler" for s in interval_source],
+            [s not in PEAK_INTERVAL_SOURCES for s in interval_source],
             dtype=torch.bool,
             device=targets.device,
         )

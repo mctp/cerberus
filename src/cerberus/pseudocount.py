@@ -38,10 +38,29 @@ import logging
 from typing import Literal, Protocol
 
 import numpy as np
+import torch
 
 logger = logging.getLogger(__name__)
 
 InputScale = Literal["raw", "cpm"]
+
+
+def _log_count_plus_pseudocount(
+    log_count_values: torch.Tensor,
+    delta_count_pseudocount: float,
+) -> torch.Tensor:
+    """Stable ``log(exp(log_count_values) + delta_count_pseudocount)``.
+
+    Shared by :class:`cerberus.loss.DifferentialCountLoss` and the differential
+    log-count metrics so the loss and the metrics that report on it shrink the
+    predicted log-counts identically (a drift between the two would bias the
+    training signal). ``pc == 0`` returns the values unchanged.
+    """
+    log_count_values = log_count_values.float()
+    if delta_count_pseudocount == 0:
+        return log_count_values
+    log_pc = log_count_values.new_tensor(float(delta_count_pseudocount)).log()
+    return torch.logaddexp(log_count_values, log_pc)
 
 
 class _SupportsCountQuantileSamples(Protocol):
@@ -125,9 +144,7 @@ def resolve_read_coverage_pseudocount(
             )
         raw_pseudocount = reads_equiv * per_read_contribution * (1e6 / total_reads)
     else:
-        raise ValueError(
-            f"input_scale must be 'raw' or 'cpm', got {input_scale!r}"
-        )
+        raise ValueError(f"input_scale must be 'raw' or 'cpm', got {input_scale!r}")
 
     scaled_pseudocount = raw_pseudocount * target_scale
     logger.info(

@@ -18,6 +18,10 @@ from pathlib import Path
 from pprint import pformat
 
 import torch
+from _pseudocount_cli import (
+    add_pseudocount_cli_args,
+    resolve_count_pseudocount_from_args,
+)
 
 import cerberus
 from cerberus.config import (
@@ -31,11 +35,6 @@ from cerberus.download import download_human_reference
 from cerberus.genome import create_genome_config
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
-
-from _pseudocount_cli import (
-    add_pseudocount_cli_args,
-    resolve_count_pseudocount_from_args,
-)
 
 
 def _parse_alpha(value: str) -> float | str:
@@ -124,6 +123,18 @@ def get_args() -> argparse.Namespace:
     )
 
     # --- Loss / pretrained ---
+    parser.add_argument(
+        "--loss",
+        type=str,
+        default="bpnet",
+        choices=["bpnet", "profile-jsd"],
+        help=(
+            "Bias-model objective. 'bpnet' keeps the current Cerberus small "
+            "BPNet profile MNLL + count MSE objective. 'profile-jsd' trains "
+            "only the profile logits with Jensen-Shannon divergence, matching "
+            "bpAI-TAC-style Tn5 bias training without scalar count-head loss."
+        ),
+    )
     parser.add_argument("--alpha", type=_parse_alpha, default="adaptive")
     parser.add_argument("--beta", type=float, default=1.0)
     parser.add_argument(
@@ -153,7 +164,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--precision",
         type=str,
-        default="bf16",
+        default="full",
         choices=["bf16", "mps", "full"],
     )
 
@@ -275,18 +286,31 @@ def main() -> None:
             )
         )
 
+    if args.loss == "profile-jsd":
+        loss_cls = "cerberus.loss.ProfileJSDLoss"
+        loss_args = {"flatten_channels": False, "average_channels": True}
+        model_name = "ChromBPNetBiasBPNet_ProfileJSD"
+        count_pseudocount = 0.0
+    else:
+        loss_cls = "cerberus.models.bpnet.BPNetLoss"
+        loss_args = {"alpha": args.alpha, "beta": args.beta}
+        model_name = "ChromBPNetBiasBPNet"
+        count_pseudocount = resolve_count_pseudocount_from_args(
+            args,
+            bin_size=output_bin_size,
+            target_scale=target_scale,
+        )
+
     model_config = ModelConfig(
-        name="ChromBPNetBiasBPNet",
+        name=model_name,
         model_cls="cerberus.models.bpnet.BPNet",
-        loss_cls="cerberus.models.bpnet.BPNetLoss",
-        loss_args={"alpha": args.alpha, "beta": args.beta},
+        loss_cls=loss_cls,
+        loss_args=loss_args,
         metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
         metrics_args={},
         model_args=model_args,
         pretrained=pretrained,
-        count_pseudocount=resolve_count_pseudocount_from_args(
-            args, bin_size=output_bin_size, target_scale=target_scale,
-        ),
+        count_pseudocount=count_pseudocount,
     )
 
     devices: str | int = args.devices

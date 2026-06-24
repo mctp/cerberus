@@ -65,9 +65,9 @@ precision_args = {
 }
 ```
 
-Or on GPU, use bfloat16 (more stable than float16):
+Or on GPU, explicitly opt into bfloat16 if memory or throughput matters:
 ```python
-"precision": "bf16-mixed"  # Already the default on GPU, but verify
+"precision": "bf16-mixed"
 ```
 
 ### 1.2 LR Schedule: Slow Start + Early Decay

@@ -101,6 +101,16 @@ def main():
         default=None,
         help="BED file with regions to predict (columns: chrom, start, end).",
     )
+    parser.add_argument(
+        "--channel-index",
+        type=int,
+        default=0,
+        help=(
+            "Output channel index to export. BigWig is single-track, so "
+            "multi-channel models must be exported one channel at a time "
+            "(default: 0)."
+        ),
+    )
     args = parser.parse_args()
 
     if args.region and args.regions_bed:
@@ -162,6 +172,7 @@ def main():
         use_folds=use_folds,
         batch_size=args.batch_size,
         regions=regions,
+        channel_index=args.channel_index,
     )
 
     logger.info(f"BigWig written to {output_path}")

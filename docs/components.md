@@ -182,7 +182,7 @@ Cerberus provides a composable transformation pipeline via `cerberus.transform.C
 When `transforms` are not explicitly provided to `CerberusDataset`, they are automatically constructed from `DataConfig` by `create_default_transforms` in the following order:
 
 1.  **Jitter**: Crops to `input_len`, with random offset up to `max_jitter` (or centered for inference).
-2.  **ReverseComplement**: (If `reverse_complement=True` and not in deterministic/inference mode).
+2.  **ReverseComplement**: (If `reverse_complement=True` and not in deterministic/inference mode). DNA sequence channels are complemented, signal positions are reversed, and any named pairs in `reverse_complement_input_channel_pairs` or `reverse_complement_target_channel_pairs` are swapped for stranded tracks.
 3.  **TargetCrop**: Crops targets to `output_len` (if `output_len < input_len`).
 4.  **Scale**: Multiplies targets by `target_scale` (if `target_scale != 1.0`).
 5.  **Bin**: Downsamples targets by `output_bin_size` (if `output_bin_size > 1`).
@@ -202,12 +202,14 @@ Use the table below as a starting point:
 | ChIP-seq, moderate–high depth | `MSEMultinomialLoss` | `ProfileCountOutput` | Standard BPNet loss. Multinomial NLL for shape, MSE on log-counts. Robust default. |
 | ChIP-seq with adaptive count weight | `BPNetLoss` | `ProfileCountOutput` | Extends `MSEMultinomialLoss` with a single `alpha` parameter (set to `"adaptive"` in `loss_args`). |
 | Low-coverage or high-variance signal | `NegativeBinomialMultinomialLoss` | `ProfileCountOutput` | NB count loss accounts for overdispersion (variance >> mean). Set `total_count` to control dispersion. |
-| Poisson count model | `PoissonMultinomialLoss` | `ProfileCountOutput` | Poisson count loss. Better statistical match when counts follow a Poisson distribution. |
+| Poisson count model | `PoissonMultinomialLoss` | `ProfileCountOutput` | Poisson count loss. Better statistical match when counts follow a Poisson distribution. Defaults to a shifted form (`shift_poisson_loss=True`) that is zero at perfect prediction; gradients match the unshifted PNLL. Pass `shift_poisson_loss=False` for the legacy behavior. |
 | Single output head (no count head) | `CoupledMSEMultinomialLoss` | `ProfileLogRates` | Derives total count via LogSumExp of log-rates. No separate count head needed. |
-| Single head, Poisson counts | `CoupledPoissonMultinomialLoss` | `ProfileLogRates` | Coupled Poisson variant for log-rate models. |
+| Single head, Poisson counts | `CoupledPoissonMultinomialLoss` | `ProfileLogRates` | Coupled Poisson variant for log-rate models. Inherits the same shifted-default behavior as `PoissonMultinomialLoss`. |
 | Single head, overdispersed | `CoupledNegativeBinomialMultinomialLoss` | `ProfileLogRates` | Coupled NB variant for log-rate models. |
 | Bias-factorized (Dalmatian) | `DalmatianLoss` | `FactorizedProfileCountOutput` | Wraps any base loss. Adds bias-only reconstruction on background examples. |
 | Direct log-rate regression | `ProfilePoissonNLLLoss` | `ProfileLogRates` | Standard Poisson NLL without profile/count factorization. |
+| Multitask ChromBPNet, bpAI-TAC PNLL | `BPAITACPoissonNLLLoss` | `ProfileCountOutput` | Single base-resolution Poisson NLL on `log_softmax(logits) + log_counts.unsqueeze(-1)`. Preserves the factored profile/count-head API; requires per-task `log_counts` (`predict_total_count=False`). |
+| Bias-model profile-only | `ProfileJSDLoss` | `ProfileCountOutput` | Base-2 Jensen-Shannon divergence on profile logits only, with no count-head loss. The model may still instantiate a count head for checkpoint compatibility; that head receives no gradient. Used for bpAI-TAC-style Tn5 bias training (treat bias as a profile-shape effect, not a count signal). |
 
 **Key distinctions:**
 

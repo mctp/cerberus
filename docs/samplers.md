@@ -96,6 +96,16 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Epoch size**: Controlled by `background_ratio` (number of background intervals = num_peaks × background_ratio).
 *   **Interval source**: `get_interval_source()` returns `"ComplexityMatchedSampler"` for all intervals (background only).
 
+### FixedBackgroundSampler
+*   **Function**: Loads a **fixed** background (non-peak) set from a BED/narrowPeak file, exactly like `IntervalSampler`, but reports a distinct `"FixedBackgroundSampler"` interval source. Unlike `ComplexityMatchedSampler`, the set is **static** — `resample()` is a no-op, so the model sees the same negatives every epoch.
+*   **Splitting**: `split_folds` is overridden so train/val/test splits remain `FixedBackgroundSampler` instances. (The base `ListSampler.split_folds` returns plain `ListSampler` objects, which would collapse the source label to `"ListSampler"` — identical to split peaks — and break peak/background separation in evaluation.)
+
+### PeakFixedBackgroundSampler
+*   **Function**: Like `PeakSampler`, mixes peaks with negatives, but uses a **fixed external negative set** (`FixedBackgroundSampler`) instead of generating complexity-matched negatives on the fly. Reproduces reference [chrombpnet-pytorch](https://github.com/jsxlei/chrombpnet-pytorch)'s static `negatives.bed` setup so the two implementations can be compared on an identical peak **and** negative set.
+*   **Config type**: `"peak_fixed_background"` — args `intervals_path` (peaks) and `background_intervals_path` (fixed negatives BED). No `fasta_path`/complexity metrics needed.
+*   **Interval source**: `"IntervalSampler"` (→ `"ListSampler"` after `split_folds`) for peaks, `"FixedBackgroundSampler"` for negatives.
+*   **Tooling**: `tools/train_chrombpnet.py --negatives <bed>` selects this sampler; `tools/export_predictions.py --include-background` evaluates on the same fixed negatives.
+
 ## Best Practices for Users
 
 1.  **Global Configuration**: Set a single random seed in your configuration. The `create_sampler` factory will propagate this seed correctly to all nested samplers.

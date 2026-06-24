@@ -109,6 +109,15 @@ class DataConfig(BaseModel):
     # Whether to apply reverse complement augmentation during training
     reverse_complement: bool
 
+    # Input signal channel-name pairs to swap under reverse complement.
+    # Use for stranded input tracks, e.g. [("plus", "minus")].
+    # DNA sequence channels are handled separately and should not be listed here.
+    reverse_complement_input_channel_pairs: list[tuple[str, str]] = []
+
+    # Target channel-name pairs to swap under reverse complement.
+    # Use for stranded target tracks, e.g. [("plus", "minus")].
+    reverse_complement_target_channel_pairs: list[tuple[str, str]] = []
+
     # Multiplicative scaling factor applied to targets before log transform.
     # Useful for rescaling normalized BigWig values to integer-like counts.
     # Set to 1.0 to disable.
@@ -117,6 +126,30 @@ class DataConfig(BaseModel):
     # Whether to include DNA sequence as an input channel (default: True)
     use_sequence: bool
 ```
+
+#### Reverse-complement channel swaps for stranded tracks
+
+When targets (or inputs) are strand-specific, `reverse_complement=True` alone is
+**not** sufficient: a `+`-strand pileup flipped along length stays in the `+`
+channel, which teaches the model an inconsistent strand convention.  Declare
+strand-paired channel names so the augmentation also swaps them after the
+positional flip:
+
+```python
+DataConfig(
+    inputs={},
+    targets={"plus": "plus.bw", "minus": "minus.bw"},
+    encoding="ACGT",
+    use_sequence=True,
+    reverse_complement=True,
+    reverse_complement_target_channel_pairs=[("plus", "minus")],
+    # ... other fields ...
+)
+```
+
+Pair-order is symmetric (`("plus", "minus")` and `("minus", "plus")` resolve to
+the same swap).  Self-pairs and overlapping pairs are rejected at construction
+time.
 
 ### Performance: In-Memory vs Disk-Based
 
@@ -324,7 +357,7 @@ helper picks it from the training fold's per-channel quantile:
 from cerberus import resolve_noise_floor_pseudocount
 
 # Datamodule must already be set up.
-count_pseudocount = resolve_noise_floor_pseudocount(
+delta_count_pseudocount = resolve_noise_floor_pseudocount(
     datamodule,
     quantile=0.10,          # 10th percentile per channel
     seed=42,                # reproducible across runs
@@ -394,6 +427,20 @@ ModelConfig(..., freeze=[FreezeSpec(pattern="iconv.weight")])
 
 See `docs/models.md` for the `named_children()` of each shipped
 architecture.
+
+### Scope: static freezing only
+
+`FreezeSpec` is deliberately limited to *static* freezing of a subtree
+or a single parameter (no scheduled freeze/unfreeze epochs, no
+"freeze everything **except** X" inversion). Freezing all of a branch
+except one head — e.g. ChromBPNet differential fine-tuning that trains
+only `accessibility_model.count_dense` — is the inverse operation and is
+handled by a dedicated **training callback**, not the config schema:
+`tools/train_chrombpnet_multitask_differential.py --accessibility-count-head-only`
+installs an `AccessibilityCountHeadOnly` callback that freezes the
+branch and re-enables just the count head at `fit` time. Use `FreezeSpec`
+for "freeze this pretrained subtree" (e.g. `bias_model`); use a callback
+for selective unfreezing or any per-epoch schedule.
 
 ## DataModule Runtime Arguments
 

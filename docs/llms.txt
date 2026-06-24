@@ -94,10 +94,12 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class ListSampler(BaseSampler)`** — Base class for samplers that store a concrete list of intervals.
 - **`class RandomSampler(BaseSampler)`** — Samples random intervals from the genome, respecting exclusions.
 - **`class IntervalSampler(ListSampler)`** — Samples from a list of genomic intervals provided in a file.
+- **`class FixedBackgroundSampler(IntervalSampler)`** — Background (non-peak) intervals loaded from a fixed BED/narrowPeak file.
 - **`class SlidingWindowSampler(ListSampler)`** — Generates samples by sliding a window across the genome.
 - **`class ScaledSampler(ProxySampler)`** — Wraps a sampler to resize it (subsample or oversample).
 - **`class ComplexityMatchedSampler(ProxySampler)`** — Selects candidates from a candidate_sampler that match the distributional properties
 - **`class PeakSampler(MultiSampler)`** — A specialized MultiSampler that combines a set of positive intervals (peaks)
+- **`class PeakFixedBackgroundSampler(MultiSampler)`** — Combines peaks with a **fixed**, externally-supplied negative set.
 - **`class NegativePeakSampler(MultiSampler)`** — Background-only sampler: complexity-matched non-peak intervals.
 - **`create_sampler()`** — Factory function to create a Sampler from a config.
 
@@ -107,7 +109,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class Compose`** — Composes multiple transforms together.
 - **`class Jitter`** — Randomly crops input/target tensors to input_len.
 - **`class TargetCrop`** — Crops target tensors to the center to match output_len.
-- **`class ReverseComplement`** — Randomly reverse complements the sequence and reverses the signal.
+- **`class ReverseComplement`** — Randomly reverse complements the sequence and reverses signal positions.
 - **`class Log1p`** — Applies log1p transformation (log(x + 1)).
 - **`class Sqrt`** — Applies sqrt transformation.
 - **`class Arcsinh`** — Applies arcsinh transformation (log(x + sqrt(x^2 + 1))).
@@ -160,13 +162,15 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 - **`class CerberusLoss(Protocol)`** — Protocol for all cerberus loss functions.
 - **`class ProfilePoissonNLLLoss(nn.PoissonNLLLoss)`** — Poisson NLL Loss on Profile LogRates.
+- **`class BPAITACPoissonNLLLoss(nn.Module)`** — bpAI-TAC-style Poisson NLL on reconstructed base-resolution counts.
+- **`class ProfileJSDLoss(nn.Module)`** — Profile-only Jensen-Shannon divergence loss.
 - **`class MSEMultinomialLoss(nn.Module)`** — Multinomial NLL Profile Loss + MSE Count Loss.
 - **`class CoupledMSEMultinomialLoss(MSEMultinomialLoss)`** — Multinomial NLL Profile Loss + MSE Count Loss (Coupled).
 - **`class PoissonMultinomialLoss(nn.Module)`** — Poisson Multinomial Loss (Global Count).
 - **`class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss)`** — Poisson Multinomial Loss (Coupled/Global Count).
 - **`class NegativeBinomialMultinomialLoss(PoissonMultinomialLoss)`** — Negative Binomial Multinomial Loss.
 - **`class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss)`** — Negative Binomial Multinomial Loss (Coupled).
-- **`class DifferentialCountLoss(nn.Module)`** — Differential count-head loss supervising ``log_counts[:, B] - log_counts[:, A]``.
+- **`class DifferentialCountLoss(nn.Module)`** — Differential count-head loss supervising pc-shrunk predicted log-ratios.
 - **`class DalmatianLoss(nn.Module)`** — Peak-conditioned factorized loss for the Dalmatian architecture.
 
 ### `cerberus.metrics`
@@ -225,8 +229,10 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 - **`class BPNetLoss(MSEMultinomialLoss)`** — BPNet Loss with parameters fixed to match chrombpnet-pytorch implementation.
 - **`class MultitaskBPNet(BPNet)`** — Multi-task BPNet: shared dilated tower with N condition-specific output channels.
 - **`class MultitaskBPNetLoss(MSEMultinomialLoss)`** — Multi-task BPNet loss: per-channel profile + count for :class:`MultitaskBPNet`.
+- **`class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss)`** — Multi-task absolute BPNet loss with an added differential count target.
 - **`class BPNetMetricCollection(MetricCollection)`** — MetricCollection for BPNet models.
 - **`class DifferentialBPNetMetricCollection(MetricCollection)`** — MetricCollection for log-fold-change supervision (``DifferentialCountLoss``).
+- **`class JointBPNetMetricCollection(MetricCollection)`** — Absolute profile/count metrics plus differential log-count metrics.
 
 ### `cerberus.models.pomeranian`
 

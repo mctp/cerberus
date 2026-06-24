@@ -366,6 +366,11 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     # BPNet1024 variant (2112bp -> 1024bp, comparable I/O to Pomeranian)
     python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --1024
 
+    # Standalone ChromBPNet accessibility-sized BPNet
+    python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet \
+        --filters 512 --n-layers 8 --conv-kernel-size 21 --dil-kernel-size 3 \
+        --profile-kernel-size 75 --residual-architecture residual_post-activation_conv
+
     # Multi-fold cross-validation
     python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --multi
     ```
@@ -450,13 +455,15 @@ For quick training on custom data, use the model-specific scripts in the `tools/
         --output-dir models/chrombpnet_multitask
     ```
 
-*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, supervises `log_counts[:, cond_b] - log_counts[:, cond_a]` with `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
+*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, and supervises the `delta_count_pseudocount`-shrunk predicted log fold-change between `cond_b` and `cond_a` against the inline-derived per-peak target log fold-change, using `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
     ```bash
     python tools/train_chrombpnet_multitask_differential.py \
         --phase1-checkpoint-dir models/chrombpnet_multitask/single-fold \
         --cond-a-idx 0 --cond-b-idx 1 \
         --output-dir models/chrombpnet_multitask_diff
     ```
+
+*   `tools/train_chrombpnet_multitask_differential_parallel.py`: From-scratch multi-task ChromBPNet training that keeps the absolute per-channel profile/count objective and adds a parallel differential log-count term (via `MultitaskBPNetJointDifferentialLoss` / `JointBPNetMetricCollection`). The counterpart to the phase-2-only `train_chrombpnet_multitask_differential.py`.
 
 *   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
     ```bash
@@ -475,6 +482,7 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 | `--learning-rate` | `1e-3` | `5e-4` | `1e-3` | `1e-3` | `1e-3` |
 | `--weight-decay` | `0.0` | `0.01` | `1e-4` | `0.01` | `0.01` |
 | `--scheduler-type` | `default` (constant) | `cosine` | `default` (constant) | `cosine` | `cosine` |
+| `--precision` | `full` | `bf16` | `bf16` | `bf16` | `bf16` |
 | `--input-len` | `2114` | `2112` | `2112` | `2048` | `2048` |
 | `--output-len` | `1000` | `1024` | `1024` | `1024` | `2048` |
 | `--output-bin-size` | `1` | `1` | `1` | `4` | `4` |
@@ -485,14 +493,14 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 `tools/train_multitask_differential_bpnet.py` trains a [MultitaskBPNet](models.md#multitaskbpnet) on two conditions in two phases, following the recipe from bpAI-TAC (Chandra et al. 2025) and Naqvi et al. 2025:
 
 - **Phase 1 — multi-task absolute model.** Jointly trains a shared BPNet trunk on condition A and condition B with `MultitaskBPNetLoss` (per-condition profile + count heads). The trunk learns sequence features that matter for *both* conditions, not the confound of separately-trained solo models.
-- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises `log_counts_B − log_counts_A` on the per-peak natural-log fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log-fold-change table.
+- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises the `delta_count_pseudocount`-shrunk predicted fold-change against the per-peak natural-log fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log-fold-change table.
 - **Optional interpretation.** With `--interpret`, runs DeepLIFTSHAP on the fine-tuned model through `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` and pipes the result into TF-MoDISco.
 
 Both phases run on the standard `train_single` / `train_multi` pipeline. The companion library primitives are [MultitaskBPNet](models.md#multitaskbpnet), [MultitaskBPNetLoss](models.md#loss-multitaskbpnetloss), and [DifferentialCountLoss](models.md#differentialcountloss).
 
 Phase 2 logs differential metrics via `DifferentialBPNetMetricCollection`: `mse_delta_log_counts`, `rmse_delta_log_counts`, and `pearson_delta_log_counts`. These score predictions in the same space `DifferentialCountLoss` optimises (the per-peak log fold-change), not the absolute log-counts. The val-end scatter is emitted as `val_delta_log_counts_scatter_epoch_NNN.png` accordingly.
 
-Phase 2's `count_pseudocount` is derived from the training data by default (10th-percentile-per-channel of length-summed counts), via `cerberus.pseudocount.resolve_noise_floor_pseudocount`. Override with `--phase2-pseudocount-override SCALED_VALUE`.
+Phase 2's `delta_count_pseudocount` is derived from the training data by default (10th-percentile-per-channel of length-summed counts), via `cerberus.pseudocount.resolve_noise_floor_pseudocount`. Override with `--phase2-pseudocount-override SCALED_VALUE`.
 
 ```bash
 # Single-fold two-condition training + interpretation in one call.
@@ -1122,6 +1130,15 @@ class DataConfig(BaseModel):
     # Whether to apply reverse complement augmentation during training
     reverse_complement: bool
 
+    # Input signal channel-name pairs to swap under reverse complement.
+    # Use for stranded input tracks, e.g. [("plus", "minus")].
+    # DNA sequence channels are handled separately and should not be listed here.
+    reverse_complement_input_channel_pairs: list[tuple[str, str]] = []
+
+    # Target channel-name pairs to swap under reverse complement.
+    # Use for stranded target tracks, e.g. [("plus", "minus")].
+    reverse_complement_target_channel_pairs: list[tuple[str, str]] = []
+
     # Multiplicative scaling factor applied to targets before log transform.
     # Useful for rescaling normalized BigWig values to integer-like counts.
     # Set to 1.0 to disable.
@@ -1130,6 +1147,30 @@ class DataConfig(BaseModel):
     # Whether to include DNA sequence as an input channel (default: True)
     use_sequence: bool
 ```
+
+#### Reverse-complement channel swaps for stranded tracks
+
+When targets (or inputs) are strand-specific, `reverse_complement=True` alone is
+**not** sufficient: a `+`-strand pileup flipped along length stays in the `+`
+channel, which teaches the model an inconsistent strand convention.  Declare
+strand-paired channel names so the augmentation also swaps them after the
+positional flip:
+
+```python
+DataConfig(
+    inputs={},
+    targets={"plus": "plus.bw", "minus": "minus.bw"},
+    encoding="ACGT",
+    use_sequence=True,
+    reverse_complement=True,
+    reverse_complement_target_channel_pairs=[("plus", "minus")],
+    # ... other fields ...
+)
+```
+
+Pair-order is symmetric (`("plus", "minus")` and `("minus", "plus")` resolve to
+the same swap).  Self-pairs and overlapping pairs are rejected at construction
+time.
 
 ### Performance: In-Memory vs Disk-Based
 
@@ -1337,7 +1378,7 @@ helper picks it from the training fold's per-channel quantile:
 from cerberus import resolve_noise_floor_pseudocount
 
 # Datamodule must already be set up.
-count_pseudocount = resolve_noise_floor_pseudocount(
+delta_count_pseudocount = resolve_noise_floor_pseudocount(
     datamodule,
     quantile=0.10,          # 10th percentile per channel
     seed=42,                # reproducible across runs
@@ -1407,6 +1448,20 @@ ModelConfig(..., freeze=[FreezeSpec(pattern="iconv.weight")])
 
 See `docs/models.md` for the `named_children()` of each shipped
 architecture.
+
+### Scope: static freezing only
+
+`FreezeSpec` is deliberately limited to *static* freezing of a subtree
+or a single parameter (no scheduled freeze/unfreeze epochs, no
+"freeze everything **except** X" inversion). Freezing all of a branch
+except one head — e.g. ChromBPNet differential fine-tuning that trains
+only `accessibility_model.count_dense` — is the inverse operation and is
+handled by a dedicated **training callback**, not the config schema:
+`tools/train_chrombpnet_multitask_differential.py --accessibility-count-head-only`
+installs an `AccessibilityCountHeadOnly` callback that freezes the
+branch and re-enables just the count head at `fit` time. Use `FreezeSpec`
+for "freeze this pretrained subtree" (e.g. `bias_model`); use a callback
+for selective unfreezing or any per-epoch schedule.
 
 ## DataModule Runtime Arguments
 
@@ -1575,6 +1630,16 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Config type**: `"negative_peak"` — same args as `"peak"` (`intervals_path`, `background_ratio`, `complexity_center_size`).
 *   **Epoch size**: Controlled by `background_ratio` (number of background intervals = num_peaks × background_ratio).
 *   **Interval source**: `get_interval_source()` returns `"ComplexityMatchedSampler"` for all intervals (background only).
+
+### FixedBackgroundSampler
+*   **Function**: Loads a **fixed** background (non-peak) set from a BED/narrowPeak file, exactly like `IntervalSampler`, but reports a distinct `"FixedBackgroundSampler"` interval source. Unlike `ComplexityMatchedSampler`, the set is **static** — `resample()` is a no-op, so the model sees the same negatives every epoch.
+*   **Splitting**: `split_folds` is overridden so train/val/test splits remain `FixedBackgroundSampler` instances. (The base `ListSampler.split_folds` returns plain `ListSampler` objects, which would collapse the source label to `"ListSampler"` — identical to split peaks — and break peak/background separation in evaluation.)
+
+### PeakFixedBackgroundSampler
+*   **Function**: Like `PeakSampler`, mixes peaks with negatives, but uses a **fixed external negative set** (`FixedBackgroundSampler`) instead of generating complexity-matched negatives on the fly. Reproduces reference [chrombpnet-pytorch](https://github.com/jsxlei/chrombpnet-pytorch)'s static `negatives.bed` setup so the two implementations can be compared on an identical peak **and** negative set.
+*   **Config type**: `"peak_fixed_background"` — args `intervals_path` (peaks) and `background_intervals_path` (fixed negatives BED). No `fasta_path`/complexity metrics needed.
+*   **Interval source**: `"IntervalSampler"` (→ `"ListSampler"` after `split_folds`) for peaks, `"FixedBackgroundSampler"` for negatives.
+*   **Tooling**: `tools/train_chrombpnet.py --negatives <bed>` selects this sampler; `tools/export_predictions.py --include-background` evaluates on the same fixed negatives.
 
 ## Best Practices for Users
 
@@ -1790,7 +1855,7 @@ Cerberus provides a composable transformation pipeline via `cerberus.transform.C
 When `transforms` are not explicitly provided to `CerberusDataset`, they are automatically constructed from `DataConfig` by `create_default_transforms` in the following order:
 
 1.  **Jitter**: Crops to `input_len`, with random offset up to `max_jitter` (or centered for inference).
-2.  **ReverseComplement**: (If `reverse_complement=True` and not in deterministic/inference mode).
+2.  **ReverseComplement**: (If `reverse_complement=True` and not in deterministic/inference mode). DNA sequence channels are complemented, signal positions are reversed, and any named pairs in `reverse_complement_input_channel_pairs` or `reverse_complement_target_channel_pairs` are swapped for stranded tracks.
 3.  **TargetCrop**: Crops targets to `output_len` (if `output_len < input_len`).
 4.  **Scale**: Multiplies targets by `target_scale` (if `target_scale != 1.0`).
 5.  **Bin**: Downsamples targets by `output_bin_size` (if `output_bin_size > 1`).
@@ -1810,12 +1875,14 @@ Use the table below as a starting point:
 | ChIP-seq, moderate–high depth | `MSEMultinomialLoss` | `ProfileCountOutput` | Standard BPNet loss. Multinomial NLL for shape, MSE on log-counts. Robust default. |
 | ChIP-seq with adaptive count weight | `BPNetLoss` | `ProfileCountOutput` | Extends `MSEMultinomialLoss` with a single `alpha` parameter (set to `"adaptive"` in `loss_args`). |
 | Low-coverage or high-variance signal | `NegativeBinomialMultinomialLoss` | `ProfileCountOutput` | NB count loss accounts for overdispersion (variance >> mean). Set `total_count` to control dispersion. |
-| Poisson count model | `PoissonMultinomialLoss` | `ProfileCountOutput` | Poisson count loss. Better statistical match when counts follow a Poisson distribution. |
+| Poisson count model | `PoissonMultinomialLoss` | `ProfileCountOutput` | Poisson count loss. Better statistical match when counts follow a Poisson distribution. Defaults to a shifted form (`shift_poisson_loss=True`) that is zero at perfect prediction; gradients match the unshifted PNLL. Pass `shift_poisson_loss=False` for the legacy behavior. |
 | Single output head (no count head) | `CoupledMSEMultinomialLoss` | `ProfileLogRates` | Derives total count via LogSumExp of log-rates. No separate count head needed. |
-| Single head, Poisson counts | `CoupledPoissonMultinomialLoss` | `ProfileLogRates` | Coupled Poisson variant for log-rate models. |
+| Single head, Poisson counts | `CoupledPoissonMultinomialLoss` | `ProfileLogRates` | Coupled Poisson variant for log-rate models. Inherits the same shifted-default behavior as `PoissonMultinomialLoss`. |
 | Single head, overdispersed | `CoupledNegativeBinomialMultinomialLoss` | `ProfileLogRates` | Coupled NB variant for log-rate models. |
 | Bias-factorized (Dalmatian) | `DalmatianLoss` | `FactorizedProfileCountOutput` | Wraps any base loss. Adds bias-only reconstruction on background examples. |
 | Direct log-rate regression | `ProfilePoissonNLLLoss` | `ProfileLogRates` | Standard Poisson NLL without profile/count factorization. |
+| Multitask ChromBPNet, bpAI-TAC PNLL | `BPAITACPoissonNLLLoss` | `ProfileCountOutput` | Single base-resolution Poisson NLL on `log_softmax(logits) + log_counts.unsqueeze(-1)`. Preserves the factored profile/count-head API; requires per-task `log_counts` (`predict_total_count=False`). |
+| Bias-model profile-only | `ProfileJSDLoss` | `ProfileCountOutput` | Base-2 Jensen-Shannon divergence on profile logits only, with no count-head loss. The model may still instantiate a count head for checkpoint compatibility; that head receives no gradient. Used for bpAI-TAC-style Tn5 bias training (treat bias as a profile-shape effect, not a count signal). |
 
 **Key distinctions:**
 
@@ -2134,7 +2201,7 @@ This tool:
 4. Reconstructs linear signal per window (softmax × counts for BPNet, exp for log-rates) then spatially merges overlapping predictions using a streaming accumulator.
 5. Automatically reads `count_pseudocount` from the model config and subtracts it when inverting `log_counts` (MSE-trained models).
 
-The exported track contains the reconstructed linear signal (counts per bp). For multi-channel models, only channel 0 is written (BigWig is single-track).
+The exported track contains the reconstructed linear signal (counts per bp). BigWig is single-track, so multi-channel models must be exported one channel at a time via `--channel-index` (defaults to channel 0; out-of-range and negative values are rejected).
 
 #### Optional arguments
 
@@ -2145,6 +2212,7 @@ The exported track contains the reconstructed linear signal (counts per bp). For
 | `--use_folds` | Folds to use, e.g. `test`, `test+val`, `all`. Defaults to `test+val`. |
 | `--batch_size` | Batch size for inference (default: 64). |
 | `--device` | Override device selection (`cuda`, `mps`, `cpu`). |
+| `--channel-index` | Output channel index to export (default: `0`). Run once per channel for multi-channel models. |
 
 ### Export Predictions (`tools/export_predictions.py`)
 Exports predicted vs observed log-counts for a set of peaks to a TSV file. This is useful for evaluating model performance on peak sets.
@@ -2530,6 +2598,7 @@ An implementation of the BPNet architecture (Avsec et al., 2021) for base-resolu
 *   **Binning**: Optional output binning via average pooling (`output_bin_size > 1`).
 *   **Variants**:
     *   **BPNet** (Default): Canonical dimensions (2114bp → 1000bp), 64 filters, `profile_kernel_size=75`.
+    *   **ChromBPNet accessibility-sized standalone BPNet**: A bias-free baseline that pairs the canonical ChromBPNet accessibility branch (filters=512, 8 dilated layers) with the standalone BPNet trainer. Useful for ablating the bias-correction step on the same architecture, or for training when a paired bias model is unavailable. Configure with `--filters 512 --n-layers 8 --conv-kernel-size 21 --dil-kernel-size 3 --profile-kernel-size 75 --residual-architecture residual_post-activation_conv`.
     *   **BPNet1024**: Tuned for 2112bp → 1024bp with no center-cropping; 77 filters, `profile_kernel_size=49`. Receptive-field shrinkage is exactly 1088bp (20 + 1020 + 48).
 
 ### Recommended Training Settings
@@ -2702,13 +2771,16 @@ For the companion differential loss see [DifferentialCountLoss](#differentialcou
 
 **Implementation**: `cerberus.loss.DifferentialCountLoss`
 
-Differential count-head fine-tuning loss. Supervises `log_counts[:, B] - log_counts[:, A]` against a per-peak natural-log fold-change derived inline from the two-channel `(B, N, L)` targets tensor:
+Differential count-head fine-tuning loss. Supervises a pseudocount-shrunk predicted natural-log fold-change against the matching per-peak fold-change derived inline from the two-channel `(B, N, L)` targets tensor:
 
 ```
-target_delta = log((sum_B + pc) / (sum_A + pc))
+pred_delta = log((exp(log_counts[:, B]) + delta_count_pseudocount) /
+                 (exp(log_counts[:, A]) + delta_count_pseudocount))
+target_delta = log((sum_B + delta_count_pseudocount) /
+                   (sum_A + delta_count_pseudocount))
 ```
 
-where `sum_A` / `sum_B` are the length-sums of channels A / B and `pc` is `count_pseudocount` (on *linear* scale — same units as the length-summed signal, not a log-space offset). `pc` here is an empirical-Bayes shrinkage prior; the recommended value comes from `cerberus.pseudocount.resolve_noise_floor_pseudocount` (training-fold per-channel quantile, max across channels). Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
+where `sum_A` / `sum_B` are the length-sums of channels A / B and `delta_count_pseudocount` is on *linear* scale — same units as the length-summed signal, not a log-space offset. It is an empirical-Bayes shrinkage prior; the recommended value comes from `cerberus.pseudocount.resolve_noise_floor_pseudocount` (training-fold per-channel quantile, max across channels). Profile loss is disabled following Naqvi et al. 2025 — only the count heads are retargeted.
 
 Single path: `forward(outputs, targets)` returns one MSE scalar. No kwargs, no shape branches, no optional regularizer. Targets must be `(B, N, L)` with `N >= max(cond_a_idx, cond_b_idx) + 1`.
 
@@ -2723,7 +2795,11 @@ model_config = ModelConfig(
     name="MultitaskBPNet_differential",
     model_cls="cerberus.models.bpnet.MultitaskBPNet",
     loss_cls="cerberus.loss.DifferentialCountLoss",
-    loss_args={"cond_a_idx": 0, "cond_b_idx": 1},
+    loss_args={
+        "cond_a_idx": 0,
+        "cond_b_idx": 1,
+        "delta_count_pseudocount": 150.0,
+    },
     metrics_cls="cerberus.models.bpnet.DifferentialBPNetMetricCollection",
     metrics_args={"cond_a_idx": 0, "cond_b_idx": 1},
     model_args={"output_channels": ["LNCAP", "22Rv1"], "n_dilated_layers": 8},
@@ -2733,7 +2809,7 @@ model_config = ModelConfig(
             source=None, target=None,
         )
     ],
-    count_pseudocount=150.0,  # data-derived noise-floor recommended
+    count_pseudocount=150.0,  # stored for shared pseudocount/output metadata
 )
 ```
 
@@ -2743,9 +2819,18 @@ model_config = ModelConfig(
 - `rmse_delta_log_counts` — `sqrt(MSE)`, clamped at zero.
 - `pearson_delta_log_counts` — Pearson correlation of predicted vs. target delta accumulated across the epoch.
 
-All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `log_counts[:, b] - log_counts[:, a]`. Constructor kwargs (`cond_a_idx`, `cond_b_idx`, `count_pseudocount`, `log1p_targets`, `log_counts_include_pseudocount`) match the rest of the BPNet collections so dispatch through `instantiate_metrics_and_loss` is uniform.
+All three derive `target_delta = log((sum_b + pc) / (sum_a + pc))` inline from the same `(B, N, L)` targets tensor the loss reads and compare it against `pred_delta = log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))`. Its constructor kwargs are exactly the ones it uses — `cond_a_idx`, `cond_b_idx`, `delta_count_pseudocount`, `log1p_targets`. `instantiate_metrics_and_loss` injects `delta_count_pseudocount` (defaulting to the model's `count_pseudocount`) because the collection declares it; it passes no `count_pseudocount`/`log_counts_include_pseudocount` here, since the differential metrics have no absolute-count term.
 
 For differential *attribution* on the fine-tuned model, pair it with `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` — see [Scalar attribution targets](usage.md#scalar-attribution-targets).
+
+### Joint absolute + differential objective
+
+`DifferentialCountLoss` above retargets a pretrained model's count heads to the log-fold-change *only* (profile loss disabled). When you instead want to train from scratch on the standard per-channel absolute profile/count objective **and** add the differential term, use:
+
+- **`MultitaskBPNetJointDifferentialLoss`** (`cerberus.models.MultitaskBPNetJointDifferentialLoss`) — `MultitaskBPNetLoss` plus a delta-log-count MSE term between `cond_a_idx` and `cond_b_idx`. The delta term defaults to the same weight as the absolute count term (`alpha`); override via `delta_weight`. It uses two distinct pseudocounts: `count_pseudocount` for the absolute count loss and `delta_count_pseudocount` for the differential term (defaulting to `count_pseudocount` when unset).
+- **`JointBPNetMetricCollection`** (`cerberus.models.JointBPNetMetricCollection`) — reports the absolute `BPNetMetricCollection` metrics together with the three differential metrics from `DifferentialBPNetMetricCollection`.
+
+The end-to-end trainer is `tools/train_chrombpnet_multitask_differential_parallel.py` (the from-scratch counterpart to the phase-2-only `train_chrombpnet_multitask_differential.py`).
 
 ### References
 - bpAI-TAC: Chandra et al. (2025). *Refining sequence-to-activity models by increasing model resolution.* bioRxiv 2025.01.24.634804.
@@ -3111,8 +3196,10 @@ Bias-factorized ATAC model composed of two `BPNet` sub-networks following the ch
 - **Accessibility branch** (`accessibility_model`): large `BPNet` — `filters=512`, `n_dilated_layers=8`. Learns regulatory grammar.
 - **Bias branch** (`bias_model`): smaller `BPNet` — `filters=128`, `n_dilated_layers=4`. Captures Tn5 enzymatic sequence preference; typically loaded pre-trained on background regions and frozen during stage-2 training (via `ModelConfig.freeze`). Train the bias-branch checkpoint with `tools/train_chrombpnet_bias.py` (sampler defaults to `negative_peak` so the model fits on background regions).
 - **Profile combination**: raw logit addition (`acc.logits + bias.logits`).
-- **Count combination**: `torch.logaddexp` (numerically stable form of `log(exp(acc) + exp(bias))`).
-- **`bias_logcount_offset`**: non-trainable scalar buffer added to the bias branch's log-count predictions before combination. Mirrors the chrombpnet-pytorch bias-count calibration step. Update in place via `model.bias_logcount_offset.fill_(value)`.
+- **Count combination** (`bias_count_mode`): controls how the bias branch contributes to count predictions.
+    - `"profile_and_counts"` (default, reference behaviour): `torch.logaddexp(acc.log_counts, bias.log_counts + bias_logcount_offset)` — numerically stable form of `log(exp(acc) + exp(bias_offset))`.
+    - `"profile_only"`: bias contributes only to profile logits; the final log-counts come entirely from the accessibility branch. Matches bpAI-TAC's treatment of Tn5 bias as a local profile-shape effect rather than a count signal. `bias_logcount_offset` becomes a no-op in this mode; the trainer logs a warning and skips offset estimation if `--adjust-bias-logcounts` is also set.
+- **`bias_logcount_offset`**: non-trainable scalar buffer added to the bias branch's log-count predictions before `logaddexp` combination (only when `bias_count_mode="profile_and_counts"`). Mirrors the chrombpnet-pytorch bias-count calibration step. Update in place via `model.bias_logcount_offset.fill_(value)`.
 
 ### Reference-equivalent training settings
 
@@ -3861,6 +3948,11 @@ class DataConfig(BaseModel):
         encoding: DNA encoding strategy (e.g. ``'ACGT'``).
         log_transform: Whether to apply ``log(x + 1)`` to signal.
         reverse_complement: Whether to apply reverse-complement augmentation.
+        reverse_complement_input_channel_pairs: Input signal channel name pairs
+            to swap after reverse-complementing, e.g. ``[("plus", "minus")]``.
+            Indices are resolved after DNA sequence channels.
+        reverse_complement_target_channel_pairs: Target channel name pairs
+            to swap after reverse-complementing, e.g. ``[("plus", "minus")]``.
         use_sequence: Whether to include one-hot sequence as input.
         target_scale: Multiplicative scaling factor applied to targets.
     """
@@ -3876,6 +3968,12 @@ class DataConfig(BaseModel):
     encoding: str
     log_transform: bool
     reverse_complement: bool
+    reverse_complement_input_channel_pairs: list[tuple[str, str]] = Field(
+        default_factory=list
+    )
+    reverse_complement_target_channel_pairs: list[tuple[str, str]] = Field(
+        default_factory=list
+    )
     use_sequence: bool
     target_scale: float = Field(gt=0)
 
@@ -3886,6 +3984,41 @@ class DataConfig(BaseModel):
                 "reverse_complement=True requires use_sequence=True. "
                 "Reverse complement operates on DNA sequence channels."
             )
+        return self
+
+    @model_validator(mode="after")
+    def check_rc_channel_pairs(self) -> DataConfig:
+        """Reject misconfigured RC channel-pair lists.
+
+        A swap of a channel with itself is a no-op, and reusing a channel name
+        across multiple pairs would scramble channels under the cumulative
+        sequence of in-place swaps in :class:`~cerberus.transform.ReverseComplement`.
+        Either case is almost certainly a config bug.
+        """
+        for field_name, pairs in (
+            (
+                "reverse_complement_input_channel_pairs",
+                self.reverse_complement_input_channel_pairs,
+            ),
+            (
+                "reverse_complement_target_channel_pairs",
+                self.reverse_complement_target_channel_pairs,
+            ),
+        ):
+            seen_names: set[str] = set()
+            for left, right in pairs:
+                if left == right:
+                    raise ValueError(
+                        f"{field_name} contains a self-pair {(left, right)!r}: "
+                        "a channel cannot be reverse-complement-swapped with itself."
+                    )
+                for name in (left, right):
+                    if name in seen_names:
+                        raise ValueError(
+                            f"{field_name} reuses channel {name!r} across multiple "
+                            "pairs. Overlapping swaps would scramble channels."
+                        )
+                    seen_names.add(name)
         return self
 
 
@@ -5773,6 +5906,13 @@ from .interval import Interval
 
 logger = logging.getLogger(__name__)
 
+# Interval-source labels (from get_interval_source) that mean "peak/positive".
+# A peak IntervalSampler reports "IntervalSampler" before a fold split and
+# "ListSampler" after one (base ListSampler.split_folds returns plain
+# ListSampler); background samplers override split_folds to keep distinct
+# labels. Single source of truth for the peak-vs-background predicate.
+PEAK_INTERVAL_SOURCES = frozenset({"IntervalSampler", "ListSampler"})
+
 
 def _select_from_bins(
     target_hist: dict[tuple[int, ...], int],
@@ -6597,6 +6737,61 @@ class IntervalSampler(ListSampler):
             ]
 
 
+class FixedBackgroundSampler(IntervalSampler):
+    """Background (non-peak) intervals loaded from a fixed BED/narrowPeak file.
+
+    Behaves exactly like :class:`IntervalSampler` (loads a concrete list of
+    intervals from disk, centers them to ``padded_size``), but is a distinct
+    class so that :meth:`MultiSampler.get_interval_source` reports
+    ``"FixedBackgroundSampler"`` for these intervals rather than the generic
+    ``"IntervalSampler"``/``"ListSampler"`` used for peaks.
+
+    This lets a :class:`PeakFixedBackgroundSampler` mix peaks (positives) with a
+    **fixed**, externally-supplied negative set (e.g. a GC-matched
+    ``negatives.bed``) while keeping peak-vs-background distinguishable in
+    downstream evaluation — which separates them by interval source.
+
+    Unlike :class:`ComplexityMatchedSampler`, the negative set is static: it is
+    never regenerated on :meth:`resample` (inherited no-op), so the model sees
+    the same negatives every epoch — matching reference chrombpnet-pytorch.
+
+    NOTE: :meth:`split_folds` is overridden so the train/val/test splits remain
+    ``FixedBackgroundSampler`` instances. The base :class:`ListSampler`
+    implementation returns plain ``ListSampler`` objects, which would collapse
+    the source label to ``"ListSampler"`` (identical to split peaks) and break
+    peak/background separation after fold splitting.
+    """
+
+    def _make_split(self, intervals: list[Interval]) -> "FixedBackgroundSampler":
+        """Build a FixedBackgroundSampler from a concrete interval list.
+
+        Bypasses ``__init__`` (which would re-read the source file) by setting
+        the ``ListSampler`` state directly via ``__new__``.
+        """
+        sub = FixedBackgroundSampler.__new__(FixedBackgroundSampler)
+        ListSampler.__init__(
+            sub,
+            intervals=intervals,
+            chrom_sizes=self.chrom_sizes,
+            folds=self.folds,
+            exclude_intervals=self.exclude_intervals,
+        )
+        return sub
+
+    def _subset(self, indices: list[int]) -> "FixedBackgroundSampler":
+        return self._make_split([self._intervals[i] for i in indices])
+
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple[
+        "FixedBackgroundSampler", "FixedBackgroundSampler", "FixedBackgroundSampler"
+    ]:
+        train, val, test = partition_intervals_by_fold(
+            self._intervals, self.folds, test_fold, val_fold
+        )
+        return self._make_split(train), self._make_split(val), self._make_split(test)
+
+
 class SlidingWindowSampler(ListSampler):
     """
     Generates samples by sliding a window across the genome.
@@ -7140,6 +7335,88 @@ class PeakSampler(MultiSampler):
         )
 
 
+class PeakFixedBackgroundSampler(MultiSampler):
+    """Combines peaks with a **fixed**, externally-supplied negative set.
+
+    Like :class:`PeakSampler`, this mixes positive intervals (peaks) with
+    negatives, but instead of generating complexity-matched negatives on the
+    fly (:class:`ComplexityMatchedSampler`, regenerated each epoch), it loads a
+    static negative BED from disk via :class:`FixedBackgroundSampler` and uses
+    it unchanged every epoch.
+
+    This reproduces the reference chrombpnet-pytorch data setup, where the
+    GC-matched ``negatives.bed`` is generated once offline and fed to the model
+    as a fixed file. Use it to compare Cerberus and chrombpnet-pytorch on an
+    identical peak **and** negative set.
+
+    Sub-sampler ordering (``samplers[0]`` = peaks, ``samplers[1]`` = negatives)
+    matches :class:`PeakSampler`, so :meth:`get_interval_source` reports
+    ``"IntervalSampler"`` (→ ``"ListSampler"`` after :meth:`split_folds`) for
+    peaks and ``"FixedBackgroundSampler"`` for negatives.
+    """
+
+    def __init__(
+        self,
+        intervals_path: Path | str,
+        background_intervals_path: Path | str,
+        chrom_sizes: dict[str, int],
+        padded_size: int,
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+        seed: int = 42,
+    ):
+        """
+        Args:
+            intervals_path: Path to peaks (BED/narrowPeak).
+            background_intervals_path: Path to the fixed negative set
+                (BED/narrowPeak), e.g. a GC-matched ``negatives.bed``.
+            chrom_sizes: Chromosome sizes.
+            padded_size: Interval size (after centering).
+            folds: Fold definitions for cross-validation.
+            exclude_intervals: Excluded regions (blacklist/gaps).
+            seed: Random seed (controls only the mixed iteration order).
+        """
+        self.intervals_path = Path(intervals_path)
+        self.background_intervals_path = Path(background_intervals_path)
+
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loading positive intervals from {self.intervals_path}..."
+        )
+        self.positives = IntervalSampler(
+            file_path=self.intervals_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+        )
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loaded {len(self.positives)} positive intervals."
+        )
+
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loading fixed background intervals from "
+            f"{self.background_intervals_path}..."
+        )
+        self.negatives = FixedBackgroundSampler(
+            file_path=self.background_intervals_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+        )
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loaded {len(self.negatives)} fixed background intervals."
+        )
+
+        super().__init__(
+            samplers=[self.positives, self.negatives],
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+            seed=seed,
+        )
+
+
 class NegativePeakSampler(MultiSampler):
     """Background-only sampler: complexity-matched non-peak intervals.
 
@@ -7367,6 +7644,17 @@ def create_sampler(
             complexity_center_size=sampler_args.get("complexity_center_size"),
         )
 
+    elif sampler_type == "peak_fixed_background":
+        return PeakFixedBackgroundSampler(
+            intervals_path=sampler_args["intervals_path"],
+            background_intervals_path=sampler_args["background_intervals_path"],
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+            seed=seed,
+        )
+
     elif sampler_type == "negative_peak":
         if fasta_path is None:
             raise ValueError(
@@ -7533,9 +7821,48 @@ class TargetCrop:
 _DEFAULT_DNA_CHANNELS = slice(0, 4)
 
 
+def _resolve_channel_pair_indices(
+    channel_names: list[str],
+    channel_pairs: list[tuple[str, str]],
+    *,
+    index_offset: int = 0,
+    field_name: str,
+) -> list[tuple[int, int]]:
+    """Resolve named channel pairs to tensor channel indices."""
+    if not channel_pairs:
+        return []
+
+    channel_to_index = {name: index for index, name in enumerate(channel_names)}
+    swaps: list[tuple[int, int]] = []
+    for left_name, right_name in channel_pairs:
+        missing = [
+            name for name in (left_name, right_name) if name not in channel_to_index
+        ]
+        if missing:
+            available = ", ".join(channel_names) or "<none>"
+            missing_names = ", ".join(missing)
+            raise ValueError(
+                f"{field_name} references unknown channel(s): {missing_names}. "
+                f"Available channels: {available}"
+            )
+
+        swaps.append(
+            (
+                channel_to_index[left_name] + index_offset,
+                channel_to_index[right_name] + index_offset,
+            )
+        )
+
+    return swaps
+
+
 class ReverseComplement:
     """
-    Randomly reverse complements the sequence and reverses the signal.
+    Randomly reverse complements the sequence and reverses signal positions.
+
+    Optional channel swaps support stranded signal tracks. For example, a
+    plus-strand target becomes a minus-strand target after reverse complement.
+
     Updates interval strand.
 
     Assumes inputs are (Channels, Length) where first 4 channels are DNA (ACGT).
@@ -7545,15 +7872,37 @@ class ReverseComplement:
         self,
         probability: float = 0.5,
         dna_channels: slice | list[int] = _DEFAULT_DNA_CHANNELS,
+        input_channel_swaps: list[tuple[int, int]] | None = None,
+        target_channel_swaps: list[tuple[int, int]] | None = None,
     ):
         """
         Args:
             probability: Probability of applying the transformation.
             dna_channels: Slice or list of indices indicating DNA channels.
                           Assumes channel order corresponds to ACGT (or similar symmetric mapping).
+            input_channel_swaps: Tensor channel index pairs to swap in inputs after
+                reversing positions, excluding DNA complementation.
+            target_channel_swaps: Tensor channel index pairs to swap in targets after
+                reversing positions.
         """
         self.probability = probability
         self.dna_channels = dna_channels
+        self.input_channel_swaps = input_channel_swaps or []
+        self.target_channel_swaps = target_channel_swaps or []
+
+    @staticmethod
+    def _swap_channel_pairs(
+        tensor: torch.Tensor, channel_swaps: list[tuple[int, int]]
+    ) -> torch.Tensor:
+        if not channel_swaps:
+            return tensor
+
+        tensor = tensor.clone()
+        for left_index, right_index in channel_swaps:
+            left_values = tensor[left_index].clone()
+            tensor[left_index] = tensor[right_index]
+            tensor[right_index] = left_values
+        return tensor
 
     def __call__(
         self, inputs: torch.Tensor, targets: torch.Tensor, interval: Interval
@@ -7565,11 +7914,15 @@ class ReverseComplement:
         inputs = torch.flip(inputs, dims=[-1])
         targets = torch.flip(targets, dims=[-1])
 
+        inputs = self._swap_channel_pairs(inputs, self.input_channel_swaps)
+        targets = self._swap_channel_pairs(targets, self.target_channel_swaps)
+
         # Complement DNA (Flip Channels)
         # Reversing ACGT (0123) -> TGCA (3210) maps A->T, C->G.
-        if isinstance(self.dna_channels, slice):
-            dna = inputs[self.dna_channels]
-            inputs[self.dna_channels] = torch.flip(dna, dims=[-2])
+        # Works for both ``slice`` and ``list[int]`` indices; the latter uses
+        # advanced indexing, which still round-trips through this assignment.
+        dna = inputs[self.dna_channels]
+        inputs[self.dna_channels] = torch.flip(dna, dims=[-2])
 
         # Flip strand
         interval.strand = "-" if interval.strand == "+" else "+"
@@ -7758,7 +8111,26 @@ def create_default_transforms(
     # 2. Reverse Complement (random)
     # If deterministic, skip RC
     if data_config.reverse_complement and not deterministic:
-        transforms.append(ReverseComplement(dna_channels=slice(0, 4)))
+        input_channel_names = sorted(data_config.inputs)
+        target_channel_names = sorted(data_config.targets)
+        input_channel_swaps = _resolve_channel_pair_indices(
+            input_channel_names,
+            data_config.reverse_complement_input_channel_pairs,
+            index_offset=4 if data_config.use_sequence else 0,
+            field_name="reverse_complement_input_channel_pairs",
+        )
+        target_channel_swaps = _resolve_channel_pair_indices(
+            target_channel_names,
+            data_config.reverse_complement_target_channel_pairs,
+            field_name="reverse_complement_target_channel_pairs",
+        )
+        transforms.append(
+            ReverseComplement(
+                dna_channels=slice(0, 4),
+                input_channel_swaps=input_channel_swaps,
+                target_channel_swaps=target_channel_swaps,
+            )
+        )
 
     # 3. Target Cropping (deterministic)
     if data_config.output_len < data_config.input_len:
@@ -8251,6 +8623,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from .cache import (
+    cache_build_lock,
     get_default_cache_dir,
     load_prepare_cache,
     resolve_cache_dir,
@@ -8397,39 +8770,55 @@ class CerberusDataModule(pl.LightningDataModule):
             logger.info(f"prepare_data cache already exists at {cache_dir}")
             return
 
-        logger.info("prepare_data: computing complexity metrics for caching...")
-
-        # Create a temporary dataset to trigger sampler initialization and
-        # metric computation. This opens FASTA/BigWig files on rank 0 only.
-        tmp_dataset = CerberusDataset(
-            genome_config=self.genome_config,
-            data_config=self.data_config,
-            sampler_config=self.sampler_config,
-            seed=self.seed,
-        )
-
-        # Extract metrics_cache from the sampler
-        sampler = tmp_dataset.sampler
-        sampler_type = self.sampler_config.sampler_type
-        # NOTE: Keep in sync with _resolve_cache_dir — every sampler type
-        # listed there must have a branch here to extract its metrics_cache.
-        if sampler_type == "complexity_matched":
-            metrics_cache = sampler.metrics_cache  # type: ignore[union-attr]
-        elif sampler_type == "peak":
-            if sampler.negatives is not None:  # type: ignore[union-attr]
-                metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
-            else:
+        # Serialize construction across processes that share this cache key
+        # (e.g. parallel CV folds / a hyperparameter sweep): only one computes
+        # and writes; the others block here, then fall through to the re-check
+        # and reuse the freshly written cache. Degrades to a no-op without
+        # flock — the write itself stays atomic (see save_prepare_cache).
+        with cache_build_lock(cache_dir):
+            # Re-check after acquiring the lock: another process may have built
+            # the cache while we were blocked (double-checked locking).
+            if (cache_dir / "ready").exists():
                 logger.info(
-                    "prepare_data: peak sampler has no negatives, nothing to cache"
+                    f"prepare_data cache built by another process at {cache_dir}"
                 )
                 return
-        elif sampler_type == "negative_peak":
-            metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
-        else:
-            return
 
-        save_prepare_cache(cache_dir, metrics_cache)
-        logger.info(f"prepare_data: cached {len(metrics_cache)} entries to {cache_dir}")
+            logger.info("prepare_data: computing complexity metrics for caching...")
+
+            # Create a temporary dataset to trigger sampler initialization and
+            # metric computation. This opens FASTA/BigWig files on rank 0 only.
+            tmp_dataset = CerberusDataset(
+                genome_config=self.genome_config,
+                data_config=self.data_config,
+                sampler_config=self.sampler_config,
+                seed=self.seed,
+            )
+
+            # Extract metrics_cache from the sampler
+            sampler = tmp_dataset.sampler
+            sampler_type = self.sampler_config.sampler_type
+            # NOTE: Keep in sync with _resolve_cache_dir — every sampler type
+            # listed there must have a branch here to extract its metrics_cache.
+            if sampler_type == "complexity_matched":
+                metrics_cache = sampler.metrics_cache  # type: ignore[union-attr]
+            elif sampler_type == "peak":
+                if sampler.negatives is not None:  # type: ignore[union-attr]
+                    metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
+                else:
+                    logger.info(
+                        "prepare_data: peak sampler has no negatives, nothing to cache"
+                    )
+                    return
+            elif sampler_type == "negative_peak":
+                metrics_cache = sampler.negatives.metrics_cache  # type: ignore[union-attr]
+            else:
+                return
+
+            save_prepare_cache(cache_dir, metrics_cache)
+            logger.info(
+                f"prepare_data: cached {len(metrics_cache)} entries to {cache_dir}"
+            )
 
     def _load_prepare_cache(self) -> dict[str, np.ndarray] | None:
         """
@@ -8791,12 +9180,15 @@ class CerberusDataModule(pl.LightningDataModule):
         logger.info(
             "Sampled %d training intervals × %d target channel(s) for "
             "quantile pseudocount calibration (target_scale=%s).",
-            scaled.shape[0], n_channels, target_scale,
+            scaled.shape[0],
+            n_channels,
+            target_scale,
         )
         return result
 
 ## src/cerberus/module.py
 
+import inspect
 import logging
 from typing import Any
 
@@ -8839,18 +9231,24 @@ class CerberusModule(pl.LightningModule):
     # in val_metrics wins.  Differential collections (log-fold-change) precede
     # the absolute one so a differential collection scatters in its native space.
     _SCATTER_DISPATCH: tuple[tuple[str, dict[str, str]], ...] = (
-        ("pearson_delta_log_counts", {
-            "x_label": "True delta log counts",
-            "y_label": "Predicted delta log counts",
-            "title": "Val delta log counts",
-            "filename_prefix": "val_delta_log_counts_scatter",
-        }),
-        ("pearson_log_counts", {
-            "x_label": "True log counts",
-            "y_label": "Predicted log counts",
-            "title": "Val counts",
-            "filename_prefix": "val_count_scatter",
-        }),
+        (
+            "pearson_delta_log_counts",
+            {
+                "x_label": "True delta log counts",
+                "y_label": "Predicted delta log counts",
+                "title": "Val delta log counts",
+                "filename_prefix": "val_delta_log_counts_scatter",
+            },
+        ),
+        (
+            "pearson_log_counts",
+            {
+                "x_label": "True log counts",
+                "y_label": "Predicted log counts",
+                "title": "Val counts",
+                "filename_prefix": "val_count_scatter",
+            },
+        ),
     )
 
     def __init__(
@@ -9202,6 +9600,32 @@ def instantiate(
     )
 
 
+def _constructor_accepts(cls: type, name: str) -> bool:
+    """Whether ``cls`` or any ancestor declares ``name`` as an explicit __init__
+    parameter.
+
+    Walks the MRO so a parameter forwarded through ``**kwargs`` to a base class
+    (e.g. ``BPNetLoss(alpha, beta, **kwargs)`` -> ``MSEMultinomialLoss(...,
+    count_pseudocount)``) still counts as accepted, while a ``**kwargs`` that
+    only feeds an unrelated base (e.g. a torchmetrics ``Metric``) does not.
+    """
+    keyword_kinds = (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
+    for klass in cls.__mro__:
+        init = klass.__dict__.get("__init__")
+        if init is None:
+            continue
+        try:
+            param = inspect.signature(init).parameters.get(name)
+        except (ValueError, TypeError):
+            continue
+        if param is not None and param.kind in keyword_kinds:
+            return True
+    return False
+
+
 def instantiate_metrics_and_loss(
     model_config: ModelConfig, device: torch.device | None = None
 ) -> tuple[MetricCollection, CerberusLoss]:
@@ -9220,19 +9644,31 @@ def instantiate_metrics_and_loss(
         tuple: (metrics, criterion)
     """
     loss_cls = import_class(model_config.loss_cls)
-    loss_args = {
-        **model_config.loss_args,
-        "count_pseudocount": model_config.count_pseudocount,
-    }
-    criterion = loss_cls(**loss_args)
-
     metrics_cls = import_class(model_config.metrics_cls)
-    metrics_args = {
-        **model_config.metrics_args,
-        "count_pseudocount": model_config.count_pseudocount,
+
+    # Capability-based injection: pass each pseudocount only to a constructor
+    # that declares it, via setdefault (explicit loss_args/metrics_args win).
+    count_pseudocount = model_config.count_pseudocount
+    # delta defaults to the model count pseudocount so loss and metrics shrink
+    # the log-ratio identically; an explicit loss_args value overrides.
+    delta_count_pseudocount = model_config.loss_args.get(
+        "delta_count_pseudocount", count_pseudocount
+    )
+    pseudocount_defaults = {
+        "count_pseudocount": count_pseudocount,
+        "delta_count_pseudocount": delta_count_pseudocount,
         "log_counts_include_pseudocount": loss_cls.uses_count_pseudocount,
     }
-    metrics = metrics_cls(**metrics_args)
+
+    def _with_pseudocounts(cls: type, base_args: dict[str, Any]) -> dict[str, Any]:
+        args = dict(base_args)
+        for name, value in pseudocount_defaults.items():
+            if _constructor_accepts(cls, name):
+                args.setdefault(name, value)
+        return args
+
+    criterion = loss_cls(**_with_pseudocounts(loss_cls, model_config.loss_args))
+    metrics = metrics_cls(**_with_pseudocounts(metrics_cls, model_config.metrics_args))
 
     if device is not None:
         metrics = metrics.to(device)
@@ -10405,6 +10841,8 @@ from cerberus.output import (
     ProfileCountOutput,
     ProfileLogRates,
 )
+from cerberus.pseudocount import _log_count_plus_pseudocount
+from cerberus.samplers import PEAK_INTERVAL_SOURCES
 from cerberus.utils import import_class
 
 
@@ -10474,6 +10912,168 @@ class ProfilePoissonNLLLoss(nn.PoissonNLLLoss):
     ) -> torch.Tensor:  # type: ignore[override]
         components = self.loss_components(outputs, targets, **kwargs)
         return components["poisson_nll_loss"]
+
+
+class BPAITACPoissonNLLLoss(nn.Module):
+    """
+    bpAI-TAC-style Poisson NLL on reconstructed base-resolution counts.
+
+    Unlike :class:`PoissonMultinomialLoss`, this is not a profile loss plus a
+    separate count-head loss. It reconstructs the per-base log-rate from a
+    factored BPNet/ChromBPNet output,
+
+    ``log_rate = log_softmax(profile_logits) + log_counts``,
+
+    and applies Poisson negative log-likelihood directly to that full
+    ``(batch, task, length)`` rate tensor. For multi-task ChromBPNet this
+    requires per-task ``log_counts`` with shape ``(batch, task)`` -- i.e.
+    ``predict_total_count=False`` on the accessibility/count branch.
+
+    Targets default to raw non-negative counts. When training on CPM-normalised
+    tracks, use ``DataConfig.target_scale`` / ``--target-scale`` to multiply
+    every track by the **same** shared scalar before this loss sees the targets
+    -- per-task scaling would distort the joint per-base Poisson likelihood.
+    Pass ``log1p_targets=True`` only if the targets are already log1p-transformed
+    on disk; the loss will invert via ``expm1`` before evaluating the PNLL.
+    """
+
+    uses_count_pseudocount: bool = False
+
+    def __init__(
+        self,
+        log1p_targets: bool = False,
+        full: bool = False,
+        eps: float = 1e-8,
+        count_pseudocount: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.log1p_targets = log1p_targets
+        self.full = full
+        self.eps = eps
+        # Accepted for compatibility with the common training constructor
+        # plumbing. PNLL trains raw log-counts, so this value is intentionally
+        # not used.
+        self.count_pseudocount = count_pseudocount
+
+    @staticmethod
+    def _reconstruct_log_rates(outputs: ProfileCountOutput) -> torch.Tensor:
+        logits = outputs.logits.float()
+        log_counts = outputs.log_counts.float()
+        expected_count_shape = logits.shape[:2]
+        if log_counts.shape != expected_count_shape:
+            raise ValueError(
+                "BPAITACPoissonNLLLoss requires per-channel log_counts with "
+                f"shape {expected_count_shape}, but model predicted "
+                f"{log_counts.shape}. Set predict_total_count=False for the "
+                "accessibility/count branch when using multi-task PNLL."
+            )
+        return F.log_softmax(logits, dim=-1) + log_counts.unsqueeze(-1)
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
+        targets = targets.float()
+        if self.log1p_targets:
+            targets = torch.expm1(targets).clamp_min(0.0)
+        if not isinstance(outputs, ProfileCountOutput):
+            raise TypeError("BPAITACPoissonNLLLoss requires ProfileCountOutput")
+        if outputs.logits.shape != targets.shape:
+            raise ValueError(
+                "BPAITACPoissonNLLLoss requires logits and targets to have "
+                f"matching shape, got logits {outputs.logits.shape} and "
+                f"targets {targets.shape}."
+            )
+        log_rates = self._reconstruct_log_rates(outputs)
+        poisson_nll = F.poisson_nll_loss(
+            log_rates,
+            targets,
+            log_input=True,
+            full=self.full,
+            eps=self.eps,
+            reduction="mean",
+        )
+        return {"poisson_nll_loss": poisson_nll}
+
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
+        components = self.loss_components(outputs, targets, **kwargs)
+        return components["poisson_nll_loss"]
+
+
+class ProfileJSDLoss(nn.Module):
+    """Profile-only Jensen-Shannon divergence loss.
+
+    This is the bpAI-TAC-style bias-model objective: train the profile logits
+    to match the observed base-resolution profile shape and apply no scalar
+    count-head loss. The model may still instantiate a count head for checkpoint
+    compatibility with :class:`cerberus.models.bpnet.BPNet`; that head simply
+    receives no direct loss from this objective.
+    """
+
+    uses_count_pseudocount: bool = False
+
+    def __init__(
+        self,
+        log1p_targets: bool = False,
+        epsilon: float = 1e-15,
+        flatten_channels: bool = False,
+        average_channels: bool = True,
+        count_pseudocount: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.log1p_targets = log1p_targets
+        self.epsilon = epsilon
+        self.flatten_channels = flatten_channels
+        self.average_channels = average_channels
+        # Accepted for common constructor plumbing; intentionally unused.
+        self.count_pseudocount = count_pseudocount
+
+    def _target_probs(self, targets: torch.Tensor) -> torch.Tensor:
+        if self.flatten_channels:
+            targets = targets.flatten(start_dim=1)
+        targets = targets.clamp_min(0.0) + self.epsilon
+        return targets / targets.sum(dim=-1, keepdim=True)
+
+    def _pred_probs(self, logits: torch.Tensor) -> torch.Tensor:
+        if self.flatten_channels:
+            logits = logits.flatten(start_dim=1)
+        probs = F.softmax(logits.float(), dim=-1) + self.epsilon
+        return probs / probs.sum(dim=-1, keepdim=True)
+
+    def _compute_jsd(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        pred = self._pred_probs(logits)
+        obs = self._target_probs(targets)
+        midpoint = 0.5 * (pred + obs)
+        kl_pred = (pred * (pred.log2() - midpoint.log2())).sum(dim=-1)
+        kl_obs = (obs * (obs.log2() - midpoint.log2())).sum(dim=-1)
+        jsd = 0.5 * (kl_pred + kl_obs)
+        if self.flatten_channels or self.average_channels:
+            return jsd.mean()
+        return jsd.sum(dim=-1).mean()
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
+        targets = targets.float()
+        if self.log1p_targets:
+            targets = torch.expm1(targets).clamp_min(0.0)
+        if not isinstance(outputs, ProfileCountOutput):
+            raise TypeError("ProfileJSDLoss requires ProfileCountOutput")
+        if outputs.logits.shape != targets.shape:
+            raise ValueError(
+                "ProfileJSDLoss requires logits and targets to have matching "
+                f"shape, got logits {outputs.logits.shape} and targets "
+                f"{targets.shape}."
+            )
+        profile_loss = self._compute_jsd(outputs.logits, targets)
+        return {"profile_jsd_loss": profile_loss}
+
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
+        components = self.loss_components(outputs, targets, **kwargs)
+        return components["profile_jsd_loss"]
 
 
 class MSEMultinomialLoss(nn.Module):
@@ -10672,7 +11272,12 @@ class PoissonMultinomialLoss(nn.Module):
 
     Objective:
       1. Profile Loss: Cross Entropy (Multinomial NLL form).
-      2. Count Loss: Poisson NLL on Global Count.
+      2. Count Loss: Shifted Poisson NLL on Global Count.
+
+    The shifted Poisson term matches AlphaGenome's convention: subtract the
+    target-dependent optimum so the count term is zero when predicted counts
+    equal observed counts. This keeps gradients identical to PoissonNLLLoss with
+    ``full=False`` but makes the logged count component non-negative.
 
     Requires ProfileCountOutput.
     """
@@ -10689,6 +11294,7 @@ class PoissonMultinomialLoss(nn.Module):
         log1p_targets: bool = False,
         epsilon: float = 1e-8,
         count_pseudocount: float = 1.0,
+        shift_poisson_loss: bool = True,
     ) -> None:
         """
         Args:
@@ -10707,7 +11313,11 @@ class PoissonMultinomialLoss(nn.Module):
             log1p_targets (bool): If True, assumes targets are log1p transformed.
             epsilon (float): Small constant for numerical stability.
             count_pseudocount (float): Accepted for compatibility with propagate_pseudocount.
-                Not used by Poisson count loss (which uses PoissonNLLLoss directly).
+                Not used by the Poisson count loss.
+            shift_poisson_loss (bool): If True (default), subtracts the
+                target-dependent optimum from the Poisson count term, following
+                AlphaGenome. If False, uses torch.nn.PoissonNLLLoss(full=False),
+                the previous Cerberus behavior.
         """
         super().__init__()
         self.count_weight = count_weight
@@ -10717,6 +11327,7 @@ class PoissonMultinomialLoss(nn.Module):
         self.average_channels = average_channels
         self.log1p_targets = log1p_targets
         self.epsilon = epsilon
+        self.shift_poisson_loss = shift_poisson_loss
         self.count_loss_fn = nn.PoissonNLLLoss(log_input=True, full=False)
 
     def _compute_profile_loss(
@@ -10735,6 +11346,21 @@ class PoissonMultinomialLoss(nn.Module):
             else:
                 loss_shape = loss_shape_per_channel.sum(dim=-1).mean()
         return loss_shape
+
+    def _compute_count_loss(
+        self, pred_log_counts: torch.Tensor, target_counts: torch.Tensor
+    ) -> torch.Tensor:
+        if not self.shift_poisson_loss:
+            return self.count_loss_fn(pred_log_counts, target_counts)
+
+        target_counts = target_counts.float().clamp_min(0.0)
+        pred_log_counts = pred_log_counts.float()
+        pred_counts = torch.exp(pred_log_counts)
+        loss = pred_counts - target_counts * pred_log_counts
+        min_value = target_counts - target_counts * torch.log(
+            target_counts + self.epsilon
+        )
+        return (loss - min_value).mean()
 
     def loss_components(
         self, predictions: object, targets: torch.Tensor, **kwargs: object
@@ -10756,10 +11382,10 @@ class PoissonMultinomialLoss(nn.Module):
                     f"{pred_log_counts.shape}. Set predict_total_count=False "
                     f"in model_args when using count_per_channel=True."
                 )
-            count_loss = self.count_loss_fn(pred_log_counts, target_counts)
+            count_loss = self._compute_count_loss(pred_log_counts, target_counts)
         else:
             target_global_count = targets.sum(dim=(1, 2))
-            count_loss = self.count_loss_fn(
+            count_loss = self._compute_count_loss(
                 pred_log_counts.flatten(), target_global_count
             )
         profile_loss = self._compute_profile_loss(logits, targets)
@@ -10782,7 +11408,7 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
 
     Objective:
       1. Profile Loss: Cross Entropy.
-      2. Count Loss: Poisson NLL on Global Count.
+      2. Count Loss: Shifted Poisson NLL on Global Count.
 
     Accepts ProfileLogRates only. Simulates log_counts via LogSumExp of logits over all channels.
     Does NOT accept ProfileCountOutput (to avoid ambiguity with PoissonMultinomialLoss).
@@ -10805,12 +11431,14 @@ class CoupledPoissonMultinomialLoss(PoissonMultinomialLoss):
         if self.count_per_channel:
             pred_log_counts = torch.logsumexp(logits.float(), dim=2)
             target_counts = targets.sum(dim=2)
-            count_loss = self.count_loss_fn(pred_log_counts, target_counts)
+            count_loss = self._compute_count_loss(pred_log_counts, target_counts)
         else:
             logits_flat = logits.flatten(start_dim=1)
             pred_log_counts = torch.logsumexp(logits_flat.float(), dim=-1)
             target_global_count = targets.sum(dim=(1, 2))
-            count_loss = self.count_loss_fn(pred_log_counts, target_global_count)
+            count_loss = self._compute_count_loss(
+                pred_log_counts, target_global_count
+            )
         profile_loss = self._compute_profile_loss(logits, targets)
         return {"profile_loss": profile_loss, "count_loss": count_loss}
 
@@ -10941,7 +11569,7 @@ class CoupledNegativeBinomialMultinomialLoss(NegativeBinomialMultinomialLoss):
 
 
 class DifferentialCountLoss(nn.Module):
-    """Differential count-head loss supervising ``log_counts[:, B] - log_counts[:, A]``.
+    """Differential count-head loss supervising pc-shrunk predicted log-ratios.
 
     The delta target is derived inline from the ``(B, N, L)`` ``targets``
     tensor (per-condition absolute-signal tracks; channels A and B are
@@ -10956,13 +11584,15 @@ class DifferentialCountLoss(nn.Module):
         \\right)
 
     where the sum is over the length axis and ``pc`` is
-    ``count_pseudocount``. Here ``pc`` plays the empirical-Bayes
+    ``delta_count_pseudocount``. Here ``pc`` plays the empirical-Bayes
     shrinkage-prior role: it pulls the log-ratio toward zero for
     regions whose per-condition totals sit at the noise floor.
     :func:`cerberus.pseudocount.resolve_noise_floor_pseudocount` derives
     a data-driven value (training-fold per-channel quantile, max across
     channels) suitable to pass here. The returned loss is
-    ``MSE(log_counts[:, B] - log_counts[:, A], target_delta)``.
+    ``MSE(pred_delta, target_delta)`` where
+    ``pred_delta = log((exp(log_counts[:, B]) + pc) /
+    (exp(log_counts[:, A]) + pc))``.
 
     Profile loss is disabled (weight 0) following Naqvi et al. (2025): only
     the count head needs to be retargeted. The profile heads are expected
@@ -10977,7 +11607,7 @@ class DifferentialCountLoss(nn.Module):
     Args:
         cond_a_idx: Index of condition A in the ``log_counts`` output. Default 0.
         cond_b_idx: Index of condition B in the ``log_counts`` output. Default 1.
-        count_pseudocount: Additive pseudocount used in the log
+        delta_count_pseudocount: Additive pseudocount used in the log
             fold-change derivation, in the same scaled units as
             ``ModelConfig.count_pseudocount``. Acts as an empirical-Bayes
             shrinkage prior — derive from data via
@@ -10998,7 +11628,7 @@ class DifferentialCountLoss(nn.Module):
         self,
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
-        count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float = 1.0,
     ) -> None:
         super().__init__()
         if cond_a_idx == cond_b_idx:
@@ -11010,11 +11640,9 @@ class DifferentialCountLoss(nn.Module):
                 raise ValueError(f"{name} must be non-negative, got {idx}")
         self.cond_a_idx = cond_a_idx
         self.cond_b_idx = cond_b_idx
-        self.count_pseudocount = count_pseudocount
+        self.delta_count_pseudocount = delta_count_pseudocount
 
-    def _delta_loss(
-        self, outputs: object, targets: torch.Tensor
-    ) -> torch.Tensor:
+    def _delta_loss(self, outputs: object, targets: torch.Tensor) -> torch.Tensor:
         if not isinstance(outputs, ProfileCountOutput):
             raise TypeError(
                 f"DifferentialCountLoss requires ProfileCountOutput, "
@@ -11045,11 +11673,11 @@ class DifferentialCountLoss(nn.Module):
             )
 
         counts = targets.float().sum(dim=-1)  # (B, N)
-        pc = self.count_pseudocount
-        target_delta = torch.log(
-            (counts[:, b] + pc) / (counts[:, a] + pc)
-        )  # (B,)
-        delta_pred = log_counts[:, b] - log_counts[:, a]  # (B,)
+        pc = self.delta_count_pseudocount
+        target_delta = torch.log((counts[:, b] + pc) / (counts[:, a] + pc))  # (B,)
+        delta_pred = _log_count_plus_pseudocount(
+            log_counts[:, b], pc
+        ) - _log_count_plus_pseudocount(log_counts[:, a], pc)  # (B,)
         return F.mse_loss(delta_pred, target_delta)
 
     def loss_components(
@@ -11137,9 +11765,11 @@ class DalmatianLoss(nn.Module):
         )
         l_recon = self.base_loss(combined, targets)
 
-        # 2. Bias-only reconstruction (non-peak examples)
+        # 2. Bias-only reconstruction (non-peak examples). Peaks report
+        # "ListSampler" after split_folds, so match PEAK_INTERVAL_SOURCES (not a
+        # single label) or split peaks leak into the bias term.
         non_peak = torch.tensor(
-            [s != "IntervalSampler" for s in interval_source],
+            [s not in PEAK_INTERVAL_SOURCES for s in interval_source],
             dtype=torch.bool,
             device=targets.device,
         )
@@ -11190,6 +11820,7 @@ import torch.nn.functional as F
 from torchmetrics import MeanSquaredError, Metric, MetricCollection
 
 from cerberus.output import ProfileCountOutput, ProfileLogits, ProfileLogRates
+from cerberus.pseudocount import _log_count_plus_pseudocount
 
 
 def _per_example_pearson(
@@ -11240,21 +11871,15 @@ def _extract_differential_log_count_pairs(
     target: torch.Tensor,
     cond_a_idx: int,
     cond_b_idx: int,
-    count_pseudocount: float,
+    delta_count_pseudocount: float,
     log1p_targets: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Derive predicted and target delta-log-count scalars for each example.
 
     Mirrors :class:`cerberus.loss.DifferentialCountLoss`: prediction is
-    ``log_counts[:, b] - log_counts[:, a]`` and target is
-    ``log((sum_b + pc) / (sum_a + pc))`` with sums over the length axis
-    of the ``(B, N, L)`` targets tensor.
-
-    The prediction is read directly from ``log_counts`` regardless of
-    whether the model's log-space includes the pseudocount or not — the
-    loss optimises that same subtraction, so the metric must report on
-    it.  Inserting a pc-aware correction here would measure something
-    the loss is not optimising and produce a biased training signal.
+    ``log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))``
+    and target is ``log((sum_b + pc) / (sum_a + pc))`` with sums over
+    the length axis of the ``(B, N, L)`` targets tensor.
     """
     if not isinstance(preds, ProfileCountOutput):
         raise TypeError(
@@ -11295,9 +11920,12 @@ def _extract_differential_log_count_pairs(
 
     counts = target.sum(dim=-1)  # (B, N)
     target_delta = torch.log(
-        (counts[:, b] + count_pseudocount) / (counts[:, a] + count_pseudocount)
+        (counts[:, b] + delta_count_pseudocount)
+        / (counts[:, a] + delta_count_pseudocount)
     )  # (B,)
-    pred_delta = (log_counts[:, b] - log_counts[:, a]).float()  # (B,)
+    pred_delta = _log_count_plus_pseudocount(
+        log_counts[:, b], delta_count_pseudocount
+    ) - _log_count_plus_pseudocount(log_counts[:, a], delta_count_pseudocount)  # (B,)
     return pred_delta.flatten(), target_delta.flatten()
 
 
@@ -11693,7 +12321,9 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
     Companion to :class:`cerberus.loss.DifferentialCountLoss`: for each
     example, reduces the ``(B, N, L)`` targets tensor to a per-example
     scalar ``target_delta = log((sum_b + pc) / (sum_a + pc))`` and
-    compares it against ``pred_delta = log_counts[:, b] - log_counts[:, a]``.
+    compares it against
+    ``pred_delta = log((exp(log_counts[:, b]) + pc) /
+    (exp(log_counts[:, a]) + pc))``.
     """
 
     def __init__(
@@ -11701,8 +12331,7 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        count_pseudocount: float = 1.0,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -11710,10 +12339,7 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
             cond_a_idx, cond_b_idx
         )
         self.log1p_targets = log1p_targets
-        self.count_pseudocount = count_pseudocount
-        # Dispatch-time kwarg; intentionally not consulted -- see
-        # _extract_differential_log_count_pairs for the math reason.
-        self.log_counts_include_pseudocount = log_counts_include_pseudocount
+        self.delta_count_pseudocount = delta_count_pseudocount
 
     def update(self, preds: ProfileCountOutput, target: torch.Tensor) -> None:  # type: ignore[override]
         pred_delta, target_delta = _extract_differential_log_count_pairs(
@@ -11721,7 +12347,7 @@ class DifferentialLogCountsMeanSquaredError(MeanSquaredError):
             target,
             cond_a_idx=self.cond_a_idx,
             cond_b_idx=self.cond_b_idx,
-            count_pseudocount=self.count_pseudocount,
+            delta_count_pseudocount=self.delta_count_pseudocount,
             log1p_targets=self.log1p_targets,
         )
         super().update(pred_delta, target_delta)
@@ -11761,8 +12387,7 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        count_pseudocount: float = 1.0,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -11770,10 +12395,7 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
             cond_a_idx, cond_b_idx
         )
         self.log1p_targets = log1p_targets
-        self.count_pseudocount = count_pseudocount
-        # Dispatch-time kwarg; intentionally not consulted -- see
-        # _extract_differential_log_count_pairs for the math reason.
-        self.log_counts_include_pseudocount = log_counts_include_pseudocount
+        self.delta_count_pseudocount = delta_count_pseudocount
         self.add_state("preds_list", default=[], dist_reduce_fx="cat")
         self.add_state("targets_list", default=[], dist_reduce_fx="cat")
 
@@ -11783,7 +12405,7 @@ class DifferentialLogCountsPearsonCorrCoef(Metric):
             target,
             cond_a_idx=self.cond_a_idx,
             cond_b_idx=self.cond_b_idx,
-            count_pseudocount=self.count_pseudocount,
+            delta_count_pseudocount=self.delta_count_pseudocount,
             log1p_targets=self.log1p_targets,
         )
         self.preds_list.append(pred_delta.detach())
@@ -12380,9 +13002,7 @@ def load_backbone_weights_from_checkpoint(
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     raw_state = checkpoint.get("state_dict")
     if not isinstance(raw_state, dict):
-        raise ValueError(
-            f"Checkpoint missing 'state_dict' mapping: {checkpoint_path}"
-        )
+        raise ValueError(f"Checkpoint missing 'state_dict' mapping: {checkpoint_path}")
 
     state_dict = _extract_backbone_state_dict_from_lightning(raw_state)
     if not state_dict:
@@ -12609,9 +13229,7 @@ class ModelEnsemble(nn.ModuleDict):
         for fold_idx, fold_map in enumerate(self.folds):
             if interval.chrom in fold_map:
                 if any(
-                    fold_map[interval.chrom].find(
-                        (interval.start, interval.end - 1)
-                    )
+                    fold_map[interval.chrom].find((interval.start, interval.end - 1))
                 ):
                     partitions.add(fold_idx)
         return partitions
@@ -12712,7 +13330,9 @@ class ModelEnsemble(nn.ModuleDict):
                     continue
 
                 sample_indices = model_to_samples[m_idx]
-                idx_tensor = torch.tensor(sample_indices, device=x.device, dtype=torch.long)
+                idx_tensor = torch.tensor(
+                    sample_indices, device=x.device, dtype=torch.long
+                )
 
                 sub_x = x[idx_tensor]
                 sub_out = self[key](sub_x)
@@ -13026,12 +13646,16 @@ class _ModelManager:
             fold_dir = self.checkpoint_path / f"fold_{fold_idx}"
             key = f"fold_{fold_idx}"
             if not fold_dir.is_dir():
-                logger.warning("Fold directory missing for fold %s: %s", fold_idx, fold_dir)
+                logger.warning(
+                    "Fold directory missing for fold %s: %s", fold_idx, fold_dir
+                )
                 continue
             try:
                 models_dict[str(fold_idx)] = self._load_model_from_fold(key, fold_dir)
             except FileNotFoundError:
-                logger.warning("No checkpoint found for fold %s in %s", fold_idx, fold_dir)
+                logger.warning(
+                    "No checkpoint found for fold %s in %s", fold_idx, fold_dir
+                )
 
         return models_dict, self.folds
 
@@ -13120,6 +13744,7 @@ def predict_to_bigwig(
     use_folds: list[str] | None = None,
     batch_size: int = 64,
     regions: list[Interval] | None = None,
+    channel_index: int = 0,
 ) -> None:
     """Generates predictions and writes to a BigWig file.
 
@@ -13142,6 +13767,8 @@ def predict_to_bigwig(
         batch_size: Batch size for inference.
         regions: Optional list of Intervals to restrict prediction to.
             When provided, only these regions are predicted (no blacklist filtering).
+        channel_index: Output channel to write. BigWig is single-track, so
+            multi-channel model outputs must be exported one channel at a time.
     """
     genome_config = dataset.genome_config
     data_config = dataset.data_config
@@ -13202,6 +13829,7 @@ def predict_to_bigwig(
                         use_folds,
                         batch_size,
                         count_pseudocount,
+                        channel_index,
                     )
         else:
             # Genome-wide prediction
@@ -13234,6 +13862,7 @@ def predict_to_bigwig(
                             use_folds,
                             batch_size,
                             count_pseudocount,
+                            channel_index,
                         )
                         current_island = []
 
@@ -13248,6 +13877,7 @@ def predict_to_bigwig(
                         use_folds,
                         batch_size,
                         count_pseudocount,
+                        channel_index,
                     )
 
     logger.info(f"Writing BigWig to {output_path}...")
@@ -13315,6 +13945,7 @@ def _process_island(
     use_folds: list[str],
     batch_size: int,
     count_pseudocount: float,
+    channel_index: int = 0,
 ) -> Iterable[tuple[str, int, int, float]]:
     """Runs prediction on a contiguous island of intervals and yields
     per-bp linear counts matching the scale of the input BigWig.
@@ -13389,15 +14020,21 @@ def _process_island(
     # sum → divide by bin_size; avg/max → no division (already per-bp scale).
     track_data = track_data / target_scale / output_bin_size
 
-    # Select first channel for BigWig output
+    # Select one channel for BigWig output
     n_channels = track_data.shape[0]
-    if n_channels > 1:
+    if channel_index < 0 or channel_index >= n_channels:
+        raise ValueError(
+            f"channel_index={channel_index} is out of range for model output "
+            f"with {n_channels} channel(s)."
+        )
+    if n_channels > 1 and channel_index == 0:
         logger.warning(
             "Model output has %d channels but BigWig is single-track; "
-            "only channel 0 will be exported. Other channels are discarded.",
+            "exporting channel 0. Pass a different channel_index to export "
+            "another channel.",
             n_channels,
         )
-    values = track_data[0]  # (n_bins,)
+    values = track_data[channel_index]  # (n_bins,)
 
     start = merged_interval.start
     logger.info(
@@ -13736,7 +14373,9 @@ from .bpnet import (
     BPNetLoss,
     BPNetMetricCollection,
     DifferentialBPNetMetricCollection,
+    JointBPNetMetricCollection,
     MultitaskBPNet,
+    MultitaskBPNetJointDifferentialLoss,
     MultitaskBPNetLoss,
 )
 from .chrombpnet import ChromBPNet, MultitaskChromBPNet
@@ -13752,7 +14391,9 @@ __all__ = [
     "BPNetLoss",
     "BPNetMetricCollection",
     "DifferentialBPNetMetricCollection",
+    "JointBPNetMetricCollection",
     "MultitaskBPNet",
+    "MultitaskBPNetJointDifferentialLoss",
     "MultitaskBPNetLoss",
     "ChromBPNet",
     "MultitaskChromBPNet",
@@ -13974,12 +14615,13 @@ class GlobalProfileCNN(nn.Module):
 
 import logging
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.parametrizations import weight_norm as _apply_weight_norm
 from torchmetrics import MetricCollection
 
-from cerberus.loss import MSEMultinomialLoss
+from cerberus.loss import DifferentialCountLoss, MSEMultinomialLoss
 
 logger = logging.getLogger(__name__)
 from cerberus.layers import DilatedResidualBlock
@@ -14532,6 +15174,65 @@ class MultitaskBPNetLoss(MSEMultinomialLoss):
         )
 
 
+class MultitaskBPNetJointDifferentialLoss(MultitaskBPNetLoss):
+    """Multi-task absolute BPNet loss with an added differential count target.
+
+    This keeps the standard per-channel absolute profile/count objective and
+    adds a delta-log-count MSE term between two task channels.  By default the
+    delta term receives the same weight as the absolute count term (``alpha``),
+    so the two count-space objectives are calibrated as peers while the profile
+    multinomial term keeps its usual ``beta`` weight.
+    """
+
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        beta: float = 1.0,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        delta_weight: float | None = None,
+        delta_count_pseudocount: float | None = None,
+        count_pseudocount: float = 1.0,
+        **kwargs,
+    ):
+        super().__init__(
+            alpha=alpha,
+            beta=beta,
+            count_pseudocount=count_pseudocount,
+            **kwargs,
+        )
+        self.delta_weight = alpha if delta_weight is None else delta_weight
+        self.cond_a_idx = cond_a_idx
+        self.cond_b_idx = cond_b_idx
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
+        self.delta_count_pseudocount = delta_count_pseudocount
+        self._differential_loss = DifferentialCountLoss(
+            cond_a_idx=cond_a_idx,
+            cond_b_idx=cond_b_idx,
+            delta_count_pseudocount=self.delta_count_pseudocount,
+        )
+
+    def loss_components(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> dict[str, torch.Tensor]:
+        components = super().loss_components(outputs, targets, **kwargs)
+        # Use the composed loss's public interface; its forward() is exactly the
+        # delta-loss scalar (profile loss disabled), so no private access needed.
+        components["delta_loss"] = self._differential_loss(outputs, targets)
+        return components
+
+    def forward(
+        self, outputs: object, targets: torch.Tensor, **kwargs: object
+    ) -> torch.Tensor:
+        components = self.loss_components(outputs, targets, **kwargs)
+        return (
+            self.profile_weight * components["profile_loss"]
+            + self.count_weight * components["count_loss"]
+            + self.delta_weight * components["delta_loss"]
+        )
+
+
 class BPNetMetricCollection(MetricCollection):
     """
     MetricCollection for BPNet models.
@@ -14571,8 +15272,8 @@ class DifferentialBPNetMetricCollection(MetricCollection):
     MetricCollection for log-fold-change supervision (``DifferentialCountLoss``).
     Exposes ``mse_delta_log_counts``, ``rmse_delta_log_counts``, and
     ``pearson_delta_log_counts``; all three compare
-    ``log_counts[:, b] - log_counts[:, a]`` against the inline-derived target
-    ``log((sum_b + pc) / (sum_a + pc))``.
+    ``log((exp(log_counts[:, b]) + pc) / (exp(log_counts[:, a]) + pc))``
+    against the inline-derived target ``log((sum_b + pc) / (sum_a + pc))``.
     """
 
     def __init__(
@@ -14580,37 +15281,64 @@ class DifferentialBPNetMetricCollection(MetricCollection):
         cond_a_idx: int = 0,
         cond_b_idx: int = 1,
         log1p_targets: bool = False,
-        count_pseudocount: float = 1.0,
-        log_counts_include_pseudocount: bool = False,
+        delta_count_pseudocount: float = 1.0,
     ):
-        # log1p_targets / count_pseudocount / log_counts_include_pseudocount
-        # are the standard triple instantiate_metrics_and_loss forwards to
-        # every metric collection; mirroring the BPNetMetricCollection
-        # signature keeps the dispatch interchangeable.
         super().__init__(
             {
                 "mse_delta_log_counts": DifferentialLogCountsMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                 ),
                 "rmse_delta_log_counts": DifferentialLogCountsRootMeanSquaredError(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
-                    count_pseudocount=count_pseudocount,
-                    log_counts_include_pseudocount=log_counts_include_pseudocount,
+                    delta_count_pseudocount=delta_count_pseudocount,
                 ),
                 "pearson_delta_log_counts": DifferentialLogCountsPearsonCorrCoef(
                     cond_a_idx=cond_a_idx,
                     cond_b_idx=cond_b_idx,
                     log1p_targets=log1p_targets,
+                    delta_count_pseudocount=delta_count_pseudocount,
+                ),
+            }
+        )
+
+
+class JointBPNetMetricCollection(MetricCollection):
+    """Absolute profile/count metrics plus differential log-count metrics."""
+
+    def __init__(
+        self,
+        cond_a_idx: int = 0,
+        cond_b_idx: int = 1,
+        log1p_targets: bool = False,
+        count_pseudocount: float = 1.0,
+        delta_count_pseudocount: float | None = None,
+        log_counts_include_pseudocount: bool = False,
+    ):
+        # The absolute sub-collection uses count_pseudocount; the differential
+        # sub-collection uses delta_count_pseudocount. They are distinct in the
+        # joint objective (e.g. a read-coverage count pc vs. a noise-floor delta
+        # pc); delta defaults to the count pc only when left unset.
+        if delta_count_pseudocount is None:
+            delta_count_pseudocount = count_pseudocount
+        super().__init__(
+            [
+                BPNetMetricCollection(
+                    log1p_targets=log1p_targets,
                     count_pseudocount=count_pseudocount,
                     log_counts_include_pseudocount=log_counts_include_pseudocount,
                 ),
-            }
+                DifferentialBPNetMetricCollection(
+                    cond_a_idx=cond_a_idx,
+                    cond_b_idx=cond_b_idx,
+                    log1p_targets=log1p_targets,
+                    delta_count_pseudocount=delta_count_pseudocount,
+                ),
+            ]
         )
 
 ## src/cerberus/models/pomeranian.py

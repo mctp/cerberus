@@ -132,6 +132,51 @@ def test_reverse_complement_with_signals(dummy_interval):
     assert out_int.strand == "-"
 
 
+def test_reverse_complement_swaps_target_channels(dummy_interval):
+    inputs = torch.zeros(4, 4)
+    targets = torch.tensor(
+        [
+            [1.0, 2.0, 3.0, 4.0],
+            [10.0, 20.0, 30.0, 40.0],
+        ]
+    )
+
+    rc = ReverseComplement(
+        probability=1.0,
+        dna_channels=slice(0, 4),
+        target_channel_swaps=[(0, 1)],
+    )
+
+    _, out_targets, out_int = rc(inputs, targets, dummy_interval)
+
+    expected = torch.tensor(
+        [
+            [40.0, 30.0, 20.0, 10.0],
+            [4.0, 3.0, 2.0, 1.0],
+        ]
+    )
+    assert torch.equal(out_targets, expected)
+    assert out_int.strand == "-"
+
+
+def test_reverse_complement_swaps_input_signal_channels(dummy_interval):
+    inputs = torch.zeros(6, 4)
+    inputs[4] = torch.tensor([1.0, 2.0, 3.0, 4.0])
+    inputs[5] = torch.tensor([10.0, 20.0, 30.0, 40.0])
+    targets = torch.zeros(1, 4)
+
+    rc = ReverseComplement(
+        probability=1.0,
+        dna_channels=slice(0, 4),
+        input_channel_swaps=[(4, 5)],
+    )
+
+    out_inputs, _, _ = rc(inputs, targets, dummy_interval)
+
+    assert torch.equal(out_inputs[4], torch.tensor([40.0, 30.0, 20.0, 10.0]))
+    assert torch.equal(out_inputs[5], torch.tensor([4.0, 3.0, 2.0, 1.0]))
+
+
 def test_reverse_complement_no_dna(dummy_interval):
     """RC with no DNA channels should only reverse spatially."""
     inputs = torch.arange(10).unsqueeze(0).float()  # (1, 10) signal only
@@ -143,6 +188,22 @@ def test_reverse_complement_no_dna(dummy_interval):
     assert out_in[0, 0] == 9  # reversed
     assert out_tgt[0, 0] == 4  # reversed
     assert out_int.strand == "-"
+
+
+def test_reverse_complement_dna_list_channels(dummy_interval):
+    """``dna_channels`` accepts list[int]; the DNA channel-flip step must run
+    via advanced indexing for that path too (a single ``A`` at position 0 must
+    become a single ``T`` at the last position)."""
+    inputs = torch.zeros(4, 4)
+    inputs[0, 0] = 1.0  # A at position 0
+    targets = torch.zeros(1, 4)
+
+    rc = ReverseComplement(probability=1.0, dna_channels=[0, 1, 2, 3])
+    out_in, _, _ = rc(inputs, targets, dummy_interval)
+
+    expected = torch.zeros(4, 4)
+    expected[3, 3] = 1.0  # T at last position
+    assert torch.equal(out_in, expected)
 
 
 def test_log1p(dummy_interval):

@@ -17,6 +17,13 @@ from .interval import Interval
 
 logger = logging.getLogger(__name__)
 
+# Interval-source labels (from get_interval_source) that mean "peak/positive".
+# A peak IntervalSampler reports "IntervalSampler" before a fold split and
+# "ListSampler" after one (base ListSampler.split_folds returns plain
+# ListSampler); background samplers override split_folds to keep distinct
+# labels. Single source of truth for the peak-vs-background predicate.
+PEAK_INTERVAL_SOURCES = frozenset({"IntervalSampler", "ListSampler"})
+
 
 def _select_from_bins(
     target_hist: dict[tuple[int, ...], int],
@@ -841,6 +848,61 @@ class IntervalSampler(ListSampler):
             ]
 
 
+class FixedBackgroundSampler(IntervalSampler):
+    """Background (non-peak) intervals loaded from a fixed BED/narrowPeak file.
+
+    Behaves exactly like :class:`IntervalSampler` (loads a concrete list of
+    intervals from disk, centers them to ``padded_size``), but is a distinct
+    class so that :meth:`MultiSampler.get_interval_source` reports
+    ``"FixedBackgroundSampler"`` for these intervals rather than the generic
+    ``"IntervalSampler"``/``"ListSampler"`` used for peaks.
+
+    This lets a :class:`PeakFixedBackgroundSampler` mix peaks (positives) with a
+    **fixed**, externally-supplied negative set (e.g. a GC-matched
+    ``negatives.bed``) while keeping peak-vs-background distinguishable in
+    downstream evaluation — which separates them by interval source.
+
+    Unlike :class:`ComplexityMatchedSampler`, the negative set is static: it is
+    never regenerated on :meth:`resample` (inherited no-op), so the model sees
+    the same negatives every epoch — matching reference chrombpnet-pytorch.
+
+    NOTE: :meth:`split_folds` is overridden so the train/val/test splits remain
+    ``FixedBackgroundSampler`` instances. The base :class:`ListSampler`
+    implementation returns plain ``ListSampler`` objects, which would collapse
+    the source label to ``"ListSampler"`` (identical to split peaks) and break
+    peak/background separation after fold splitting.
+    """
+
+    def _make_split(self, intervals: list[Interval]) -> "FixedBackgroundSampler":
+        """Build a FixedBackgroundSampler from a concrete interval list.
+
+        Bypasses ``__init__`` (which would re-read the source file) by setting
+        the ``ListSampler`` state directly via ``__new__``.
+        """
+        sub = FixedBackgroundSampler.__new__(FixedBackgroundSampler)
+        ListSampler.__init__(
+            sub,
+            intervals=intervals,
+            chrom_sizes=self.chrom_sizes,
+            folds=self.folds,
+            exclude_intervals=self.exclude_intervals,
+        )
+        return sub
+
+    def _subset(self, indices: list[int]) -> "FixedBackgroundSampler":
+        return self._make_split([self._intervals[i] for i in indices])
+
+    def split_folds(
+        self, test_fold: int | None = None, val_fold: int | None = None
+    ) -> tuple[
+        "FixedBackgroundSampler", "FixedBackgroundSampler", "FixedBackgroundSampler"
+    ]:
+        train, val, test = partition_intervals_by_fold(
+            self._intervals, self.folds, test_fold, val_fold
+        )
+        return self._make_split(train), self._make_split(val), self._make_split(test)
+
+
 class SlidingWindowSampler(ListSampler):
     """
     Generates samples by sliding a window across the genome.
@@ -1384,6 +1446,88 @@ class PeakSampler(MultiSampler):
         )
 
 
+class PeakFixedBackgroundSampler(MultiSampler):
+    """Combines peaks with a **fixed**, externally-supplied negative set.
+
+    Like :class:`PeakSampler`, this mixes positive intervals (peaks) with
+    negatives, but instead of generating complexity-matched negatives on the
+    fly (:class:`ComplexityMatchedSampler`, regenerated each epoch), it loads a
+    static negative BED from disk via :class:`FixedBackgroundSampler` and uses
+    it unchanged every epoch.
+
+    This reproduces the reference chrombpnet-pytorch data setup, where the
+    GC-matched ``negatives.bed`` is generated once offline and fed to the model
+    as a fixed file. Use it to compare Cerberus and chrombpnet-pytorch on an
+    identical peak **and** negative set.
+
+    Sub-sampler ordering (``samplers[0]`` = peaks, ``samplers[1]`` = negatives)
+    matches :class:`PeakSampler`, so :meth:`get_interval_source` reports
+    ``"IntervalSampler"`` (→ ``"ListSampler"`` after :meth:`split_folds`) for
+    peaks and ``"FixedBackgroundSampler"`` for negatives.
+    """
+
+    def __init__(
+        self,
+        intervals_path: Path | str,
+        background_intervals_path: Path | str,
+        chrom_sizes: dict[str, int],
+        padded_size: int,
+        folds: list[dict[str, InterLap]] | None = None,
+        exclude_intervals: dict[str, InterLap] | None = None,
+        seed: int = 42,
+    ):
+        """
+        Args:
+            intervals_path: Path to peaks (BED/narrowPeak).
+            background_intervals_path: Path to the fixed negative set
+                (BED/narrowPeak), e.g. a GC-matched ``negatives.bed``.
+            chrom_sizes: Chromosome sizes.
+            padded_size: Interval size (after centering).
+            folds: Fold definitions for cross-validation.
+            exclude_intervals: Excluded regions (blacklist/gaps).
+            seed: Random seed (controls only the mixed iteration order).
+        """
+        self.intervals_path = Path(intervals_path)
+        self.background_intervals_path = Path(background_intervals_path)
+
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loading positive intervals from {self.intervals_path}..."
+        )
+        self.positives = IntervalSampler(
+            file_path=self.intervals_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+        )
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loaded {len(self.positives)} positive intervals."
+        )
+
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loading fixed background intervals from "
+            f"{self.background_intervals_path}..."
+        )
+        self.negatives = FixedBackgroundSampler(
+            file_path=self.background_intervals_path,
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+        )
+        logger.info(
+            f"PeakFixedBackgroundSampler: Loaded {len(self.negatives)} fixed background intervals."
+        )
+
+        super().__init__(
+            samplers=[self.positives, self.negatives],
+            chrom_sizes=chrom_sizes,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+            seed=seed,
+        )
+
+
 class NegativePeakSampler(MultiSampler):
     """Background-only sampler: complexity-matched non-peak intervals.
 
@@ -1609,6 +1753,17 @@ def create_sampler(
             seed=seed,
             prepare_cache=prepare_cache,
             complexity_center_size=sampler_args.get("complexity_center_size"),
+        )
+
+    elif sampler_type == "peak_fixed_background":
+        return PeakFixedBackgroundSampler(
+            intervals_path=sampler_args["intervals_path"],
+            background_intervals_path=sampler_args["background_intervals_path"],
+            chrom_sizes=chrom_sizes,
+            padded_size=padded_size,
+            folds=folds,
+            exclude_intervals=exclude_intervals,
+            seed=seed,
         )
 
     elif sampler_type == "negative_peak":

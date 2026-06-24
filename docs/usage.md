@@ -284,6 +284,11 @@ For quick training on custom data, use the model-specific scripts in the `tools/
     # BPNet1024 variant (2112bp -> 1024bp, comparable I/O to Pomeranian)
     python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --1024
 
+    # Standalone ChromBPNet accessibility-sized BPNet
+    python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet \
+        --filters 512 --n-layers 8 --conv-kernel-size 21 --dil-kernel-size 3 \
+        --profile-kernel-size 75 --residual-architecture residual_post-activation_conv
+
     # Multi-fold cross-validation
     python tools/train_bpnet.py --bigwig signal.bw --peaks regions.bed --output-dir models/my_bpnet --multi
     ```
@@ -368,13 +373,15 @@ For quick training on custom data, use the model-specific scripts in the `tools/
         --output-dir models/chrombpnet_multitask
     ```
 
-*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, supervises `log_counts[:, cond_b] - log_counts[:, cond_a]` with `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
+*   `tools/train_chrombpnet_multitask_differential.py`: Phase-2 differential fine-tuning for an existing multi-task ChromBPNet. Reloads the phase-1 accessibility branch as trainable, keeps the bias frozen, and supervises the `delta_count_pseudocount`-shrunk predicted log fold-change between `cond_b` and `cond_a` against the inline-derived per-peak target log fold-change, using `DifferentialCountLoss`. Pseudocount is derived from training data by default (data-driven noise floor); override with `--phase2-pseudocount-override`.
     ```bash
     python tools/train_chrombpnet_multitask_differential.py \
         --phase1-checkpoint-dir models/chrombpnet_multitask/single-fold \
         --cond-a-idx 0 --cond-b-idx 1 \
         --output-dir models/chrombpnet_multitask_diff
     ```
+
+*   `tools/train_chrombpnet_multitask_differential_parallel.py`: From-scratch multi-task ChromBPNet training that keeps the absolute per-channel profile/count objective and adds a parallel differential log-count term (via `MultitaskBPNetJointDifferentialLoss` / `JointBPNetMetricCollection`). The counterpart to the phase-2-only `train_chrombpnet_multitask_differential.py`.
 
 *   `tools/train_multitask_differential_bpnet.py`: Two-phase shared-trunk training for two-condition differential accessibility. See the [Two-phase multitask-differential training](#two-phase-multitask-differential-training) section below for the workflow.
     ```bash
@@ -393,6 +400,7 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 | `--learning-rate` | `1e-3` | `5e-4` | `1e-3` | `1e-3` | `1e-3` |
 | `--weight-decay` | `0.0` | `0.01` | `1e-4` | `0.01` | `0.01` |
 | `--scheduler-type` | `default` (constant) | `cosine` | `default` (constant) | `cosine` | `cosine` |
+| `--precision` | `full` | `bf16` | `bf16` | `bf16` | `bf16` |
 | `--input-len` | `2114` | `2112` | `2112` | `2048` | `2048` |
 | `--output-len` | `1000` | `1024` | `1024` | `1024` | `2048` |
 | `--output-bin-size` | `1` | `1` | `1` | `4` | `4` |
@@ -403,14 +411,14 @@ All tools support `--multi` (cross-validation), `--seed` (sampler seed), `--prec
 `tools/train_multitask_differential_bpnet.py` trains a [MultitaskBPNet](models.md#multitaskbpnet) on two conditions in two phases, following the recipe from bpAI-TAC (Chandra et al. 2025) and Naqvi et al. 2025:
 
 - **Phase 1 — multi-task absolute model.** Jointly trains a shared BPNet trunk on condition A and condition B with `MultitaskBPNetLoss` (per-condition profile + count heads). The trunk learns sequence features that matter for *both* conditions, not the confound of separately-trained solo models.
-- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises `log_counts_B − log_counts_A` on the per-peak natural-log fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log-fold-change table.
+- **Phase 2 — differential fine-tuning.** Reloads the Phase 1 checkpoint via `ModelConfig.pretrained=[PretrainedConfig(...)]` and fine-tunes with `DifferentialCountLoss`, which supervises the `delta_count_pseudocount`-shrunk predicted fold-change against the per-peak natural-log fold-change derived inline from the two-channel targets tensor. No offline precompute, no external log-fold-change table.
 - **Optional interpretation.** With `--interpret`, runs DeepLIFTSHAP on the fine-tuned model through `AttributionTarget(reduction="delta_log_counts", channels=(0, 1))` and pipes the result into TF-MoDISco.
 
 Both phases run on the standard `train_single` / `train_multi` pipeline. The companion library primitives are [MultitaskBPNet](models.md#multitaskbpnet), [MultitaskBPNetLoss](models.md#loss-multitaskbpnetloss), and [DifferentialCountLoss](models.md#differentialcountloss).
 
 Phase 2 logs differential metrics via `DifferentialBPNetMetricCollection`: `mse_delta_log_counts`, `rmse_delta_log_counts`, and `pearson_delta_log_counts`. These score predictions in the same space `DifferentialCountLoss` optimises (the per-peak log fold-change), not the absolute log-counts. The val-end scatter is emitted as `val_delta_log_counts_scatter_epoch_NNN.png` accordingly.
 
-Phase 2's `count_pseudocount` is derived from the training data by default (10th-percentile-per-channel of length-summed counts), via `cerberus.pseudocount.resolve_noise_floor_pseudocount`. Override with `--phase2-pseudocount-override SCALED_VALUE`.
+Phase 2's `delta_count_pseudocount` is derived from the training data by default (10th-percentile-per-channel of length-summed counts), via `cerberus.pseudocount.resolve_noise_floor_pseudocount`. Override with `--phase2-pseudocount-override SCALED_VALUE`.
 
 ```bash
 # Single-fold two-condition training + interpretation in one call.

@@ -62,6 +62,19 @@ class TestInstantiateMetricsAndLoss:
         metrics, criterion = instantiate_metrics_and_loss(config)
         assert isinstance(metrics, MetricCollection)
 
+    def test_profile_jsd_loss_with_bpnet_metrics(self):
+        """ProfileJSDLoss should instantiate through the common loss plumbing."""
+        config = _make_model_config(
+            metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
+            metrics_args={},
+            loss_cls="cerberus.loss.ProfileJSDLoss",
+            loss_args={"average_channels": True},
+            count_pseudocount=0.0,
+        )
+        metrics, criterion = instantiate_metrics_and_loss(config)
+        assert criterion.__class__.__name__ == "ProfileJSDLoss"
+        assert metrics["pearson_log_counts"].log_counts_include_pseudocount is False
+
     def test_pomeranian_metrics(self):
         """Should work with Pomeranian metric collection."""
         config = _make_model_config(

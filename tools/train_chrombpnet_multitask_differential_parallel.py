@@ -1,45 +1,21 @@
 #!/usr/bin/env python
-"""Multi-task ChromBPNet stage-2 training tool.
+"""Train a multi-task ChromBPNet with a parallel differential objective.
 
-Trains a :class:`cerberus.models.MultitaskChromBPNet`: one accessibility
-branch with one output channel per task, sharing a single pretrained
-ChromBPNet bias BPNet across all tasks via :attr:`ChromBPNet.shared_bias`
-broadcasting.
-
-The bias subtree is loaded from the stage-1 checkpoint via
-``PretrainedConfig(target="bias_model")`` and frozen by default through
-``ModelConfig.freeze=[FreezeSpec(pattern="bias_model", eval_mode=True)]``
-(use ``--no-freeze-bias`` to keep it trainable).  The accessibility
-branch trains normally.
-
-After training, exports an accessibility-only ``chrombpnet_wo_bias.pt``
-checkpoint next to each ``model.pt``, matching the single-task
-ChromBPNet trainer's export convention.
-
-Assumes the per-task target BigWigs are already on a comparable scale
-(e.g. CPM-normalised + constitutive-rescaled via
-``tools/scatac_normalize_pseudobulk.py``); the count head trains
-absolute log-counts per task.  When using Poisson-family losses on
-comparable CPM tracks, pass a single global ``--target-scale`` (for
-example the average library-size denominator used to make the CPMs) so
-all tracks move back to count-like units without changing their relative
-normalisation.
+This is the from-scratch counterpart to ``train_chrombpnet_multitask.py``:
+it keeps the usual absolute profile/count objective for every task and adds
+a delta-log-count loss between two task channels.  The phase-2-only
+fine-tuning workflow remains in ``train_chrombpnet_multitask_differential.py``.
 """
 
 from __future__ import annotations
 
 import argparse
-import gzip
-import json
 import logging
 import os
 import sys
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from pprint import pformat
-from typing import TextIO
 
 import torch
 
@@ -54,156 +30,58 @@ from cerberus.config import (
 )
 from cerberus.download import download_human_reference
 from cerberus.genome import create_genome_config
-from cerberus.pretrained import extract_prefix
 from cerberus.train import train_multi, train_single
 from cerberus.utils import get_precision_kwargs
 
-# Sibling-tool import: works as a script (sys.path[0] == tools/) and from
-# pytest after the test shim adds tools/ to sys.path.
-from _pseudocount_cli import (  # noqa: E402  -- intentional after std imports
+_TOOLS_DIR = Path(__file__).resolve().parent
+if str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
+
+from _pseudocount_cli import (  # noqa: E402
     add_pseudocount_cli_args,
     resolve_count_pseudocount_from_args,
+)
+from train_chrombpnet_multitask import (  # noqa: E402
+    _export_accessibility_checkpoints,
+    _load_targets_json,
+    _merge_peaks,
+    _parse_alpha,
+    _plot_training_curves,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def _parse_alpha(value: str) -> float | str:
-    if value == "adaptive":
-        return "adaptive"
+def _parse_devices(value: str) -> str | int:
+    if value == "auto":
+        return value
     try:
-        return float(value)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(
-            f"--alpha must be a float or 'adaptive', got {value!r}"
-        ) from exc
-
-
-@contextmanager
-def _open_text(path: str | Path) -> Iterator[TextIO]:
-    """Open ``.bed`` or ``.bed.gz`` transparently."""
-    path = Path(path)
-    if path.suffix == ".gz":
-        with gzip.open(path, "rt") as handle:
-            yield handle
-    else:
-        with path.open() as handle:
-            yield handle
-
-
-def _sanitize_channel_name(name: str) -> str:
-    # DataConfig.targets keys end up as Lightning metric names and
-    # state-dict component names; whitespace is rejected downstream.
-    return name.replace(" ", "_")
-
-
-def _load_targets_json(path: str | Path) -> tuple[dict[str, str], list[str]]:
-    """Load per-task BigWig paths (and optional peak paths) from a JSON spec.
-
-    Accepted formats::
-
-        {"task name": {"bigwig": "task.bw", "peaks": "task.peaks.bed.gz"}}
-        {"task name": "task.bw"}   # peaks must be supplied via --peaks
-
-    Returns:
-        ``(targets, peak_paths)`` where ``targets`` is an ordered
-        ``{channel_name: bigwig_path}`` mapping (keys sorted for
-        reproducible Lightning logging) and ``peak_paths`` is a list of
-        every ``"peaks"`` entry that appeared, in spec order.
-    """
-    with Path(path).open() as handle:
-        spec = json.load(handle)
-    if not isinstance(spec, dict) or not spec:
-        raise ValueError("--targets-json must contain a non-empty object")
-
-    targets: dict[str, str] = {}
-    peak_paths: list[str] = []
-    for raw_name in sorted(spec):
-        entry = spec[raw_name]
-        channel = _sanitize_channel_name(raw_name)
-        if channel in targets:
-            raise ValueError(
-                f"Duplicate sanitised channel name {channel!r}; "
-                "choose unique task names"
-            )
-        if isinstance(entry, str):
-            targets[channel] = entry
-            continue
-        if not isinstance(entry, dict) or "bigwig" not in entry:
-            raise ValueError(
-                "Each targets-json entry must be a BigWig string or an object "
-                f"with a 'bigwig' key; got {raw_name!r}: {entry!r}"
-            )
-        targets[channel] = str(entry["bigwig"])
-        if "peaks" in entry:
-            peak_paths.append(str(entry["peaks"]))
-
-    if len(targets) < 2:
-        raise ValueError(
-            f"Multi-task ChromBPNet requires at least two targets, got {len(targets)}"
-        )
-    return targets, peak_paths
-
-
-def _merge_peaks(peak_paths: list[str], tmpdir: str) -> str:
-    """Concatenate per-task peak BED/BED.gz files into one sampler BED."""
-    if not peak_paths:
-        raise ValueError("No peak paths were provided to merge")
-    merged_path = Path(tmpdir) / "merged_peaks.bed"
-    with merged_path.open("w") as out:
-        for path in peak_paths:
-            with _open_text(path) as handle:
-                for line in handle:
-                    out.write(line)
-    return str(merged_path)
-
-
-def _export_accessibility_checkpoints(root_dir: Path) -> None:
-    """Export accessibility-only state dicts next to each full ``model.pt``.
-
-    Matches the single-task ``train_chrombpnet.py`` convention so downstream
-    inference / interpretation tools can load just the accessibility branch
-    without instantiating the bias submodule.
-    """
-    for model_pt in sorted(root_dir.glob("**/model.pt")):
-        state_dict = torch.load(model_pt, map_location="cpu", weights_only=True)
-        acc_sd = extract_prefix(state_dict, "accessibility_model")
-        out_path = model_pt.with_name("chrombpnet_wo_bias.pt")
-        torch.save(acc_sd, out_path)
-        logger.info("Saved accessibility-only checkpoint to %s", out_path)
-
-
-def _plot_training_curves(root_dir: Path) -> None:
-    """Best-effort plot of every Lightning CSV under the training root."""
-    try:
-        from plot_training_results import plot_metrics
-    except Exception as exc:  # pragma: no cover - optional plotting deps
-        logger.warning("Skipping training plots: %s", exc)
-        return
-
-    metrics_files = sorted(root_dir.rglob("metrics.csv"))
-    if not metrics_files:
-        logger.warning("No metrics.csv files found under %s; skipping plots.", root_dir)
-        return
-    for metrics_path in metrics_files:
-        logger.info("Plotting training metrics from %s", metrics_path)
-        plot_metrics(metrics_path, metrics_path.parent)
+        return int(value)
+    except ValueError:
+        return value
 
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train a multi-task ChromBPNet model sharing one bias BPNet",
+        description=(
+            "Train a multi-task ChromBPNet with absolute profile/count loss "
+            "plus a parallel differential log-count loss."
+        ),
     )
 
     # --- Input data ---
     parser.add_argument(
-        "--targets-json", type=str, required=True,
+        "--targets-json",
+        type=str,
+        required=True,
         help='JSON mapping task names to {"bigwig": ..., "peaks": ...} entries.',
     )
     parser.add_argument(
-        "--peaks", type=str, default=None,
-        help="Merged peak BED/narrowPeak for stage-2 sampling. If omitted, "
-        "per-task peaks from --targets-json are concatenated.",
+        "--peaks",
+        type=str,
+        default=None,
+        help="Merged peak BED/narrowPeak for sampling. If omitted, per-task "
+        "peaks from --targets-json are concatenated.",
     )
 
     # --- Genome / reference ---
@@ -232,15 +110,17 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--output-len", type=int, default=1000)
     parser.add_argument("--jitter", type=int, default=256)
     parser.add_argument(
-        "--background-ratio", type=float, default=1.0,
-        help="Non-peak to peak ratio during stage-2 training",
+        "--background-ratio",
+        type=float,
+        default=1.0,
+        help="Non-peak to peak ratio during training",
     )
     parser.add_argument(
-        "--target-scale", type=float, default=1.0,
+        "--target-scale",
+        type=float,
+        default=1.0,
         help="Multiplicative scaling factor for already-normalised targets "
-        "(typically 1.0 for the original MNLL+MSE objective; for "
-        "Poisson-family losses on comparable CPM tracks, use one shared "
-        "count-scale multiplier such as mean(library_size / 1e6)).",
+        "(typically 1.0 when targets came through scatac_normalize_pseudobulk).",
     )
 
     # --- Pseudocount CLI family (shared with the other train_* tools) ---
@@ -248,48 +128,45 @@ def get_args() -> argparse.Namespace:
 
     # --- Pretrained bias / accessibility branches ---
     parser.add_argument(
-        "--pretrained-bias", type=str, required=True,
+        "--pretrained-bias",
+        type=str,
+        required=True,
         help="Path to the stage-1 single-channel ChromBPNet bias BPNet checkpoint "
         "(e.g. produced by tools/train_chrombpnet_bias.py).",
     )
     parser.add_argument(
-        "--pretrained-bias-source", type=str, default=None,
+        "--pretrained-bias-source",
+        type=str,
+        default=None,
         help="Optional prefix to extract from the bias checkpoint "
         "(e.g. 'bias_model' when loading from a full ChromBPNet checkpoint).",
     )
     parser.add_argument(
-        "--pretrained-accessibility", type=str, default=None,
+        "--pretrained-accessibility",
+        type=str,
+        default=None,
         help="Optional checkpoint to warm-start the multi-task accessibility branch.",
     )
     parser.add_argument(
-        "--pretrained-accessibility-source", type=str, default=None,
+        "--pretrained-accessibility-source",
+        type=str,
+        default=None,
         help="Optional prefix to extract from the accessibility checkpoint.",
     )
     parser.add_argument(
-        "--no-freeze-bias", action="store_true",
+        "--no-freeze-bias",
+        action="store_true",
         help="Allow the loaded shared bias branch to keep training. Default behaviour "
         "adds FreezeSpec(pattern='bias_model', eval_mode=True) to ModelConfig.freeze "
         "so the bias broadcast contributes a fixed Tn5-bias baseline.",
     )
     parser.add_argument(
-        "--bias-logcount-offset", type=float, default=0.0,
+        "--bias-logcount-offset",
+        type=float,
+        default=0.0,
         help="Initial scalar offset applied to the bias log-count head before "
         "logaddexp combination. Use estimate_bias_logcount_offset() to calibrate "
         "from data, or pass an explicit value.",
-    )
-    parser.add_argument(
-        "--bias-count-mode",
-        type=str,
-        default="profile_and_counts",
-        choices=["profile_and_counts", "profile_only"],
-        help=(
-            "How the frozen shared bias branch contributes to count predictions. "
-            "'profile_and_counts' adds bias to both profile shape and count "
-            "predictions. 'profile_only' adds bias logits to profile shape but "
-            "uses only the accessibility branch's per-task count heads for "
-            "absolute count prediction, matching bpAI-TAC-style "
-            "profile/accessibility decoupling."
-        ),
     )
 
     # --- Accessibility branch architecture (chrombpnet-pytorch defaults) ---
@@ -307,7 +184,8 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--bias-profile-kernel-size", type=int, default=75)
 
     parser.add_argument(
-        "--residual-architecture", type=str,
+        "--residual-architecture",
+        type=str,
         default="residual_post-activation_conv",
         choices=[
             "residual_post-activation_conv",
@@ -317,22 +195,30 @@ def get_args() -> argparse.Namespace:
     )
 
     # --- Loss ---
-    parser.add_argument(
-        "--loss",
-        type=str,
-        default="multinomial-mse",
-        choices=["multinomial-mse", "bpaitac-pnll", "poisson-multinomial"],
-        help=(
-            "Training objective. 'multinomial-mse' is the existing multi-task "
-            "ChromBPNet profile MNLL + log-count MSE objective. "
-            "'bpaitac-pnll' reconstructs per-base rates from logits and "
-            "per-task log-counts, then applies Poisson NLL directly. "
-            "'poisson-multinomial' keeps the factorized profile/count "
-            "objective but swaps the per-channel count MSE for Poisson NLL."
-        ),
-    )
     parser.add_argument("--alpha", type=_parse_alpha, default="adaptive")
     parser.add_argument("--beta", type=float, default=1.0)
+    parser.add_argument(
+        "--differential-cond-a",
+        type=int,
+        default=0,
+        help="Condition A channel index for the delta-log-count loss.",
+    )
+    parser.add_argument(
+        "--differential-cond-b",
+        type=int,
+        default=1,
+        help="Condition B channel index for the delta-log-count loss.",
+    )
+    parser.add_argument(
+        "--differential-pseudocount",
+        type=float,
+        default=None,
+        help=(
+            "Optional pseudocount for the delta-log-count target. Defaults to "
+            "--count-pseudocount so absolute and delta targets share the same "
+            "count offset unless explicitly separated."
+        ),
+    )
 
     # --- Optimisation ---
     parser.add_argument("--learning-rate", type=float, default=1e-3)
@@ -345,15 +231,19 @@ def get_args() -> argparse.Namespace:
 
     # --- Hardware ---
     parser.add_argument(
-        "--accelerator", type=str, default="auto",
+        "--accelerator",
+        type=str,
+        default="auto",
         choices=["auto", "gpu", "cpu", "mps"],
     )
     parser.add_argument("--devices", type=str, default="auto")
     parser.add_argument(
-        "--precision", type=str, default="full",
+        "--precision",
+        type=str,
+        default="full",
         choices=["bf16", "mps", "full"],
         help="Default 'full' (fp32) for ChromBPNet: the bias-count "
-        "profile_and_counts path is sensitive to bf16 underflow.",
+        "logaddexp branch is sensitive to bf16 underflow.",
     )
 
     return parser.parse_args()
@@ -361,14 +251,15 @@ def get_args() -> argparse.Namespace:
 
 def main() -> None:
     cerberus.setup_logging()
-    logger.info("Starting multi-task ChromBPNet training tool...")
+    logger.info("Starting parallel differential multi-task ChromBPNet training tool...")
     args = get_args()
 
     targets_dict, json_peak_paths = _load_targets_json(args.targets_json)
     output_channels = list(targets_dict.keys())
     logger.info(
-        "Multi-task ChromBPNet targets (%d): %s",
-        len(output_channels), output_channels,
+        "Parallel differential ChromBPNet targets (%d): %s",
+        len(output_channels),
+        output_channels,
     )
 
     tmpdir_obj: tempfile.TemporaryDirectory[str] | None = None
@@ -378,7 +269,9 @@ def main() -> None:
         tmpdir_obj = tempfile.TemporaryDirectory()
         peaks_path = _merge_peaks(json_peak_paths, tmpdir_obj.name)
         logger.info(
-            "Merged %d per-task peak files into %s", len(json_peak_paths), peaks_path,
+            "Merged %d per-task peak files into %s",
+            len(json_peak_paths),
+            peaks_path,
         )
     else:
         raise SystemExit(
@@ -420,7 +313,9 @@ def main() -> None:
             species=args.species,
             fold_type="chrom_partition",
             fold_args={
-                "k": 5, "val_fold": args.val_fold, "test_fold": args.test_fold,
+                "k": 5,
+                "val_fold": args.val_fold,
+                "test_fold": args.test_fold,
             },
             exclude_intervals=exclude_intervals,
         )
@@ -474,57 +369,16 @@ def main() -> None:
             gradient_clip_val=None,
         )
 
-        if args.loss == "bpaitac-pnll":
-            count_pseudocount_scaled = 0.0
-            loss_cls = "cerberus.loss.BPAITACPoissonNLLLoss"
-            loss_args = {}
-            model_name = "MultitaskChromBPNet_BPAITACPNLL"
-            metrics_args = {"count_pseudocount": 0.0}
-            logger.info(
-                "Using bpAI-TAC-style PNLL: targets are multiplied by "
-                "--target-scale=%.6g and count_pseudocount is forced to 0 "
-                "because the model predicts raw log-counts.",
-                target_scale,
-            )
-        elif args.loss == "poisson-multinomial":
-            count_pseudocount_scaled = 0.0
-            loss_cls = "cerberus.loss.PoissonMultinomialLoss"
-            # count_per_channel + average_channels mirrors MultitaskBPNetLoss:
-            # both terms reduce by mean over (B, C) so profile/count weighting
-            # stays calibrated as the number of tasks grows (dodges the
-            # average=False sum-over-channels scaling issue from audit #4).
-            loss_args = {
-                "count_weight": args.alpha,
-                "profile_weight": args.beta,
-                "count_per_channel": True,
-                "average_channels": True,
-                "flatten_channels": False,
-                "log1p_targets": False,
-                "shift_poisson_loss": True,
-            }
-            model_name = "MultitaskChromBPNet_PoissonMultinomial"
-            metrics_args = {"count_pseudocount": 0.0}
-            logger.info(
-                "Using PoissonMultinomialLoss: targets are multiplied by "
-                "--target-scale=%.6g, count loss is per-channel shifted Poisson NLL, "
-                "and count_pseudocount is forced to 0 because the model "
-                "predicts raw log-counts.",
-                target_scale,
-            )
-        else:
-            count_pseudocount_scaled = resolve_count_pseudocount_from_args(
-                args, bin_size=output_bin_size, target_scale=target_scale,
-            )
-            loss_cls = "cerberus.models.bpnet.MultitaskBPNetLoss"
-            loss_args = {"alpha": args.alpha, "beta": args.beta}
-            model_name = "MultitaskChromBPNet"
-            metrics_args = {}
+        count_pseudocount_scaled = resolve_count_pseudocount_from_args(
+            args,
+            bin_size=output_bin_size,
+            target_scale=target_scale,
+        )
 
         model_args = {
             "input_channels": ["A", "C", "G", "T"],
             "output_channels": output_channels,
             "bias_logcount_offset": args.bias_logcount_offset,
-            "bias_count_mode": args.bias_count_mode,
             "accessibility_args": {
                 "filters": args.filters,
                 "n_dilated_layers": args.n_layers,
@@ -563,34 +417,36 @@ def main() -> None:
                 )
             )
 
-        # Freeze the bias subtree by default (ChromBPNet convention: the
-        # Tn5-bias model is dataset-wide and frozen during accessibility
-        # training).  eval_mode=True stops any Dropout/BatchNorm inside the
-        # bias branch from drifting.
         freeze: list[FreezeSpec] = []
         if not args.no_freeze_bias:
             freeze.append(FreezeSpec(pattern="bias_model", eval_mode=True))
 
+        loss_args = {
+            "alpha": args.alpha,
+            "beta": args.beta,
+            "cond_a_idx": args.differential_cond_a,
+            "cond_b_idx": args.differential_cond_b,
+        }
+        if args.differential_pseudocount is not None:
+            loss_args["delta_count_pseudocount"] = args.differential_pseudocount
+
         model_config = ModelConfig(
-            name=model_name,
+            name="MultitaskChromBPNetDifferentialParallel",
             model_cls="cerberus.models.chrombpnet.MultitaskChromBPNet",
-            loss_cls=loss_cls,
+            loss_cls="cerberus.models.bpnet.MultitaskBPNetJointDifferentialLoss",
             loss_args=loss_args,
-            metrics_cls="cerberus.models.bpnet.BPNetMetricCollection",
-            metrics_args=metrics_args,
+            metrics_cls="cerberus.models.bpnet.JointBPNetMetricCollection",
+            metrics_args={
+                "cond_a_idx": args.differential_cond_a,
+                "cond_b_idx": args.differential_cond_b,
+            },
             model_args=model_args,
             pretrained=pretrained,
             freeze=freeze,
             count_pseudocount=count_pseudocount_scaled,
         )
 
-        devices: str | int = args.devices
-        if devices != "auto":
-            try:
-                devices = int(devices)
-            except ValueError:
-                pass
-
+        devices = _parse_devices(args.devices)
         accelerator = args.accelerator
         if accelerator == "auto" and torch.backends.mps.is_available():
             accelerator = "mps"
@@ -626,7 +482,8 @@ def main() -> None:
             _export_accessibility_checkpoints(output_dir)
             _plot_training_curves(output_dir)
             logger.info(
-                "Training finished. Logs and checkpoints are in subdirectories of %s",
+                "Parallel differential training finished. Logs and checkpoints "
+                "are in subdirectories of %s",
                 output_dir,
             )
     finally:
@@ -634,9 +491,5 @@ def main() -> None:
             tmpdir_obj.cleanup()
 
 
-# Ensure the sibling-tool import works when this file is loaded by tests via
-# importlib without going through the script entrypoint.
-if __name__ == "__main__":  # pragma: no cover - covered by integration runs
-    if str(Path(__file__).resolve().parent) not in sys.path:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
+if __name__ == "__main__":
     main()

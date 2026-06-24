@@ -1,3 +1,6 @@
+import importlib
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -6,6 +9,69 @@ import pytorch_lightning as pl
 from cerberus.config import DataConfig, ModelConfig, TrainConfig
 from cerberus.train import _train as train
 from cerberus.utils import get_precision_kwargs
+
+
+def test_train_bpnet_defaults_to_full_precision(monkeypatch):
+    tools_dir = Path(__file__).resolve().parents[1] / "tools"
+    monkeypatch.syspath_prepend(str(tools_dir))
+    train_bpnet = importlib.import_module("train_bpnet")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train_bpnet.py",
+            "--bigwig",
+            "signal.bw",
+            "--peaks",
+            "peaks.bed",
+            "--output-dir",
+            "model",
+        ],
+    )
+
+    args = train_bpnet.get_args()
+    assert args.precision == "full"
+
+
+def test_train_bpnet_accepts_architecture_overrides(monkeypatch):
+    tools_dir = Path(__file__).resolve().parents[1] / "tools"
+    monkeypatch.syspath_prepend(str(tools_dir))
+    train_bpnet = importlib.import_module("train_bpnet")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train_bpnet.py",
+            "--bigwig",
+            "signal.bw",
+            "--peaks",
+            "peaks.bed",
+            "--output-dir",
+            "model",
+            "--filters",
+            "512",
+            "--n-layers",
+            "8",
+            "--conv-kernel-size",
+            "21",
+            "--dil-kernel-size",
+            "3",
+            "--profile-kernel-size",
+            "75",
+            "--residual-architecture",
+            "residual_post-activation_conv",
+        ],
+    )
+
+    args = train_bpnet.get_args()
+    assert args.filters == 512
+    assert args.n_layers == 8
+    assert args.conv_kernel_size == 21
+    assert args.dil_kernel_size == 3
+    assert args.profile_kernel_size == 75
+    assert args.residual_architecture == "residual_post-activation_conv"
 
 
 def _make_configs():

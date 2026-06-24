@@ -87,6 +87,11 @@ class DataConfig(BaseModel):
         encoding: DNA encoding strategy (e.g. ``'ACGT'``).
         log_transform: Whether to apply ``log(x + 1)`` to signal.
         reverse_complement: Whether to apply reverse-complement augmentation.
+        reverse_complement_input_channel_pairs: Input signal channel name pairs
+            to swap after reverse-complementing, e.g. ``[("plus", "minus")]``.
+            Indices are resolved after DNA sequence channels.
+        reverse_complement_target_channel_pairs: Target channel name pairs
+            to swap after reverse-complementing, e.g. ``[("plus", "minus")]``.
         use_sequence: Whether to include one-hot sequence as input.
         target_scale: Multiplicative scaling factor applied to targets.
     """
@@ -102,6 +107,12 @@ class DataConfig(BaseModel):
     encoding: str
     log_transform: bool
     reverse_complement: bool
+    reverse_complement_input_channel_pairs: list[tuple[str, str]] = Field(
+        default_factory=list
+    )
+    reverse_complement_target_channel_pairs: list[tuple[str, str]] = Field(
+        default_factory=list
+    )
     use_sequence: bool
     target_scale: float = Field(gt=0)
 
@@ -112,6 +123,41 @@ class DataConfig(BaseModel):
                 "reverse_complement=True requires use_sequence=True. "
                 "Reverse complement operates on DNA sequence channels."
             )
+        return self
+
+    @model_validator(mode="after")
+    def check_rc_channel_pairs(self) -> DataConfig:
+        """Reject misconfigured RC channel-pair lists.
+
+        A swap of a channel with itself is a no-op, and reusing a channel name
+        across multiple pairs would scramble channels under the cumulative
+        sequence of in-place swaps in :class:`~cerberus.transform.ReverseComplement`.
+        Either case is almost certainly a config bug.
+        """
+        for field_name, pairs in (
+            (
+                "reverse_complement_input_channel_pairs",
+                self.reverse_complement_input_channel_pairs,
+            ),
+            (
+                "reverse_complement_target_channel_pairs",
+                self.reverse_complement_target_channel_pairs,
+            ),
+        ):
+            seen_names: set[str] = set()
+            for left, right in pairs:
+                if left == right:
+                    raise ValueError(
+                        f"{field_name} contains a self-pair {(left, right)!r}: "
+                        "a channel cannot be reverse-complement-swapped with itself."
+                    )
+                for name in (left, right):
+                    if name in seen_names:
+                        raise ValueError(
+                            f"{field_name} reuses channel {name!r} across multiple "
+                            "pairs. Overlapping swaps would scramble channels."
+                        )
+                    seen_names.add(name)
         return self
 
 

@@ -33,8 +33,8 @@ from torch.utils.data import DataLoader
 
 import cerberus
 from cerberus.attribution import (
-    AttributionTarget,
     TARGET_REDUCTIONS,
+    AttributionTarget,
     compute_ism_attributions,
     compute_taylor_ism_attributions,
     mean_center_attributions,
@@ -150,10 +150,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "For ChromBPNet / MultitaskChromBPNet checkpoints, attribute the "
-            "accessibility branch only (the chrombpnet_wo_bias model). Excludes "
-            "the frozen bias branch from the scalar target so motif discovery "
-            "captures regulatory grammar without Tn5 bias contamination. "
-            "Default: auto -- use chrombpnet_wo_bias when the checkpoint exposes it."
+            "accessibility branch only (the accessibility_model sub-module). "
+            "Excludes the frozen bias branch from the scalar target so motif "
+            "discovery captures regulatory grammar without Tn5 bias "
+            "contamination. Default: auto -- use the accessibility_model branch "
+            "when the checkpoint exposes it."
         ),
     )
     parser.add_argument(
@@ -466,6 +467,16 @@ def _resolve_target_channels(args: argparse.Namespace) -> int | tuple[int, int]:
     return args.target_channel
 
 
+def _resolve_chrombpnet_accessibility_model(model: object) -> torch.nn.Module | None:
+    """Return the bias-stripped ChromBPNet branch when a loaded model exposes one.
+
+    ChromBPNet / MultitaskChromBPNet expose the accessibility branch as
+    ``accessibility_model``; non-ChromBPNet models do not, so this returns
+    ``None`` for them.
+    """
+    return getattr(model, "accessibility_model", None)
+
+
 def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     IntegratedGradients = None
     DeepLiftShap = None
@@ -535,12 +546,11 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
 
     model = ensemble[str(args.fold)]
 
-    # ChromBPNet routing: when the loaded model exposes a chrombpnet_wo_bias
-    # accessibility sub-model, default to attributing only that branch so
-    # motif discovery captures regulatory grammar without Tn5-bias
-    # contamination.  --chrombpnet-accessibility-only / --no-chrombpnet-...
-    # force the choice when needed.
-    accessibility_model = getattr(model, "chrombpnet_wo_bias", None)
+    # ChromBPNet routing: when the loaded model exposes an accessibility
+    # sub-model (``accessibility_model``), default to attributing only that
+    # branch so motif discovery captures regulatory grammar without Tn5-bias
+    # contamination.
+    accessibility_model = _resolve_chrombpnet_accessibility_model(model)
     use_chrombpnet_accessibility_only = args.chrombpnet_accessibility_only
     if use_chrombpnet_accessibility_only is None:
         use_chrombpnet_accessibility_only = accessibility_model is not None
@@ -549,8 +559,8 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         if accessibility_model is None:
             raise ValueError(
                 "--chrombpnet-accessibility-only was requested, but the loaded "
-                f"model ({model.__class__.__name__}) does not expose a "
-                "'chrombpnet_wo_bias' accessibility branch."
+                f"model ({model.__class__.__name__}) does not expose an "
+                "'accessibility_model' branch."
             )
         model = accessibility_model
         logger.info(
@@ -897,10 +907,14 @@ def _export_arrays(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         "batch_size": args.batch_size,
         "num_workers": args.num_workers,
         "intervals_path_override": (
-            str(args.intervals_path.resolve()) if args.intervals_path is not None else None
+            str(args.intervals_path.resolve())
+            if args.intervals_path is not None
+            else None
         ),
         "intervals_as_simple_sampler": bool(args.intervals_as_simple_sampler),
-        "include_sources": sorted(include_sources) if include_sources is not None else None,
+        "include_sources": sorted(include_sources)
+        if include_sources is not None
+        else None,
         "attribution_method": args.attribution_method,
         "chrombpnet_accessibility_only": bool(use_chrombpnet_accessibility_only),
         "target_mode": args.target_mode,

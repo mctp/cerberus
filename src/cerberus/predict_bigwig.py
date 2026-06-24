@@ -29,6 +29,7 @@ def predict_to_bigwig(
     use_folds: list[str] | None = None,
     batch_size: int = 64,
     regions: list[Interval] | None = None,
+    channel_index: int = 0,
 ) -> None:
     """Generates predictions and writes to a BigWig file.
 
@@ -51,6 +52,8 @@ def predict_to_bigwig(
         batch_size: Batch size for inference.
         regions: Optional list of Intervals to restrict prediction to.
             When provided, only these regions are predicted (no blacklist filtering).
+        channel_index: Output channel to write. BigWig is single-track, so
+            multi-channel model outputs must be exported one channel at a time.
     """
     genome_config = dataset.genome_config
     data_config = dataset.data_config
@@ -111,6 +114,7 @@ def predict_to_bigwig(
                         use_folds,
                         batch_size,
                         count_pseudocount,
+                        channel_index,
                     )
         else:
             # Genome-wide prediction
@@ -143,6 +147,7 @@ def predict_to_bigwig(
                             use_folds,
                             batch_size,
                             count_pseudocount,
+                            channel_index,
                         )
                         current_island = []
 
@@ -157,6 +162,7 @@ def predict_to_bigwig(
                         use_folds,
                         batch_size,
                         count_pseudocount,
+                        channel_index,
                     )
 
     logger.info(f"Writing BigWig to {output_path}...")
@@ -224,6 +230,7 @@ def _process_island(
     use_folds: list[str],
     batch_size: int,
     count_pseudocount: float,
+    channel_index: int = 0,
 ) -> Iterable[tuple[str, int, int, float]]:
     """Runs prediction on a contiguous island of intervals and yields
     per-bp linear counts matching the scale of the input BigWig.
@@ -298,15 +305,21 @@ def _process_island(
     # sum → divide by bin_size; avg/max → no division (already per-bp scale).
     track_data = track_data / target_scale / output_bin_size
 
-    # Select first channel for BigWig output
+    # Select one channel for BigWig output
     n_channels = track_data.shape[0]
-    if n_channels > 1:
+    if channel_index < 0 or channel_index >= n_channels:
+        raise ValueError(
+            f"channel_index={channel_index} is out of range for model output "
+            f"with {n_channels} channel(s)."
+        )
+    if n_channels > 1 and channel_index == 0:
         logger.warning(
             "Model output has %d channels but BigWig is single-track; "
-            "only channel 0 will be exported. Other channels are discarded.",
+            "exporting channel 0. Pass a different channel_index to export "
+            "another channel.",
             n_channels,
         )
-    values = track_data[0]  # (n_bins,)
+    values = track_data[channel_index]  # (n_bins,)
 
     start = merged_interval.start
     logger.info(
