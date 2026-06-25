@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a9] - 2026-06-24
+
 ### Added
 - **Region-level cross-validation folds (`fold_type="bed_partition"`)**: folds
   may now be defined by a 4-column `(chrom, start, end, fold_id)` BED file

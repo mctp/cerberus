@@ -4580,6 +4580,7 @@ def fold_bed_path(species: str) -> Path:
         )
     return Path(str(files("cerberus.data").joinpath(fname)))
 
+
 _HUMAN_CHROMS = [str(i) for i in range(1, 23)] + ["X", "Y"]
 _MOUSE_CHROMS = [str(i) for i in range(1, 20)] + ["X", "Y"]
 
@@ -4755,7 +4756,9 @@ def _parse_fold_id(token: str) -> int:
     try:
         return int(t)
     except ValueError as exc:
-        raise ValueError(f"Invalid fold id {token!r} (expected int or 'foldN')") from exc
+        raise ValueError(
+            f"Invalid fold id {token!r} (expected int or 'foldN')"
+        ) from exc
 
 
 def _create_folds_bed_partition(
@@ -4846,9 +4849,7 @@ def _create_folds_bed_partition(
     return folds
 
 
-def _validate_cross_fold_disjoint(
-    folds: list[dict[str, InterLap]], path: Path
-) -> None:
+def _validate_cross_fold_disjoint(folds: list[dict[str, InterLap]], path: Path) -> None:
     """Raise if any two *different* folds claim an overlapping region.
 
     Overlap *within* a single fold is allowed (and expected for dense sliding
