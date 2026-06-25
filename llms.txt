@@ -45,6 +45,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 ### `cerberus.genome`
 
+- **`fold_bed_path()`** — Return the path to a packaged Borzoi cross-validation fold BED.
 - **`create_genome_config()`** — Creates a valid GenomeConfig by parsing the FASTA index.
 - **`create_genome_folds()`** — Creates genome folds based on the specified strategy.
 - **`create_human_genome_config()`** — Creates GenomeConfig from a downloaded bundle (specifically for human hg38).
@@ -86,6 +87,7 @@ Cerberus provides modular data loading for genomic intervals, DNA sequences (FAS
 
 - **`generate_sub_seeds()`** — Generates n independent seeds from a master seed.
 - **`match_bin_counts()`** — Selects indices from candidate_metrics to match the distribution of target_metrics.
+- **`owning_fold()`** — Return the index of the single fold that owns interval ``[start, end)``.
 - **`partition_intervals_by_fold()`** — Partitions intervals into train, validation, and test lists based on folds.
 - **`class Sampler(Protocol)`** — Protocol for data samplers.
 - **`class BaseSampler(Sampler)`** — Base class for samplers providing common configuration and exclusion logic.

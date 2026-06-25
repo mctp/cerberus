@@ -2192,7 +2192,9 @@ Use the table below as a starting point:</p>
 </ul>
 <h2 id="cross-validation-folds">Cross-Validation (Folds)<a class="headerlink" href="#cross-validation-folds" title="Permanent link">&para;</a></h2>
 <p>Cerberus has built-in support for K-fold cross-validation to ensure robust evaluation.
-*   <strong>Chromosomal Partitioning</strong>: Splits data by chromosomes to avoid data leakage (e.g., neighboring correlated regions).
+*   <strong>Chromosomal Partitioning</strong> (<code>fold_type="chrom_partition"</code>): Splits data by whole chromosomes to avoid data leakage (e.g., neighboring correlated regions). Folds never share a chromosome.
+*   <strong>Region Partitioning</strong> (<code>fold_type="bed_partition"</code>): Splits the genome into regions assigned to folds via a 4-column <code>(chrom, start, end, fold_id)</code> BED file (e.g. Borzoi's 196 kb windows). Uses more of the genome at a finer granularity; separate fold regions with a buffer ≥ the input window to avoid seam leakage. See <a href="../configuration/">Configuration</a> for the file format and packaged <code>fold_bed_path()</code> helpers.
+*   <strong>Single-owner assignment</strong>: Regardless of strategy, each example is assigned to exactly one fold — the fold whose region contains its centre — so boundary-straddling examples are never double-counted. Examples whose centre lies outside every fold (an inter-fold buffer) are dropped.
 *   <strong>Config</strong>: Defined in <code>GenomeConfig</code> via <code>fold_type</code> and <code>fold_args</code>.
 *   <strong>Samplers</strong>: The <code>split_folds</code> method ensures that training, validation, and test sets are disjoint based on these fold definitions.</p>
 
@@ -2217,7 +2219,7 @@ Use the table below as a starting point:</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 24, 2026 23:21:28 UTC">June 24, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 25, 2026 01:12:36 UTC">June 25, 2026</span>
   </span>
 
     

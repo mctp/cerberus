@@ -1410,7 +1410,9 @@
 <li><strong>Seed Derivation</strong>: The new samplers for Train, Val, and Test are initialized with seeds derived from the parent sampler's <em>current</em> state.</li>
 <li><strong>Idempotency</strong>: Calling <code>split_folds</code> multiple times on the same sampler state will return identical splits.</li>
 <li><strong>Dynamic Splits</strong>: If the parent sampler is resampled (advanced to next epoch), subsequent calls to <code>split_folds</code> will produce new splits with new seeds. This allows the validation set (if stochastic) to vary across epochs if desired, though typically validation sets are kept static by using a separate, non-resampled sampler instance.</li>
-<li><strong>Overlap Handling</strong>: If the defined Test and Validation folds overlap (or are identical), intervals falling into the overlapping regions will be assigned to <strong>both</strong> the Test and Validation samplers. Intervals present in either Test or Validation folds are strictly excluded from the Training sampler.</li>
+<li><strong>Single-owner Assignment</strong>: Each interval is assigned to exactly one <em>owning</em> fold — the fold whose region contains the interval's centre (<code>(start + end) // 2</code>). It is then routed by its owner: <code>test_fold</code> → Test, <code>val_fold</code> → Val, any other fold → Train. For <code>chrom_partition</code> this is identical to a whole-interval overlap test (the centre always lies on the interval's own chromosome). For <code>bed_partition</code> region folds it makes boundary-straddling intervals unambiguous — they belong to a single fold, never both.</li>
+<li><strong>Test == Val</strong>: If <code>test_fold</code> and <code>val_fold</code> are equal, an owned interval is sent to <strong>both</strong> the Test and Validation samplers (preserving the historical behaviour). It is excluded from Training in that case.</li>
+<li><strong>Buffer / Uncovered Drop</strong>: An interval whose centre lies outside every fold — e.g. in an inter-fold buffer used by <code>bed_partition</code> to prevent seam leakage, or simply uncovered genome — is dropped from all three splits rather than leaking into Training.</li>
 </ul>
 <h2 id="specific-implementations">Specific Implementations<a class="headerlink" href="#specific-implementations" title="Permanent link">&para;</a></h2>
 <h3 id="intervalsampler">IntervalSampler<a class="headerlink" href="#intervalsampler" title="Permanent link">&para;</a></h3>
@@ -1546,7 +1548,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 30, 2026 07:23:34 UTC">May 30, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 25, 2026 01:12:36 UTC">June 25, 2026</span>
   </span>
 
     
