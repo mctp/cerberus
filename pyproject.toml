@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cerberus"
-version = "1.0.0a8"
+version = "1.0.0a9"
 description = "Attentive multi-headed and highly trained companion to sequence-to-function deep-learning models"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -60,6 +60,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"cerberus.data" = ["*.bed.gz"]
 
 [tool.ruff]
 target-version = "py312"

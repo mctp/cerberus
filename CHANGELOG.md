@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0a9] - 2026-06-24
+
+### Added
+- **Region-level cross-validation folds (`fold_type="bed_partition"`)**: folds
+  may now be defined by a 4-column `(chrom, start, end, fold_id)` BED file
+  instead of whole chromosomes. `fold_id` accepts a bare integer in `[0, k)` or
+  a Borzoi-style `fold<N>` label; the BED may be gzipped. The reader
+  (`genome._create_folds_bed_partition`) validates that regions of *different*
+  folds are mutually disjoint (within-fold overlap is allowed, e.g. dense
+  sliding windows) and warns about chromosomes absent from `chrom_sizes`.
+  `fold_args = {"k": int, "path": str, "test_fold": int, "val_fold": int}`.
+- **`cerberus.fold_bed_path(species)`**: returns the packaged Borzoi 8-fold
+  cross-validation definitions (`src/cerberus/data/sequences_{human,mouse}.bed.gz`,
+  196,608 bp windows) for direct use as the `bed_partition` `path`.
+- **`cerberus.create_mouse_genome_config`** is now exported from the top-level
+  package (previously only the human helper was).
+
+### Changed
+- **Fold assignment is now single-owner and centre-based.**
+  `samplers.partition_intervals_by_fold` (new helper `samplers.owning_fold`)
+  assigns each interval to exactly one owning fold — the fold whose region
+  contains the interval's centre — then routes it (`test_fold` → test,
+  `val_fold` → val, otherwise train). Intervals whose centre lies outside every
+  fold (an inter-fold buffer, or uncovered genome) are **dropped** rather than
+  added to training. This is behaviour-identical to the previous overlap-based
+  split for `chrom_partition` (full genome coverage, one fold per chromosome),
+  but makes boundary-straddling intervals unambiguous for region folds and
+  prevents buffer-zone leakage into training. `test_fold == val_fold` still
+  duplicates owned intervals into both test and val.
+
 ## [1.0.0a8] - 2026-06-24
 
 Closes correctness audit (`docs/internal/correctness_audit_2026_06_10.md`)

@@ -114,6 +114,31 @@ def match_bin_counts(
     return selected_indices
 
 
+def owning_fold(
+    folds: list[dict[str, InterLap]], chrom: str, start: int, end: int
+) -> int | None:
+    """Return the index of the single fold that owns interval ``[start, end)``.
+
+    An interval is owned by the fold whose region contains its **centre**
+    (``(start + end) // 2``).  This makes ownership unambiguous and
+    single-valued even when an interval straddles a region boundary, provided
+    fold regions of different folds are disjoint (enforced for
+    ``bed_partition``; inherent for ``chrom_partition``).  Returns ``None`` when
+    the centre falls outside every fold (e.g. an inter-fold buffer or an
+    uncovered region).
+
+    For ``chrom_partition`` this is equivalent to the old whole-interval
+    overlap test: an interval's centre lies on the same chromosome as the
+    interval, and each chromosome belongs to exactly one fold.
+    """
+    center = (start + end) // 2
+    for i, fold in enumerate(folds):
+        tree = fold.get(chrom)
+        if tree is not None and (center, center) in tree:
+            return i
+    return None
+
+
 def partition_intervals_by_fold(
     intervals: Iterable[Interval],
     folds: list[dict[str, InterLap]],
@@ -123,9 +148,20 @@ def partition_intervals_by_fold(
     """
     Partitions intervals into train, validation, and test lists based on folds.
 
-    If test_fold and val_fold overlap (or are the same), intervals in the overlapping region
-    will be included in BOTH test_intervals and val_intervals.
-    train_intervals will contain intervals that are in neither test_fold nor val_fold.
+    Each interval is assigned to exactly one *owning* fold (the fold containing
+    its centre; see :func:`owning_fold`).  It is then routed by that owner:
+
+    - owner == ``test_fold`` -> test
+    - owner == ``val_fold``  -> val (so if ``test_fold == val_fold`` the
+      interval lands in BOTH test and val, preserving the historical overlap
+      behaviour)
+    - owner is any other fold -> train
+    - owner is ``None`` (centre outside every fold, e.g. a buffer between
+      region-level folds) -> dropped from all three sets
+
+    For ``chrom_partition`` this is identical to the previous overlap-based
+    split (every interval is owned by its chromosome's fold and the genome is
+    fully covered, so nothing is dropped).
 
     Args:
         intervals: Iterable of intervals to partition.
@@ -136,37 +172,22 @@ def partition_intervals_by_fold(
     Returns:
         Tuple of (train_intervals, val_intervals, test_intervals).
     """
-    test_fold_intervals = folds[test_fold] if test_fold is not None else {}
-    val_fold_intervals = folds[val_fold] if val_fold is not None else {}
-
     train_intervals = []
     val_intervals = []
     test_intervals = []
 
-    def is_in_fold(
-        fold_intervals: dict[str, InterLap], chrom: str, start: int, end: int
-    ) -> bool:
-        if chrom not in fold_intervals:
-            return False
-        # Check overlap: InterLap stores closed intervals [start, end]
-        # Interval uses [start, end) -> [start, end-1]
-        return (start, end - 1) in fold_intervals[chrom]
-
     for interval in intervals:
-        in_test = is_in_fold(
-            test_fold_intervals, interval.chrom, interval.start, interval.end
-        )
-        in_val = is_in_fold(
-            val_fold_intervals, interval.chrom, interval.start, interval.end
-        )
+        owner = owning_fold(folds, interval.chrom, interval.start, interval.end)
+        if owner is None:
+            # Centre lies outside every fold (inter-fold buffer / uncovered
+            # genome): drop rather than silently leak into train.
+            continue
 
-        if in_test:
+        if owner == test_fold:
             test_intervals.append(interval)
-
-        if in_val:
+        if owner == val_fold:
             val_intervals.append(interval)
-
-        if not in_test and not in_val:
+        if owner != test_fold and owner != val_fold:
             train_intervals.append(interval)
 
     return train_intervals, val_intervals, test_intervals

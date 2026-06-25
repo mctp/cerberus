@@ -1079,11 +1079,12 @@ class GenomeConfig(BaseModel):
     # (e.g., blacklists, gaps). Paths are resolved via parse_hparams_config.
     exclude_intervals: dict[str, Path]
 
-    # Cross-validation strategy. Currently only "chrom_partition" is supported.
-    fold_type: str  # e.g., "chrom_partition"
+    # Cross-validation strategy: "chrom_partition" or "bed_partition".
+    fold_type: str
 
     # Arguments for the fold strategy (plain dict).
     # For "chrom_partition": {"k": 5, "test_fold": 0, "val_fold": 1}
+    # For "bed_partition":    {"k": 8, "path": "folds.bed", "test_fold": 3, "val_fold": 4}
     # test_fold and val_fold can be omitted if passed directly to
     # CerberusDataModule or train_single.
     fold_args: dict[str, Any]
@@ -1091,6 +1092,56 @@ class GenomeConfig(BaseModel):
     # List of chromosome names to include (e.g., ["chr1", ..., "chrX"])
     allowed_chroms: list[str]
 ```
+
+### Fold strategies
+
+`fold_type` selects how the genome is partitioned into the `k` cross-validation
+folds. Whichever strategy is used, every example is assigned to **exactly one**
+owning fold — the fold whose region contains the example's centre — and the
+fold rotation is unchanged (model *i* uses fold *i* as test and fold
+*(i+1) % k* as validation).
+
+- **`"chrom_partition"`** — whole chromosomes are greedily distributed into `k`
+  size-balanced folds. Avoids train/test sequence leakage because folds never
+  share a chromosome. `fold_args`: `{"k": int, "test_fold": int, "val_fold": int}`.
+
+- **`"bed_partition"`** — folds are defined by a 4-column BED file
+  `(chrom, start, end, fold_id)`, where `fold_id` is an integer in `[0, k)` (a
+  Borzoi-style `fold<N>` label is also accepted). The file may be gzipped.
+  This enables finer, region-level cross-validation that uses more of the
+  genome. `fold_args`: `{"k": int, "path": str, "test_fold": int, "val_fold": int}`.
+
+  Rules and guarantees:
+
+  - Regions of **different** folds must be disjoint (validated at load — an
+    overlap raises `ValueError`). Regions **within** one fold may overlap
+    freely (e.g. dense sliding windows).
+  - The genome need not be fully covered. An example whose centre falls in an
+    inter-fold gap (a deliberate buffer, or simply uncovered genome) is
+    **dropped** from train/val/test rather than leaking into training.
+  - To eliminate sequence leakage at fold seams, separate regions of different
+    folds by a buffer of at least `input_len + 2 * max_jitter` bp.
+
+  Cerberus ships the Borzoi human/mouse 8-fold definitions
+  (`sequences_{species}.bed.gz`, 196,608 bp windows). Resolve them with
+  `cerberus.fold_bed_path(...)`:
+
+  ```python
+  from cerberus import create_genome_config, fold_bed_path
+
+  genome_config = create_genome_config(
+      name="hg38",
+      fasta_path="hg38.fa",
+      species="human",
+      fold_type="bed_partition",
+      fold_args={
+          "k": 8,
+          "path": str(fold_bed_path("human")),
+          "test_fold": 3,
+          "val_fold": 4,
+      },
+  )
+  ```
 
 ## DataConfig
 
@@ -1574,7 +1625,9 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Seed Derivation**: The new samplers for Train, Val, and Test are initialized with seeds derived from the parent sampler's *current* state.
 *   **Idempotency**: Calling `split_folds` multiple times on the same sampler state will return identical splits.
 *   **Dynamic Splits**: If the parent sampler is resampled (advanced to next epoch), subsequent calls to `split_folds` will produce new splits with new seeds. This allows the validation set (if stochastic) to vary across epochs if desired, though typically validation sets are kept static by using a separate, non-resampled sampler instance.
-*   **Overlap Handling**: If the defined Test and Validation folds overlap (or are identical), intervals falling into the overlapping regions will be assigned to **both** the Test and Validation samplers. Intervals present in either Test or Validation folds are strictly excluded from the Training sampler.
+*   **Single-owner Assignment**: Each interval is assigned to exactly one *owning* fold — the fold whose region contains the interval's centre (`(start + end) // 2`). It is then routed by its owner: `test_fold` → Test, `val_fold` → Val, any other fold → Train. For `chrom_partition` this is identical to a whole-interval overlap test (the centre always lies on the interval's own chromosome). For `bed_partition` region folds it makes boundary-straddling intervals unambiguous — they belong to a single fold, never both.
+*   **Test == Val**: If `test_fold` and `val_fold` are equal, an owned interval is sent to **both** the Test and Validation samplers (preserving the historical behaviour). It is excluded from Training in that case.
+*   **Buffer / Uncovered Drop**: An interval whose centre lies outside every fold — e.g. in an inter-fold buffer used by `bed_partition` to prevent seam leakage, or simply uncovered genome — is dropped from all three splits rather than leaking into Training.
 
 ## Specific Implementations
 
@@ -2042,7 +2095,9 @@ A pre-configured `MetricCollection` used when no custom metrics are specified.
 ## Cross-Validation (Folds)
 
 Cerberus has built-in support for K-fold cross-validation to ensure robust evaluation.
-*   **Chromosomal Partitioning**: Splits data by chromosomes to avoid data leakage (e.g., neighboring correlated regions).
+*   **Chromosomal Partitioning** (`fold_type="chrom_partition"`): Splits data by whole chromosomes to avoid data leakage (e.g., neighboring correlated regions). Folds never share a chromosome.
+*   **Region Partitioning** (`fold_type="bed_partition"`): Splits the genome into regions assigned to folds via a 4-column `(chrom, start, end, fold_id)` BED file (e.g. Borzoi's 196 kb windows). Uses more of the genome at a finer granularity; separate fold regions with a buffer ≥ the input window to avoid seam leakage. See [Configuration](configuration.md) for the file format and packaged `fold_bed_path()` helpers.
+*   **Single-owner assignment**: Regardless of strategy, each example is assigned to exactly one fold — the fold whose region contains its centre — so boundary-straddling examples are never double-counted. Examples whose centre lies outside every fold (an inter-fold buffer) are dropped.
 *   **Config**: Defined in `GenomeConfig` via `fold_type` and `fold_args`.
 *   **Samplers**: The `split_folds` method ensures that training, validation, and test sets are disjoint based on these fold definitions.
 
@@ -3776,6 +3831,8 @@ from .download import (
 from .genome import (
     create_genome_config,
     create_human_genome_config,
+    create_mouse_genome_config,
+    fold_bed_path,
 )
 from .interval import Interval, load_intervals_bed, write_intervals_bed
 from .variants import Variant, compute_variant_effects, generate_variants, load_variants, load_vcf, variant_to_ref_alt
@@ -3825,6 +3882,8 @@ __all__ = [
     # Genome Setup
     "create_genome_config",
     "create_human_genome_config",
+    "create_mouse_genome_config",
+    "fold_bed_path",
     # Download Utilities
     "download_dataset",
     "download_human_reference",
@@ -3888,9 +3947,17 @@ class GenomeConfig(BaseModel):
         allowed_chroms: Chromosome names to include.
         chrom_sizes: Mapping of chromosome names to their lengths in bp.
             Must contain exactly the chromosomes listed in ``allowed_chroms``.
-        fold_type: Strategy for creating folds (currently ``'chrom_partition'``).
-        fold_args: Arguments for the fold strategy.  For ``'chrom_partition'``:
-            ``k`` (int), ``test_fold`` (int | None), ``val_fold`` (int | None).
+        fold_type: Strategy for creating folds — ``'chrom_partition'`` (whole
+            chromosomes split into ``k`` size-balanced folds) or
+            ``'bed_partition'`` (region-level folds read from a BED file).
+        fold_args: Arguments for the fold strategy.
+            ``'chrom_partition'``: ``k`` (int), ``test_fold`` (int | None),
+            ``val_fold`` (int | None).
+            ``'bed_partition'``: ``k`` (int), ``path`` (str — a 4-column
+            ``(chrom, start, end, fold_id)`` BED, optionally gzipped;
+            ``fold_id`` may be an int or a ``fold<N>`` label), plus the same
+            ``test_fold`` / ``val_fold``.  ``cerberus.fold_bed_path('human' |
+            'mouse')`` returns packaged Borzoi 8-fold definitions.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -4457,9 +4524,11 @@ def merge_intervals(intervals: list[Interval]) -> list[Interval]:
 
 ## src/cerberus/genome.py
 
+import gzip
 import heapq
 import logging
 from collections.abc import Callable
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -4468,6 +4537,49 @@ from interlap import InterLap
 logger = logging.getLogger(__name__)
 
 from cerberus.config import GenomeConfig
+
+# Filenames of the packaged Borzoi cross-validation fold definitions, keyed by
+# species.  These are the upstream ``sequences_{species}.bed.gz`` files from
+# calico/borzoi (8 folds, 196,608 bp windows), usable directly as the
+# ``path`` argument of the ``"bed_partition"`` fold strategy.
+_FOLD_BED_FILES = {
+    "human": "sequences_human.bed.gz",
+    "mouse": "sequences_mouse.bed.gz",
+}
+
+
+def fold_bed_path(species: str) -> Path:
+    """Return the path to a packaged Borzoi cross-validation fold BED.
+
+    The returned file is a 4-column ``(chrom, start, end, fold_label)`` BED
+    (gzip-compressed) with ``fold0``..``fold7`` labels, suitable for the
+    ``"bed_partition"`` fold strategy:
+
+        >>> from cerberus import create_genome_config, fold_bed_path
+        >>> cfg = create_genome_config(
+        ...     name="hg38", fasta_path=fasta, species="human",
+        ...     fold_type="bed_partition",
+        ...     fold_args={"k": 8, "path": str(fold_bed_path("human")),
+        ...                "test_fold": 3, "val_fold": 4},
+        ... )
+
+    Args:
+        species: ``"human"`` or ``"mouse"`` (case-insensitive).
+
+    Returns:
+        Filesystem path to the packaged fold BED.
+
+    Raises:
+        ValueError: If no packaged fold BED exists for *species*.
+    """
+    fname = _FOLD_BED_FILES.get(species.lower())
+    if fname is None:
+        raise ValueError(
+            f"No packaged fold BED for species {species!r}. "
+            f"Available: {sorted(_FOLD_BED_FILES)}"
+        )
+    return Path(str(files("cerberus.data").joinpath(fname)))
+
 
 _HUMAN_CHROMS = [str(i) for i in range(1, 23)] + ["X", "Y"]
 _MOUSE_CHROMS = [str(i) for i in range(1, 20)] + ["X", "Y"]
@@ -4604,8 +4716,13 @@ def create_genome_folds(
 
     Args:
         chrom_sizes: Dictionary mapping chromosome names to their lengths.
-        fold_type: Strategy for creating folds. Currently supported: 'chrom_partition'.
+        fold_type: Strategy for creating folds. Supported: ``'chrom_partition'``
+            (greedy size-balanced split of whole chromosomes) and
+            ``'bed_partition'`` (region-level split read from a BED file).
         fold_args: Arguments for the folding strategy (plain dict).
+            ``'chrom_partition'``: ``k`` (int).
+            ``'bed_partition'``: ``k`` (int), ``path`` (str path to a 4-column
+            ``(chrom, start, end, fold_id)`` BED, optionally gzipped).
 
     Returns:
         list[dict[str, InterLap]]: A list of k dictionaries. Each dictionary maps chromosome names
@@ -4617,8 +4734,142 @@ def create_genome_folds(
     if fold_type == "chrom_partition":
         k = fold_args["k"]
         return _create_folds_chrom_partition(chrom_sizes, k)
+    elif fold_type == "bed_partition":
+        return _create_folds_bed_partition(
+            chrom_sizes, Path(fold_args["path"]), fold_args["k"]
+        )
     else:
         raise ValueError(f"Unknown fold_type: {fold_type}")
+
+
+def _parse_fold_id(token: str) -> int:
+    """Parse a fold-id BED token into an integer.
+
+    Accepts a bare integer (``"3"``) or a Borzoi-style label (``"fold3"`` /
+    ``"fold_3"``).  This lets the upstream ``sequences_{species}.bed.gz`` files
+    be used verbatim.
+    """
+    t = token.strip()
+    low = t.lower()
+    if low.startswith("fold"):
+        t = low[4:].lstrip("_")
+    try:
+        return int(t)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid fold id {token!r} (expected int or 'foldN')"
+        ) from exc
+
+
+def _create_folds_bed_partition(
+    chrom_sizes: dict[str, int], path: Path, k: int
+) -> list[dict[str, InterLap]]:
+    """Build region-level folds from a 4-column BED file.
+
+    The BED has columns ``(chrom, start, end, fold_id)`` where ``fold_id`` is an
+    integer in ``[0, k)`` (or a ``fold<N>`` label).  Half-open ``[start, end)``
+    rows are stored as closed ``[start, end-1]`` intervals (matching
+    :mod:`cerberus.exclude`).  Multiple rows may map to the same fold; rows of a
+    single fold may overlap each other freely (e.g. Borzoi's overlapping
+    sliding windows).  The genome need not be fully covered — intervals whose
+    centre falls outside every fold are dropped at split time.
+
+    Args:
+        chrom_sizes: Allowed chromosomes and their lengths.  Rows on other
+            chromosomes are skipped with a warning.
+        path: Path to the BED (optionally gzipped).
+        k: Number of folds.  ``fold_id`` values must lie in ``[0, k)``.
+
+    Returns:
+        A length-``k`` list of ``{chrom: InterLap}`` dicts (empty dicts for
+        folds with no rows).
+
+    Raises:
+        FileNotFoundError: If *path* does not exist.
+        ValueError: If ``k <= 0``, a fold id is out of range, or two *different*
+            folds overlap (which would make fold ownership ambiguous).
+    """
+    if k <= 0:
+        raise ValueError(f"bed_partition requires k > 0, got {k}")
+    if not path.exists():
+        raise FileNotFoundError(f"Fold BED not found: {path}")
+
+    folds: list[dict[str, InterLap]] = [{} for _ in range(k)]
+    skipped_chroms: set[str] = set()
+    n_rows = 0
+
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith(("#", "track", "browser")):
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                raise ValueError(
+                    f"bed_partition expects >=4 columns (chrom start end fold_id); "
+                    f"got {len(parts)}: {line!r}"
+                )
+            chrom, start_s, end_s, fold_s = parts[0], parts[1], parts[2], parts[3]
+            if chrom not in chrom_sizes:
+                skipped_chroms.add(chrom)
+                continue
+            start, end = int(start_s), int(end_s)
+            if end <= start:
+                continue
+            fold_id = _parse_fold_id(fold_s)
+            if not 0 <= fold_id < k:
+                raise ValueError(
+                    f"fold id {fold_id} out of range [0, {k}) in {path}: {line!r}"
+                )
+            if chrom not in folds[fold_id]:
+                folds[fold_id][chrom] = InterLap()
+            # Half-open [start, end) -> closed [start, end-1].
+            folds[fold_id][chrom].add((start, end - 1))
+            n_rows += 1
+
+    if skipped_chroms:
+        logger.warning(
+            "bed_partition: skipped %d row group(s) on chromosomes absent from "
+            "chrom_sizes: %s",
+            len(skipped_chroms),
+            sorted(skipped_chroms),
+        )
+
+    _validate_cross_fold_disjoint(folds, path)
+
+    n_nonempty = sum(1 for fold in folds if fold)
+    logger.info(
+        "bed_partition: loaded %d region(s) into %d/%d non-empty fold(s) from %s",
+        n_rows,
+        n_nonempty,
+        k,
+        path,
+    )
+    return folds
+
+
+def _validate_cross_fold_disjoint(folds: list[dict[str, InterLap]], path: Path) -> None:
+    """Raise if any two *different* folds claim an overlapping region.
+
+    Overlap *within* a single fold is allowed (and expected for dense sliding
+    windows); only cross-fold overlap is an error, because it makes the
+    centre-based fold ownership used by ``partition_intervals_by_fold``
+    ambiguous.
+    """
+    for i in range(len(folds)):
+        for chrom, tree_i in folds[i].items():
+            for j in range(i + 1, len(folds)):
+                tree_j = folds[j].get(chrom)
+                if tree_j is None:
+                    continue
+                for s, e in tree_i:
+                    if (s, e) in tree_j:
+                        raise ValueError(
+                            f"bed_partition: folds {i} and {j} overlap on {chrom} "
+                            f"near {s}-{e + 1} in {path}; fold regions of different "
+                            "folds must be disjoint."
+                        )
 
 
 def _create_folds_chrom_partition(
@@ -6003,6 +6254,31 @@ def match_bin_counts(
     return selected_indices
 
 
+def owning_fold(
+    folds: list[dict[str, InterLap]], chrom: str, start: int, end: int
+) -> int | None:
+    """Return the index of the single fold that owns interval ``[start, end)``.
+
+    An interval is owned by the fold whose region contains its **centre**
+    (``(start + end) // 2``).  This makes ownership unambiguous and
+    single-valued even when an interval straddles a region boundary, provided
+    fold regions of different folds are disjoint (enforced for
+    ``bed_partition``; inherent for ``chrom_partition``).  Returns ``None`` when
+    the centre falls outside every fold (e.g. an inter-fold buffer or an
+    uncovered region).
+
+    For ``chrom_partition`` this is equivalent to the old whole-interval
+    overlap test: an interval's centre lies on the same chromosome as the
+    interval, and each chromosome belongs to exactly one fold.
+    """
+    center = (start + end) // 2
+    for i, fold in enumerate(folds):
+        tree = fold.get(chrom)
+        if tree is not None and (center, center) in tree:
+            return i
+    return None
+
+
 def partition_intervals_by_fold(
     intervals: Iterable[Interval],
     folds: list[dict[str, InterLap]],
@@ -6012,9 +6288,20 @@ def partition_intervals_by_fold(
     """
     Partitions intervals into train, validation, and test lists based on folds.
 
-    If test_fold and val_fold overlap (or are the same), intervals in the overlapping region
-    will be included in BOTH test_intervals and val_intervals.
-    train_intervals will contain intervals that are in neither test_fold nor val_fold.
+    Each interval is assigned to exactly one *owning* fold (the fold containing
+    its centre; see :func:`owning_fold`).  It is then routed by that owner:
+
+    - owner == ``test_fold`` -> test
+    - owner == ``val_fold``  -> val (so if ``test_fold == val_fold`` the
+      interval lands in BOTH test and val, preserving the historical overlap
+      behaviour)
+    - owner is any other fold -> train
+    - owner is ``None`` (centre outside every fold, e.g. a buffer between
+      region-level folds) -> dropped from all three sets
+
+    For ``chrom_partition`` this is identical to the previous overlap-based
+    split (every interval is owned by its chromosome's fold and the genome is
+    fully covered, so nothing is dropped).
 
     Args:
         intervals: Iterable of intervals to partition.
@@ -6025,37 +6312,22 @@ def partition_intervals_by_fold(
     Returns:
         Tuple of (train_intervals, val_intervals, test_intervals).
     """
-    test_fold_intervals = folds[test_fold] if test_fold is not None else {}
-    val_fold_intervals = folds[val_fold] if val_fold is not None else {}
-
     train_intervals = []
     val_intervals = []
     test_intervals = []
 
-    def is_in_fold(
-        fold_intervals: dict[str, InterLap], chrom: str, start: int, end: int
-    ) -> bool:
-        if chrom not in fold_intervals:
-            return False
-        # Check overlap: InterLap stores closed intervals [start, end]
-        # Interval uses [start, end) -> [start, end-1]
-        return (start, end - 1) in fold_intervals[chrom]
-
     for interval in intervals:
-        in_test = is_in_fold(
-            test_fold_intervals, interval.chrom, interval.start, interval.end
-        )
-        in_val = is_in_fold(
-            val_fold_intervals, interval.chrom, interval.start, interval.end
-        )
+        owner = owning_fold(folds, interval.chrom, interval.start, interval.end)
+        if owner is None:
+            # Centre lies outside every fold (inter-fold buffer / uncovered
+            # genome): drop rather than silently leak into train.
+            continue
 
-        if in_test:
+        if owner == test_fold:
             test_intervals.append(interval)
-
-        if in_val:
+        if owner == val_fold:
             val_intervals.append(interval)
-
-        if not in_test and not in_val:
+        if owner != test_fold and owner != val_fold:
             train_intervals.append(interval)
 
     return train_intervals, val_intervals, test_intervals

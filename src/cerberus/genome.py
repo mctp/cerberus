@@ -1,6 +1,8 @@
+import gzip
 import heapq
 import logging
 from collections.abc import Callable
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +11,49 @@ from interlap import InterLap
 logger = logging.getLogger(__name__)
 
 from cerberus.config import GenomeConfig
+
+# Filenames of the packaged Borzoi cross-validation fold definitions, keyed by
+# species.  These are the upstream ``sequences_{species}.bed.gz`` files from
+# calico/borzoi (8 folds, 196,608 bp windows), usable directly as the
+# ``path`` argument of the ``"bed_partition"`` fold strategy.
+_FOLD_BED_FILES = {
+    "human": "sequences_human.bed.gz",
+    "mouse": "sequences_mouse.bed.gz",
+}
+
+
+def fold_bed_path(species: str) -> Path:
+    """Return the path to a packaged Borzoi cross-validation fold BED.
+
+    The returned file is a 4-column ``(chrom, start, end, fold_label)`` BED
+    (gzip-compressed) with ``fold0``..``fold7`` labels, suitable for the
+    ``"bed_partition"`` fold strategy:
+
+        >>> from cerberus import create_genome_config, fold_bed_path
+        >>> cfg = create_genome_config(
+        ...     name="hg38", fasta_path=fasta, species="human",
+        ...     fold_type="bed_partition",
+        ...     fold_args={"k": 8, "path": str(fold_bed_path("human")),
+        ...                "test_fold": 3, "val_fold": 4},
+        ... )
+
+    Args:
+        species: ``"human"`` or ``"mouse"`` (case-insensitive).
+
+    Returns:
+        Filesystem path to the packaged fold BED.
+
+    Raises:
+        ValueError: If no packaged fold BED exists for *species*.
+    """
+    fname = _FOLD_BED_FILES.get(species.lower())
+    if fname is None:
+        raise ValueError(
+            f"No packaged fold BED for species {species!r}. "
+            f"Available: {sorted(_FOLD_BED_FILES)}"
+        )
+    return Path(str(files("cerberus.data").joinpath(fname)))
+
 
 _HUMAN_CHROMS = [str(i) for i in range(1, 23)] + ["X", "Y"]
 _MOUSE_CHROMS = [str(i) for i in range(1, 20)] + ["X", "Y"]
@@ -145,8 +190,13 @@ def create_genome_folds(
 
     Args:
         chrom_sizes: Dictionary mapping chromosome names to their lengths.
-        fold_type: Strategy for creating folds. Currently supported: 'chrom_partition'.
+        fold_type: Strategy for creating folds. Supported: ``'chrom_partition'``
+            (greedy size-balanced split of whole chromosomes) and
+            ``'bed_partition'`` (region-level split read from a BED file).
         fold_args: Arguments for the folding strategy (plain dict).
+            ``'chrom_partition'``: ``k`` (int).
+            ``'bed_partition'``: ``k`` (int), ``path`` (str path to a 4-column
+            ``(chrom, start, end, fold_id)`` BED, optionally gzipped).
 
     Returns:
         list[dict[str, InterLap]]: A list of k dictionaries. Each dictionary maps chromosome names
@@ -158,8 +208,142 @@ def create_genome_folds(
     if fold_type == "chrom_partition":
         k = fold_args["k"]
         return _create_folds_chrom_partition(chrom_sizes, k)
+    elif fold_type == "bed_partition":
+        return _create_folds_bed_partition(
+            chrom_sizes, Path(fold_args["path"]), fold_args["k"]
+        )
     else:
         raise ValueError(f"Unknown fold_type: {fold_type}")
+
+
+def _parse_fold_id(token: str) -> int:
+    """Parse a fold-id BED token into an integer.
+
+    Accepts a bare integer (``"3"``) or a Borzoi-style label (``"fold3"`` /
+    ``"fold_3"``).  This lets the upstream ``sequences_{species}.bed.gz`` files
+    be used verbatim.
+    """
+    t = token.strip()
+    low = t.lower()
+    if low.startswith("fold"):
+        t = low[4:].lstrip("_")
+    try:
+        return int(t)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid fold id {token!r} (expected int or 'foldN')"
+        ) from exc
+
+
+def _create_folds_bed_partition(
+    chrom_sizes: dict[str, int], path: Path, k: int
+) -> list[dict[str, InterLap]]:
+    """Build region-level folds from a 4-column BED file.
+
+    The BED has columns ``(chrom, start, end, fold_id)`` where ``fold_id`` is an
+    integer in ``[0, k)`` (or a ``fold<N>`` label).  Half-open ``[start, end)``
+    rows are stored as closed ``[start, end-1]`` intervals (matching
+    :mod:`cerberus.exclude`).  Multiple rows may map to the same fold; rows of a
+    single fold may overlap each other freely (e.g. Borzoi's overlapping
+    sliding windows).  The genome need not be fully covered — intervals whose
+    centre falls outside every fold are dropped at split time.
+
+    Args:
+        chrom_sizes: Allowed chromosomes and their lengths.  Rows on other
+            chromosomes are skipped with a warning.
+        path: Path to the BED (optionally gzipped).
+        k: Number of folds.  ``fold_id`` values must lie in ``[0, k)``.
+
+    Returns:
+        A length-``k`` list of ``{chrom: InterLap}`` dicts (empty dicts for
+        folds with no rows).
+
+    Raises:
+        FileNotFoundError: If *path* does not exist.
+        ValueError: If ``k <= 0``, a fold id is out of range, or two *different*
+            folds overlap (which would make fold ownership ambiguous).
+    """
+    if k <= 0:
+        raise ValueError(f"bed_partition requires k > 0, got {k}")
+    if not path.exists():
+        raise FileNotFoundError(f"Fold BED not found: {path}")
+
+    folds: list[dict[str, InterLap]] = [{} for _ in range(k)]
+    skipped_chroms: set[str] = set()
+    n_rows = 0
+
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith(("#", "track", "browser")):
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                raise ValueError(
+                    f"bed_partition expects >=4 columns (chrom start end fold_id); "
+                    f"got {len(parts)}: {line!r}"
+                )
+            chrom, start_s, end_s, fold_s = parts[0], parts[1], parts[2], parts[3]
+            if chrom not in chrom_sizes:
+                skipped_chroms.add(chrom)
+                continue
+            start, end = int(start_s), int(end_s)
+            if end <= start:
+                continue
+            fold_id = _parse_fold_id(fold_s)
+            if not 0 <= fold_id < k:
+                raise ValueError(
+                    f"fold id {fold_id} out of range [0, {k}) in {path}: {line!r}"
+                )
+            if chrom not in folds[fold_id]:
+                folds[fold_id][chrom] = InterLap()
+            # Half-open [start, end) -> closed [start, end-1].
+            folds[fold_id][chrom].add((start, end - 1))
+            n_rows += 1
+
+    if skipped_chroms:
+        logger.warning(
+            "bed_partition: skipped %d row group(s) on chromosomes absent from "
+            "chrom_sizes: %s",
+            len(skipped_chroms),
+            sorted(skipped_chroms),
+        )
+
+    _validate_cross_fold_disjoint(folds, path)
+
+    n_nonempty = sum(1 for fold in folds if fold)
+    logger.info(
+        "bed_partition: loaded %d region(s) into %d/%d non-empty fold(s) from %s",
+        n_rows,
+        n_nonempty,
+        k,
+        path,
+    )
+    return folds
+
+
+def _validate_cross_fold_disjoint(folds: list[dict[str, InterLap]], path: Path) -> None:
+    """Raise if any two *different* folds claim an overlapping region.
+
+    Overlap *within* a single fold is allowed (and expected for dense sliding
+    windows); only cross-fold overlap is an error, because it makes the
+    centre-based fold ownership used by ``partition_intervals_by_fold``
+    ambiguous.
+    """
+    for i in range(len(folds)):
+        for chrom, tree_i in folds[i].items():
+            for j in range(i + 1, len(folds)):
+                tree_j = folds[j].get(chrom)
+                if tree_j is None:
+                    continue
+                for s, e in tree_i:
+                    if (s, e) in tree_j:
+                        raise ValueError(
+                            f"bed_partition: folds {i} and {j} overlap on {chrom} "
+                            f"near {s}-{e + 1} in {path}; fold regions of different "
+                            "folds must be disjoint."
+                        )
 
 
 def _create_folds_chrom_partition(

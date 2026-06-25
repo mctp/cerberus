@@ -39,7 +39,9 @@ Splitting a sampler into Train/Validation/Test sets allows for cross-validation 
 *   **Seed Derivation**: The new samplers for Train, Val, and Test are initialized with seeds derived from the parent sampler's *current* state.
 *   **Idempotency**: Calling `split_folds` multiple times on the same sampler state will return identical splits.
 *   **Dynamic Splits**: If the parent sampler is resampled (advanced to next epoch), subsequent calls to `split_folds` will produce new splits with new seeds. This allows the validation set (if stochastic) to vary across epochs if desired, though typically validation sets are kept static by using a separate, non-resampled sampler instance.
-*   **Overlap Handling**: If the defined Test and Validation folds overlap (or are identical), intervals falling into the overlapping regions will be assigned to **both** the Test and Validation samplers. Intervals present in either Test or Validation folds are strictly excluded from the Training sampler.
+*   **Single-owner Assignment**: Each interval is assigned to exactly one *owning* fold — the fold whose region contains the interval's centre (`(start + end) // 2`). It is then routed by its owner: `test_fold` → Test, `val_fold` → Val, any other fold → Train. For `chrom_partition` this is identical to a whole-interval overlap test (the centre always lies on the interval's own chromosome). For `bed_partition` region folds it makes boundary-straddling intervals unambiguous — they belong to a single fold, never both.
+*   **Test == Val**: If `test_fold` and `val_fold` are equal, an owned interval is sent to **both** the Test and Validation samplers (preserving the historical behaviour). It is excluded from Training in that case.
+*   **Buffer / Uncovered Drop**: An interval whose centre lies outside every fold — e.g. in an inter-fold buffer used by `bed_partition` to prevent seam leakage, or simply uncovered genome — is dropped from all three splits rather than leaking into Training.
 
 ## Specific Implementations
 

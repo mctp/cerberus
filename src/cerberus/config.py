@@ -27,9 +27,17 @@ class GenomeConfig(BaseModel):
         allowed_chroms: Chromosome names to include.
         chrom_sizes: Mapping of chromosome names to their lengths in bp.
             Must contain exactly the chromosomes listed in ``allowed_chroms``.
-        fold_type: Strategy for creating folds (currently ``'chrom_partition'``).
-        fold_args: Arguments for the fold strategy.  For ``'chrom_partition'``:
-            ``k`` (int), ``test_fold`` (int | None), ``val_fold`` (int | None).
+        fold_type: Strategy for creating folds — ``'chrom_partition'`` (whole
+            chromosomes split into ``k`` size-balanced folds) or
+            ``'bed_partition'`` (region-level folds read from a BED file).
+        fold_args: Arguments for the fold strategy.
+            ``'chrom_partition'``: ``k`` (int), ``test_fold`` (int | None),
+            ``val_fold`` (int | None).
+            ``'bed_partition'``: ``k`` (int), ``path`` (str — a 4-column
+            ``(chrom, start, end, fold_id)`` BED, optionally gzipped;
+            ``fold_id`` may be an int or a ``fold<N>`` label), plus the same
+            ``test_fold`` / ``val_fold``.  ``cerberus.fold_bed_path('human' |
+            'mouse')`` returns packaged Borzoi 8-fold definitions.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

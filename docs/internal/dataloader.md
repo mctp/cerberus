@@ -281,12 +281,12 @@ To support robust evaluation and ensemble training, the dataloader includes a fl
 1.  **Chromosome Splitting**:
     -   **Concept**: Traditional method where whole chromosomes are assigned to Train/Val/Test (e.g., `train=['chr1'], val=['chr2']`).
     -   **Usage**: Simple config lists passed to the dataloader.
-2.  **Granular BED-based Partitioning**:
+2.  **Granular BED-based Partitioning** (implemented as `fold_type="bed_partition"`):
     -   **Concept**: Folds are defined by a master BED file where each region is annotated with a `fold_id`.
-    -   **Format**: A BED file with columns `(chrom, start, end, fold_id)`.
-    -   **Application**:
-        -   Allows blocking the genome into smaller chunks (e.g., 1MB blocks) to maximize data usage while preventing leakage.
-        -   The `IntervalSampler` filters sampling regions based on intersection with the active fold's regions from the partition file.
+    -   **Format**: A 4-column BED `(chrom, start, end, fold_id)`, optionally gzipped. `fold_id` is an int in `[0, k)` or a `fold<N>` label (so Borzoi's `sequences_{species}.bed.gz` work verbatim; both are packaged and resolved via `cerberus.fold_bed_path`).
+    -   **Reader** (`genome._create_folds_bed_partition`): converts half-open `[start,end)` rows to closed `[start,end-1]` InterLap intervals, builds a length-`k` list of `{chrom: InterLap}`, skips chromosomes absent from `chrom_sizes` (warn), and **validates that different folds are mutually disjoint** (within-fold overlap is allowed, e.g. Borzoi's dense sliding windows).
+    -   **Assignment** (`samplers.owning_fold` / `partition_intervals_by_fold`): each interval is owned by the single fold whose region contains its **centre**; the genome need not be fully covered, and intervals centred in inter-fold gaps are dropped. This is behaviour-identical to the old overlap test for `chrom_partition`.
+    -   **Leakage**: regions of different folds should be separated by a buffer ≥ `input_len + 2*max_jitter` to avoid sequence-autocorrelation leakage at fold seams (Borzoi's 196 kb windows make this margin large relative to typical Cerberus windows).
 3.  **Implementation**:
     -   `CerberusDataModule` (PyTorch Lightning style wrapper) orchestrates the splits.
     -   For **BED-based**, it loads the partition file and initializes datasets by passing the subset of allowed regions (or a filter mask) corresponding to the requested fold.
