@@ -369,6 +369,8 @@ A pre-configured `MetricCollection` used when no custom metrics are specified.
 ## Cross-Validation (Folds)
 
 Cerberus has built-in support for K-fold cross-validation to ensure robust evaluation.
-*   **Chromosomal Partitioning**: Splits data by chromosomes to avoid data leakage (e.g., neighboring correlated regions).
+*   **Chromosomal Partitioning** (`fold_type="chrom_partition"`): Splits data by whole chromosomes to avoid data leakage (e.g., neighboring correlated regions). Folds never share a chromosome.
+*   **Region Partitioning** (`fold_type="bed_partition"`): Splits the genome into regions assigned to folds via a 4-column `(chrom, start, end, fold_id)` BED file (e.g. Borzoi's 196 kb windows). Uses more of the genome at a finer granularity; separate fold regions with a buffer ≥ the input window to avoid seam leakage. See [Configuration](configuration.md) for the file format and packaged `fold_bed_path()` helpers.
+*   **Single-owner assignment**: Regardless of strategy, each example is assigned to exactly one fold — the fold whose region contains its centre — so boundary-straddling examples are never double-counted. Examples whose centre lies outside every fold (an inter-fold buffer) are dropped.
 *   **Config**: Defined in `GenomeConfig` via `fold_type` and `fold_args`.
 *   **Samplers**: The `split_folds` method ensures that training, validation, and test sets are disjoint based on these fold definitions.

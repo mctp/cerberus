@@ -144,3 +144,7 @@ debug/
 
 # Additional test data
 data/
+# ...but the packaged reference data shipped inside the cerberus package is tracked
+!src/cerberus/data/
+!src/cerberus/data/*.py
+!src/cerberus/data/*.bed.gz

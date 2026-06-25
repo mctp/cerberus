@@ -26,6 +26,8 @@ from .download import (
 from .genome import (
     create_genome_config,
     create_human_genome_config,
+    create_mouse_genome_config,
+    fold_bed_path,
 )
 from .interval import Interval, load_intervals_bed, write_intervals_bed
 from .variants import Variant, compute_variant_effects, generate_variants, load_variants, load_vcf, variant_to_ref_alt
@@ -75,6 +77,8 @@ __all__ = [
     # Genome Setup
     "create_genome_config",
     "create_human_genome_config",
+    "create_mouse_genome_config",
+    "fold_bed_path",
     # Download Utilities
     "download_dataset",
     "download_human_reference",

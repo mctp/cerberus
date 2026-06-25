@@ -58,11 +58,12 @@ class GenomeConfig(BaseModel):
     # (e.g., blacklists, gaps). Paths are resolved via parse_hparams_config.
     exclude_intervals: dict[str, Path]
 
-    # Cross-validation strategy. Currently only "chrom_partition" is supported.
-    fold_type: str  # e.g., "chrom_partition"
+    # Cross-validation strategy: "chrom_partition" or "bed_partition".
+    fold_type: str
 
     # Arguments for the fold strategy (plain dict).
     # For "chrom_partition": {"k": 5, "test_fold": 0, "val_fold": 1}
+    # For "bed_partition":    {"k": 8, "path": "folds.bed", "test_fold": 3, "val_fold": 4}
     # test_fold and val_fold can be omitted if passed directly to
     # CerberusDataModule or train_single.
     fold_args: dict[str, Any]
@@ -70,6 +71,56 @@ class GenomeConfig(BaseModel):
     # List of chromosome names to include (e.g., ["chr1", ..., "chrX"])
     allowed_chroms: list[str]
 ```
+
+### Fold strategies
+
+`fold_type` selects how the genome is partitioned into the `k` cross-validation
+folds. Whichever strategy is used, every example is assigned to **exactly one**
+owning fold — the fold whose region contains the example's centre — and the
+fold rotation is unchanged (model *i* uses fold *i* as test and fold
+*(i+1) % k* as validation).
+
+- **`"chrom_partition"`** — whole chromosomes are greedily distributed into `k`
+  size-balanced folds. Avoids train/test sequence leakage because folds never
+  share a chromosome. `fold_args`: `{"k": int, "test_fold": int, "val_fold": int}`.
+
+- **`"bed_partition"`** — folds are defined by a 4-column BED file
+  `(chrom, start, end, fold_id)`, where `fold_id` is an integer in `[0, k)` (a
+  Borzoi-style `fold<N>` label is also accepted). The file may be gzipped.
+  This enables finer, region-level cross-validation that uses more of the
+  genome. `fold_args`: `{"k": int, "path": str, "test_fold": int, "val_fold": int}`.
+
+  Rules and guarantees:
+
+  - Regions of **different** folds must be disjoint (validated at load — an
+    overlap raises `ValueError`). Regions **within** one fold may overlap
+    freely (e.g. dense sliding windows).
+  - The genome need not be fully covered. An example whose centre falls in an
+    inter-fold gap (a deliberate buffer, or simply uncovered genome) is
+    **dropped** from train/val/test rather than leaking into training.
+  - To eliminate sequence leakage at fold seams, separate regions of different
+    folds by a buffer of at least `input_len + 2 * max_jitter` bp.
+
+  Cerberus ships the Borzoi human/mouse 8-fold definitions
+  (`sequences_{species}.bed.gz`, 196,608 bp windows). Resolve them with
+  `cerberus.fold_bed_path(...)`:
+
+  ```python
+  from cerberus import create_genome_config, fold_bed_path
+
+  genome_config = create_genome_config(
+      name="hg38",
+      fasta_path="hg38.fa",
+      species="human",
+      fold_type="bed_partition",
+      fold_args={
+          "k": 8,
+          "path": str(fold_bed_path("human")),
+          "test_fold": 3,
+          "val_fold": 4,
+      },
+  )
+  ```
 
 ## DataConfig
 
